@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertOrder, InsertProduct, InsertStore, InsertUser, Order, Product, Store, orderItems, orders, payments, products, stores, users } from "../drizzle/schema";
+import { Customer, InsertCustomer, InsertLedgerEntry, InsertOrder, InsertProduct, InsertSale, InsertStore, InsertUser, LedgerEntry, Order, Product, Sale, Store, customers, ledgerEntries, orderItems, orders, payments, products, sales, stores, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -156,5 +156,47 @@ export async function createPendingPixPayment(orderId: number, pixKey: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(payments).values({ orderId, method: "pix", status: "pending", pixKey });
+  return Number((result as unknown as { insertId: number | string }).insertId);
+}
+
+
+export async function listCustomersForStore(storeId: number): Promise<Customer[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(customers).where(eq(customers.storeId, storeId));
+}
+
+export async function createCustomer(input: InsertCustomer): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(customers).values(input);
+  return Number((result as unknown as { insertId: number | string }).insertId);
+}
+
+export async function listLedgerEntriesForStore(storeId: number): Promise<LedgerEntry[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(ledgerEntries).where(eq(ledgerEntries.storeId, storeId));
+}
+
+export async function createLedgerEntry(input: InsertLedgerEntry): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(ledgerEntries).values(input);
+  const delta = input.type === "credit" ? input.amount : `-${input.amount}`;
+  await db.update(customers).set({ balance: sql`GREATEST(0, ${customers.balance} + ${delta})` }).where(eq(customers.id, input.customerId));
+  return Number((result as unknown as { insertId: number | string }).insertId);
+}
+
+export async function listSalesForStore(storeId: number): Promise<Sale[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(sales).where(eq(sales.storeId, storeId));
+}
+
+export async function createSale(input: InsertSale): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(sales).values(input);
   return Number((result as unknown as { insertId: number | string }).insertId);
 }

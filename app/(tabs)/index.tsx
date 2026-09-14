@@ -99,12 +99,23 @@ export default function HomeScreen() {
   const [products, setProducts] = useState(INITIAL_PRODUCTS);
   const [category, setCategory] = useState("Tudo");
   const marketplaceQuery = trpc.pediu.marketplace.products.useQuery({ category }, { staleTime: 30_000 });
+  const storeQuery = trpc.pediu.stores.mine.useQuery(undefined, { enabled: isAuthenticated && role === "seller" });
+  const clientsQuery = trpc.pediu.clients.mine.useQuery(undefined, { enabled: isAuthenticated && role === "seller" });
+  const salesQuery = trpc.pediu.sales.mine.useQuery(undefined, { enabled: isAuthenticated && role === "seller" });
+  const voiceMutation = trpc.pediu.voice.interpret.useMutation();
+  const createStoreMutation = trpc.pediu.stores.create.useMutation({ onSuccess: () => { setShowSellerOnboarding(false); void storeQuery.refetch(); notify("Sua loja foi criada"); } });
   const [cart, setCart] = useState<Product[]>([]);
   const [orderStatus, setOrderStatus] = useState<OrderStatus | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [showCart, setShowCart] = useState(false);
   const [showVoice, setShowVoice] = useState(false);
   const [voiceMode, setVoiceMode] = useState<VoiceMode>("customer");
+  const [voiceReply, setVoiceReply] = useState("");
+  const [showSellerOnboarding, setShowSellerOnboarding] = useState(false);
+  const [storeName, setStoreName] = useState("");
+  const [storePhone, setStorePhone] = useState("");
+  const [storeAddress, setStoreAddress] = useState("");
+  const [storePixKey, setStorePixKey] = useState("");
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [newProductName, setNewProductName] = useState("");
   const [notice, setNotice] = useState("");
@@ -113,6 +124,12 @@ export default function HomeScreen() {
   const [cartPulse, setCartPulse] = useState(false);
   const screenOpacity = useRef(new Animated.Value(1)).current;
   const cartScale = useRef(new Animated.Value(1)).current;
+
+  const enterSellerMode = () => {
+    setRole("seller");
+    setSellerTab("home");
+    if (!isAuthenticated || !storeQuery.data) setShowSellerOnboarding(true);
+  };
 
   useEffect(() => {
     Animated.sequence([
@@ -268,6 +285,27 @@ export default function HomeScreen() {
     void notifyWithHaptic("Rascunho de divulgação criado");
   };
 
+  const handleVoiceCommand = async (command: string) => {
+    if (!command.trim()) return;
+    setVoiceReply("Entendendo seu pedido...");
+    try {
+      const result = await voiceMutation.mutateAsync({ mode: voiceMode, command });
+      setVoiceReply(result.reply);
+      if (result.action !== "fallback") handleVoiceAction(result.action);
+    } catch {
+      setVoiceReply("Não consegui conectar ao assistente. Use uma das ações rápidas.");
+    }
+  };
+
+  const createStore = () => {
+    if (!isAuthenticated) {
+      void startOAuthLogin();
+      return;
+    }
+    if (!storeName.trim()) return;
+    createStoreMutation.mutate({ name: storeName.trim(), phone: storePhone.trim() || undefined, address: storeAddress.trim() || undefined, pixKey: storePixKey.trim() || undefined, deliveryFee: "0.00" });
+  };
+
   return (
     <ScreenContainer containerClassName="bg-[#FFF8F1]" edges={["top", "left", "right"]}>
       <Animated.View style={[styles.appShell, { opacity: screenOpacity }]}>
@@ -294,7 +332,7 @@ export default function HomeScreen() {
                 <><CustomerOrders orderStatus={orderStatus} onAdvance={advanceOrder} onDiscover={() => setCustomerTab("discover")} onOpenMap={() => void Linking.openURL("https://www.google.com/maps/search/?api=1&query=Doce+Encanto+Bakery") } /><TrackingMapCard orderStatus={orderStatus} onOpenMap={() => void Linking.openURL("https://www.google.com/maps/search/?api=1&query=Doce+Encanto+Bakery")} /></>
               )}
               {customerTab === "profile" && (
-                <><CustomerProfile user={user} isAuthenticated={isAuthenticated} onLogin={() => void startOAuthLogin()} onLogout={() => void logout()} onSellerMode={() => { setRole("seller"); setSellerTab("home"); }} /><AuthPanel user={user} isAuthenticated={isAuthenticated} onLogin={() => void startOAuthLogin()} onLogout={() => void logout()} /></>
+                <><CustomerProfile user={user} isAuthenticated={isAuthenticated} onLogin={() => void startOAuthLogin()} onLogout={() => void logout()} onSellerMode={enterSellerMode} /><AuthPanel user={user} isAuthenticated={isAuthenticated} onLogin={() => void startOAuthLogin()} onLogout={() => void logout()} /></>
               )}
             </ScrollView>
             <CustomerNav active={customerTab} onChange={setCustomerTab} />
@@ -305,8 +343,8 @@ export default function HomeScreen() {
               {sellerTab === "home" && <><SellerHome onCatalog={() => setSellerTab("catalog")} onOrders={() => setSellerTab("orders")} onVoice={() => openVoiceAssistant("seller")} onNotice={notify} /><SellerVoiceLauncher onPress={() => openVoiceAssistant("seller")} /></>}
               {sellerTab === "orders" && <SellerOrders orderStatus={orderStatus} onAdvance={advanceOrder} onNotice={notify} />}
               {sellerTab === "catalog" && <SellerCatalog products={products} onAdd={() => setShowAddProduct(true)} onToggle={(id) => setProducts((current) => current.map((product) => product.id === id ? { ...product, available: !product.available } : product))} />}
-              {sellerTab === "clients" && <SellerClients onNotice={notify} />}
-              {sellerTab === "settings" && <SellerSettings onCustomerMode={() => { setRole("customer"); setCustomerTab("discover"); }} />}
+              {sellerTab === "clients" && <SellerClients customers={clientsQuery.data ?? []} onNotice={notify} />}
+              {sellerTab === "settings" && <SellerSettings store={storeQuery.data} salesCount={salesQuery.data?.length ?? 0} onCustomerMode={() => { setRole("customer"); setCustomerTab("discover"); }} />}
             </ScrollView>
             <SellerNav active={sellerTab} onChange={setSellerTab} />
           </>
@@ -338,7 +376,11 @@ export default function HomeScreen() {
         </Modal>
 
         <Modal visible={showVoice} transparent animationType="fade" onRequestClose={() => setShowVoice(false)}>
-          <VoiceAssistantModal mode={voiceMode} onClose={() => setShowVoice(false)} onAction={handleVoiceAction} />
+          <VoiceAssistantModal mode={voiceMode} busy={voiceMutation.isPending} reply={voiceReply} onClose={() => { setShowVoice(false); setVoiceReply(""); }} onAction={handleVoiceAction} onCommand={handleVoiceCommand} />
+        </Modal>
+
+        <Modal visible={showSellerOnboarding} transparent animationType="slide" onRequestClose={() => setShowSellerOnboarding(false)}>
+          <SellerOnboardingModal isAuthenticated={isAuthenticated} name={storeName} phone={storePhone} address={storeAddress} pixKey={storePixKey} onChangeName={setStoreName} onChangePhone={setStorePhone} onChangeAddress={setStoreAddress} onChangePixKey={setStorePixKey} onLogin={() => void startOAuthLogin()} onCreate={createStore} onClose={() => setShowSellerOnboarding(false)} busy={createStoreMutation.isPending} />
         </Modal>
       </Animated.View>
     </ScreenContainer>
@@ -388,8 +430,8 @@ function SellerCatalog({ products, onAdd, onToggle }: { products: Product[]; onA
   return <><View style={styles.simpleHeader}><View><Text style={styles.eyebrow}>SUA VITRINE</Text><Text style={styles.pageTitle}>Catálogo</Text></View><Pressable style={styles.addCircle} onPress={onAdd}><MaterialIcons name="add" size={24} color={COLORS.white} /></Pressable></View><Text style={styles.muted}>Deixe seus produtos prontos para o próximo pedido.</Text>{products.map((product) => <View style={styles.catalogRow} key={product.id}><View style={styles.catalogEmoji}><Text>{product.emoji}</Text></View><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{product.name}</Text><Text style={styles.muted}>{product.category} · {product.price}</Text></View><Pressable style={[styles.stockSwitch, product.available && styles.stockSwitchOn]} onPress={() => onToggle(product.id)}><View style={[styles.stockKnob, product.available && styles.stockKnobOn]} /></Pressable></View>)}<View style={styles.publishCard}><MaterialIcons name="campaign" size={22} color={COLORS.coral} /><View style={{ flex: 1 }}><Text style={styles.tipTitle}>Divulgue seu catálogo</Text><Text style={styles.tipText}>Crie uma oferta com IA para compartilhar no WhatsApp.</Text></View><MaterialIcons name="chevron-right" size={22} color={COLORS.coral} /></View></>;
 }
 
-function SellerSettings({ onCustomerMode }: { onCustomerMode: () => void }) {
-  return <><View style={styles.simpleHeader}><View><Text style={styles.eyebrow}>CONFIGURAÇÕES</Text><Text style={styles.pageTitle}>Sua loja</Text></View><Text style={styles.link}>Salvar</Text></View><View style={styles.fieldCard}><Text style={styles.fieldLabel}>NOME DO NEGÓCIO</Text><Text style={styles.fieldValue}>Doce Encanto Bakery</Text><Text style={styles.fieldLabel}>WHATSAPP / TELEFONE</Text><Text style={styles.fieldValue}>+55 11 98765-4321</Text></View>{["Chave PIX", "Lembretes de fiado", "Taxa de entrega", "Local de retirada", "Modo mãos livres"].map((item) => <View style={styles.settingsRow} key={item}><View style={styles.settingsIcon}><MaterialIcons name={item === "Chave PIX" ? "pix" : item === "Taxa de entrega" ? "two-wheeler" : item === "Local de retirada" ? "location-on" : item === "Modo mãos livres" ? "mic" : "notifications"} size={20} color={COLORS.ink} /></View><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{item}</Text><Text style={styles.muted}>{item === "Taxa de entrega" ? "R$ 5,00" : "Configurar"}</Text></View><MaterialIcons name="chevron-right" size={20} color={COLORS.muted} /></View>)}<Pressable style={styles.outlineButton} onPress={onCustomerMode}><Text style={styles.outlineButtonText}>Voltar para modo cliente</Text></Pressable></>;
+function SellerSettings({ store, salesCount, onCustomerMode }: { store?: { name: string; phone: string | null; pixKey: string | null }; salesCount: number; onCustomerMode: () => void }) {
+  return <><View style={styles.simpleHeader}><View><Text style={styles.eyebrow}>CONFIGURAÇÕES</Text><Text style={styles.pageTitle}>Sua loja</Text></View><Text style={styles.link}>{salesCount} vendas</Text></View><View style={styles.fieldCard}><Text style={styles.fieldLabel}>NOME DO NEGÓCIO</Text><Text style={styles.fieldValue}>{store?.name ?? "Cadastre sua loja"}</Text><Text style={styles.fieldLabel}>WHATSAPP / TELEFONE</Text><Text style={styles.fieldValue}>{store?.phone ?? "Ainda não informado"}</Text></View>{["Chave PIX", "Lembretes de fiado", "Taxa de entrega", "Local de retirada", "Modo mãos livres"].map((item) => <View style={styles.settingsRow} key={item}><View style={styles.settingsIcon}><MaterialIcons name={item === "Chave PIX" ? "pix" : item === "Taxa de entrega" ? "two-wheeler" : item === "Local de retirada" ? "location-on" : item === "Modo mãos livres" ? "mic" : "notifications"} size={20} color={COLORS.ink} /></View><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{item}</Text><Text style={styles.muted}>{item === "Chave PIX" ? (store?.pixKey ?? "Configurar") : item === "Taxa de entrega" ? "R$ 0,00" : "Configurar"}</Text></View><MaterialIcons name="chevron-right" size={20} color={COLORS.muted} /></View>)}<Pressable style={styles.outlineButton} onPress={onCustomerMode}><Text style={styles.outlineButtonText}>Voltar para modo cliente</Text></Pressable></>;
 }
 
 function CustomerNav({ active, onChange }: { active: string; onChange: (value: "discover" | "orders" | "profile") => void }) {
@@ -452,19 +494,42 @@ const trackingStyles = StyleSheet.create({
 });
 
 
-function VoiceAssistantModal({ mode, onClose, onAction }: { mode: VoiceMode; onClose: () => void; onAction: (action: string) => void }) {
+function VoiceAssistantModal({ mode, busy, reply, onClose, onAction, onCommand }: { mode: VoiceMode; busy: boolean; reply: string; onClose: () => void; onAction: (action: string) => void; onCommand: (command: string) => void }) {
   const customerActions = [{ label: "Encontrar doces perto", icon: "🍰", action: "doces" }, { label: "Ver meus pedidos", icon: "🛍️", action: "pedidos" }, { label: "Conversar com uma loja", icon: "💬", action: "loja" }];
   const sellerActions = [{ label: "Registrar uma venda", icon: "🧾", action: "venda" }, { label: "Consultar vendas fiadas", icon: "📒", action: "fiado" }, { label: "Mostrar meu catálogo", icon: "📦", action: "catalogo" }, { label: "Criar uma divulgação", icon: "📣", action: "divulgar" }];
   const actions = mode === "customer" ? customerActions : sellerActions;
-  return <View style={voiceStyles.backdrop}><View style={voiceStyles.sheet}><View style={styles.sheetHandle} /><View style={voiceStyles.orb}><MaterialIcons name="mic" size={30} color={COLORS.white} /></View><Text style={voiceStyles.kicker}>{mode === "customer" ? "ASSISTENTE DO CLIENTE" : "ASSISTENTE DA LOJA"}</Text><Text style={voiceStyles.title}>{mode === "customer" ? "O que você quer pedir?" : "Como posso ajudar sua loja?"}</Text><Text style={voiceStyles.subtitle}>Escolha uma ação rápida para começar. O assistente executa somente ações confirmadas por você.</Text><View style={voiceStyles.actions}>{actions.map((item) => <Pressable key={item.action} style={({ pressed }) => [voiceStyles.action, pressed && styles.pressed]} onPress={() => onAction(item.action)}><Text style={voiceStyles.actionIcon}>{item.icon}</Text><Text style={voiceStyles.actionText}>{item.label}</Text><MaterialIcons name="arrow-forward" size={17} color={COLORS.coral} /></Pressable>)}</View><Pressable style={styles.textButton} onPress={onClose}><Text style={styles.textButtonLabel}>Fechar assistente</Text></Pressable></View></View>;
+  const [command, setCommand] = useState("");
+  const [isListening, setIsListening] = useState(false);
+  const startListening = () => {
+    const recognitionConstructor = (globalThis as any).SpeechRecognition || (globalThis as any).webkitSpeechRecognition;
+    if (!recognitionConstructor) {
+      setCommand("Use uma ação rápida ou digite seu pedido");
+      return;
+    }
+    const recognition = new recognitionConstructor();
+    recognition.lang = "pt-BR";
+    recognition.interimResults = false;
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => setIsListening(false);
+    recognition.onresult = (event: any) => {
+      const transcript = event.results?.[0]?.[0]?.transcript ?? "";
+      setCommand(transcript);
+      if (transcript) onCommand(transcript);
+    };
+    recognition.start();
+  };
+  return <View style={voiceStyles.backdrop}><View style={voiceStyles.sheet}><View style={styles.sheetHandle} /><View style={voiceStyles.orb}><MaterialIcons name="mic" size={30} color={COLORS.white} /></View><Text style={voiceStyles.kicker}>{mode === "customer" ? "ASSISTENTE DO CLIENTE" : "ASSISTENTE DA LOJA"}</Text><Text style={voiceStyles.title}>{mode === "customer" ? "O que você quer pedir?" : "Como posso ajudar sua loja?"}</Text><Text style={voiceStyles.subtitle}>Fale ou digite uma instrução. A IA interpreta e só executa ações permitidas.</Text><View style={voiceStyles.commandRow}><TextInput value={command} onChangeText={setCommand} onSubmitEditing={() => onCommand(command)} placeholder={mode === "customer" ? "Ex.: quero pedir doces" : "Ex.: quem me deve?"} placeholderTextColor={COLORS.muted} style={voiceStyles.commandInput} returnKeyType="done" /><Pressable style={[voiceStyles.commandButton, isListening && voiceStyles.listeningButton]} onPress={startListening}><MaterialIcons name={isListening ? "graphic-eq" : "mic"} size={18} color={COLORS.white} /></Pressable><Pressable style={voiceStyles.commandButton} disabled={busy} onPress={() => onCommand(command)}><MaterialIcons name={busy ? "hourglass-top" : "send"} size={18} color={COLORS.white} /></Pressable></View>{reply ? <Text style={voiceStyles.reply}>{reply}</Text> : null}<View style={voiceStyles.actions}>{actions.map((item) => <Pressable key={item.action} style={({ pressed }) => [voiceStyles.action, pressed && styles.pressed]} onPress={() => onAction(item.action)}><Text style={voiceStyles.actionIcon}>{item.icon}</Text><Text style={voiceStyles.actionText}>{item.label}</Text><MaterialIcons name="arrow-forward" size={17} color={COLORS.coral} /></Pressable>)}</View><Pressable style={styles.textButton} onPress={onClose}><Text style={styles.textButtonLabel}>Fechar assistente</Text></Pressable></View></View>;
 }
 
 function SellerVoiceLauncher({ onPress }: { onPress: () => void }) {
   return <Pressable style={({ pressed }) => [voiceStyles.launcher, pressed && styles.pressed]} onPress={onPress}><View style={voiceStyles.launcherIcon}><MaterialIcons name="mic" size={18} color={COLORS.white} /></View><View style={{ flex: 1 }}><Text style={voiceStyles.launcherTitle}>Fale com o Pediu</Text><Text style={voiceStyles.launcherText}>Registrar venda, consultar fiado ou divulgar</Text></View><MaterialIcons name="arrow-forward" size={18} color={COLORS.ink} /></Pressable>;
 }
 
-function SellerClients({ onNotice }: { onNotice: (message: string) => void }) {
-  return <><View style={styles.simpleHeader}><View><Text style={styles.eyebrow}>RELACIONAMENTO</Text><Text style={styles.pageTitle}>Meus clientes</Text></View><View style={styles.avatar}><Text style={styles.avatarText}>48</Text></View></View><View style={clientStyles.summary}><View><Text style={clientStyles.summaryNumber}>R$ 420</Text><Text style={clientStyles.summaryLabel}>em vendas fiadas</Text></View><MaterialIcons name="account-balance-wallet" size={28} color={COLORS.orange} /></View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Clientes recentes</Text><Text style={styles.link}>Ver todos</Text></View>{[{ name: "Maria Oliveira", detail: "Fiado · R$ 68,50", emoji: "M", tone: COLORS.yellow }, { name: "João Silva", detail: "Última compra · R$ 54,00", emoji: "J", tone: "#BDE6D3" }, { name: "Carla Souza", detail: "Fiado · R$ 32,00", emoji: "C", tone: "#D8C8F5" }].map((client) => <View style={clientStyles.row} key={client.name}><View style={[clientStyles.clientAvatar, { backgroundColor: client.tone }]}><Text style={clientStyles.clientAvatarText}>{client.emoji}</Text></View><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{client.name}</Text><Text style={styles.muted}>{client.detail}</Text></View><Pressable style={clientStyles.action} onPress={() => onNotice(`${client.name}: histórico aberto`)}><MaterialIcons name="chevron-right" size={20} color={COLORS.ink} /></Pressable></View>)}<View style={clientStyles.reminder}><MaterialIcons name="notifications-active" size={21} color={COLORS.coral} /><View style={{ flex: 1 }}><Text style={styles.tipTitle}>Lembrete de fiado</Text><Text style={styles.tipText}>Envie uma cobrança amigável para quem está com pagamento pendente.</Text></View><Pressable style={clientStyles.reminderButton} onPress={() => onNotice("Lembrete de cobrança preparado")}><Text style={clientStyles.reminderButtonText}>Preparar</Text></Pressable></View></>;
+function SellerClients({ customers, onNotice }: { customers: Array<{ id: number; name: string; balance: string }>; onNotice: (message: string) => void }) {
+  const visibleCustomers = customers.length ? customers.map((customer, index) => ({ name: customer.name, detail: `Fiado · R$ ${Number(customer.balance).toFixed(2).replace(".", ",")}`, emoji: customer.name.slice(0, 1).toUpperCase(), tone: [COLORS.yellow, "#BDE6D3", "#D8C8F5"][index % 3] })) : [{ name: "Nenhum cliente cadastrado", detail: "Use o assistente para registrar uma venda", emoji: "+", tone: COLORS.coralSoft }];
+  const totalOwed = customers.reduce((sum, customer) => sum + Number(customer.balance), 0);
+  return <><View style={styles.simpleHeader}><View><Text style={styles.eyebrow}>RELACIONAMENTO</Text><Text style={styles.pageTitle}>Meus clientes</Text></View><View style={styles.avatar}><Text style={styles.avatarText}>{customers.length}</Text></View></View><View style={clientStyles.summary}><View><Text style={clientStyles.summaryNumber}>R$ {totalOwed.toFixed(2).replace(".", ",")}</Text><Text style={clientStyles.summaryLabel}>em vendas fiadas</Text></View><MaterialIcons name="account-balance-wallet" size={28} color={COLORS.orange} /></View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Clientes recentes</Text><Text style={styles.link}>Persistidos</Text></View>{visibleCustomers.map((client) => <View style={clientStyles.row} key={client.name}><View style={[clientStyles.clientAvatar, { backgroundColor: client.tone }]}><Text style={clientStyles.clientAvatarText}>{client.emoji}</Text></View><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{client.name}</Text><Text style={styles.muted}>{client.detail}</Text></View><Pressable style={clientStyles.action} onPress={() => onNotice(`${client.name}: histórico aberto`)}><MaterialIcons name="chevron-right" size={20} color={COLORS.ink} /></Pressable></View>)}<View style={clientStyles.reminder}><MaterialIcons name="notifications-active" size={21} color={COLORS.coral} /><View style={{ flex: 1 }}><Text style={styles.tipTitle}>Lembrete de fiado</Text><Text style={styles.tipText}>Envie uma cobrança amigável para quem está com pagamento pendente.</Text></View><Pressable style={clientStyles.reminderButton} onPress={() => onNotice("Lembrete de cobrança preparado")}><Text style={clientStyles.reminderButtonText}>Preparar</Text></Pressable></View></>;
 }
 
 const voiceStyles = StyleSheet.create({
@@ -482,6 +547,11 @@ const voiceStyles = StyleSheet.create({
   launcherIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: COLORS.coral, alignItems: "center", justifyContent: "center" },
   launcherTitle: { color: COLORS.ink, fontSize: 13, fontWeight: "900" },
   launcherText: { color: COLORS.muted, fontSize: 11, marginTop: 2 },
+  commandRow: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.canvas, borderRadius: 15, borderWidth: 1, borderColor: COLORS.line, padding: 6 },
+  commandInput: { flex: 1, color: COLORS.ink, fontSize: 13, paddingHorizontal: 8, height: 40 },
+  commandButton: { width: 40, height: 40, borderRadius: 12, backgroundColor: COLORS.coral, alignItems: "center", justifyContent: "center" },
+  listeningButton: { backgroundColor: COLORS.ink },
+  reply: { color: COLORS.ink, fontSize: 12, lineHeight: 17, backgroundColor: COLORS.coralSoft, borderRadius: 12, padding: 10 },
 });
 
 const clientStyles = StyleSheet.create({
@@ -495,4 +565,14 @@ const clientStyles = StyleSheet.create({
   reminder: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: COLORS.coralSoft, borderRadius: 18, padding: 14 },
   reminderButton: { backgroundColor: COLORS.coral, borderRadius: 11, paddingHorizontal: 10, paddingVertical: 9 },
   reminderButtonText: { color: COLORS.white, fontSize: 11, fontWeight: "800" },
+});
+
+
+function SellerOnboardingModal({ isAuthenticated, name, phone, address, pixKey, onChangeName, onChangePhone, onChangeAddress, onChangePixKey, onLogin, onCreate, onClose, busy }: { isAuthenticated: boolean; name: string; phone: string; address: string; pixKey: string; onChangeName: (value: string) => void; onChangePhone: (value: string) => void; onChangeAddress: (value: string) => void; onChangePixKey: (value: string) => void; onLogin: () => void; onCreate: () => void; onClose: () => void; busy: boolean }) {
+  return <View style={styles.modalBackdrop}><View style={styles.sheet}><View style={styles.sheetHandle} /><Text style={styles.eyebrow}>COMECE A VENDER</Text><Text style={styles.sheetTitle}>Cadastre sua loja</Text><Text style={styles.muted}>Em poucos passos, sua vitrine aparece para clientes próximos.</Text>{!isAuthenticated ? <><View style={onboardingStyles.loginBanner}><MaterialIcons name="lock" size={18} color={COLORS.coral} /><Text style={onboardingStyles.loginText}>Entre para salvar sua loja e acessar os pedidos em qualquer dispositivo.</Text></View><Pressable style={styles.primaryButton} onPress={onLogin}><Text style={styles.primaryButtonText}>Entrar com login seguro</Text><MaterialIcons name="arrow-forward" size={18} color={COLORS.white} /></Pressable></> : <><Text style={styles.fieldLabel}>NOME DA LOJA</Text><TextInput value={name} onChangeText={onChangeName} placeholder="Ex.: Doce Encanto Bakery" placeholderTextColor={COLORS.muted} style={styles.input} /><Text style={styles.fieldLabel}>WHATSAPP / TELEFONE</Text><TextInput value={phone} onChangeText={onChangePhone} placeholder="(11) 99999-9999" placeholderTextColor={COLORS.muted} style={styles.input} keyboardType="phone-pad" /><Text style={styles.fieldLabel}>ENDEREÇO</Text><TextInput value={address} onChangeText={onChangeAddress} placeholder="Rua, número e bairro" placeholderTextColor={COLORS.muted} style={styles.input} /><Text style={styles.fieldLabel}>CHAVE PIX</Text><TextInput value={pixKey} onChangeText={onChangePixKey} placeholder="CPF, telefone ou e-mail" placeholderTextColor={COLORS.muted} style={styles.input} /><Pressable style={[styles.primaryButton, busy && styles.disabledButton]} disabled={busy} onPress={onCreate}><Text style={styles.primaryButtonText}>{busy ? "Salvando..." : "Criar minha loja"}</Text><MaterialIcons name="arrow-forward" size={18} color={COLORS.white} /></Pressable></>}<Pressable style={styles.textButton} onPress={onClose}><Text style={styles.textButtonLabel}>Agora não</Text></Pressable></View></View>;
+}
+
+const onboardingStyles = StyleSheet.create({
+  loginBanner: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: COLORS.coralSoft, borderRadius: 15, padding: 13 },
+  loginText: { flex: 1, color: COLORS.ink, fontSize: 12, lineHeight: 17 },
 });

@@ -63,6 +63,37 @@ export const payments = mysqlTable("pediu_payments", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
+export const customers = mysqlTable("pediu_customers", {
+  id: int("id").autoincrement().primaryKey(),
+  storeId: int("storeId").notNull(),
+  name: varchar("name", { length: 160 }).notNull(),
+  phone: varchar("phone", { length: 32 }),
+  notes: text("notes"),
+  balance: decimal("balance", { precision: 10, scale: 2 }).default("0.00").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const ledgerEntries = mysqlTable("pediu_ledger_entries", {
+  id: int("id").autoincrement().primaryKey(),
+  storeId: int("storeId").notNull(),
+  customerId: int("customerId").notNull(),
+  type: mysqlEnum("type", ["credit", "payment"]).notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  note: varchar("note", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const sales = mysqlTable("pediu_sales", {
+  id: int("id").autoincrement().primaryKey(),
+  storeId: int("storeId").notNull(),
+  customerId: int("customerId"),
+  orderId: int("orderId"),
+  total: decimal("total", { precision: 10, scale: 2 }).notNull(),
+  paymentMethod: mysqlEnum("paymentMethod", ["pix", "card", "cash", "fiado"]).notNull(),
+  note: varchar("note", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type Store = typeof stores.$inferSelect;
@@ -73,3 +104,9 @@ export type Order = typeof orders.$inferSelect;
 export type InsertOrder = typeof orders.$inferInsert;
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = typeof payments.$inferInsert;
+export type Customer = typeof customers.$inferSelect;
+export type InsertCustomer = typeof customers.$inferInsert;
+export type LedgerEntry = typeof ledgerEntries.$inferSelect;
+export type InsertLedgerEntry = typeof ledgerEntries.$inferInsert;
+export type Sale = typeof sales.$inferSelect;
+export type InsertSale = typeof sales.$inferInsert;

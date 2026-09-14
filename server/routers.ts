@@ -5,6 +5,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { systemRouter } from "./_core/systemRouter";
+import { interpretVoiceCommand } from "./voice";
 
 const orderStatusSchema = z.enum(["Pendente", "Preparando", "A caminho", "Entregue", "Cancelado"]);
 
@@ -28,8 +29,8 @@ export const appRouter = router({
       create: protectedProcedure.input(z.object({ name: z.string().min(2).max(160), phone: z.string().max(32).optional(), address: z.string().max(255).optional(), pixKey: z.string().max(255).optional(), deliveryFee: z.string().regex(/^\d+(\.\d{1,2})?$/).default("0.00") })).mutation(({ ctx, input }) => db.createStore({ ...input, ownerId: ctx.user.id })),
     }),
     products: router({
-      mine: protectedProcedure.input(z.object({ storeId: z.number().int().positive() })).query(({ input }) => db.listProductsForStore(input.storeId)),
-      create: protectedProcedure.input(z.object({ storeId: z.number().int().positive(), name: z.string().min(2).max(180), category: z.string().min(2).max(80), description: z.string().max(1000).optional(), price: z.string().regex(/^\d+(\.\d{1,2})?$/) })).mutation(({ input }) => db.createProduct({ ...input, available: 1 })),
+      mine: protectedProcedure.input(z.object({ storeId: z.number().int().positive() })).query(async ({ ctx, input }) => { const store = await db.getStoreForOwner(ctx.user.id); return store?.id === input.storeId ? db.listProductsForStore(input.storeId) : []; }),
+      create: protectedProcedure.input(z.object({ storeId: z.number().int().positive(), name: z.string().min(2).max(180), category: z.string().min(2).max(80), description: z.string().max(1000).optional(), price: z.string().regex(/^\d+(\.\d{1,2})?$/) })).mutation(async ({ ctx, input }) => { const store = await db.getStoreForOwner(ctx.user.id); if (store?.id !== input.storeId) throw new Error("Loja não autorizada"); return db.createProduct({ ...input, available: 1 }); }),
       availability: protectedProcedure.input(z.object({ productId: z.number().int().positive(), available: z.boolean() })).mutation(({ input }) => db.updateProductAvailability(input.productId, input.available)),
     }),
     orders: router({
@@ -39,6 +40,42 @@ export const appRouter = router({
     }),
     payments: router({
       createPix: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), pixKey: z.string().min(3).max(255) })).mutation(async ({ input }) => ({ paymentId: await db.createPendingPixPayment(input.orderId, input.pixKey), status: "pending" as const, message: "PIX criado e aguardando confirmação do gateway." })),
+    }),
+    clients: router({
+      mine: protectedProcedure.query(async ({ ctx }) => {
+        const store = await db.getStoreForOwner(ctx.user.id);
+        return store ? db.listCustomersForStore(store.id) : [];
+      }),
+      create: protectedProcedure.input(z.object({ name: z.string().min(2).max(160), phone: z.string().max(32).optional(), notes: z.string().max(500).optional() })).mutation(async ({ ctx, input }) => {
+        const store = await db.getStoreForOwner(ctx.user.id);
+        if (!store) throw new Error("Cadastre sua loja antes de criar clientes");
+        return db.createCustomer({ ...input, storeId: store.id });
+      }),
+    }),
+    ledger: router({
+      mine: protectedProcedure.query(async ({ ctx }) => {
+        const store = await db.getStoreForOwner(ctx.user.id);
+        return store ? db.listLedgerEntriesForStore(store.id) : [];
+      }),
+      add: protectedProcedure.input(z.object({ customerId: z.number().int().positive(), type: z.enum(["credit", "payment"]), amount: z.string().regex(/^\d+(\.\d{1,2})?$/), note: z.string().max(255).optional() })).mutation(async ({ ctx, input }) => {
+        const store = await db.getStoreForOwner(ctx.user.id);
+        if (!store) throw new Error("Cadastre sua loja antes de lançar fiado");
+        return db.createLedgerEntry({ ...input, storeId: store.id });
+      }),
+    }),
+    sales: router({
+      mine: protectedProcedure.query(async ({ ctx }) => {
+        const store = await db.getStoreForOwner(ctx.user.id);
+        return store ? db.listSalesForStore(store.id) : [];
+      }),
+      create: protectedProcedure.input(z.object({ customerId: z.number().int().positive().optional(), total: z.string().regex(/^\d+(\.\d{1,2})?$/), paymentMethod: z.enum(["pix", "card", "cash", "fiado"]), note: z.string().max(255).optional() })).mutation(async ({ ctx, input }) => {
+        const store = await db.getStoreForOwner(ctx.user.id);
+        if (!store) throw new Error("Cadastre sua loja antes de registrar vendas");
+        return db.createSale({ ...input, storeId: store.id });
+      }),
+    }),
+    voice: router({
+      interpret: publicProcedure.input(z.object({ mode: z.enum(["customer", "seller"]), command: z.string().min(1).max(500) })).mutation(({ input }) => interpretVoiceCommand(input.mode, input.command)),
     }),
   }),
 });
