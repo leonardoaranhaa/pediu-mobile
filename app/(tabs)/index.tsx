@@ -49,6 +49,7 @@ type Product = {
 };
 
 type OrderStatus = "Pendente" | "Preparando" | "A caminho" | "Entregue";
+type VoiceMode = "customer" | "seller";
 
 const INITIAL_PRODUCTS: Product[] = [
   {
@@ -94,7 +95,7 @@ export default function HomeScreen() {
   const { user, isAuthenticated, logout } = useAuth();
   const [role, setRole] = useState<"customer" | "seller">("customer");
   const [customerTab, setCustomerTab] = useState<"discover" | "orders" | "profile">("discover");
-  const [sellerTab, setSellerTab] = useState<"home" | "orders" | "catalog" | "settings">("home");
+  const [sellerTab, setSellerTab] = useState<"home" | "orders" | "catalog" | "clients" | "settings">("home");
   const [products, setProducts] = useState(INITIAL_PRODUCTS);
   const [category, setCategory] = useState("Tudo");
   const marketplaceQuery = trpc.pediu.marketplace.products.useQuery({ category }, { staleTime: 30_000 });
@@ -102,6 +103,8 @@ export default function HomeScreen() {
   const [orderStatus, setOrderStatus] = useState<OrderStatus | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [showCart, setShowCart] = useState(false);
+  const [showVoice, setShowVoice] = useState(false);
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>("customer");
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [newProductName, setNewProductName] = useState("");
   const [notice, setNotice] = useState("");
@@ -226,6 +229,45 @@ export default function HomeScreen() {
     notify("Produto adicionado ao catálogo");
   };
 
+  const openVoiceAssistant = (mode: VoiceMode) => {
+    setVoiceMode(mode);
+    setShowVoice(true);
+  };
+
+  const handleVoiceAction = (action: string) => {
+    setShowVoice(false);
+    if (action === "doces") {
+      setRole("customer");
+      setCustomerTab("discover");
+      setCategory("Doces");
+      void notifyWithHaptic("Encontrei doces perto de você");
+      return;
+    }
+    if (action === "pedidos") {
+      setRole("customer");
+      setCustomerTab("orders");
+      return;
+    }
+    if (action === "venda") {
+      setRole("seller");
+      setSellerTab("orders");
+      void notifyWithHaptic("Pronto para registrar uma venda");
+      return;
+    }
+    if (action === "fiado") {
+      setRole("seller");
+      setSellerTab("clients");
+      void notifyWithHaptic("Abrindo clientes e vendas fiadas");
+      return;
+    }
+    if (action === "catalogo") {
+      setRole("seller");
+      setSellerTab("catalog");
+      return;
+    }
+    void notifyWithHaptic("Rascunho de divulgação criado");
+  };
+
   return (
     <ScreenContainer containerClassName="bg-[#FFF8F1]" edges={["top", "left", "right"]}>
       <Animated.View style={[styles.appShell, { opacity: screenOpacity }]}>
@@ -244,7 +286,7 @@ export default function HomeScreen() {
                   onCartPress={() => setShowCart(true)}
                   locationLabel={locationLabel}
                   onLocationPress={requestLocation}
-                  onAssistant={() => notify("Pode falar: o que você quer pedir?")}
+                  onAssistant={() => openVoiceAssistant("customer")}
                   onOrders={() => setCustomerTab("orders")}
                 />
               )}
@@ -260,9 +302,10 @@ export default function HomeScreen() {
         ) : (
           <>
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-              {sellerTab === "home" && <SellerHome onCatalog={() => setSellerTab("catalog")} onOrders={() => setSellerTab("orders")} onNotice={notify} />}
+              {sellerTab === "home" && <><SellerHome onCatalog={() => setSellerTab("catalog")} onOrders={() => setSellerTab("orders")} onVoice={() => openVoiceAssistant("seller")} onNotice={notify} /><SellerVoiceLauncher onPress={() => openVoiceAssistant("seller")} /></>}
               {sellerTab === "orders" && <SellerOrders orderStatus={orderStatus} onAdvance={advanceOrder} onNotice={notify} />}
               {sellerTab === "catalog" && <SellerCatalog products={products} onAdd={() => setShowAddProduct(true)} onToggle={(id) => setProducts((current) => current.map((product) => product.id === id ? { ...product, available: !product.available } : product))} />}
+              {sellerTab === "clients" && <SellerClients onNotice={notify} />}
               {sellerTab === "settings" && <SellerSettings onCustomerMode={() => { setRole("customer"); setCustomerTab("discover"); }} />}
             </ScrollView>
             <SellerNav active={sellerTab} onChange={setSellerTab} />
@@ -292,6 +335,10 @@ export default function HomeScreen() {
           <View style={styles.modalBackdrop}><View style={styles.sheet}>
             <View style={styles.sheetHandle} /><Text style={styles.sheetTitle}>Novo produto</Text><Text style={styles.fieldLabel}>NOME DO PRODUTO</Text><TextInput value={newProductName} onChangeText={setNewProductName} placeholder="Ex.: Torta de morango" placeholderTextColor={COLORS.muted} style={styles.input} /><Pressable style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]} onPress={addProduct}><Text style={styles.primaryButtonText}>Adicionar ao catálogo</Text></Pressable><Pressable style={styles.textButton} onPress={() => setShowAddProduct(false)}><Text style={styles.textButtonLabel}>Cancelar</Text></Pressable>
           </View></View>
+        </Modal>
+
+        <Modal visible={showVoice} transparent animationType="fade" onRequestClose={() => setShowVoice(false)}>
+          <VoiceAssistantModal mode={voiceMode} onClose={() => setShowVoice(false)} onAction={handleVoiceAction} />
         </Modal>
       </Animated.View>
     </ScreenContainer>
@@ -329,7 +376,7 @@ function CustomerProfile({ user, isAuthenticated, onLogin, onLogout, onSellerMod
   return <><View style={styles.simpleHeader}><View><Text style={styles.eyebrow}>SUA CONTA</Text><Text style={styles.pageTitle}>Perfil</Text></View><View style={styles.avatar}><Text style={styles.avatarText}>A</Text></View></View><View style={styles.profileCard}><View style={styles.avatarLarge}><Text style={styles.avatarLargeText}>A</Text></View><Text style={styles.profileName}>Ana Beatriz</Text><Text style={styles.muted}>ana.beatriz@email.com</Text></View>{["Dados pessoais", "Meus endereços", "Pagamentos", "Notificações", "Segurança"].map((item) => <View style={styles.settingsRow} key={item}><View style={styles.settingsIcon}><MaterialIcons name={item === "Pagamentos" ? "credit-card" : item === "Meus endereços" ? "location-on" : item === "Notificações" ? "notifications" : "person"} size={20} color={COLORS.ink} /></View><Text style={styles.cardTitle}>{item}</Text><MaterialIcons name="chevron-right" size={20} color={COLORS.muted} /></View>)}<View style={styles.sellerInvite}><Text style={styles.sellerInviteTitle}>Você também vende?</Text><Text style={styles.sellerInviteText}>Crie sua vitrine e comece a vender para sua comunidade.</Text><Pressable style={styles.outlineButton} onPress={onSellerMode}><Text style={styles.outlineButtonText}>Abrir modo vendedor</Text></Pressable></View></>;
 }
 
-function SellerHome({ onCatalog, onOrders, onNotice }: { onCatalog: () => void; onOrders: () => void; onNotice: (message: string) => void }) {
+function SellerHome({ onCatalog, onOrders, onVoice, onNotice }: { onCatalog: () => void; onOrders: () => void; onVoice: () => void; onNotice: (message: string) => void }) {
   return <><View style={styles.sellerHeader}><View><Text style={styles.eyebrowLight}>PAINEL DA LOJA</Text><Text style={styles.sellerTitle}>Doce Encanto Bakery</Text><Text style={styles.sellerSubtitle}>Bom dia, Helena. Tudo pronto?</Text></View><BrandMark /></View><View style={styles.statGrid}><View style={styles.statCard}><Text style={styles.statNumber}>3</Text><Text style={styles.statLabel}>pedidos novos</Text><MaterialIcons name="receipt-long" size={22} color={COLORS.coral} /></View><View style={styles.statCard}><Text style={styles.statNumber}>R$ 420</Text><Text style={styles.statLabel}>a receber</Text><MaterialIcons name="trending-up" size={22} color={COLORS.green} /></View></View><View style={styles.aiSellerCard}><View style={styles.aiIcon}><MaterialIcons name="mic" size={21} color={COLORS.white} /></View><View style={{ flex: 1 }}><Text style={styles.aiTitle}>Fale com o Pediu</Text><Text style={styles.aiText}>“Vendi um café para o João” ou “Quem me deve?”</Text></View><Pressable style={styles.smallLightButton} onPress={() => onNotice("Assistente ouvindo...")}><Text style={styles.smallLightButtonText}>Falar</Text></Pressable></View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Atalhos</Text></View><View style={styles.shortcutGrid}><Pressable style={({ pressed }) => [styles.shortcut, pressed && styles.cardPressed]} onPress={onCatalog}><MaterialIcons name="inventory-2" size={24} color={COLORS.coral} /><Text style={styles.shortcutTitle}>Catálogo</Text><Text style={styles.shortcutSub}>3 produtos ativos</Text></Pressable><Pressable style={({ pressed }) => [styles.shortcut, pressed && styles.cardPressed]} onPress={onOrders}><MaterialIcons name="local-shipping" size={24} color={COLORS.orange} /><Text style={styles.shortcutTitle}>Pedidos</Text><Text style={styles.shortcutSub}>1 aguardando ação</Text></Pressable><Pressable style={({ pressed }) => [styles.shortcut, pressed && styles.cardPressed]} onPress={() => onNotice("Divulgação pronta para compartilhar") }><MaterialIcons name="campaign" size={24} color={COLORS.ink} /><Text style={styles.shortcutTitle}>Divulgar</Text><Text style={styles.shortcutSub}>Criar com IA</Text></Pressable><Pressable style={({ pressed }) => [styles.shortcut, pressed && styles.cardPressed]} onPress={() => onNotice("Você tem R$ 420,00 em vendas fiadas") }><MaterialIcons name="people" size={24} color={COLORS.green} /><Text style={styles.shortcutTitle}>Clientes</Text><Text style={styles.shortcutSub}>48 cadastrados</Text></Pressable></View><View style={styles.tipCard}><MaterialIcons name="lightbulb" size={22} color={COLORS.orange} /><View style={{ flex: 1 }}><Text style={styles.tipTitle}>Dica do Pediu</Text><Text style={styles.tipText}>Uma boa foto e uma descrição curta ajudam seu produto a vender mais.</Text></View></View></>;
 }
 
@@ -349,8 +396,8 @@ function CustomerNav({ active, onChange }: { active: string; onChange: (value: "
   return <View style={styles.bottomNav}>{[["discover", "explore", "Descobrir"], ["orders", "receipt-long", "Pedidos"], ["profile", "person", "Perfil"]].map(([key, icon, label]) => <Pressable key={key} style={styles.navItem} onPress={() => onChange(key as "discover" | "orders" | "profile")}><MaterialIcons name={icon as any} size={22} color={active === key ? COLORS.coral : COLORS.muted} /><Text style={[styles.navLabel, active === key && styles.navLabelActive]}>{label}</Text></Pressable>)}</View>;
 }
 
-function SellerNav({ active, onChange }: { active: string; onChange: (value: "home" | "orders" | "catalog" | "settings") => void }) {
-  return <View style={styles.bottomNav}>{[["home", "home", "Início"], ["orders", "receipt-long", "Pedidos"], ["catalog", "inventory-2", "Catálogo"], ["settings", "tune", "Ajustes"]].map(([key, icon, label]) => <Pressable key={key} style={styles.navItem} onPress={() => onChange(key as "home" | "orders" | "catalog" | "settings")}><MaterialIcons name={icon as any} size={22} color={active === key ? COLORS.coral : COLORS.muted} /><Text style={[styles.navLabel, active === key && styles.navLabelActive]}>{label}</Text></Pressable>)}</View>;
+function SellerNav({ active, onChange }: { active: string; onChange: (value: "home" | "orders" | "catalog" | "clients" | "settings") => void }) {
+  return <View style={styles.bottomNav}>{[["home", "home", "Início"], ["orders", "receipt-long", "Pedidos"], ["catalog", "inventory-2", "Catálogo"], ["clients", "people", "Clientes"], ["settings", "tune", "Ajustes"]].map(([key, icon, label]) => <Pressable key={key} style={styles.navItem} onPress={() => onChange(key as "home" | "orders" | "catalog" | "clients" | "settings")}><MaterialIcons name={icon as any} size={22} color={active === key ? COLORS.coral : COLORS.muted} /><Text style={[styles.navLabel, active === key && styles.navLabelActive]}>{label}</Text></Pressable>)}</View>;
 }
 
 const styles = StyleSheet.create({
@@ -402,4 +449,50 @@ const trackingStyles = StyleSheet.create({
   title: { color: COLORS.white, fontSize: 13, fontWeight: "800" },
   text: { color: "#BCD0D1", fontSize: 11, marginTop: 3 },
   mapButton: { width: 38, height: 38, borderRadius: 12, backgroundColor: COLORS.coral, alignItems: "center", justifyContent: "center" },
+});
+
+
+function VoiceAssistantModal({ mode, onClose, onAction }: { mode: VoiceMode; onClose: () => void; onAction: (action: string) => void }) {
+  const customerActions = [{ label: "Encontrar doces perto", icon: "🍰", action: "doces" }, { label: "Ver meus pedidos", icon: "🛍️", action: "pedidos" }, { label: "Conversar com uma loja", icon: "💬", action: "loja" }];
+  const sellerActions = [{ label: "Registrar uma venda", icon: "🧾", action: "venda" }, { label: "Consultar vendas fiadas", icon: "📒", action: "fiado" }, { label: "Mostrar meu catálogo", icon: "📦", action: "catalogo" }, { label: "Criar uma divulgação", icon: "📣", action: "divulgar" }];
+  const actions = mode === "customer" ? customerActions : sellerActions;
+  return <View style={voiceStyles.backdrop}><View style={voiceStyles.sheet}><View style={styles.sheetHandle} /><View style={voiceStyles.orb}><MaterialIcons name="mic" size={30} color={COLORS.white} /></View><Text style={voiceStyles.kicker}>{mode === "customer" ? "ASSISTENTE DO CLIENTE" : "ASSISTENTE DA LOJA"}</Text><Text style={voiceStyles.title}>{mode === "customer" ? "O que você quer pedir?" : "Como posso ajudar sua loja?"}</Text><Text style={voiceStyles.subtitle}>Escolha uma ação rápida para começar. O assistente executa somente ações confirmadas por você.</Text><View style={voiceStyles.actions}>{actions.map((item) => <Pressable key={item.action} style={({ pressed }) => [voiceStyles.action, pressed && styles.pressed]} onPress={() => onAction(item.action)}><Text style={voiceStyles.actionIcon}>{item.icon}</Text><Text style={voiceStyles.actionText}>{item.label}</Text><MaterialIcons name="arrow-forward" size={17} color={COLORS.coral} /></Pressable>)}</View><Pressable style={styles.textButton} onPress={onClose}><Text style={styles.textButtonLabel}>Fechar assistente</Text></Pressable></View></View>;
+}
+
+function SellerVoiceLauncher({ onPress }: { onPress: () => void }) {
+  return <Pressable style={({ pressed }) => [voiceStyles.launcher, pressed && styles.pressed]} onPress={onPress}><View style={voiceStyles.launcherIcon}><MaterialIcons name="mic" size={18} color={COLORS.white} /></View><View style={{ flex: 1 }}><Text style={voiceStyles.launcherTitle}>Fale com o Pediu</Text><Text style={voiceStyles.launcherText}>Registrar venda, consultar fiado ou divulgar</Text></View><MaterialIcons name="arrow-forward" size={18} color={COLORS.ink} /></Pressable>;
+}
+
+function SellerClients({ onNotice }: { onNotice: (message: string) => void }) {
+  return <><View style={styles.simpleHeader}><View><Text style={styles.eyebrow}>RELACIONAMENTO</Text><Text style={styles.pageTitle}>Meus clientes</Text></View><View style={styles.avatar}><Text style={styles.avatarText}>48</Text></View></View><View style={clientStyles.summary}><View><Text style={clientStyles.summaryNumber}>R$ 420</Text><Text style={clientStyles.summaryLabel}>em vendas fiadas</Text></View><MaterialIcons name="account-balance-wallet" size={28} color={COLORS.orange} /></View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Clientes recentes</Text><Text style={styles.link}>Ver todos</Text></View>{[{ name: "Maria Oliveira", detail: "Fiado · R$ 68,50", emoji: "M", tone: COLORS.yellow }, { name: "João Silva", detail: "Última compra · R$ 54,00", emoji: "J", tone: "#BDE6D3" }, { name: "Carla Souza", detail: "Fiado · R$ 32,00", emoji: "C", tone: "#D8C8F5" }].map((client) => <View style={clientStyles.row} key={client.name}><View style={[clientStyles.clientAvatar, { backgroundColor: client.tone }]}><Text style={clientStyles.clientAvatarText}>{client.emoji}</Text></View><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{client.name}</Text><Text style={styles.muted}>{client.detail}</Text></View><Pressable style={clientStyles.action} onPress={() => onNotice(`${client.name}: histórico aberto`)}><MaterialIcons name="chevron-right" size={20} color={COLORS.ink} /></Pressable></View>)}<View style={clientStyles.reminder}><MaterialIcons name="notifications-active" size={21} color={COLORS.coral} /><View style={{ flex: 1 }}><Text style={styles.tipTitle}>Lembrete de fiado</Text><Text style={styles.tipText}>Envie uma cobrança amigável para quem está com pagamento pendente.</Text></View><Pressable style={clientStyles.reminderButton} onPress={() => onNotice("Lembrete de cobrança preparado")}><Text style={clientStyles.reminderButtonText}>Preparar</Text></Pressable></View></>;
+}
+
+const voiceStyles = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: "rgba(18, 38, 44, 0.42)", justifyContent: "flex-end" },
+  sheet: { backgroundColor: COLORS.white, borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 22, paddingBottom: 28, gap: 12 },
+  orb: { width: 68, height: 68, borderRadius: 34, backgroundColor: COLORS.coral, alignItems: "center", justifyContent: "center", alignSelf: "center", marginTop: 2 },
+  kicker: { color: COLORS.coral, fontSize: 10, fontWeight: "900", letterSpacing: 1.2, textAlign: "center", marginTop: 3 },
+  title: { color: COLORS.ink, fontSize: 24, fontWeight: "900", textAlign: "center" },
+  subtitle: { color: COLORS.muted, fontSize: 12, lineHeight: 18, textAlign: "center", paddingHorizontal: 8 },
+  actions: { gap: 9, marginTop: 4 },
+  action: { flexDirection: "row", alignItems: "center", gap: 11, backgroundColor: COLORS.canvas, borderRadius: 15, padding: 13, borderWidth: 1, borderColor: COLORS.line },
+  actionIcon: { fontSize: 20 },
+  actionText: { flex: 1, color: COLORS.ink, fontSize: 13, fontWeight: "800" },
+  launcher: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: COLORS.coralSoft, borderRadius: 18, padding: 13, borderWidth: 1, borderColor: "#FFD8CE" },
+  launcherIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: COLORS.coral, alignItems: "center", justifyContent: "center" },
+  launcherTitle: { color: COLORS.ink, fontSize: 13, fontWeight: "900" },
+  launcherText: { color: COLORS.muted, fontSize: 11, marginTop: 2 },
+});
+
+const clientStyles = StyleSheet.create({
+  summary: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#FFF0D7", borderRadius: 20, padding: 18 },
+  summaryNumber: { color: COLORS.ink, fontSize: 27, fontWeight: "900" },
+  summaryLabel: { color: COLORS.muted, fontSize: 12, marginTop: 3 },
+  row: { flexDirection: "row", alignItems: "center", gap: 11, backgroundColor: COLORS.white, borderRadius: 18, padding: 12, borderWidth: 1, borderColor: COLORS.line },
+  clientAvatar: { width: 44, height: 44, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  clientAvatarText: { color: COLORS.ink, fontSize: 15, fontWeight: "900" },
+  action: { width: 34, height: 34, borderRadius: 11, backgroundColor: COLORS.coralSoft, alignItems: "center", justifyContent: "center" },
+  reminder: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: COLORS.coralSoft, borderRadius: 18, padding: 14 },
+  reminderButton: { backgroundColor: COLORS.coral, borderRadius: 11, paddingHorizontal: 10, paddingVertical: 9 },
+  reminderButtonText: { color: COLORS.white, fontSize: 11, fontWeight: "800" },
 });

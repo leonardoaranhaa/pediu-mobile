@@ -34,3 +34,7 @@ export function pixPaymentLabel(status: "idle" | "pending"): string {
 export function formatLocationLabel(latitude: number, longitude: number): string {
   return `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
 }
+
+export function voiceActionKeys(mode: "customer" | "seller"): string[] {
+  return mode === "customer" ? ["doces", "pedidos", "loja"] : ["venda", "fiado", "catalogo", "divulgar"];
+}
