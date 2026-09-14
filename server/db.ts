@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { Customer, InsertCustomer, InsertLedgerEntry, InsertOrder, InsertProduct, InsertSale, InsertStore, InsertUser, LedgerEntry, Order, Product, Sale, Store, customers, ledgerEntries, orderItems, orders, payments, products, sales, stores, users } from "../drizzle/schema";
+import { Customer, InsertCustomer, InsertLedgerEntry, InsertOrder, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Order, Product, PushToken, Sale, Store, customers, ledgerEntries, orderItems, orders, payments, products, pushTokens, sales, stores, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -199,4 +199,16 @@ export async function createSale(input: InsertSale): Promise<number> {
   if (!db) throw new Error("Database not available");
   const result = await db.insert(sales).values(input);
   return Number((result as unknown as { insertId: number | string }).insertId);
+}
+
+export async function registerPushToken(input: InsertPushToken): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(pushTokens).values(input).onDuplicateKeyUpdate({ set: { userId: input.userId, platform: input.platform } });
+}
+
+export async function listPushTokensForUser(userId: number): Promise<PushToken[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(pushTokens).where(eq(pushTokens.userId, userId));
 }

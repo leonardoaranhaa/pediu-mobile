@@ -6,6 +6,9 @@ import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { systemRouter } from "./_core/systemRouter";
 import { interpretVoiceCommand } from "./voice";
+import { transcribeAudio } from "./_core/voiceTranscription";
+import { storageGetSignedUrl, storagePut } from "./storage";
+import { sendPushToUser } from "./push";
 
 const orderStatusSchema = z.enum(["Pendente", "Preparando", "A caminho", "Entregue", "Cancelado"]);
 
@@ -40,6 +43,7 @@ export const appRouter = router({
     }),
     payments: router({
       createPix: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), pixKey: z.string().min(3).max(255) })).mutation(async ({ input }) => ({ paymentId: await db.createPendingPixPayment(input.orderId, input.pixKey), status: "pending" as const, message: "PIX criado e aguardando confirmação do gateway." })),
+      confirm: protectedProcedure.input(z.object({ paymentId: z.number().int().positive(), gatewayStatus: z.enum(["pending", "paid", "failed"]) })).mutation(async ({ ctx, input }) => { const message = input.gatewayStatus === "paid" ? "Pagamento confirmado pelo gateway." : input.gatewayStatus === "failed" ? "O gateway informou falha no pagamento." : "Pagamento ainda aguardando confirmação do gateway."; await sendPushToUser(ctx.user.id, "Atualização do pagamento", message, { paymentId: input.paymentId, status: input.gatewayStatus }); return { paymentId: input.paymentId, status: input.gatewayStatus, message }; }),
     }),
     clients: router({
       mine: protectedProcedure.query(async ({ ctx }) => {
@@ -76,6 +80,16 @@ export const appRouter = router({
     }),
     voice: router({
       interpret: publicProcedure.input(z.object({ mode: z.enum(["customer", "seller"]), command: z.string().min(1).max(500) })).mutation(({ input }) => interpretVoiceCommand(input.mode, input.command)),
+      transcribe: protectedProcedure.input(z.object({ audioBase64: z.string().min(1000).max(22_000_000), mimeType: z.string().max(80).default("audio/m4a") })).mutation(async ({ ctx, input }) => {
+        const upload = await storagePut(`voice/${ctx.user.id}/${Date.now()}.m4a`, Buffer.from(input.audioBase64, "base64"), input.mimeType);
+        const signedUrl = await storageGetSignedUrl(upload.key);
+        const result = await transcribeAudio({ audioUrl: signedUrl, language: "pt" });
+        if ("error" in result) throw new Error(result.error);
+        return { text: result.text, language: result.language };
+      }),
+    }),
+    notifications: router({
+      register: protectedProcedure.input(z.object({ token: z.string().min(10).max(255), platform: z.enum(["ios", "android", "web"]) })).mutation(({ ctx, input }) => db.registerPushToken({ ...input, userId: ctx.user.id })),
     }),
   }),
 });

@@ -2,6 +2,8 @@ import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
+import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from "expo-audio";
+import * as FileSystem from "expo-file-system/legacy";
 import { startOAuthLogin } from "@/constants/oauth";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -21,7 +23,7 @@ import {
 
 import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
-import { formatLocationLabel, pixPaymentLabel } from "@/lib/pediu-mvp";
+import { canRegisterSale, formatLocationLabel, pixPaymentLabel } from "@/lib/pediu-mvp";
 
 const COLORS = {
   coral: "#FF5A4F",
@@ -103,6 +105,10 @@ export default function HomeScreen() {
   const clientsQuery = trpc.pediu.clients.mine.useQuery(undefined, { enabled: isAuthenticated && role === "seller" });
   const salesQuery = trpc.pediu.sales.mine.useQuery(undefined, { enabled: isAuthenticated && role === "seller" });
   const voiceMutation = trpc.pediu.voice.interpret.useMutation();
+  const transcribeMutation = trpc.pediu.voice.transcribe.useMutation();
+  const createSaleMutation = trpc.pediu.sales.create.useMutation({ onSuccess: () => { setShowSaleModal(false); setSaleTotal(""); setSaleCustomerId(""); void salesQuery.refetch(); notify("Venda registrada com sucesso"); } });
+  const addLedgerMutation = trpc.pediu.ledger.add.useMutation();
+  const registerPushMutation = trpc.pediu.notifications.register.useMutation();
   const createStoreMutation = trpc.pediu.stores.create.useMutation({ onSuccess: () => { setShowSellerOnboarding(false); void storeQuery.refetch(); notify("Sua loja foi criada"); } });
   const [cart, setCart] = useState<Product[]>([]);
   const [orderStatus, setOrderStatus] = useState<OrderStatus | null>(null);
@@ -116,6 +122,10 @@ export default function HomeScreen() {
   const [storePhone, setStorePhone] = useState("");
   const [storeAddress, setStoreAddress] = useState("");
   const [storePixKey, setStorePixKey] = useState("");
+  const [showSaleModal, setShowSaleModal] = useState(false);
+  const [saleTotal, setSaleTotal] = useState("");
+  const [saleCustomerId, setSaleCustomerId] = useState("");
+  const [salePaymentMethod, setSalePaymentMethod] = useState<"pix" | "card" | "cash" | "fiado">("cash");
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [newProductName, setNewProductName] = useState("");
   const [notice, setNotice] = useState("");
@@ -124,6 +134,8 @@ export default function HomeScreen() {
   const [cartPulse, setCartPulse] = useState(false);
   const screenOpacity = useRef(new Animated.Value(1)).current;
   const cartScale = useRef(new Animated.Value(1)).current;
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState = useAudioRecorderState(audioRecorder);
 
   const enterSellerMode = () => {
     setRole("seller");
@@ -137,6 +149,21 @@ export default function HomeScreen() {
       Animated.timing(screenOpacity, { toValue: 1, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
     ]).start();
   }, [customerTab, role, sellerTab, screenOpacity]);
+
+  useEffect(() => {
+    if (!isAuthenticated || Platform.OS === "web") return;
+    void (async () => {
+      try {
+        const permission = await Notifications.getPermissionsAsync();
+        const finalPermission = permission.granted ? permission : await Notifications.requestPermissionsAsync();
+        if (!finalPermission.granted) return;
+        const token = (await Notifications.getExpoPushTokenAsync()).data;
+        await registerPushMutation.mutateAsync({ token, platform: Platform.OS === "ios" ? "ios" : "android" });
+      } catch {
+        // Push registration depends on a physical device and native credentials.
+      }
+    })();
+  }, [isAuthenticated]);
 
   const notifyWithHaptic = async (message: string, success = true) => {
     notify(message);
@@ -267,8 +294,8 @@ export default function HomeScreen() {
     }
     if (action === "venda") {
       setRole("seller");
-      setSellerTab("orders");
-      void notifyWithHaptic("Pronto para registrar uma venda");
+      setSellerTab("home");
+      setShowSaleModal(true);
       return;
     }
     if (action === "fiado") {
@@ -295,6 +322,44 @@ export default function HomeScreen() {
     } catch {
       setVoiceReply("Não consegui conectar ao assistente. Use uma das ações rápidas.");
     }
+  };
+
+  const toggleNativeRecording = async () => {
+    if (Platform.OS === "web") return;
+    if (recorderState.isRecording) {
+      await audioRecorder.stop();
+      const uri = audioRecorder.uri;
+      if (!uri) return;
+      setVoiceReply("Transcrevendo seu áudio...");
+      const audioBase64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+      try {
+        const result = await transcribeMutation.mutateAsync({ audioBase64, mimeType: "audio/m4a" });
+        await handleVoiceCommand(result.text);
+      } catch {
+        setVoiceReply("Não consegui transcrever o áudio. Tente novamente ou digite o comando.");
+      }
+      return;
+    }
+    const permission = await requestRecordingPermissionsAsync();
+    if (!permission.granted) {
+      setVoiceReply("Permita o uso do microfone para falar com o Pediu.");
+      return;
+    }
+    await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
+    await audioRecorder.prepareToRecordAsync();
+    audioRecorder.record();
+    setVoiceReply("Estou ouvindo… toque novamente para enviar.");
+  };
+
+  const submitSale = () => {
+    const normalizedTotal = saleTotal.replace(",", ".");
+    const customerId = saleCustomerId ? Number(saleCustomerId) : undefined;
+    if (!canRegisterSale(normalizedTotal, salePaymentMethod, customerId)) {
+      void notifyWithHaptic(salePaymentMethod === "fiado" ? "Informe o ID do cliente para lançar no fiado" : "Informe um valor válido");
+      return;
+    }
+    createSaleMutation.mutate({ total: normalizedTotal, customerId, paymentMethod: salePaymentMethod });
+    if (salePaymentMethod === "fiado" && customerId) addLedgerMutation.mutate({ customerId, type: "credit", amount: normalizedTotal, note: "Venda registrada pelo assistente" });
   };
 
   const createStore = () => {
@@ -376,7 +441,11 @@ export default function HomeScreen() {
         </Modal>
 
         <Modal visible={showVoice} transparent animationType="fade" onRequestClose={() => setShowVoice(false)}>
-          <VoiceAssistantModal mode={voiceMode} busy={voiceMutation.isPending} reply={voiceReply} onClose={() => { setShowVoice(false); setVoiceReply(""); }} onAction={handleVoiceAction} onCommand={handleVoiceCommand} />
+          <VoiceAssistantModal mode={voiceMode} busy={voiceMutation.isPending || transcribeMutation.isPending} isRecording={recorderState.isRecording} onRecord={toggleNativeRecording} reply={voiceReply} onClose={() => { setShowVoice(false); setVoiceReply(""); }} onAction={handleVoiceAction} onCommand={handleVoiceCommand} />
+        </Modal>
+
+        <Modal visible={showSaleModal} transparent animationType="slide" onRequestClose={() => setShowSaleModal(false)}>
+          <SaleModal total={saleTotal} customerId={saleCustomerId} paymentMethod={salePaymentMethod} busy={createSaleMutation.isPending || addLedgerMutation.isPending} onChangeTotal={setSaleTotal} onChangeCustomerId={setSaleCustomerId} onChangePaymentMethod={setSalePaymentMethod} onSubmit={submitSale} onClose={() => setShowSaleModal(false)} />
         </Modal>
 
         <Modal visible={showSellerOnboarding} transparent animationType="slide" onRequestClose={() => setShowSellerOnboarding(false)}>
@@ -494,7 +563,7 @@ const trackingStyles = StyleSheet.create({
 });
 
 
-function VoiceAssistantModal({ mode, busy, reply, onClose, onAction, onCommand }: { mode: VoiceMode; busy: boolean; reply: string; onClose: () => void; onAction: (action: string) => void; onCommand: (command: string) => void }) {
+function VoiceAssistantModal({ mode, busy, isRecording, onRecord, reply, onClose, onAction, onCommand }: { mode: VoiceMode; busy: boolean; isRecording: boolean; onRecord: () => void; reply: string; onClose: () => void; onAction: (action: string) => void; onCommand: (command: string) => void }) {
   const customerActions = [{ label: "Encontrar doces perto", icon: "🍰", action: "doces" }, { label: "Ver meus pedidos", icon: "🛍️", action: "pedidos" }, { label: "Conversar com uma loja", icon: "💬", action: "loja" }];
   const sellerActions = [{ label: "Registrar uma venda", icon: "🧾", action: "venda" }, { label: "Consultar vendas fiadas", icon: "📒", action: "fiado" }, { label: "Mostrar meu catálogo", icon: "📦", action: "catalogo" }, { label: "Criar uma divulgação", icon: "📣", action: "divulgar" }];
   const actions = mode === "customer" ? customerActions : sellerActions;
@@ -519,7 +588,7 @@ function VoiceAssistantModal({ mode, busy, reply, onClose, onAction, onCommand }
     };
     recognition.start();
   };
-  return <View style={voiceStyles.backdrop}><View style={voiceStyles.sheet}><View style={styles.sheetHandle} /><View style={voiceStyles.orb}><MaterialIcons name="mic" size={30} color={COLORS.white} /></View><Text style={voiceStyles.kicker}>{mode === "customer" ? "ASSISTENTE DO CLIENTE" : "ASSISTENTE DA LOJA"}</Text><Text style={voiceStyles.title}>{mode === "customer" ? "O que você quer pedir?" : "Como posso ajudar sua loja?"}</Text><Text style={voiceStyles.subtitle}>Fale ou digite uma instrução. A IA interpreta e só executa ações permitidas.</Text><View style={voiceStyles.commandRow}><TextInput value={command} onChangeText={setCommand} onSubmitEditing={() => onCommand(command)} placeholder={mode === "customer" ? "Ex.: quero pedir doces" : "Ex.: quem me deve?"} placeholderTextColor={COLORS.muted} style={voiceStyles.commandInput} returnKeyType="done" /><Pressable style={[voiceStyles.commandButton, isListening && voiceStyles.listeningButton]} onPress={startListening}><MaterialIcons name={isListening ? "graphic-eq" : "mic"} size={18} color={COLORS.white} /></Pressable><Pressable style={voiceStyles.commandButton} disabled={busy} onPress={() => onCommand(command)}><MaterialIcons name={busy ? "hourglass-top" : "send"} size={18} color={COLORS.white} /></Pressable></View>{reply ? <Text style={voiceStyles.reply}>{reply}</Text> : null}<View style={voiceStyles.actions}>{actions.map((item) => <Pressable key={item.action} style={({ pressed }) => [voiceStyles.action, pressed && styles.pressed]} onPress={() => onAction(item.action)}><Text style={voiceStyles.actionIcon}>{item.icon}</Text><Text style={voiceStyles.actionText}>{item.label}</Text><MaterialIcons name="arrow-forward" size={17} color={COLORS.coral} /></Pressable>)}</View><Pressable style={styles.textButton} onPress={onClose}><Text style={styles.textButtonLabel}>Fechar assistente</Text></Pressable></View></View>;
+  return <View style={voiceStyles.backdrop}><View style={voiceStyles.sheet}><View style={styles.sheetHandle} /><View style={voiceStyles.orb}><MaterialIcons name="mic" size={30} color={COLORS.white} /></View><Text style={voiceStyles.kicker}>{mode === "customer" ? "ASSISTENTE DO CLIENTE" : "ASSISTENTE DA LOJA"}</Text><Text style={voiceStyles.title}>{mode === "customer" ? "O que você quer pedir?" : "Como posso ajudar sua loja?"}</Text><Text style={voiceStyles.subtitle}>Fale ou digite uma instrução. A IA interpreta e só executa ações permitidas.</Text><View style={voiceStyles.commandRow}><TextInput value={command} onChangeText={setCommand} onSubmitEditing={() => onCommand(command)} placeholder={mode === "customer" ? "Ex.: quero pedir doces" : "Ex.: quem me deve?"} placeholderTextColor={COLORS.muted} style={voiceStyles.commandInput} returnKeyType="done" /><Pressable style={[voiceStyles.commandButton, (isListening || isRecording) && voiceStyles.listeningButton]} disabled={busy} onPress={Platform.OS === "web" ? startListening : onRecord}><MaterialIcons name={(isListening || isRecording) ? "graphic-eq" : "mic"} size={18} color={COLORS.white} /></Pressable><Pressable style={voiceStyles.commandButton} disabled={busy} onPress={() => onCommand(command)}><MaterialIcons name={busy ? "hourglass-top" : "send"} size={18} color={COLORS.white} /></Pressable></View>{reply ? <Text style={voiceStyles.reply}>{reply}</Text> : null}<View style={voiceStyles.actions}>{actions.map((item) => <Pressable key={item.action} style={({ pressed }) => [voiceStyles.action, pressed && styles.pressed]} onPress={() => onAction(item.action)}><Text style={voiceStyles.actionIcon}>{item.icon}</Text><Text style={voiceStyles.actionText}>{item.label}</Text><MaterialIcons name="arrow-forward" size={17} color={COLORS.coral} /></Pressable>)}</View><Pressable style={styles.textButton} onPress={onClose}><Text style={styles.textButtonLabel}>Fechar assistente</Text></Pressable></View></View>;
 }
 
 function SellerVoiceLauncher({ onPress }: { onPress: () => void }) {
@@ -575,4 +644,17 @@ function SellerOnboardingModal({ isAuthenticated, name, phone, address, pixKey, 
 const onboardingStyles = StyleSheet.create({
   loginBanner: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: COLORS.coralSoft, borderRadius: 15, padding: 13 },
   loginText: { flex: 1, color: COLORS.ink, fontSize: 12, lineHeight: 17 },
+});
+
+
+function SaleModal({ total, customerId, paymentMethod, busy, onChangeTotal, onChangeCustomerId, onChangePaymentMethod, onSubmit, onClose }: { total: string; customerId: string; paymentMethod: "pix" | "card" | "cash" | "fiado"; busy: boolean; onChangeTotal: (value: string) => void; onChangeCustomerId: (value: string) => void; onChangePaymentMethod: (value: "pix" | "card" | "cash" | "fiado") => void; onSubmit: () => void; onClose: () => void }) {
+  return <View style={styles.modalBackdrop}><View style={styles.sheet}><View style={styles.sheetHandle} /><Text style={styles.eyebrow}>ASSISTENTE DA LOJA</Text><Text style={styles.sheetTitle}>Registrar venda</Text><Text style={styles.muted}>O lançamento fica salvo no histórico da sua loja.</Text><Text style={styles.fieldLabel}>VALOR DA VENDA</Text><TextInput value={total} onChangeText={onChangeTotal} placeholder="Ex.: 42,00" placeholderTextColor={COLORS.muted} style={styles.input} keyboardType="decimal-pad" /><Text style={styles.fieldLabel}>ID DO CLIENTE (OPCIONAL)</Text><TextInput value={customerId} onChangeText={onChangeCustomerId} placeholder="Necessário para fiado" placeholderTextColor={COLORS.muted} style={styles.input} keyboardType="number-pad" /><Text style={styles.fieldLabel}>FORMA DE PAGAMENTO</Text><View style={saleStyles.methods}>{(["cash", "pix", "card", "fiado"] as const).map((method) => <Pressable key={method} style={[saleStyles.method, paymentMethod === method && saleStyles.methodActive]} onPress={() => onChangePaymentMethod(method)}><Text style={[saleStyles.methodText, paymentMethod === method && saleStyles.methodTextActive]}>{method === "cash" ? "Dinheiro" : method === "pix" ? "PIX" : method === "card" ? "Cartão" : "Fiado"}</Text></Pressable>)}</View><Pressable style={[styles.primaryButton, busy && styles.disabledButton]} disabled={busy} onPress={onSubmit}><Text style={styles.primaryButtonText}>{busy ? "Salvando..." : "Salvar venda"}</Text><MaterialIcons name="check" size={18} color={COLORS.white} /></Pressable><Pressable style={styles.textButton} onPress={onClose}><Text style={styles.textButtonLabel}>Cancelar</Text></Pressable></View></View>;
+}
+
+const saleStyles = StyleSheet.create({
+  methods: { flexDirection: "row", gap: 7, flexWrap: "wrap", marginBottom: 5 },
+  method: { borderWidth: 1, borderColor: COLORS.line, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: COLORS.white },
+  methodActive: { borderColor: COLORS.coral, backgroundColor: COLORS.coralSoft },
+  methodText: { color: COLORS.muted, fontSize: 12, fontWeight: "700" },
+  methodTextActive: { color: COLORS.coral },
 });

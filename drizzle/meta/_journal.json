@@ -22,6 +22,13 @@
       "when": 1789382583711,
       "tag": "0002_last_bucky",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1789384005511,
+      "tag": "0003_typical_jane_foster",
+      "breakpoints": true
     }
   ]
 }

@@ -94,6 +94,14 @@ export const sales = mysqlTable("pediu_sales", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
+export const pushTokens = mysqlTable("pediu_push_tokens", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  token: varchar("token", { length: 255 }).notNull().unique(),
+  platform: varchar("platform", { length: 32 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type Store = typeof stores.$inferSelect;
@@ -110,3 +118,5 @@ export type LedgerEntry = typeof ledgerEntries.$inferSelect;
 export type InsertLedgerEntry = typeof ledgerEntries.$inferInsert;
 export type Sale = typeof sales.$inferSelect;
 export type InsertSale = typeof sales.$inferInsert;
+export type PushToken = typeof pushTokens.$inferSelect;
+export type InsertPushToken = typeof pushTokens.$inferInsert;

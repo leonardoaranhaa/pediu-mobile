@@ -38,3 +38,10 @@ export function formatLocationLabel(latitude: number, longitude: number): string
 export function voiceActionKeys(mode: "customer" | "seller"): string[] {
   return mode === "customer" ? ["doces", "pedidos", "loja"] : ["venda", "fiado", "catalogo", "divulgar"];
 }
+
+export type SalePaymentMethod = "pix" | "card" | "cash" | "fiado";
+
+export function canRegisterSale(total: string, paymentMethod: SalePaymentMethod, customerId?: number): boolean {
+  const normalized = total.replace(",", ".");
+  return /^\d+(\.\d{1,2})?$/.test(normalized) && Number(normalized) > 0 && (paymentMethod !== "fiado" || Boolean(customerId && customerId > 0));
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { advanceOrderStatus, canPlaceOrder, filterCatalog, formatLocationLabel, orderProgress, pixPaymentLabel, voiceActionKeys } from "./pediu-mvp";
+import { advanceOrderStatus, canPlaceOrder, canRegisterSale, filterCatalog, formatLocationLabel, orderProgress, pixPaymentLabel, voiceActionKeys } from "./pediu-mvp";
 
 describe("Pediu MVP domain", () => {
   it("advances an order through the delivery lifecycle", () => {
@@ -35,5 +35,12 @@ describe("Pediu MVP domain", () => {
   it("keeps voice commands scoped to safe MVP actions", () => {
     expect(voiceActionKeys("customer")).toEqual(["doces", "pedidos", "loja"]);
     expect(voiceActionKeys("seller")).toEqual(["venda", "fiado", "catalogo", "divulgar"]);
+  });
+
+  it("validates sales and requires a customer for store credit", () => {
+    expect(canRegisterSale("42,50", "cash")).toBe(true);
+    expect(canRegisterSale("0", "pix")).toBe(false);
+    expect(canRegisterSale("42,50", "fiado")).toBe(false);
+    expect(canRegisterSale("42,50", "fiado", 7)).toBe(true);
   });
 });
