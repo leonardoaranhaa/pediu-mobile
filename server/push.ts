@@ -1,6 +1,7 @@
 import * as db from "./db";
 
 export async function sendPushToUser(userId: number, title: string, body: string, data: Record<string, unknown> = {}) {
+  await db.createNotification({ userId, title, body, type: String(data.type ?? "general") });
   const tokens = await db.listPushTokensForUser(userId);
   if (!tokens.length) return { sent: 0 };
   const messages = tokens.map((entry) => ({ to: entry.token, sound: "default", title, body, data }));

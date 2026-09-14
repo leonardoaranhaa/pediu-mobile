@@ -9,6 +9,7 @@ import { interpretVoiceCommand } from "./voice";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import { storageGetSignedUrl, storagePut } from "./storage";
 import { sendPushToUser } from "./push";
+import { createPixCharge } from "./payments";
 
 const orderStatusSchema = z.enum(["Pendente", "Preparando", "A caminho", "Entregue", "Cancelado"]);
 
@@ -42,7 +43,7 @@ export const appRouter = router({
       status: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), status: orderStatusSchema })).mutation(({ input }) => db.updateOrderStatus(input.orderId, input.status)),
     }),
     payments: router({
-      createPix: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), pixKey: z.string().min(3).max(255) })).mutation(async ({ input }) => ({ paymentId: await db.createPendingPixPayment(input.orderId, input.pixKey), status: "pending" as const, message: "PIX criado e aguardando confirmação do gateway." })),
+      createPix: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), amount: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(), pixKey: z.string().min(3).max(255) })).mutation(async ({ input }) => { const charge = await createPixCharge(input); const paymentId = await db.createPendingPixPayment(input.orderId, input.pixKey); return { paymentId, ...charge }; }),
       confirm: protectedProcedure.input(z.object({ paymentId: z.number().int().positive(), gatewayStatus: z.enum(["pending", "paid", "failed"]) })).mutation(async ({ ctx, input }) => { const message = input.gatewayStatus === "paid" ? "Pagamento confirmado pelo gateway." : input.gatewayStatus === "failed" ? "O gateway informou falha no pagamento." : "Pagamento ainda aguardando confirmação do gateway."; await sendPushToUser(ctx.user.id, "Atualização do pagamento", message, { paymentId: input.paymentId, status: input.gatewayStatus }); return { paymentId: input.paymentId, status: input.gatewayStatus, message }; }),
     }),
     clients: router({
@@ -90,6 +91,8 @@ export const appRouter = router({
     }),
     notifications: router({
       register: protectedProcedure.input(z.object({ token: z.string().min(10).max(255), platform: z.enum(["ios", "android", "web"]) })).mutation(({ ctx, input }) => db.registerPushToken({ ...input, userId: ctx.user.id })),
+      mine: protectedProcedure.query(({ ctx }) => db.listNotificationsForUser(ctx.user.id)),
+      markRead: protectedProcedure.input(z.object({ notificationId: z.number().int().positive() })).mutation(({ ctx, input }) => db.markNotificationRead(ctx.user.id, input.notificationId)),
     }),
   }),
 });

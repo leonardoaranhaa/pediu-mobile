@@ -29,6 +29,13 @@
       "when": 1789384005511,
       "tag": "0003_typical_jane_foster",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1789385071931,
+      "tag": "0004_fancy_wilson_fisk",
+      "breakpoints": true
     }
   ]
 }

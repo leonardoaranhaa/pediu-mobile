@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { Customer, InsertCustomer, InsertLedgerEntry, InsertOrder, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Order, Product, PushToken, Sale, Store, customers, ledgerEntries, orderItems, orders, payments, products, pushTokens, sales, stores, users } from "../drizzle/schema";
+import { Customer, InsertCustomer, InsertLedgerEntry, InsertNotification, InsertOrder, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Notification, Order, Product, PushToken, Sale, Store, customers, ledgerEntries, notifications, orderItems, orders, payments, products, pushTokens, sales, stores, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -211,4 +211,23 @@ export async function listPushTokensForUser(userId: number): Promise<PushToken[]
   const db = await getDb();
   if (!db) return [];
   return db.select().from(pushTokens).where(eq(pushTokens.userId, userId));
+}
+
+export async function createNotification(input: InsertNotification): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(notifications).values(input);
+  return Number((result as unknown as { insertId: number | string }).insertId);
+}
+
+export async function listNotificationsForUser(userId: number): Promise<Notification[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(notifications).where(eq(notifications.userId, userId));
+}
+
+export async function markNotificationRead(userId: number, notificationId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(notifications).set({ readAt: new Date() }).where(sql`${notifications.id} = ${notificationId} AND ${notifications.userId} = ${userId}`);
 }
