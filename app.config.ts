@@ -38,6 +38,8 @@ const config: ExpoConfig = {
   plugins: [
     "expo-router",
     ["expo-audio", { microphonePermission: "Permita que o Pediu use seu microfone para fazer pedidos por voz." }],
+    ["expo-location", { locationWhenInUsePermission: "Permita que o Pediu use sua localização para encontrar lojas e acompanhar entregas." }],
+    ["expo-notifications", { color: "#FF5A4F" }],
     ["expo-video", { supportsBackgroundPlayback: true, supportsPictureInPicture: true }],
     ["expo-splash-screen", { image: "./assets/images/splash-icon.png", imageWidth: 200, resizeMode: "contain", backgroundColor: "#FFF8F1" }],
     ["expo-build-properties", { android: { buildArchs: ["armeabi-v7a", "arm64-v8a"], minSdkVersion: 24 } }],

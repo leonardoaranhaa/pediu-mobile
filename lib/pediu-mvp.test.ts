@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { advanceOrderStatus, canPlaceOrder, filterCatalog } from "./pediu-mvp";
+import { advanceOrderStatus, canPlaceOrder, filterCatalog, formatLocationLabel, orderProgress, pixPaymentLabel } from "./pediu-mvp";
 
 describe("Pediu MVP domain", () => {
   it("advances an order through the delivery lifecycle", () => {
@@ -24,5 +24,11 @@ describe("Pediu MVP domain", () => {
   it("only allows checkout when the cart has products", () => {
     expect(canPlaceOrder(0)).toBe(false);
     expect(canPlaceOrder(1)).toBe(true);
+  });
+
+  it("provides stable progress, PIX and location feedback labels", () => {
+    expect(orderProgress("A caminho")).toBe(78);
+    expect(pixPaymentLabel("pending")).toContain("aguardando confirmação");
+    expect(formatLocationLabel(-23.5505, -46.6333)).toBe("-23.550, -46.633");
   });
 });

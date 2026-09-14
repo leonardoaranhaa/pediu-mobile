@@ -136,6 +136,9 @@ export async function getMe(): Promise<{
     const result = await apiCall<{ user: any }>("/api/auth/me");
     return result.user || null;
   } catch (error) {
+    if (error instanceof Error && /invalid session|unauthorized|forbidden/i.test(error.message)) {
+      return null;
+    }
     console.error("[API] getMe failed:", error);
     return null;
   }

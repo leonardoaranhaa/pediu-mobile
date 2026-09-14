@@ -22,3 +22,15 @@ export function filterCatalog(products: CatalogProduct[], category: string): Cat
 export function canPlaceOrder(cartSize: number): boolean {
   return cartSize > 0;
 }
+
+export function orderProgress(status: OrderStatus): number {
+  return { Pendente: 25, Preparando: 50, "A caminho": 78, Entregue: 100 }[status];
+}
+
+export function pixPaymentLabel(status: "idle" | "pending"): string {
+  return status === "pending" ? "PIX criado · aguardando confirmação do gateway" : "Gerar cobrança PIX";
+}
+
+export function formatLocationLabel(latitude: number, longitude: number): string {
+  return `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
+}

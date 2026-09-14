@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertOrder, InsertProduct, InsertStore, InsertUser, Order, Product, Store, orderItems, orders, payments, products, stores, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -89,4 +89,72 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+export async function getStoreForOwner(ownerId: number): Promise<Store | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(stores).where(eq(stores.ownerId, ownerId)).limit(1);
+  return result[0];
+}
+
+export async function createStore(input: InsertStore): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(stores).values(input);
+  return Number((result as unknown as { insertId: number | string }).insertId);
+}
+
+export async function listAvailableProducts(category?: string): Promise<Product[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const result = await db.select().from(products);
+  return result.filter((product) => Boolean(product.available) && (!category || category === "Tudo" || product.category === category));
+}
+
+export async function createProduct(input: InsertProduct): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(products).values(input);
+  return Number((result as unknown as { insertId: number | string }).insertId);
+}
+
+export async function listProductsForStore(storeId: number): Promise<Product[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(products).where(eq(products.storeId, storeId));
+}
+
+export async function updateProductAvailability(productId: number, available: boolean): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(products).set({ available: available ? 1 : 0 }).where(eq(products.id, productId));
+}
+
+export async function createOrder(input: InsertOrder, items: Array<{ productId: number; quantity: number; unitPrice: string }>): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(orders).values(input);
+  const orderId = Number((result as unknown as { insertId: number | string }).insertId);
+  if (items.length > 0) {
+    await db.insert(orderItems).values(items.map((item) => ({ ...item, orderId })));
+  }
+  return orderId;
+}
+
+export async function listOrdersForCustomer(customerId: number): Promise<Order[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(orders).where(eq(orders.customerId, customerId));
+}
+
+export async function updateOrderStatus(orderId: number, status: Order["status"]): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(orders).set({ status }).where(eq(orders.id, orderId));
+}
+
+export async function createPendingPixPayment(orderId: number, pixKey: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(payments).values({ orderId, method: "pix", status: "pending", pixKey });
+  return Number((result as unknown as { insertId: number | string }).insertId);
+}
