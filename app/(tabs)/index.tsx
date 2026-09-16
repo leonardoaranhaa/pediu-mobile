@@ -565,6 +565,27 @@ const trackingStyles = StyleSheet.create({
 });
 
 
+function VoiceWaveform({ active, processing }: { active: boolean; processing: boolean }) {
+  const levels = useRef(Array.from({ length: 17 }, () => new Animated.Value(0.22))).current;
+
+  useEffect(() => {
+    const loops = levels.map((level, index) => {
+      const peak = 0.48 + ((index * 17) % 7) / 12;
+      const duration = 260 + (index % 5) * 75;
+      return Animated.loop(Animated.sequence([
+        Animated.timing(level, { toValue: peak, duration, delay: index * 18, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(level, { toValue: 0.2 + (index % 3) * 0.05, duration: duration + 60, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ]));
+    });
+
+    if (active || processing) loops.forEach((loop) => loop.start());
+    else levels.forEach((level) => level.stopAnimation(() => level.setValue(0.22)));
+    return () => loops.forEach((loop) => loop.stop());
+  }, [active, processing, levels]);
+
+  return <View style={[voiceStyles.waveform, !active && !processing && voiceStyles.waveformIdle]} accessibilityLabel={processing ? "Processando áudio" : active ? "Ondas sonoras indicando que o Pediu está ouvindo" : "Microfone parado"}>{levels.map((level, index) => <Animated.View key={index} style={[voiceStyles.waveBar, { transform: [{ scaleY: level }] }]} />)}</View>;
+}
+
 function VoiceAssistantModal({ mode, busy, isRecording, onRecord, reply, onClose, onAction, onCommand }: { mode: VoiceMode; busy: boolean; isRecording: boolean; onRecord: () => void; reply: string; onClose: () => void; onAction: (action: string) => void; onCommand: (command: string) => void }) {
   const customerActions = [{ label: "Encontrar doces perto", icon: "🍰", action: "doces" }, { label: "Ver meus pedidos", icon: "🛍️", action: "pedidos" }, { label: "Conversar com uma loja", icon: "💬", action: "loja" }];
   const sellerActions = [{ label: "Registrar uma venda", icon: "🧾", action: "venda" }, { label: "Consultar vendas fiadas", icon: "📒", action: "fiado" }, { label: "Mostrar meu catálogo", icon: "📦", action: "catalogo" }, { label: "Criar uma divulgação", icon: "📣", action: "divulgar" }];
@@ -590,7 +611,8 @@ function VoiceAssistantModal({ mode, busy, isRecording, onRecord, reply, onClose
     };
     recognition.start();
   };
-  return <View style={voiceStyles.backdrop}><View style={voiceStyles.sheet}><View style={styles.sheetHandle} /><View style={voiceStyles.orb}><MaterialIcons name="mic" size={30} color={COLORS.white} /></View><Text style={voiceStyles.kicker}>{mode === "customer" ? "ASSISTENTE DO CLIENTE" : "ASSISTENTE DA LOJA"}</Text><Text style={voiceStyles.title}>{mode === "customer" ? "O que você quer pedir?" : "Como posso ajudar sua loja?"}</Text><Text style={voiceStyles.subtitle}>Fale ou digite uma instrução. A IA interpreta e só executa ações permitidas.</Text><View style={voiceStyles.commandRow}><TextInput value={command} onChangeText={setCommand} onSubmitEditing={() => onCommand(command)} placeholder={mode === "customer" ? "Ex.: quero pedir doces" : "Ex.: quem me deve?"} placeholderTextColor={COLORS.muted} style={voiceStyles.commandInput} returnKeyType="done" /><Pressable style={[voiceStyles.commandButton, (isListening || isRecording) && voiceStyles.listeningButton]} disabled={busy} onPress={Platform.OS === "web" ? startListening : onRecord}><MaterialIcons name={(isListening || isRecording) ? "graphic-eq" : "mic"} size={18} color={COLORS.white} /></Pressable><Pressable style={voiceStyles.commandButton} disabled={busy} onPress={() => onCommand(command)}><MaterialIcons name={busy ? "hourglass-top" : "send"} size={18} color={COLORS.white} /></Pressable></View>{reply ? <Text style={voiceStyles.reply}>{reply}</Text> : null}<View style={voiceStyles.actions}>{actions.map((item) => <Pressable key={item.action} style={({ pressed }) => [voiceStyles.action, pressed && styles.pressed]} onPress={() => onAction(item.action)}><Text style={voiceStyles.actionIcon}>{item.icon}</Text><Text style={voiceStyles.actionText}>{item.label}</Text><MaterialIcons name="arrow-forward" size={17} color={COLORS.coral} /></Pressable>)}</View><Pressable style={styles.textButton} onPress={onClose}><Text style={styles.textButtonLabel}>Fechar assistente</Text></Pressable></View></View>;
+  const voiceActive = isListening || isRecording;
+  return <View style={voiceStyles.backdrop}><View style={voiceStyles.sheet}><View style={styles.sheetHandle} /><View style={[voiceStyles.orb, voiceActive && voiceStyles.orbActive]}><MaterialIcons name={busy ? "hourglass-top" : "mic"} size={30} color={COLORS.white} /></View><Text style={voiceStyles.kicker}>{mode === "customer" ? "ASSISTENTE DO CLIENTE" : "ASSISTENTE DA LOJA"}</Text><Text style={voiceStyles.title}>{mode === "customer" ? "O que você quer pedir?" : "Como posso ajudar sua loja?"}</Text><Text style={voiceStyles.subtitle}>Fale ou digite uma instrução. A IA interpreta e só executa ações permitidas.</Text><VoiceWaveform active={voiceActive} processing={busy} /><Text style={voiceStyles.voiceState}>{busy ? "Processando sua mensagem…" : voiceActive ? "Estou ouvindo… toque novamente para enviar" : "Toque no microfone para falar"}</Text><View style={voiceStyles.commandRow}><TextInput value={command} onChangeText={setCommand} onSubmitEditing={() => onCommand(command)} placeholder={mode === "customer" ? "Ex.: quero pedir doces" : "Ex.: quem me deve?"} placeholderTextColor={COLORS.muted} style={voiceStyles.commandInput} returnKeyType="done" /><Pressable style={[voiceStyles.commandButton, voiceActive && voiceStyles.listeningButton]} disabled={busy} onPress={Platform.OS === "web" ? startListening : onRecord}><MaterialIcons name={voiceActive ? "graphic-eq" : "mic"} size={18} color={COLORS.white} /></Pressable><Pressable style={voiceStyles.commandButton} disabled={busy} onPress={() => onCommand(command)}><MaterialIcons name={busy ? "hourglass-top" : "send"} size={18} color={COLORS.white} /></Pressable></View>{reply ? <Text style={voiceStyles.reply}>{reply}</Text> : null}<View style={voiceStyles.actions}>{actions.map((item) => <Pressable key={item.action} style={({ pressed }) => [voiceStyles.action, pressed && styles.pressed]} onPress={() => onAction(item.action)}><Text style={voiceStyles.actionIcon}>{item.icon}</Text><Text style={voiceStyles.actionText}>{item.label}</Text><MaterialIcons name="arrow-forward" size={17} color={COLORS.coral} /></Pressable>)}</View><Pressable style={styles.textButton} onPress={onClose}><Text style={styles.textButtonLabel}>Fechar assistente</Text></Pressable></View></View>;
 }
 
 function SellerVoiceLauncher({ onPress }: { onPress: () => void }) {
@@ -607,9 +629,14 @@ const voiceStyles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: "rgba(18, 38, 44, 0.42)", justifyContent: "flex-end" },
   sheet: { backgroundColor: COLORS.white, borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 22, paddingBottom: 28, gap: 12 },
   orb: { width: 68, height: 68, borderRadius: 34, backgroundColor: COLORS.coral, alignItems: "center", justifyContent: "center", alignSelf: "center", marginTop: 2 },
+  orbActive: { backgroundColor: COLORS.ink },
   kicker: { color: COLORS.coral, fontSize: 10, fontWeight: "900", letterSpacing: 1.2, textAlign: "center", marginTop: 3 },
   title: { color: COLORS.ink, fontSize: 24, fontWeight: "900", textAlign: "center" },
   subtitle: { color: COLORS.muted, fontSize: 12, lineHeight: 18, textAlign: "center", paddingHorizontal: 8 },
+  waveform: { height: 42, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, marginTop: 2 },
+  waveformIdle: { opacity: 0.42 },
+  waveBar: { width: 4, height: 36, borderRadius: 4, backgroundColor: COLORS.coral },
+  voiceState: { color: COLORS.muted, fontSize: 11, fontWeight: "700", textAlign: "center", marginTop: -5 },
   actions: { gap: 9, marginTop: 4 },
   action: { flexDirection: "row", alignItems: "center", gap: 11, backgroundColor: COLORS.canvas, borderRadius: 15, padding: 13, borderWidth: 1, borderColor: COLORS.line },
   actionIcon: { fontSize: 20 },
