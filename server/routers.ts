@@ -39,7 +39,7 @@ export const appRouter = router({
     }),
     orders: router({
       mine: protectedProcedure.query(({ ctx }) => db.listOrdersForCustomer(ctx.user.id)),
-      create: protectedProcedure.input(z.object({ storeId: z.number().int().positive(), total: z.string().regex(/^\d+(\.\d{1,2})?$/), deliveryAddress: z.string().max(255).optional(), items: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().int().positive().max(50), unitPrice: z.string().regex(/^\d+(\.\d{1,2})?$/) })).min(1) })).mutation(({ ctx, input }) => db.createOrder({ customerId: ctx.user.id, storeId: input.storeId, total: input.total, deliveryAddress: input.deliveryAddress }, input.items)),
+      create: protectedProcedure.input(z.object({ storeId: z.number().int().positive(), total: z.string().regex(/^\d+(\.\d{1,2})?$/), paymentMethod: z.enum(["pix", "card", "cash"]).default("pix"), deliveryAddress: z.string().max(255).optional(), items: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().int().positive().max(50), unitPrice: z.string().regex(/^\d+(\.\d{1,2})?$/) })).min(1) })).mutation(async ({ ctx, input }) => { const orderId = await db.createOrder({ customerId: ctx.user.id, storeId: input.storeId, total: input.total, deliveryAddress: input.deliveryAddress }, input.items); const paymentId = await db.createOrderPayment(orderId, input.paymentMethod); return { orderId, paymentId, status: "Pendente" as const }; }),
       status: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), status: orderStatusSchema })).mutation(({ input }) => db.updateOrderStatus(input.orderId, input.status)),
     }),
     payments: router({

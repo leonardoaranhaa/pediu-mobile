@@ -159,6 +159,13 @@ export async function createPendingPixPayment(orderId: number, pixKey: string) {
   return Number((result as unknown as { insertId: number | string }).insertId);
 }
 
+export async function createOrderPayment(orderId: number, method: "pix" | "card" | "cash") {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(payments).values({ orderId, method, status: "pending" });
+  return Number((result as unknown as { insertId: number | string }).insertId);
+}
+
 
 export async function listCustomersForStore(storeId: number): Promise<Customer[]> {
   const db = await getDb();

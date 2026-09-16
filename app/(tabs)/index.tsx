@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Easing,
+  KeyboardAvoidingView,
   Linking,
   Modal,
   Platform,
@@ -23,7 +24,7 @@ import {
 
 import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
-import { canRegisterSale, formatLocationLabel, pixPaymentLabel } from "@/lib/pediu-mvp";
+import { canRegisterSale, cartTotal, formatLocationLabel, pixPaymentLabel } from "@/lib/pediu-mvp";
 
 const COLORS = {
   coral: "#FF5A4F",
@@ -41,6 +42,7 @@ const COLORS = {
 
 type Product = {
   id: number;
+  storeId?: number;
   name: string;
   store: string;
   price: string;
@@ -105,6 +107,7 @@ export default function HomeScreen() {
   const clientsQuery = trpc.pediu.clients.mine.useQuery(undefined, { enabled: isAuthenticated && role === "seller" });
   const salesQuery = trpc.pediu.sales.mine.useQuery(undefined, { enabled: isAuthenticated && role === "seller" });
   const notificationsQuery = trpc.pediu.notifications.mine.useQuery(undefined, { enabled: isAuthenticated });
+  const createOrderMutation = trpc.pediu.orders.create.useMutation({ onSuccess: () => { setCart([]); setShowCheckout(false); setShowCart(false); setPixPaymentPending(false); setOrderStatus("Pendente"); setCustomerTab("orders"); void notifyWithHaptic("Pedido enviado para a loja"); void scheduleOrderNotification("Seu pedido foi enviado e aguarda confirmação da loja."); } });
   const voiceMutation = trpc.pediu.voice.interpret.useMutation();
   const transcribeMutation = trpc.pediu.voice.transcribe.useMutation();
   const createSaleMutation = trpc.pediu.sales.create.useMutation({ onSuccess: () => { setShowSaleModal(false); setSaleTotal(""); setSaleCustomerId(""); void salesQuery.refetch(); notify("Venda registrada com sucesso"); } });
@@ -116,6 +119,9 @@ export default function HomeScreen() {
   const [orderStatus, setOrderStatus] = useState<OrderStatus | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [showCart, setShowCart] = useState(false);
+  const [showCheckout, setShowCheckout] = useState(false);
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [checkoutPayment, setCheckoutPayment] = useState<"pix" | "card" | "cash">("pix");
   const [showVoice, setShowVoice] = useState(false);
   const [voiceMode, setVoiceMode] = useState<VoiceMode>("customer");
   const [voiceReply, setVoiceReply] = useState("");
@@ -204,6 +210,7 @@ export default function HomeScreen() {
     if (!marketplaceQuery.data?.length) return products;
     return marketplaceQuery.data.map((product) => ({
       id: product.id,
+      storeId: product.storeId,
       name: product.name,
       store: "Comércio local",
       price: `R$ ${Number(product.price).toFixed(2).replace(".", ",")}`,
@@ -235,15 +242,29 @@ export default function HomeScreen() {
     void notifyWithHaptic("Adicionado ao seu pedido");
   };
 
-  const placeOrder = () => {
+  const openCheckout = () => {
     if (!cart.length) return;
-    setOrderStatus("Pendente");
-    setCart([]);
+    if (!isAuthenticated) {
+      void startOAuthLogin();
+      return;
+    }
     setShowCart(false);
-    setPixPaymentPending(false);
-    setCustomerTab("orders");
-    void notifyWithHaptic("Pedido enviado para a loja");
-    void scheduleOrderNotification("Seu pedido foi enviado e aguarda confirmação da loja.");
+    setShowCheckout(true);
+  };
+
+  const submitOrder = () => {
+    if (!cart.length || !deliveryAddress.trim()) {
+      void notifyWithHaptic("Informe o endereço de entrega", false);
+      return;
+    }
+    const total = cartTotal(cart.map((item) => item.price)).toFixed(2);
+    createOrderMutation.mutate({
+      storeId: cart[0]?.storeId ?? 1,
+      total,
+      paymentMethod: checkoutPayment,
+      deliveryAddress: deliveryAddress.trim(),
+      items: cart.map((item) => ({ productId: item.id, quantity: 1, unitPrice: cartTotal([item.price]).toFixed(2) })),
+    });
   };
 
   const advanceOrder = () => {
@@ -428,12 +449,16 @@ export default function HomeScreen() {
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>Seu pedido</Text>
             {cart.length ? cart.map((item, index) => <View style={styles.cartRow} key={`${item.id}-${index}`}><Text style={styles.cartEmoji}>{item.emoji}</Text><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{item.name}</Text><Text style={styles.muted}>{item.store}</Text></View><Text style={styles.price}>{item.price}</Text></View>) : <Text style={styles.emptyText}>Seu pedido está vazio.</Text>}
-            <View style={styles.totalRow}><Text style={styles.totalLabel}>Total estimado</Text><Text style={styles.totalValue}>{cart.length ? "R$ 12,00" : "R$ 0,00"}</Text></View>
+            <View style={styles.totalRow}><Text style={styles.totalLabel}>Total estimado</Text><Text style={styles.totalValue}>{`R$ ${cartTotal(cart.map((item) => item.price)).toFixed(2).replace(".", ",")}`}</Text></View>
             {cart.length && !pixPaymentPending ? <Pressable style={paymentStyles.pixButton} onPress={() => { setPixPaymentPending(true); void notifyWithHaptic("Cobrança PIX criada e aguardando confirmação"); }}><MaterialIcons name="pix" size={18} color={COLORS.ink} /><Text style={paymentStyles.pixButtonText}>{pixPaymentLabel("idle")}</Text></Pressable> : null}
             {pixPaymentPending ? <View style={paymentStyles.pending}><MaterialIcons name="schedule" size={18} color={COLORS.orange} /><Text style={paymentStyles.pendingText}>{pixPaymentLabel("pending")}</Text></View> : null}
-            <Pressable style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, !cart.length && styles.disabledButton]} disabled={!cart.length} onPress={placeOrder}><Text style={styles.primaryButtonText}>Fazer pedido</Text><MaterialIcons name="arrow-forward" size={18} color={COLORS.white} /></Pressable>
+            <Pressable style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, !cart.length && styles.disabledButton]} disabled={!cart.length} onPress={openCheckout}><Text style={styles.primaryButtonText}>Continuar para entrega</Text><MaterialIcons name="arrow-forward" size={18} color={COLORS.white} /></Pressable>
             <Pressable style={styles.textButton} onPress={() => setShowCart(false)}><Text style={styles.textButtonLabel}>Continuar escolhendo</Text></Pressable>
           </View></View>
+        </Modal>
+
+        <Modal visible={showCheckout} transparent animationType="slide" onRequestClose={() => setShowCheckout(false)}>
+          <CheckoutModal address={deliveryAddress} paymentMethod={checkoutPayment} total={cartTotal(cart.map((item) => item.price))} busy={createOrderMutation.isPending} onChangeAddress={setDeliveryAddress} onChangePaymentMethod={setCheckoutPayment} onSubmit={submitOrder} onClose={() => setShowCheckout(false)} />
         </Modal>
 
         <Modal visible={showAddProduct} transparent animationType="slide" onRequestClose={() => setShowAddProduct(false)}>
@@ -693,4 +718,19 @@ const notificationStyles = StyleSheet.create({
   card: { backgroundColor: COLORS.white, borderRadius: 18, padding: 14, borderWidth: 1, borderColor: COLORS.line, gap: 9 },
   item: { flexDirection: "row", alignItems: "flex-start", gap: 9, borderRadius: 12, padding: 9 },
   unread: { backgroundColor: COLORS.coralSoft },
+});
+
+
+function CheckoutModal({ address, paymentMethod, total, busy, onChangeAddress, onChangePaymentMethod, onSubmit, onClose }: { address: string; paymentMethod: "pix" | "card" | "cash"; total: number; busy: boolean; onChangeAddress: (value: string) => void; onChangePaymentMethod: (value: "pix" | "card" | "cash") => void; onSubmit: () => void; onClose: () => void }) {
+  return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalBackdrop}><View style={styles.sheet}><View style={styles.sheetHandle} /><Text style={styles.eyebrow}>FINALIZAR PEDIDO</Text><Text style={styles.sheetTitle}>Onde devemos entregar?</Text><Text style={styles.muted}>Informe um endereço completo para a loja preparar sua entrega.</Text><Text style={styles.fieldLabel}>ENDEREÇO DE ENTREGA</Text><TextInput value={address} onChangeText={onChangeAddress} placeholder="Rua, número, bairro e complemento" placeholderTextColor={COLORS.muted} style={[styles.input, checkoutStyles.addressInput]} multiline returnKeyType="done" /><Text style={styles.fieldLabel}>FORMA DE PAGAMENTO</Text><View style={checkoutStyles.methods}>{(["pix", "card", "cash"] as const).map((method) => <Pressable key={method} style={[checkoutStyles.method, paymentMethod === method && checkoutStyles.methodActive]} onPress={() => onChangePaymentMethod(method)}><MaterialIcons name={method === "pix" ? "pix" : method === "card" ? "credit-card" : "payments"} size={18} color={paymentMethod === method ? COLORS.coral : COLORS.muted} /><Text style={[checkoutStyles.methodText, paymentMethod === method && checkoutStyles.methodTextActive]}>{method === "pix" ? "PIX" : method === "card" ? "Cartão" : "Dinheiro"}</Text></Pressable>)}</View><View style={styles.totalRow}><Text style={styles.totalLabel}>Total do pedido</Text><Text style={styles.totalValue}>{`R$ ${total.toFixed(2).replace(".", ",")}`}</Text></View>{paymentMethod === "pix" ? <Text style={checkoutStyles.note}>O PIX ficará aguardando confirmação até o gateway estar conectado.</Text> : null}<Pressable style={[styles.primaryButton, busy && styles.disabledButton]} disabled={busy} onPress={onSubmit}><Text style={styles.primaryButtonText}>{busy ? "Enviando pedido..." : "Confirmar pedido"}</Text><MaterialIcons name="check" size={18} color={COLORS.white} /></Pressable><Pressable style={styles.textButton} onPress={onClose}><Text style={styles.textButtonLabel}>Voltar ao carrinho</Text></Pressable></View></KeyboardAvoidingView>;
+}
+
+const checkoutStyles = StyleSheet.create({
+  addressInput: { minHeight: 70, textAlignVertical: "top", paddingTop: 12 },
+  methods: { flexDirection: "row", gap: 8 },
+  method: { flex: 1, minHeight: 58, alignItems: "center", justifyContent: "center", gap: 4, borderWidth: 1, borderColor: COLORS.line, borderRadius: 13, backgroundColor: COLORS.white },
+  methodActive: { borderColor: COLORS.coral, backgroundColor: COLORS.coralSoft },
+  methodText: { color: COLORS.muted, fontSize: 11, fontWeight: "800" },
+  methodTextActive: { color: COLORS.coral },
+  note: { color: COLORS.orange, fontSize: 11, lineHeight: 16, backgroundColor: "#FFF5E8", borderRadius: 10, padding: 9 },
 });

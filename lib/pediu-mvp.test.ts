@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { advanceOrderStatus, canPlaceOrder, canRegisterSale, filterCatalog, formatLocationLabel, orderProgress, pixPaymentLabel, voiceActionKeys } from "./pediu-mvp";
+import { advanceOrderStatus, canPlaceOrder, canRegisterSale, cartTotal, filterCatalog, formatLocationLabel, orderProgress, pixPaymentLabel, voiceActionKeys } from "./pediu-mvp";
 
 describe("Pediu MVP domain", () => {
   it("advances an order through the delivery lifecycle", () => {
@@ -42,5 +42,10 @@ describe("Pediu MVP domain", () => {
     expect(canRegisterSale("0", "pix")).toBe(false);
     expect(canRegisterSale("42,50", "fiado")).toBe(false);
     expect(canRegisterSale("42,50", "fiado", 7)).toBe(true);
+  });
+
+  it("calculates a food cart total from Brazilian price labels", () => {
+    expect(cartTotal(["R$ 12,00", "R$ 35,00", "R$ 15,50"])).toBe(62.5);
+    expect(cartTotal([])).toBe(0);
   });
 });

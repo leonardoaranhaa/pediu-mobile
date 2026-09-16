@@ -45,3 +45,13 @@ export function canRegisterSale(total: string, paymentMethod: SalePaymentMethod,
   const normalized = total.replace(",", ".");
   return /^\d+(\.\d{1,2})?$/.test(normalized) && Number(normalized) > 0 && (paymentMethod !== "fiado" || Boolean(customerId && customerId > 0));
 }
+
+export function parsePrice(value: string): number {
+  const normalized = value.replace("R$", "").replace(/\s/g, "").replace(".", "").replace(",", ".");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function cartTotal(prices: string[]): number {
+  return prices.reduce((total, price) => total + parsePrice(price), 0);
+}
