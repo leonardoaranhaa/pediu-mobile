@@ -445,3 +445,13 @@ Antes de criar qualquer nova página:
 - Revisão visual: implementada.
 - Validação automatizada após esta revisão: acionada após a correção de TypeScript.
 - Validação visual em dispositivo físico: pendente.
+
+
+## Continuidade UI — acompanhamento de pedido — 18/09/2026
+
+- O acompanhamento deixou de usar estado/dados demonstrativos fixos.
+- Foi criado o contrato protegido `orders.get`, que só retorna pedidos acessíveis ao usuário autenticado.
+- A lista de pedidos do cliente agora abre `/order/track?orderId=...`.
+- A tela de acompanhamento consulta o pedido persistido e atualiza periodicamente o status.
+- Foi adicionado teste de contrato para a nova consulta protegida.
+- A validação CI desta sequência permanece pendente no momento do registro; o último CI confirmado anteriormente falhou em TypeScript por import ausente em `app/account/settings.tsx`, correção já aplicada.
