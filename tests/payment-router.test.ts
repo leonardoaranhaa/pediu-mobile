@@ -27,7 +27,7 @@ describe("Pediu payment operational contract", () => {
       transactionId: null,
       createdAt: new Date(),
     } as any);
-    const update = vi.spyOn(db, "updatePaymentStatus").mockResolvedValue(undefined);
+    vi.spyOn(db, "getOrderForCustomer").mockResolvedValue({ id: 501, customerId: 20 } as any);\n    const update = vi.spyOn(db, "updatePaymentStatus").mockResolvedValue(undefined);
 
     const caller = appRouter.createCaller({ user: customer } as any);
     const result = await caller.pediu.payments.confirm({
