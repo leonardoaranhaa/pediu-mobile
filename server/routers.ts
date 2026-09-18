@@ -57,14 +57,15 @@ export const appRouter = router({
       create: protectedProcedure.input(z.object({ storeId: z.number().int().positive(), total: z.string().regex(/^\d+(\.\d{1,2})?$/), paymentMethod: z.enum(["pix", "card", "cash", "fiado"]).default("pix"), deliveryAddress: z.string().max(255).optional(), items: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().int().positive().max(50), unitPrice: z.string().regex(/^\d+(\.\d{1,2})?$/) })).min(1) })).mutation(async ({ ctx, input }) => {
         const store = await db.getStoreById(input.storeId);
         if (!store) throw new Error("Estabelecimento não encontrado");
+        if (!store.isOpen) throw new Error("Estabelecimento fechado no momento");
         const products = await Promise.all(input.items.map((item) => db.getProductForStore(item.productId, input.storeId)));
         if (products.some((p) => !p)) throw new Error("Há produto inválido ou de outro estabelecimento");
         const calculated = input.items.reduce((sum, item, i) => sum + Number(products[i]!.price) * item.quantity, 0) + Number(store?.deliveryFee ?? 0);
         if (Math.abs(calculated - Number(input.total)) > 0.01) throw new Error("Total do pedido inválido");
         if (input.paymentMethod === "fiado") {
-          const customer = await db.getCustomerCredit(input.storeId, ctx.user.id);
+          const customer = await db.getCustomerCreditByUser(input.storeId, ctx.user.id);
           if (!customer) throw new Error("Cliente não habilitado para fiado nesta loja");
-          const orderId = await db.createOrderWithFiado({ customerId: ctx.user.id, storeId: input.storeId, total: input.total, deliveryAddress: input.deliveryAddress }, input.items.map((item, i) => ({ ...item, unitPrice: String(products[i]!.price) })), ctx.user.id, input.storeId);
+          const orderId = await db.createOrderWithFiado({ customerId: customer.id, storeId: input.storeId, total: input.total, deliveryAddress: input.deliveryAddress }, input.items.map((item, i) => ({ ...item, unitPrice: String(products[i]!.price) })), customer.id, input.storeId);
           return { orderId, paymentId: null, status: "Pendente" as const };
         }
         const orderId = await db.createOrder({ customerId: ctx.user.id, storeId: input.storeId, total: input.total, deliveryAddress: input.deliveryAddress }, input.items.map((item, i) => ({ ...item, unitPrice: String(products[i]!.price) })));
@@ -76,7 +77,26 @@ export const appRouter = router({
         if (!order) throw new Error("Pedido não encontrado ou não autorizado");
         const isOwner = (await db.getStoreForOwner(ctx.user.id))?.id === order.storeId;
         if (!isOwner && order.customerId !== ctx.user.id) throw new Error("Pedido não autorizado");
-        if (!isOwner && input.status !== "Cancelado") throw new Error("Somente o estabelecimento pode avançar o pedido");
+
+        if (!isOwner) {
+          if (input.status !== "Cancelado" || !["Pendente", "Aceito"].includes(order.status)) {
+            throw new Error("O cliente só pode cancelar pedidos ainda não preparados");
+          }
+          return db.updateOrderStatus(input.orderId, input.status);
+        }
+
+        const allowed: Record<typeof order.status, typeof order.status[]> = {
+          Pendente: ["Aceito", "Cancelado"],
+          Aceito: ["Preparando", "Cancelado"],
+          Preparando: ["Pronto", "Cancelado"],
+          Pronto: ["A caminho", "Cancelado"],
+          "A caminho": ["Entregue"],
+          Entregue: [],
+          Cancelado: [],
+        };
+        if (!allowed[order.status].includes(input.status)) {
+          throw new Error(`Transição de pedido inválida: ${order.status} → ${input.status}`);
+        }
         return db.updateOrderStatus(input.orderId, input.status);
       }),
     }),
