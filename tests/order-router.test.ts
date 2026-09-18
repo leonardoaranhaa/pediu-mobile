@@ -67,4 +67,15 @@ describe("Pediu order operational contract", () => {
       caller.pediu.orders.status({ orderId: 101, status: "Pronto" }),
     ).rejects.toThrow("Transição de pedido inválida");
   });
+
+  it("returns the customer's own order through the protected detail query", async () => {
+    vi.spyOn(db, "getOrderForUser").mockResolvedValue(order as any);
+
+    const caller = appRouter.createCaller({ user } as any);
+    const result = await caller.pediu.orders.get({ orderId: 101 });
+
+    expect(result.id).toBe(101);
+    expect(result.customerId).toBe(20);
+  });
+
 });
