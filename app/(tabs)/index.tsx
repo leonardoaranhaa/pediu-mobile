@@ -97,7 +97,7 @@ const CATEGORIES = [
 
 export default function HomeScreen() {
   const { user, isAuthenticated, logout } = useAuth();
-  const [role, setRole] = useState<"customer" | "seller">("customer");
+  const role: "customer" | "seller" = user?.role === "merchant" ? "seller" : "customer";
   const [customerTab, setCustomerTab] = useState<"discover" | "orders" | "profile">("discover");
   const [sellerTab, setSellerTab] = useState<"home" | "orders" | "catalog" | "clients" | "settings">("home");
   const [products, setProducts] = useState(INITIAL_PRODUCTS);
@@ -171,12 +171,6 @@ export default function HomeScreen() {
   const cartScale = useRef(new Animated.Value(1)).current;
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(audioRecorder);
-
-  const enterSellerMode = () => {
-    setRole("seller");
-    setSellerTab("home");
-    if (!isAuthenticated || !storeQuery.data) setShowSellerOnboarding(true);
-  };
 
   useEffect(() => {
     Animated.sequence([
