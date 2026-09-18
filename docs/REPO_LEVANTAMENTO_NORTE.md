@@ -368,3 +368,26 @@ Teste operacional obrigatório:
 6. atualização visível no cliente;
 7. cancelamento em Pendente/Aceito;
 8. tentativa de transição inválida bloqueada pelo servidor.
+
+
+## Validação da integração de perfil do estabelecimento — 18/09/2026
+
+Implementado:
+- /api/auth/me passou a expor o campo persistido role;
+- o estado de autenticação passou a hidratar e persistir o papel do usuário;
+- sessão nativa atualiza o perfil consultando o backend, evitando depender apenas do cache local;
+- modo vendedor passou a ser condicionado ao papel merchant;
+- usuário comum não pode ativar o modo vendedor apenas pela interface;
+- teste de contrato de papel autenticado adicionado em tests/auth-role.test.ts.
+
+Validação automatizada:
+- CI #59 — run 35402162744: success;
+- pnpm check: aprovado;
+- pnpm test: aprovado;
+- pnpm build: aprovado;
+- testes de contrato de pedidos, catálogo e papel autenticado incluídos na suíte;
+- banco real, dispositivo físico e fluxo OAuth real continuam não validados operacionalmente.
+
+Observação:
+- pnpm lint não faz parte do workflow CI atual e, portanto, não foi usado como critério desta validação.
+- A próxima etapa só deve avançar após preservar esta validação e corrigir qualquer regressão encontrada.
