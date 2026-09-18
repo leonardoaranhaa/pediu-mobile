@@ -391,3 +391,28 @@ Validação automatizada:
 Observação:
 - pnpm lint não faz parte do workflow CI atual e, portanto, não foi usado como critério desta validação.
 - A próxima etapa só deve avançar após preservar esta validação e corrigir qualquer regressão encontrada.
+
+
+## Validação do catálogo real do cliente → carrinho → pedido — 18/09/2026
+
+Implementado:
+- marketplace agora retorna produtos disponíveis de lojas abertas, com nome real da loja e taxa de entrega;
+- catálogo do cliente deixou de usar produtos fictícios como fallback;
+- carrinho impede combinar produtos de estabelecimentos diferentes;
+- total apresentado ao cliente inclui a taxa de entrega da loja;
+- pedido continua recalculando preços no servidor a partir do catálogo persistido;
+- tentativa de adulterar unitPrice pelo cliente é neutralizada pelo backend;
+- teste de contrato cobre marketplace, criação de pedido e rejeição de total adulterado.
+
+Validação automatizada:
+- CI #67 — run 35402489063: **success**;
+- pnpm check: aprovado;
+- pnpm test: aprovado;
+- pnpm build: aprovado;
+- contratos anteriores de pedidos, catálogo do estabelecimento e papel autenticado permanecem na suíte.
+
+Limitações ainda abertas:
+- não houve execução em dispositivo físico;
+- não houve teste contra MySQL real nesta etapa;
+- busca textual da vitrine ainda é apenas visual e não filtra o marketplace;
+- pagamento PIX real ainda depende do gateway e o status de pagamento precisa persistir no banco em uma etapa própria.
