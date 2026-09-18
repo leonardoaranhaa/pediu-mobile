@@ -109,7 +109,32 @@ export const appRouter = router({
     }),
     payments: router({
       createPix: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), amount: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(), pixKey: z.string().min(3).max(255) })).mutation(async ({ input }) => { const charge = await createPixCharge(input); const paymentId = await db.createPendingPixPayment(input.orderId, input.pixKey); return { paymentId, ...charge }; }),
-      confirm: protectedProcedure.input(z.object({ paymentId: z.number().int().positive(), gatewayStatus: z.enum(["pending", "paid", "failed"]) })).mutation(async ({ ctx, input }) => { const message = input.gatewayStatus === "paid" ? "Pagamento confirmado pelo gateway." : input.gatewayStatus === "failed" ? "O gateway informou falha no pagamento." : "Pagamento ainda aguardando confirmação do gateway."; await sendPushToUser(ctx.user.id, "Atualização do pagamento", message, { paymentId: input.paymentId, status: input.gatewayStatus }); return { paymentId: input.paymentId, status: input.gatewayStatus, message }; }),
+      confirm: protectedProcedure.input(z.object({ paymentId: z.number().int().positive(), gatewayStatus: z.enum(["pending", "paid", "failed"]) })).mutation(async ({ ctx, input }) => {
+        const payment = await db.getPaymentForUser(input.paymentId, ctx.user.id);
+        if (!payment) throw new Error("Pagamento não encontrado ou não autorizado");
+
+        const currentStatus = payment.status as db.PaymentStatus;
+        const nextStatus = input.gatewayStatus as Exclude<db.PaymentStatus, "cancelled">;
+        if (!db.canTransitionPayment(currentStatus, nextStatus)) {
+          throw new Error(`Transição de pagamento inválida: ${currentStatus} → ${nextStatus}`);
+        }
+
+        await db.updatePaymentStatus(payment.id, nextStatus);
+
+        const message = nextStatus === "paid"
+          ? "Pagamento confirmado pelo gateway."
+          : nextStatus === "failed"
+            ? "O gateway informou falha no pagamento."
+            : "Pagamento ainda aguardando confirmação do gateway.";
+
+        try {
+          await sendPushToUser(ctx.user.id, "Atualização do pagamento", message, { paymentId: payment.id, status: nextStatus });
+        } catch (error) {
+          console.warn("[Payments] Failed to notify user about payment status:", error);
+        }
+
+        return { paymentId: payment.id, status: nextStatus, message };
+      }),
     }),
     clients: router({
       mine: protectedProcedure.query(async ({ ctx }) => {
