@@ -96,6 +96,13 @@ export async function getStoreForOwner(ownerId: number): Promise<Store | undefin
   return result[0];
 }
 
+export async function getStoreById(storeId: number): Promise<Store | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(stores).where(eq(stores.id, storeId)).limit(1);
+  return result[0];
+}
+
 export async function createStore(input: InsertStore): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
