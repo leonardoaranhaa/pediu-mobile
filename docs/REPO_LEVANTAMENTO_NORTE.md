@@ -443,5 +443,5 @@ Antes de criar qualquer nova página:
 
 ### Estado
 - Revisão visual: implementada.
-- Validação automatizada após esta revisão: pendente.
+- Validação automatizada após esta revisão: acionada após a correção de TypeScript.
 - Validação visual em dispositivo físico: pendente.
