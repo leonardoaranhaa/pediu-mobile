@@ -260,6 +260,13 @@ export async function updateOrderStatus(orderId: number, status: Order["status"]
   await db.update(orders).set({ status }).where(eq(orders.id, orderId));
 }
 
+export async function getPendingPixPaymentForOrder(orderId: number): Promise<Payment | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(payments).where(sql`${payments.orderId} = ${orderId} AND ${payments.method} = 'pix' AND ${payments.status} = 'pending'`).limit(1);
+  return result[0];
+}
+
 export async function createPendingPixPayment(orderId: number, pixKey: string, transactionId?: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
