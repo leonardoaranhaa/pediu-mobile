@@ -16,36 +16,35 @@ export function useAuth(options?: UseAuthOptions) {
       setLoading(true);
       setError(null);
 
-      if (Platform.OS === "web") {
-        const apiUser = await Api.getMe();
-        if (apiUser) {
-          const userInfo: Auth.User = {
-            id: apiUser.id,
-            openId: apiUser.openId,
-            name: apiUser.name,
-            email: apiUser.email,
-            loginMethod: apiUser.loginMethod,
-            role: apiUser.role,
-            lastSignedIn: new Date(apiUser.lastSignedIn),
-          };
-          setUser(userInfo);
-          await Auth.setUserInfo(userInfo);
-        } else {
+      const apiUser = await Api.getMe();
+      if (apiUser) {
+        const userInfo: Auth.User = {
+          id: apiUser.id,
+          openId: apiUser.openId,
+          name: apiUser.name,
+          email: apiUser.email,
+          loginMethod: apiUser.loginMethod,
+          role: apiUser.role,
+          lastSignedIn: new Date(apiUser.lastSignedIn),
+        };
+        setUser(userInfo);
+        await Auth.setUserInfo(userInfo);
+        return;
+      }
+
+      if (Platform.OS !== "web") {
+        const sessionToken = await Auth.getSessionToken();
+        if (!sessionToken) {
           setUser(null);
-          await Auth.clearUserInfo();
+          return;
         }
+        const cachedUser = await Auth.getUserInfo();
+        setUser(cachedUser);
         return;
       }
 
-      const sessionToken = await Auth.getSessionToken();
-      if (!sessionToken) {
-        setUser(null);
-        return;
-      }
-
-      const cachedUser = await Auth.getUserInfo();
-      if (cachedUser) setUser(cachedUser);
-      else setUser(null);
+      setUser(null);
+      await Auth.clearUserInfo();
     } catch (err) {
       const nextError = err instanceof Error ? err : new Error("Failed to fetch user");
       setError(nextError);
@@ -76,19 +75,18 @@ export function useAuth(options?: UseAuthOptions) {
       return;
     }
 
-    if (Platform.OS === "web") {
-      void fetchUser();
+    if (Platform.OS !== "web") {
+      void Auth.getUserInfo().then((cachedUser) => {
+        if (cachedUser) {
+          setUser(cachedUser);
+          setLoading(false);
+        }
+        void fetchUser();
+      });
       return;
     }
 
-    void Auth.getUserInfo().then((cachedUser) => {
-      if (cachedUser) {
-        setUser(cachedUser);
-        setLoading(false);
-      } else {
-        void fetchUser();
-      }
-    });
+    void fetchUser();
   }, [autoFetch, fetchUser]);
 
   return {
