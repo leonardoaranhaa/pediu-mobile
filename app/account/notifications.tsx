@@ -1,0 +1,3 @@
+import { useState } from "react";
+import { Page, Card, ToggleRow } from "@/components/pediu-page";
+export default function NotificationsPage(){const [orders,setOrders]=useState(true);const [payments,setPayments]=useState(true);const [offers,setOffers]=useState(false);return <Page title="Notificações" eyebrow="AVISOS"><Card><ToggleRow icon="local-shipping" title="Atualizações do pedido" subtitle="Aceite, preparo, saída e entrega" value={orders} onChange={setOrders}/><ToggleRow icon="payments" title="Pagamentos" subtitle="Confirmações e falhas" value={payments} onChange={setPayments}/><ToggleRow icon="campaign" title="Ofertas" subtitle="Novidades e promoções" value={offers} onChange={setOffers}/></Card></Page>}
