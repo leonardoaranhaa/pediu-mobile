@@ -175,7 +175,7 @@ export async function getAvailableProductForStore(productId: number, storeId: nu
   return result[0];
 }
 
-export async function getOrderForUser(orderId: number, userId: number) {
+export async function getOrderForCustomer(orderId: number, userId: number) {\n  const db = await getDb();\n  if (!db) return undefined;\n  const result = await db.select().from(orders).where(sql`${orders.id} = ${orderId} AND ${orders.customerId} = ${userId}`).limit(1);\n  return result[0];\n}\n\nexport async function getOrderForUser(orderId: number, userId: number) {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(orders).where(sql`${orders.id} = ${orderId} AND (${orders.customerId} = ${userId} OR ${orders.storeId} IN (SELECT id FROM pediu_stores WHERE ownerId = ${userId}))`).limit(1);
@@ -280,10 +280,10 @@ export async function updateOrderStatus(orderId: number, status: Order["status"]
   await db.update(orders).set({ status }).where(eq(orders.id, orderId));
 }
 
-export async function createPendingPixPayment(orderId: number, pixKey: string) {
+export async function createPendingPixPayment(orderId: number, pixKey: string, transactionId?: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(payments).values({ orderId, method: "pix", status: "pending", pixKey });
+  const result = await db.insert(payments).values({ orderId, method: "pix", status: "pending", pixKey, transactionId });
   return Number((result as unknown as { insertId: number | string }).insertId);
 }
 
