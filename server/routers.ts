@@ -86,7 +86,11 @@ export const appRouter = router({
           await db.updateOrderStatus(input.orderId, input.status);
           const store = await db.getStoreById(order.storeId);
           if (store) {
-            await sendPushToUser(store.ownerId, "Pedido cancelado", `O pedido #${order.id} foi cancelado pelo cliente.`, { type: "order", orderId: order.id, status: input.status });
+            try {
+              await sendPushToUser(store.ownerId, "Pedido cancelado", `O pedido #${order.id} foi cancelado pelo cliente.`, { type: "order", orderId: order.id, status: input.status });
+            } catch (error) {
+              console.warn("[Orders] Failed to notify store owner about cancellation:", error);
+            }
           }
           return { success: true as const };
         }
@@ -95,7 +99,11 @@ export const appRouter = router({
           throw new Error(`Transição de pedido inválida: ${order.status} → ${input.status}`);
         }
         await db.updateOrderStatus(input.orderId, input.status);
-        await sendPushToUser(order.customerId, "Atualização do pedido", `Seu pedido #${order.id} agora está: ${input.status}.`, { type: "order", orderId: order.id, status: input.status });
+        try {
+          await sendPushToUser(order.customerId, "Atualização do pedido", `Seu pedido #${order.id} agora está: ${input.status}.`, { type: "order", orderId: order.id, status: input.status });
+        } catch (error) {
+          console.warn("[Orders] Failed to notify customer about status change:", error);
+        }
         return { success: true as const };
       }),
     }),
