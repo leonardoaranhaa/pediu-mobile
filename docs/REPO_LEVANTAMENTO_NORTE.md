@@ -320,3 +320,24 @@ Portanto, qualquer afirmação futura de "funciona" deverá distinguir:
 - **validado no fluxo ponta a ponta**
 
 Nunca tratar uma dessas categorias como substituta das demais.
+
+
+## Validação da primeira camada — 18/09/2026
+
+### Correções aplicadas antes de avançar
+- Fiado passou a usar a conta de crédito da tabela `pediu_customers` vinculada ao `userId`, sem confundir o ID do usuário com o ID da conta de crédito.
+- Pedido fiado mantém `orders.customerId` como ID do usuário, preservando autorização e histórico do cliente.
+- Pedido fiado agora executa pedido, itens, atualização de saldo, lançamento no ledger e pagamento dentro da mesma transação.
+- Conta de fiado por usuário/loja recebeu restrição única composta.
+- Estabelecimento fechado não aceita novos pedidos.
+- Transições de pedido foram centralizadas em `server/order-state.ts` e cobertas por testes unitários.
+- Foi criado pipeline de CI para `pnpm check`, `pnpm test` e `pnpm build`.
+
+### Estado da validação
+- **Inspeção estática do código:** realizada.
+- **Teste unitário criado:** realizado, mas execução ainda não confirmada no ambiente remoto.
+- **TypeScript/lint/build:** ainda não confirmados por execução.
+- **Migração:** arquivos SQL + snapshot/journal Drizzle atualizados; aplicação em banco real ainda não confirmada.
+- **Teste operacional ponta a ponta:** pendente de ambiente com banco e credenciais válidas.
+
+**Regra:** esta camada não deve ser considerada operacionalmente validada até que o CI ou um ambiente controlado execute os comandos de validação e, depois, o fluxo real de banco seja testado.
