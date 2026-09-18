@@ -10,6 +10,7 @@ import { transcribeAudio } from "./_core/voiceTranscription";
 import { storageGetSignedUrl, storagePut } from "./storage";
 import { sendPushToUser } from "./push";
 import { createPixCharge } from "./payments";
+import { canCustomerCancelOrder, canTransitionOrder } from "./order-state";
 
 const orderStatusSchema = z.enum(["Pendente", "Aceito", "Preparando", "Pronto", "A caminho", "Entregue", "Cancelado"]);
 
@@ -79,22 +80,13 @@ export const appRouter = router({
         if (!isOwner && order.customerId !== ctx.user.id) throw new Error("Pedido não autorizado");
 
         if (!isOwner) {
-          if (input.status !== "Cancelado" || !["Pendente", "Aceito"].includes(order.status)) {
+          if (input.status !== "Cancelado" || !canCustomerCancelOrder(order.status)) {
             throw new Error("O cliente só pode cancelar pedidos ainda não preparados");
           }
           return db.updateOrderStatus(input.orderId, input.status);
         }
 
-        const allowed: Record<typeof order.status, typeof order.status[]> = {
-          Pendente: ["Aceito", "Cancelado"],
-          Aceito: ["Preparando", "Cancelado"],
-          Preparando: ["Pronto", "Cancelado"],
-          Pronto: ["A caminho", "Cancelado"],
-          "A caminho": ["Entregue"],
-          Entregue: [],
-          Cancelado: [],
-        };
-        if (!allowed[order.status].includes(input.status)) {
+        if (!canTransitionOrder(order.status, input.status)) {
           throw new Error(`Transição de pedido inválida: ${order.status} → ${input.status}`);
         }
         return db.updateOrderStatus(input.orderId, input.status);
