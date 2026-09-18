@@ -341,3 +341,30 @@ Nunca tratar uma dessas categorias como substituta das demais.
 - **Teste operacional ponta a ponta:** pendente de ambiente com banco e credenciais válidas.
 
 **Regra:** esta camada não deve ser considerada operacionalmente validada até que o CI ou um ambiente controlado execute os comandos de validação e, depois, o fluxo real de banco seja testado.
+
+
+## Validação da Fase 2 — Operação da loja — 18/09/2026
+
+Implementado:
+- painel de pedidos do estabelecimento conectado ao endpoint real `orders.storeMine`;
+- atualização automática dos pedidos a cada 10 segundos;
+- avanço operacional real: Pendente → Aceito → Preparando → Pronto → A caminho → Entregue;
+- cancelamento/recusa de pedido pendente pelo estabelecimento;
+- validação server-side de produto disponível no checkout;
+- notificações de mudança de status sem tornar a operação dependente do serviço de push.
+
+Estado:
+- implementação concluída na branch `feat/core-delivery-fiado`;
+- validação automatizada desta nova alteração ainda deve ser observada no CI;
+- validação ponta a ponta com banco e dois usuários ainda pendente;
+- a Fase 2 não deve ser considerada operacionalmente concluída até esse cenário ser executado.
+
+Teste operacional obrigatório:
+1. estabelecimento aberto;
+2. produto disponível;
+3. pedido criado pelo cliente;
+4. pedido recebido no painel da loja;
+5. transições até Entregue;
+6. atualização visível no cliente;
+7. cancelamento em Pendente/Aceito;
+8. tentativa de transição inválida bloqueada pelo servidor.
