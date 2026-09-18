@@ -159,7 +159,7 @@ export async function listOrdersForStore(storeId: number): Promise<Order[]> {
 export async function getCustomerCredit(storeId: number, customerId: number): Promise<Customer | undefined> {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(customers).where(sql`${customers.id} = ${creditCustomerId} AND ${customers.storeId} = ${storeId}`).limit(1);
+  const result = await db.select().from(customers).where(sql`${customers.id} = ${customerId} AND ${customers.storeId} = ${storeId}`).limit(1);
   return result[0];
 }
 
@@ -208,7 +208,7 @@ export async function createOrderWithFiado(input: InsertOrder, items: Array<{ pr
 
   return db.transaction(async (tx) => {
     const customerRows = await tx.select().from(customers)
-      .where(sql`${customers.id} = ${customerId} AND ${customers.storeId} = ${storeId}`)
+      .where(sql`${customers.id} = ${creditCustomerId} AND ${customers.storeId} = ${storeId}`)
       .limit(1);
     const customer = customerRows[0];
     if (!customer) throw new Error("Cliente não cadastrado para esta loja");
@@ -226,7 +226,7 @@ export async function createOrderWithFiado(input: InsertOrder, items: Array<{ pr
 
     const newBalance = (balance + requested).toFixed(2);
     await tx.update(customers).set({ balance: newBalance })
-      .where(sql`${customers.id} = ${customerId} AND ${customers.storeId} = ${storeId}`);
+      .where(sql`${customers.id} = ${creditCustomerId} AND ${customers.storeId} = ${storeId}`);
     await tx.insert(ledgerEntries).values({
       storeId, customerId: creditCustomerId, orderId, type: "credit",
       amount: input.total, balanceAfter: newBalance, note: "Compra via Pediu"
