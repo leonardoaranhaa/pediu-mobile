@@ -143,6 +143,13 @@ export async function getProductForStore(productId: number, storeId: number) {
   return result[0];
 }
 
+export async function getAvailableProductForStore(productId: number, storeId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(products).where(sql`${products.id} = ${productId} AND ${products.storeId} = ${storeId} AND ${products.available} = 1`).limit(1);
+  return result[0];
+}
+
 export async function getOrderForUser(orderId: number, userId: number) {
   const db = await getDb();
   if (!db) return undefined;
