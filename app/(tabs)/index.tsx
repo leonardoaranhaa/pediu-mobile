@@ -122,7 +122,49 @@ export default function HomeScreen() {
   const clientsQuery = trpc.pediu.clients.mine.useQuery(undefined, { enabled: isAuthenticated && role === "seller" });
   const salesQuery = trpc.pediu.sales.mine.useQuery(undefined, { enabled: isAuthenticated && role === "seller" });
   const notificationsQuery = trpc.pediu.notifications.mine.useQuery(undefined, { enabled: isAuthenticated });
-  const createOrderMutation = trpc.pediu.orders.create.useMutation({ onSuccess: () => { setCart([]); setShowCheckout(false); setShowCart(false); setPixPaymentPending(false); setOrderStatus("Pendente"); setCustomerTab("orders"); void customerOrdersQuery.refetch(); void notifyWithHaptic("Pedido enviado para a loja"); void scheduleOrderNotification("Seu pedido foi enviado e aguarda confirmação da loja."); } });
+  const createPixMutation = trpc.pediu.payments.createPix.useMutation({
+    onError: (error) => notifyWithHaptic(error.message, false),
+  });
+  const createOrderMutation = trpc.pediu.orders.create.useMutation({
+    onSuccess: (result) => {
+      if (checkoutPayment === "pix") {
+        createPixMutation.mutate({ orderId: result.orderId }, {
+          onSuccess: (charge) => {
+            setCart([]);
+            setShowCheckout(false);
+            setShowCart(false);
+            setPixPaymentPending(true);
+            setOrderStatus("Pendente");
+            setCustomerTab("orders");
+            void customerOrdersQuery.refetch();
+            void notifyWithHaptic("Pedido enviado. PIX aguardando confirmação");
+            void scheduleOrderNotification("Seu pedido foi enviado e o PIX está aguardando confirmação.");
+            router.push({
+              pathname: "/order/track",
+              params: {
+                orderId: String(result.orderId),
+                paymentId: String(charge.paymentId),
+                pixUrl: charge.checkoutUrl ?? "",
+              },
+            });
+          },
+        });
+        return;
+      }
+
+      setCart([]);
+      setShowCheckout(false);
+      setShowCart(false);
+      setPixPaymentPending(false);
+      setOrderStatus("Pendente");
+      setCustomerTab("orders");
+      void customerOrdersQuery.refetch();
+      void notifyWithHaptic("Pedido enviado para a loja");
+      void scheduleOrderNotification("Seu pedido foi enviado e aguarda confirmação da loja.");
+      router.push({ pathname: "/order/track", params: { orderId: String(result.orderId) } });
+    },
+    onError: (error) => notifyWithHaptic(error.message, false),
+  });
   const voiceMutation = trpc.pediu.voice.interpret.useMutation();
   const transcribeMutation = trpc.pediu.voice.transcribe.useMutation();
   const createSaleMutation = trpc.pediu.sales.create.useMutation({ onSuccess: () => { setShowSaleModal(false); setSaleTotal(""); setSaleCustomerId(""); void salesQuery.refetch(); notify("Venda registrada com sucesso"); } });
@@ -513,7 +555,7 @@ export default function HomeScreen() {
         </Modal>
 
         <Modal visible={showCheckout} transparent animationType="slide" onRequestClose={() => setShowCheckout(false)}>
-          <CheckoutModal address={deliveryAddress} paymentMethod={checkoutPayment} total={cartTotal(cart.map((item) => item.price)) + Number(cart[0]?.deliveryFee ?? 0)} busy={createOrderMutation.isPending} onChangeAddress={setDeliveryAddress} onChangePaymentMethod={setCheckoutPayment} onSubmit={submitOrder} onClose={() => setShowCheckout(false)} />
+          <CheckoutModal address={deliveryAddress} paymentMethod={checkoutPayment} total={cartTotal(cart.map((item) => item.price)) + Number(cart[0]?.deliveryFee ?? 0)} busy={createOrderMutation.isPending || createPixMutation.isPending} onChangeAddress={setDeliveryAddress} onChangePaymentMethod={setCheckoutPayment} onSubmit={submitOrder} onClose={() => setShowCheckout(false)} />
         </Modal>
 
         <Modal visible={showAddProduct} transparent animationType="slide" onRequestClose={() => setShowAddProduct(false)}>
