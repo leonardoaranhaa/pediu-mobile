@@ -100,6 +100,31 @@ describe("Pediu payment operational contract", () => {
       .rejects.toThrow("Pagamento não encontrado ou não autorizado");
   });
 
+  it("reuses an existing pending PIX payment instead of creating a duplicate charge", async () => {
+    vi.spyOn(db, "getOrderForCustomer").mockResolvedValue({
+      id: 501, customerId: 20, storeId: 7, total: "42.50", status: "Pendente",
+    } as any);
+    vi.spyOn(db, "getStoreById").mockResolvedValue({
+      id: 7, pixKey: "store-pix@test.local",
+    } as any);
+    vi.spyOn(db, "getPendingPixPaymentForOrder").mockResolvedValue({
+      id: 701, orderId: 501, method: "pix", status: "pending",
+      pixKey: "store-pix@test.local", transactionId: "charge-existing", createdAt: new Date(),
+    } as any);
+    const charge = vi.spyOn(payments, "createPixCharge");
+
+    const caller = appRouter.createCaller({ user: customer } as any);
+    const result = await caller.pediu.payments.createPix({ orderId: 501 });
+
+    expect(charge).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      paymentId: 701,
+      amount: "42.50",
+      providerChargeId: "charge-existing",
+      status: "pending",
+    });
+  });
+
   it("creates PIX using the persisted order total and store PIX key", async () => {
     vi.spyOn(db, "getOrderForCustomer").mockResolvedValue({
       id: 501, customerId: 20, storeId: 7, total: "42.50", status: "Pendente",
