@@ -1,3 +1,4 @@
 import { router } from "expo-router";
+import { Text } from "react-native";
 import { Page, Card, Row, s } from "@/components/pediu-page";
 export default function SettingsPage(){return <Page title="Configurações" eyebrow="PREFERÊNCIAS"><Card><Row icon="language" title="Idioma" subtitle="Português (Brasil)"/><Row icon="dark-mode" title="Aparência" subtitle="Seguir sistema"/><Row icon="notifications" title="Notificações" onPress={()=>router.push("/account/notifications")}/><Row icon="security" title="Segurança" subtitle="Sessão e autenticação"/></Card><Card><Row icon="tune" title="Configurações avançadas" subtitle="Privacidade, dados, diagnóstico e ambiente" onPress={()=>router.push("/account/settings/advanced")}/></Card><Text style={s.muted}>Versão do aplicativo: MVP · Pediu</Text></Page>}
