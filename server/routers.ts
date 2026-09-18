@@ -59,7 +59,7 @@ export const appRouter = router({
         const store = await db.getStoreById(input.storeId);
         if (!store) throw new Error("Estabelecimento não encontrado");
         if (!store.isOpen) throw new Error("Estabelecimento fechado no momento");
-        const products = await Promise.all(input.items.map((item) => db.getProductForStore(item.productId, input.storeId)));
+        const products = await Promise.all(input.items.map((item) => db.getAvailableProductForStore(item.productId, input.storeId)));
         if (products.some((p) => !p)) throw new Error("Há produto inválido ou de outro estabelecimento");
         const calculated = input.items.reduce((sum, item, i) => sum + Number(products[i]!.price) * item.quantity, 0) + Number(store?.deliveryFee ?? 0);
         if (Math.abs(calculated - Number(input.total)) > 0.01) throw new Error("Total do pedido inválido");
@@ -83,13 +83,20 @@ export const appRouter = router({
           if (input.status !== "Cancelado" || !canCustomerCancelOrder(order.status)) {
             throw new Error("O cliente só pode cancelar pedidos ainda não preparados");
           }
-          return db.updateOrderStatus(input.orderId, input.status);
+          await db.updateOrderStatus(input.orderId, input.status);
+          const store = await db.getStoreById(order.storeId);
+          if (store) {
+            await sendPushToUser(store.ownerId, "Pedido cancelado", `O pedido #${order.id} foi cancelado pelo cliente.`, { type: "order", orderId: order.id, status: input.status });
+          }
+          return { success: true as const };
         }
 
         if (!canTransitionOrder(order.status, input.status)) {
           throw new Error(`Transição de pedido inválida: ${order.status} → ${input.status}`);
         }
-        return db.updateOrderStatus(input.orderId, input.status);
+        await db.updateOrderStatus(input.orderId, input.status);
+        await sendPushToUser(order.customerId, "Atualização do pedido", `Seu pedido #${order.id} agora está: ${input.status}.`, { type: "order", orderId: order.id, status: input.status });
+        return { success: true as const };
       }),
     }),
     payments: router({
