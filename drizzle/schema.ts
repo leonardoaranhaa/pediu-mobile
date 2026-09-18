@@ -6,7 +6,7 @@ export const users = mysqlTable("users", {
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  role: mysqlEnum("role", ["user", "merchant", "admin"]).default("user").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -20,6 +20,7 @@ export const stores = mysqlTable("pediu_stores", {
   address: varchar("address", { length: 255 }),
   pixKey: varchar("pixKey", { length: 255 }),
   deliveryFee: decimal("deliveryFee", { precision: 10, scale: 2 }).default("0.00").notNull(),
+  isOpen: int("isOpen").default(1).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => ({ ownerUnique: unique("pediu_stores_owner_unique").on(table.ownerId) }));
 
@@ -38,7 +39,7 @@ export const orders = mysqlTable("pediu_orders", {
   id: int("id").autoincrement().primaryKey(),
   customerId: int("customerId").notNull(),
   storeId: int("storeId").notNull(),
-  status: mysqlEnum("status", ["Pendente", "Preparando", "A caminho", "Entregue", "Cancelado"]).default("Pendente").notNull(),
+  status: mysqlEnum("status", ["Pendente", "Aceito", "Preparando", "Pronto", "A caminho", "Entregue", "Cancelado"]).default("Pendente").notNull(),
   total: decimal("total", { precision: 10, scale: 2 }).notNull(),
   deliveryAddress: varchar("deliveryAddress", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -56,8 +57,8 @@ export const orderItems = mysqlTable("pediu_order_items", {
 export const payments = mysqlTable("pediu_payments", {
   id: int("id").autoincrement().primaryKey(),
   orderId: int("orderId").notNull(),
-  method: mysqlEnum("method", ["pix", "card", "cash"]).default("pix").notNull(),
-  status: mysqlEnum("status", ["pending", "paid", "failed"]).default("pending").notNull(),
+  method: mysqlEnum("method", ["pix", "card", "cash", "fiado"]).default("pix").notNull(),
+  status: mysqlEnum("status", ["pending", "paid", "failed", "cancelled"]).default("pending").notNull(),
   pixKey: varchar("pixKey", { length: 255 }),
   transactionId: varchar("transactionId", { length: 120 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -66,10 +67,13 @@ export const payments = mysqlTable("pediu_payments", {
 export const customers = mysqlTable("pediu_customers", {
   id: int("id").autoincrement().primaryKey(),
   storeId: int("storeId").notNull(),
+  userId: int("userId"),
   name: varchar("name", { length: 160 }).notNull(),
   phone: varchar("phone", { length: 32 }),
   notes: text("notes"),
+  creditLimit: decimal("creditLimit", { precision: 10, scale: 2 }).default("0.00").notNull(),
   balance: decimal("balance", { precision: 10, scale: 2 }).default("0.00").notNull(),
+  status: mysqlEnum("status", ["active", "blocked"]).default("active").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -77,8 +81,10 @@ export const ledgerEntries = mysqlTable("pediu_ledger_entries", {
   id: int("id").autoincrement().primaryKey(),
   storeId: int("storeId").notNull(),
   customerId: int("customerId").notNull(),
-  type: mysqlEnum("type", ["credit", "payment"]).notNull(),
+  orderId: int("orderId"),
+  type: mysqlEnum("type", ["credit", "payment", "adjustment", "reversal"]).notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  balanceAfter: decimal("balanceAfter", { precision: 10, scale: 2 }),
   note: varchar("note", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
