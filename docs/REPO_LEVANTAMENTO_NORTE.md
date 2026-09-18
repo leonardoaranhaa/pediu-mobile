@@ -416,3 +416,32 @@ Limitações ainda abertas:
 - não houve teste contra MySQL real nesta etapa;
 - busca textual da vitrine ainda é apenas visual e não filtra o marketplace;
 - pagamento PIX real ainda depende do gateway e o status de pagamento precisa persistir no banco em uma etapa própria.
+
+
+## Diretriz de UI — preservação do design original — 18/09/2026
+
+A camada visual das novas páginas deve preservar o design que já existia no MVP inicial, em vez de criar uma nova linguagem visual.
+
+### Fonte de verdade visual
+- Baseline visual: commit `d54c6e9501b760d977f479bc964c35c63000ac76`.
+- Referência principal: `app/(tabs)/index.tsx` desse baseline.
+- A identidade existente usa coral, azul-petróleo, creme, branco, laranja, amarelo e verde, com cartões arredondados, botões coral, cabeçalhos compactos, bottom navigation e hierarquia baseada em eyebrow → título → conteúdo.
+- As novas telas devem reutilizar essa linguagem, não introduzir uma segunda biblioteca visual concorrente.
+
+### Correção aplicada
+- `components/pediu-page.tsx` foi revisado para utilizar os mesmos tokens e padrões visuais do MVP original.
+- Login, cadastro, perfil e painel do vendedor foram revisados para recuperar elementos característicos do design original, incluindo marca, hero escuro do perfil/loja, cartões, bordas, raios, tipografia e estados de interação.
+- As demais telas que usam os componentes compartilhados passam a herdar a mesma base visual.
+
+### Regra para próximas telas
+Antes de criar qualquer nova página:
+1. localizar o equivalente visual no MVP original;
+2. reutilizar o componente/padrão existente quando houver;
+3. somente criar um novo padrão quando não existir equivalente;
+4. validar TypeScript/testes/build antes de avançar;
+5. registrar divergências visuais intencionais neste documento.
+
+### Estado
+- Revisão visual: implementada.
+- Validação automatizada após esta revisão: pendente.
+- Validação visual em dispositivo físico: pendente.
