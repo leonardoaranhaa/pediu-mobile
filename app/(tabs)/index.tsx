@@ -97,9 +97,13 @@ const CATEGORIES = [
 
 export default function HomeScreen() {
   const { user, isAuthenticated, logout } = useAuth();
-  const role: "customer" | "seller" = user?.role === "merchant" ? "seller" : "customer";
+  const [role, setRole] = useState<"customer" | "seller">("customer");
   const [customerTab, setCustomerTab] = useState<"discover" | "orders" | "profile">("discover");
   const [sellerTab, setSellerTab] = useState<"home" | "orders" | "catalog" | "clients" | "settings">("home");
+  useEffect(() => {
+    setRole(user?.role === "merchant" ? "seller" : "customer");
+  }, [user?.role]);
+
   const [products, setProducts] = useState(INITIAL_PRODUCTS);
   const [category, setCategory] = useState("Tudo");
   const marketplaceQuery = trpc.pediu.marketplace.products.useQuery({ category }, { staleTime: 30_000 });
@@ -171,6 +175,20 @@ export default function HomeScreen() {
   const cartScale = useRef(new Animated.Value(1)).current;
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(audioRecorder);
+
+  const enterSellerMode = () => {
+    if (!isAuthenticated) {
+      void startOAuthLogin();
+      return;
+    }
+    if (user?.role !== "merchant") {
+      notify("Sua conta ainda não possui perfil de vendedor");
+      return;
+    }
+    setRole("seller");
+    setSellerTab("home");
+    if (!storeQuery.data) setShowSellerOnboarding(true);
+  };
 
   useEffect(() => {
     Animated.sequence([
