@@ -9,3 +9,4 @@ ALTER TABLE `pediu_customers` ADD COLUMN `status` enum('active','blocked') NOT N
 ALTER TABLE `pediu_ledger_entries` ADD COLUMN `orderId` int;
 ALTER TABLE `pediu_ledger_entries` ADD COLUMN `balanceAfter` decimal(10,2);
 ALTER TABLE `pediu_ledger_entries` MODIFY COLUMN `type` enum('credit','payment','adjustment','reversal') NOT NULL;
+ALTER TABLE `pediu_customers` ADD CONSTRAINT `pediu_customers_store_user_unique` UNIQUE (`storeId`,`userId`);
