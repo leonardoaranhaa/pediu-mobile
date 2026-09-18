@@ -1,0 +1,5 @@
+import { useAuth } from "@/hooks/use-auth";
+import { router } from "expo-router";
+import { Text, View } from "react-native";
+import { Page, Card, Row, OutlineButton, PEDIU, s } from "@/components/pediu-page";
+export default function ProfilePage(){const {user,isAuthenticated,logout}=useAuth(); return <Page title="Perfil" eyebrow="SUA CONTA"><Card><Text style={{fontSize:20,fontWeight:"900",color:PEDIU.ink}}>{user?.name ?? "Sua conta"}</Text><Text style={s.muted}>{user?.email ?? "Entre para sincronizar seus dados"}</Text></Card><Card><Row icon="person" title="Dados pessoais" subtitle="Nome e informações da conta"/><Row icon="location-on" title="Meus endereços" onPress={()=>router.push("/account/addresses")}/><Row icon="credit-card" title="Pagamentos" onPress={()=>router.push("/account/payment-methods")}/><Row icon="notifications" title="Notificações" onPress={()=>router.push("/account/notifications")}/><Row icon="settings" title="Configurações" onPress={()=>router.push("/account/settings")}/></Card>{isAuthenticated?<OutlineButton title="Sair da conta" onPress={()=>void logout()}/>:null}</Page>}
