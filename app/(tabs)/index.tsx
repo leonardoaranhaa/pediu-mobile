@@ -50,6 +50,7 @@ type Product = {
   category: string;
   emoji: string;
   available: boolean;
+  deliveryFee?: string;
 };
 
 type OrderStatus = "Pendente" | "Aceito" | "Preparando" | "Pronto" | "A caminho" | "Entregue" | "Cancelado";
@@ -104,7 +105,6 @@ export default function HomeScreen() {
     setRole(user?.role === "merchant" ? "seller" : "customer");
   }, [user?.role]);
 
-  const [products, setProducts] = useState(INITIAL_PRODUCTS);
   const [category, setCategory] = useState("Tudo");
   const marketplaceQuery = trpc.pediu.marketplace.products.useQuery({ category }, { staleTime: 30_000 });
   const storeQuery = trpc.pediu.stores.mine.useQuery(undefined, { enabled: isAuthenticated && role === "seller" });
@@ -245,20 +245,18 @@ export default function HomeScreen() {
     notify("Localização atualizada");
   };
 
-  const liveProducts = useMemo(() => {
-    if (!marketplaceQuery.data?.length) return products;
-    return marketplaceQuery.data.map((product) => ({
-      id: product.id,
-      storeId: product.storeId,
-      name: product.name,
-      store: "Comércio local",
-      price: `R$ ${Number(product.price).toFixed(2).replace(".", ",")}`,
-      distance: "perto de você",
-      category: product.category,
-      emoji: product.category === "Lanches" ? "🍔" : "🍰",
-      available: Boolean(product.available),
-    }));
-  }, [marketplaceQuery.data, products]);
+  const liveProducts = useMemo(() => (marketplaceQuery.data ?? []).map((product) => ({
+    id: product.id,
+    storeId: product.storeId,
+    name: product.name,
+    store: product.storeName,
+    price: `R$ ${Number(product.price).toFixed(2).replace(".", ",")}`,
+    distance: "perto de você",
+    category: product.category,
+    emoji: product.category === "Lanches" ? "🍔" : product.category === "Serviços" ? "🛠️" : "🍰",
+    available: Boolean(product.available),
+    deliveryFee: product.deliveryFee,
+  })), [marketplaceQuery.data]);
 
   const filteredProducts = useMemo(
     () => liveProducts.filter((product) => category === "Tudo" || product.category === category),
@@ -271,6 +269,11 @@ export default function HomeScreen() {
   };
 
   const addToCart = (product: Product) => {
+    const currentStoreId = cart[0]?.storeId;
+    if (currentStoreId && product.storeId !== currentStoreId) {
+      notify("Seu pedido só pode reunir produtos da mesma loja");
+      return;
+    }
     setCart((current) => [...current, product]);
     setSelectedProduct(null);
     setCartPulse(true);
@@ -296,7 +299,9 @@ export default function HomeScreen() {
       void notifyWithHaptic("Informe o endereço de entrega", false);
       return;
     }
-    const total = cartTotal(cart.map((item) => item.price)).toFixed(2);
+    const itemsTotal = cartTotal(cart.map((item) => item.price));
+    const deliveryFee = Number(cart[0]?.deliveryFee ?? 0);
+    const total = (itemsTotal + deliveryFee).toFixed(2);
     createOrderMutation.mutate({
       storeId: cart[0]?.storeId ?? 1,
       total,
@@ -325,6 +330,7 @@ export default function HomeScreen() {
     category: product.category,
     emoji: product.category === "Lanches" ? "🍔" : product.category === "Serviços" ? "🛠️" : "🍰",
     available: Boolean(product.available),
+    deliveryFee: "0.00",
   })), [storeProductsQuery.data, storeQuery.data?.name]);
 
   const addProduct = () => {
@@ -449,6 +455,8 @@ export default function HomeScreen() {
               {customerTab === "discover" && (
                 <CustomerDiscover
                   products={filteredProducts}
+                  loading={marketplaceQuery.isLoading}
+                  error={marketplaceQuery.isError}
                   category={category}
                   setCategory={setCategory}
                   onProductPress={setSelectedProduct}
@@ -495,7 +503,7 @@ export default function HomeScreen() {
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>Seu pedido</Text>
             {cart.length ? cart.map((item, index) => <View style={styles.cartRow} key={`${item.id}-${index}`}><Text style={styles.cartEmoji}>{item.emoji}</Text><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{item.name}</Text><Text style={styles.muted}>{item.store}</Text></View><Text style={styles.price}>{item.price}</Text></View>) : <Text style={styles.emptyText}>Seu pedido está vazio.</Text>}
-            <View style={styles.totalRow}><Text style={styles.totalLabel}>Total estimado</Text><Text style={styles.totalValue}>{`R$ ${cartTotal(cart.map((item) => item.price)).toFixed(2).replace(".", ",")}`}</Text></View>
+            <View style={styles.totalRow}><Text style={styles.totalLabel}>Subtotal</Text><Text style={styles.totalValue}>{`R$ ${cartTotal(cart.map((item) => item.price)).toFixed(2).replace(".", ",")}`}</Text></View>{cart.length ? <View style={styles.totalRow}><Text style={styles.totalLabel}>Entrega</Text><Text style={styles.totalValue}>{`R$ ${Number(cart[0]?.deliveryFee ?? 0).toFixed(2).replace(".", ",")}`}</Text></View> : null}<View style={styles.totalRow}><Text style={styles.totalLabel}>Total do pedido</Text><Text style={styles.totalValue}>{`R$ ${(cartTotal(cart.map((item) => item.price)) + Number(cart[0]?.deliveryFee ?? 0)).toFixed(2).replace(".", ",")}`}</Text></View>
             {cart.length && !pixPaymentPending ? <Pressable style={paymentStyles.pixButton} onPress={() => { setPixPaymentPending(true); void notifyWithHaptic("Cobrança PIX criada e aguardando confirmação"); }}><MaterialIcons name="pix" size={18} color={COLORS.ink} /><Text style={paymentStyles.pixButtonText}>{pixPaymentLabel("idle")}</Text></Pressable> : null}
             {pixPaymentPending ? <View style={paymentStyles.pending}><MaterialIcons name="schedule" size={18} color={COLORS.orange} /><Text style={paymentStyles.pendingText}>{pixPaymentLabel("pending")}</Text></View> : null}
             <Pressable style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, !cart.length && styles.disabledButton]} disabled={!cart.length} onPress={openCheckout}><Text style={styles.primaryButtonText}>Continuar para entrega</Text><MaterialIcons name="arrow-forward" size={18} color={COLORS.white} /></Pressable>
@@ -504,7 +512,7 @@ export default function HomeScreen() {
         </Modal>
 
         <Modal visible={showCheckout} transparent animationType="slide" onRequestClose={() => setShowCheckout(false)}>
-          <CheckoutModal address={deliveryAddress} paymentMethod={checkoutPayment} total={cartTotal(cart.map((item) => item.price))} busy={createOrderMutation.isPending} onChangeAddress={setDeliveryAddress} onChangePaymentMethod={setCheckoutPayment} onSubmit={submitOrder} onClose={() => setShowCheckout(false)} />
+          <CheckoutModal address={deliveryAddress} paymentMethod={checkoutPayment} total={cartTotal(cart.map((item) => item.price)) + Number(cart[0]?.deliveryFee ?? 0)} busy={createOrderMutation.isPending} onChangeAddress={setDeliveryAddress} onChangePaymentMethod={setCheckoutPayment} onSubmit={submitOrder} onClose={() => setShowCheckout(false)} />
         </Modal>
 
         <Modal visible={showAddProduct} transparent animationType="slide" onRequestClose={() => setShowAddProduct(false)}>
@@ -533,7 +541,7 @@ function BrandMark({ small = false }: { small?: boolean }) {
   return <View style={[styles.brandMark, small && styles.brandMarkSmall]}><Text style={[styles.brandMarkText, small && styles.brandMarkTextSmall]}>p</Text></View>;
 }
 
-function CustomerDiscover({ products, category, setCategory, onProductPress, cartCount, cartScale, cartPulse, onCartPress, locationLabel, onLocationPress, onAssistant, onOrders }: { products: Product[]; category: string; setCategory: (value: string) => void; onProductPress: (product: Product) => void; cartCount: number; cartScale: Animated.Value; cartPulse: boolean; onCartPress: () => void; locationLabel: string; onLocationPress: () => void; onAssistant: () => void; onOrders: () => void }) {
+function CustomerDiscover({ products, loading, error, category, setCategory, onProductPress, cartCount, cartScale, cartPulse, onCartPress, locationLabel, onLocationPress, onAssistant, onOrders }: { products: Product[]; loading: boolean; error: boolean; category: string; setCategory: (value: string) => void; onProductPress: (product: Product) => void; cartCount: number; cartScale: Animated.Value; cartPulse: boolean; onCartPress: () => void; locationLabel: string; onLocationPress: () => void; onAssistant: () => void; onOrders: () => void }) {
   return <>
     <View style={styles.topBar}><View style={styles.brandRow}><BrandMark small /><Text style={styles.brandName}>Pediu</Text></View><View style={styles.topActions}><Animated.View style={{ transform: [{ scale: cartScale }] }}><Pressable style={styles.iconButton} onPress={onCartPress}><MaterialIcons name="shopping-bag" size={21} color={COLORS.ink} />{cartCount ? <View style={[styles.badge, cartPulse && { backgroundColor: COLORS.green }]}><Text style={styles.badgeText}>{cartCount}</Text></View> : null}</Pressable></Animated.View><Pressable style={styles.iconButton} onPress={onOrders}><MaterialIcons name="receipt-long" size={21} color={COLORS.ink} /></Pressable></View></View>
     <View style={styles.greetingRow}><View><Text style={styles.eyebrow}>PERTO DE VOCÊ</Text><Text style={styles.pageTitle}>Oi, Ana!</Text></View><View style={styles.avatar}><Text style={styles.avatarText}>A</Text></View></View>
@@ -543,7 +551,7 @@ function CustomerDiscover({ products, category, setCategory, onProductPress, car
     <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Categorias</Text><Text style={styles.link}>Ver tudo</Text></View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>{CATEGORIES.map((item) => <Pressable key={item.label} style={[styles.categoryChip, category === item.label && styles.categoryChipActive]} onPress={() => setCategory(item.label)}><Text style={styles.categoryIcon}>{item.icon}</Text><Text style={[styles.categoryLabel, category === item.label && styles.categoryLabelActive]}>{item.label}</Text></Pressable>)}</ScrollView>
     <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Boas opções para pedir agora</Text><Text style={styles.link}>Ver tudo</Text></View>
-    {products.map((product) => <Pressable key={product.id} style={({ pressed }) => [styles.productCard, pressed && styles.cardPressed]} onPress={() => onProductPress(product)}><View style={styles.productImage}><Text style={styles.productEmoji}>{product.emoji}</Text><View style={styles.availablePill}><View style={styles.dot} /><Text style={styles.availableText}>DISPONÍVEL</Text></View></View><View style={styles.productInfo}><View style={{ flex: 1 }}><View style={styles.ratingRow}><Text style={styles.rating}>★ 4,9</Text><Text style={styles.distance}>{product.distance}</Text></View><Text style={styles.productName}>{product.name}</Text><Text style={styles.storeName}>{product.store}</Text></View><Text style={styles.productPrice}>{product.price}</Text></View><View style={styles.productFooter}><Text style={styles.localText}>Recomendado por quem está perto de você</Text><View style={styles.arrowCircle}><MaterialIcons name="arrow-forward" size={17} color={COLORS.white} /></View></View></Pressable>)}
+    {loading ? <View style={styles.emptyState}><Text style={styles.emptyTitle}>Carregando opções...</Text><Text style={styles.emptyText}>Buscando produtos disponíveis perto de você.</Text></View> : error ? <View style={styles.emptyState}><Text style={styles.emptyTitle}>Não foi possível carregar o catálogo</Text><Text style={styles.emptyText}>Tente novamente em alguns instantes.</Text></View> : products.length ? products.map((product) => <Pressable key={product.id} style={({ pressed }) => [styles.productCard, pressed && styles.cardPressed]} onPress={() => onProductPress(product)}><View style={styles.productImage}><Text style={styles.productEmoji}>{product.emoji}</Text><View style={styles.availablePill}><View style={styles.dot} /><Text style={styles.availableText}>DISPONÍVEL</Text></View></View><View style={styles.productInfo}><View style={{ flex: 1 }}><View style={styles.ratingRow}><Text style={styles.rating}>★ 4,9</Text><Text style={styles.distance}>{product.distance}</Text></View><Text style={styles.productName}>{product.name}</Text><Text style={styles.storeName}>{product.store}</Text></View><Text style={styles.productPrice}>{product.price}</Text></View><View style={styles.productFooter}><Text style={styles.localText}>Recomendado por quem está perto de você</Text><View style={styles.arrowCircle}><MaterialIcons name="arrow-forward" size={17} color={COLORS.white} /></View></View></Pressable>) : <View style={styles.emptyState}><Text style={styles.emptyTitle}>Nenhuma opção disponível agora</Text><Text style={styles.emptyText}>Quando uma loja abrir e publicar produtos, eles aparecerão aqui.</Text></View>}
     <View style={styles.promiseCard}><MaterialIcons name="favorite" size={20} color={COLORS.coral} /><View style={{ flex: 1 }}><Text style={styles.promiseTitle}>Compre de quem está perto</Text><Text style={styles.promiseText}>Apoiamos o comércio local e entregamos com cuidado.</Text></View></View>
   </>;
 }
