@@ -55,11 +55,8 @@ export const appRouter = router({
         return store ? db.listOrdersForStore(store.id) : [];
       }),
       create: protectedProcedure.input(z.object({ storeId: z.number().int().positive(), total: z.string().regex(/^\d+(\.\d{1,2})?$/), paymentMethod: z.enum(["pix", "card", "cash", "fiado"]).default("pix"), deliveryAddress: z.string().max(255).optional(), items: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().int().positive().max(50), unitPrice: z.string().regex(/^\d+(\.\d{1,2})?$/) })).min(1) })).mutation(async ({ ctx, input }) => {
-        const store = await db.getStoreForOwner(input.storeId);
-        if (!store) {
-          const owned = await db.getStoreForOwner(ctx.user.id);
-          if (!owned || owned.id !== input.storeId) throw new Error("Estabelecimento não encontrado");
-        }
+        const store = await db.getStoreById(input.storeId);
+        if (!store) throw new Error("Estabelecimento não encontrado");
         const products = await Promise.all(input.items.map((item) => db.getProductForStore(item.productId, input.storeId)));
         if (products.some((p) => !p)) throw new Error("Há produto inválido ou de outro estabelecimento");
         const calculated = input.items.reduce((sum, item, i) => sum + Number(products[i]!.price) * item.quantity, 0) + Number(store?.deliveryFee ?? 0);
