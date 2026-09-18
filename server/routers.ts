@@ -114,6 +114,18 @@ export const appRouter = router({
         if (order.status === "Cancelado") throw new Error("Não é possível pagar um pedido cancelado");
         const store = await db.getStoreById(order.storeId);
         if (!store?.pixKey) throw new Error("A loja ainda não configurou uma chave PIX");
+        const existingPayment = await db.getPendingPixPaymentForOrder(order.id);
+        if (existingPayment) {
+          return {
+            paymentId: existingPayment.id,
+            amount: order.total,
+            providerChargeId: existingPayment.transactionId,
+            status: existingPayment.status,
+            checkoutUrl: null,
+            provider: "persisted",
+            message: "Cobrança PIX já existente.",
+          };
+        }
         const charge = await createPixCharge({ orderId: order.id, amount: order.total, pixKey: store.pixKey });
         const paymentId = await db.createPendingPixPayment(order.id, store.pixKey, charge.providerChargeId);
         return { paymentId, amount: order.total, ...charge };
