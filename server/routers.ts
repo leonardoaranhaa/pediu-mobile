@@ -66,7 +66,7 @@ export const appRouter = router({
         if (!store.isOpen) throw new Error("Estabelecimento fechado no momento");
         const products = await Promise.all(input.items.map((item) => db.getAvailableProductForStore(item.productId, input.storeId)));
         if (products.some((p) => !p)) throw new Error("Há produto inválido ou de outro estabelecimento");
-        const calculated = input.items.reduce((sum, item, i) => sum + Number(products[i]!.price) * item.quantity, 0) + Number(store?.deliveryFee ?? 0);
+        const calculated = input.items.reduce((sum, item, i) => sum + Number(products[i]!.price) * item.quantity, 0) + Number(store.deliveryFee ?? 0);
         if (Math.abs(calculated - Number(input.total)) > 0.01) throw new Error("Total do pedido inválido");
         if (input.paymentMethod === "fiado") {
           const customer = await db.getCustomerCreditByUser(input.storeId, ctx.user.id);
@@ -85,59 +85,48 @@ export const appRouter = router({
         if (!isOwner && order.customerId !== ctx.user.id) throw new Error("Pedido não autorizado");
 
         if (!isOwner) {
-          if (input.status !== "Cancelado" || !canCustomerCancelOrder(order.status)) {
-            throw new Error("O cliente só pode cancelar pedidos ainda não preparados");
-          }
+          if (input.status !== "Cancelado" || !canCustomerCancelOrder(order.status)) throw new Error("O cliente só pode cancelar pedidos ainda não preparados");
           await db.updateOrderStatus(input.orderId, input.status);
           const store = await db.getStoreById(order.storeId);
           if (store) {
-            try {
-              await sendPushToUser(store.ownerId, "Pedido cancelado", `O pedido #${order.id} foi cancelado pelo cliente.`, { type: "order", orderId: order.id, status: input.status });
-            } catch (error) {
-              console.warn("[Orders] Failed to notify store owner about cancellation:", error);
-            }
+            try { await sendPushToUser(store.ownerId, "Pedido cancelado", `O pedido #${order.id} foi cancelado pelo cliente.`, { type: "order", orderId: order.id, status: input.status }); }
+            catch (error) { console.warn("[Orders] Failed to notify store owner about cancellation:", error); }
           }
           return { success: true as const };
         }
 
-        if (!canTransitionOrder(order.status, input.status)) {
-          throw new Error(`Transição de pedido inválida: ${order.status} → ${input.status}`);
-        }
+        if (!canTransitionOrder(order.status, input.status)) throw new Error(`Transição de pedido inválida: ${order.status} → ${input.status}`);
         await db.updateOrderStatus(input.orderId, input.status);
-        try {
-          await sendPushToUser(order.customerId, "Atualização do pedido", `Seu pedido #${order.id} agora está: ${input.status}.`, { type: "order", orderId: order.id, status: input.status });
-        } catch (error) {
-          console.warn("[Orders] Failed to notify customer about status change:", error);
-        }
+        try { await sendPushToUser(order.customerId, "Atualização do pedido", `Seu pedido #${order.id} agora está: ${input.status}.`, { type: "order", orderId: order.id, status: input.status }); }
+        catch (error) { console.warn("[Orders] Failed to notify customer about status change:", error); }
         return { success: true as const };
       }),
     }),
     payments: router({
-      createPix: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), amount: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(), pixKey: z.string().min(3).max(255) })).mutation(async ({ input }) => { const charge = await createPixCharge(input); const paymentId = await db.createPendingPixPayment(input.orderId, input.pixKey); return { paymentId, ...charge }; }),
+      createPix: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        const order = await db.getOrderForCustomer(input.orderId, ctx.user.id);
+        if (!order) throw new Error("Pedido não encontrado ou não autorizado");
+        if (order.status === "Cancelado") throw new Error("Não é possível pagar um pedido cancelado");
+        const store = await db.getStoreById(order.storeId);
+        if (!store?.pixKey) throw new Error("A loja ainda não configurou uma chave PIX");
+        const charge = await createPixCharge({ orderId: order.id, amount: order.total, pixKey: store.pixKey });
+        const paymentId = await db.createPendingPixPayment(order.id, store.pixKey, charge.providerChargeId);
+        return { paymentId, amount: order.total, ...charge };
+      }),
       confirm: protectedProcedure.input(z.object({ paymentId: z.number().int().positive(), gatewayStatus: z.enum(["pending", "paid", "failed"]) })).mutation(async ({ ctx, input }) => {
         const payment = await db.getPaymentForUser(input.paymentId, ctx.user.id);
         if (!payment) throw new Error("Pagamento não encontrado ou não autorizado");
+        const customerOrder = await db.getOrderForCustomer(payment.orderId, ctx.user.id);
+        if (!customerOrder) throw new Error("Somente o cliente do pedido pode solicitar confirmação de pagamento");
 
         const currentStatus = payment.status as db.PaymentStatus;
         const nextStatus = input.gatewayStatus as Exclude<db.PaymentStatus, "cancelled">;
-        if (!db.canTransitionPayment(currentStatus, nextStatus)) {
-          throw new Error(`Transição de pagamento inválida: ${currentStatus} → ${nextStatus}`);
-        }
+        if (!db.canTransitionPayment(currentStatus, nextStatus)) throw new Error(`Transição de pagamento inválida: ${currentStatus} → ${nextStatus}`);
 
         await db.updatePaymentStatus(payment.id, nextStatus);
-
-        const message = nextStatus === "paid"
-          ? "Pagamento confirmado pelo gateway."
-          : nextStatus === "failed"
-            ? "O gateway informou falha no pagamento."
-            : "Pagamento ainda aguardando confirmação do gateway.";
-
-        try {
-          await sendPushToUser(ctx.user.id, "Atualização do pagamento", message, { paymentId: payment.id, status: nextStatus });
-        } catch (error) {
-          console.warn("[Payments] Failed to notify user about payment status:", error);
-        }
-
+        const message = nextStatus === "paid" ? "Pagamento confirmado pelo gateway." : nextStatus === "failed" ? "O gateway informou falha no pagamento." : "Pagamento ainda aguardando confirmação do gateway.";
+        try { await sendPushToUser(ctx.user.id, "Atualização do pagamento", message, { paymentId: payment.id, status: nextStatus }); }
+        catch (error) { console.warn("[Payments] Failed to notify user about payment status:", error); }
         return { paymentId: payment.id, status: nextStatus, message };
       }),
     }),
