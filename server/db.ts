@@ -294,6 +294,33 @@ export async function createOrderPayment(orderId: number, method: "pix" | "card"
   return Number((result as unknown as { insertId: number | string }).insertId);
 }
 
+export async function getPaymentForUser(paymentId: number, userId: number): Promise<Payment | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db
+    .select({ payment: payments })
+    .from(payments)
+    .innerJoin(orders, eq(payments.orderId, orders.id))
+    .where(sql`${payments.id} = ${paymentId} AND (${orders.customerId} = ${userId} OR ${orders.storeId} IN (SELECT id FROM pediu_stores WHERE ownerId = ${userId}))`)
+    .limit(1);
+  return result[0]?.payment;
+}
+
+export type PaymentStatus = "pending" | "paid" | "failed" | "cancelled";
+
+export function canTransitionPayment(current: PaymentStatus, next: PaymentStatus): boolean {
+  if (current === next) return true;
+  if (current === "pending") return next === "paid" || next === "failed";
+  if (current === "failed") return next === "pending";
+  return false;
+}
+
+export async function updatePaymentStatus(paymentId: number, status: Exclude<PaymentStatus, "cancelled">): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(payments).set({ status }).where(eq(payments.id, paymentId));
+}
+
 
 export async function listCustomersForStore(storeId: number): Promise<Customer[]> {
   const db = await getDb();
