@@ -1,0 +1,322 @@
+# Pediu Mobile — Levantamento Técnico e Norte de Implementação
+
+> Documento de referência para todas as alterações futuras do projeto.
+> Atualizado em 2026-09-18.
+
+## 1. Regra de trabalho
+
+Toda alteração deve seguir este ciclo:
+
+1. Levantar o estado atual antes de modificar.
+2. Definir a etapa e seu critério de aceite.
+3. Implementar em branch própria.
+4. Executar validação estática disponível.
+5. Executar testes automatizados disponíveis.
+6. Testar o fluxo operacional da etapa, preferencialmente em ambiente de desenvolvimento/preview.
+7. Registrar resultado, falhas e limitações.
+8. Só então iniciar a próxima etapa.
+
+**Não considerar uma etapa concluída apenas porque o código compila.**
+
+Quando não for possível executar um teste real por falta de ambiente, segredo, banco, dispositivo ou serviço externo, registrar explicitamente como **não validado operacionalmente** em vez de assumir que funciona.
+
+## 2. Estado atual do repositório
+
+Repositório: `leonardoaranhaa/pediu-mobile`
+
+Stack observada:
+- Expo ~54
+- React Native 0.81
+- React 19
+- Expo Router
+- TypeScript
+- NativeWind
+- tRPC 11
+- React Query
+- Express
+- Drizzle ORM
+- MySQL2
+- Zod
+- Expo Notifications
+- Expo Secure Store
+- Expo Location
+- Vitest
+- EAS Build
+
+Scripts relevantes:
+- `pnpm check` — TypeScript
+- `pnpm lint` — ESLint/Expo
+- `pnpm test` — Vitest
+- `pnpm build` — bundle do servidor
+- `pnpm db:push` — geração/migração Drizzle
+- `pnpm build:dev`
+- `pnpm build:preview`
+- `pnpm build:production`
+
+EAS possui perfis `development`, `preview` e `production`; preview está configurado para APK Android.
+
+## 3. Arquitetura observada
+
+O projeto não é um frontend isolado. Já existe uma arquitetura full-stack:
+
+### Cliente
+- `app/`
+- Expo Router
+- React Native
+- telas e navegação mobile
+
+### Backend
+- `server/_core/`
+- `server/routers.ts`
+- `server/db.ts`
+- `server/payments.ts`
+- `server/push.ts`
+- `server/storage.ts`
+- voz/transcrição
+
+### Dados
+- `drizzle/schema.ts`
+- migrations SQL em `drizzle/`
+
+### Comunicação
+- tRPC
+- React Query
+- autenticação baseada na infraestrutura existente
+- notificações push
+
+## 4. Domínios existentes/identificados
+
+O código já possui conceitos de:
+- usuários
+- lojas
+- produtos
+- pedidos
+- itens do pedido
+- pagamentos
+- clientes
+- ledger/fiado
+- vendas
+- push tokens
+- notificações
+- Pix
+- voz
+
+Também existem recursos de voz/IA. Eles devem ser tratados como complementares e não podem atrasar o fluxo transacional principal.
+
+## 5. Modelo de produto que guiará o desenvolvimento
+
+O Pediu deve ser tratado como uma plataforma com quatro áreas:
+
+### Cliente
+Descobrir estabelecimento → cardápio → produto → carrinho → checkout → pagamento → acompanhamento → histórico.
+
+### Estabelecimento
+Cadastro → cardápio → abertura/fechamento → recebimento do pedido → aceite/rejeição → preparação → pronto → entrega → histórico → clientes → fiado.
+
+### Entrega
+No MVP, não assumir automaticamente uma rede própria de entregadores. O modelo inicial deve permitir operação pelo próprio estabelecimento ou fluxo simplificado.
+
+### Administração
+Estabelecimentos → usuários → pedidos → pagamentos → crédito/fiado → auditoria → suporte.
+
+## 6. Pedido
+
+O pedido é o núcleo operacional.
+
+Estados alvo:
+- Pendente
+- Aceito
+- Preparando
+- Pronto
+- A caminho
+- Entregue
+- Cancelado
+
+Regras:
+- cliente pode cancelar apenas nos estados permitidos pelo negócio;
+- estabelecimento controla avanço operacional;
+- servidor deve validar autorização;
+- preço deve ser recalculado no servidor;
+- produto deve pertencer ao estabelecimento;
+- pedido deve preservar o preço efetivamente utilizado;
+- alterações de estado relevantes devem ser auditáveis.
+
+## 7. Pagamentos
+
+Pagamento deve ser um domínio separado do pedido.
+
+Métodos planejados:
+- Pix
+- cartão
+- dinheiro
+- fiado
+
+Estados planejados:
+- pending
+- authorized
+- paid
+- failed
+- refunded
+- cancelled
+
+Integrações externas não devem ser tratadas como confirmação simplesmente porque o cliente chamou um endpoint. Confirmação deve vir de fonte confiável/gateway quando aplicável.
+
+## 8. Fiado
+
+Fiado não é apenas um método de pagamento.
+
+É um sistema de crédito/conta corrente por estabelecimento.
+
+Modelo inicial recomendado:
+- estabelecimento concede o limite;
+- estabelecimento assume o risco comercial;
+- Pediu registra e operacionaliza a conta;
+- limite, saldo e histórico ficam vinculados ao estabelecimento e cliente.
+
+Entidades:
+- conta de crédito/cliente
+- limite
+- saldo
+- lançamentos
+- pagamentos
+- ajustes
+- estornos
+- auditoria
+
+Regra fundamental:
+**saldo não deve depender de edição manual arbitrária.**
+
+O ledger deve ser a fonte histórica dos movimentos; saldo materializado, se usado para performance, precisa ser atualizado de forma transacional e consistente.
+
+## 9. Segurança e autorização
+
+Toda mutation deve responder:
+
+1. Quem está fazendo?
+2. Qual recurso está sendo alterado?
+3. Esse recurso pertence ao usuário?
+4. A transição solicitada é permitida?
+5. Os valores recebidos pelo cliente são confiáveis?
+
+Nunca confiar em:
+- preço enviado pelo app;
+- storeId sem validação;
+- productId sem validação;
+- status enviado pelo cliente;
+- saldo enviado pelo cliente;
+- limite enviado pelo cliente.
+
+## 10. Banco de dados
+
+Não fazer refatorações cosméticas do schema.
+
+Alterações de banco devem:
+- possuir migration;
+- manter compatibilidade quando possível;
+- considerar dados existentes;
+- ser testadas em ambiente seguro;
+- ter rollback ou estratégia de recuperação quando a mudança for destrutiva.
+
+## 11. Ordem de implementação
+
+### Fase 0 — Fundação
+- schema coerente
+- autenticação/autorização
+- validação server-side
+- migrations
+- testes básicos
+
+### Fase 1 — Pedido
+Cliente → estabelecimento → produtos → carrinho → pedido.
+
+### Fase 2 — Operação da loja
+Dashboard → pedidos recebidos → aceitar/rejeitar → preparar → pronto → a caminho → entregue.
+
+### Fase 3 — Checkout
+Pix → dinheiro → cartão → confirmação de pagamento.
+
+### Fase 4 — Fiado
+Clientes → limite → saldo → ledger → compra → pagamento de dívida → bloqueio → histórico.
+
+### Fase 5 — Notificações
+Pedido e pagamento gerando eventos/notificações confiáveis.
+
+### Fase 6 — Administração
+Usuários → lojas → pedidos → pagamentos → fiado → auditoria.
+
+### Fase 7 — Escala
+Entregadores → rastreamento → comissões → promoções → avaliações → analytics → recomendações.
+
+## 12. O que NÃO priorizar agora
+
+Não avançar prematuramente em:
+- IA de recomendação
+- gamificação
+- programa de pontos
+- rede própria de entregadores
+- carteira financeira própria
+- tracking sofisticado
+- automações complexas
+
+Antes disso, o fluxo:
+
+**Cliente → Loja → Pedido → Pagamento → Fiado → Entrega**
+
+precisa funcionar de ponta a ponta.
+
+## 13. Critério de conclusão de uma etapa
+
+Uma etapa somente será marcada como concluída quando houver:
+
+- código implementado;
+- TypeScript sem erros;
+- lint sem erros relevantes;
+- testes automatizados passando quando aplicáveis;
+- migration aplicada/testada quando houver alteração de banco;
+- fluxo funcional testado;
+- autorização testada;
+- caso de erro testado;
+- documentação atualizada;
+- nenhuma regressão conhecida no fluxo anterior.
+
+## 14. Regra de continuidade
+
+Antes de iniciar a próxima etapa:
+
+**VALIDAR → TESTAR → REGISTRAR → SÓ ENTÃO AVANÇAR.**
+
+Se a etapa anterior falhar, o trabalho deve parar no ponto de falha e corrigir primeiro.
+
+## 15. Histórico de alterações
+
+### 2026-09-18 — Levantamento inicial
+Mapeada a arquitetura full-stack, domínio de delivery, pedido, pagamento e fiado.
+
+### 2026-09-18 — Primeira implementação
+Branch: `feat/core-delivery-fiado`
+
+Alterações propostas:
+- evolução do schema;
+- estados operacionais do pedido;
+- estrutura inicial de crédito/ledger;
+- validação server-side;
+- endpoints de operação da loja;
+- suporte inicial a fiado;
+- migration SQL.
+
+PR: #1.
+
+**Status desta etapa: implementação criada; validação operacional ainda pendente.**
+
+## 16. Observação importante sobre o estado de validação
+
+A análise do código e a implementação podem ser feitas via GitHub, mas isso não substitui a execução real do aplicativo e do banco.
+
+Portanto, qualquer afirmação futura de "funciona" deverá distinguir:
+- **validado por código**
+- **validado por TypeScript/lint/testes**
+- **validado com banco**
+- **validado no app**
+- **validado no fluxo ponta a ponta**
+
+Nunca tratar uma dessas categorias como substituta das demais.
