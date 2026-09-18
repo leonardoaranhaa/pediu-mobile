@@ -104,6 +104,10 @@ export default function HomeScreen() {
   const [category, setCategory] = useState("Tudo");
   const marketplaceQuery = trpc.pediu.marketplace.products.useQuery({ category }, { staleTime: 30_000 });
   const storeQuery = trpc.pediu.stores.mine.useQuery(undefined, { enabled: isAuthenticated && role === "seller" });
+  const storeProductsQuery = trpc.pediu.products.mine.useQuery(
+    { storeId: storeQuery.data?.id ?? 0 },
+    { enabled: isAuthenticated && role === "seller" && Boolean(storeQuery.data?.id), refetchInterval: 15_000 },
+  );
   const storeOrdersQuery = trpc.pediu.orders.storeMine.useQuery(undefined, { enabled: isAuthenticated && role === "seller", refetchInterval: 10_000 });
   const customerOrdersQuery = trpc.pediu.orders.mine.useQuery(undefined, { enabled: isAuthenticated && role === "customer", refetchInterval: 5_000 });
   const updateOrderStatusMutation = trpc.pediu.orders.status.useMutation({
@@ -121,6 +125,21 @@ export default function HomeScreen() {
   const registerPushMutation = trpc.pediu.notifications.register.useMutation();
   const markNotificationMutation = trpc.pediu.notifications.markRead.useMutation({ onSuccess: () => { void notificationsQuery.refetch(); } });
   const createStoreMutation = trpc.pediu.stores.create.useMutation({ onSuccess: () => { setShowSellerOnboarding(false); void storeQuery.refetch(); notify("Sua loja foi criada"); } });
+  const createProductMutation = trpc.pediu.products.create.useMutation({
+    onSuccess: () => {
+      setNewProductName("");
+      setNewProductPrice("");
+      setNewProductCategory("Doces");
+      setShowAddProduct(false);
+      void storeProductsQuery.refetch();
+      notify("Produto salvo no catálogo");
+    },
+    onError: (error) => notify(error.message),
+  });
+  const updateProductAvailabilityMutation = trpc.pediu.products.availability.useMutation({
+    onSuccess: () => { void storeProductsQuery.refetch(); },
+    onError: (error) => notify(error.message),
+  });
   const [cart, setCart] = useState<Product[]>([]);
   const [orderStatus, setOrderStatus] = useState<OrderStatus | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -142,6 +161,8 @@ export default function HomeScreen() {
   const [salePaymentMethod, setSalePaymentMethod] = useState<"pix" | "card" | "cash" | "fiado">("cash");
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [newProductName, setNewProductName] = useState("");
+  const [newProductPrice, setNewProductPrice] = useState("");
+  const [newProductCategory, setNewProductCategory] = useState("Doces");
   const [notice, setNotice] = useState("");
   const [pixPaymentPending, setPixPaymentPending] = useState(false);
   const [locationLabel, setLocationLabel] = useState("Usar minha localização");
@@ -282,24 +303,31 @@ export default function HomeScreen() {
     void scheduleOrderNotification(nextMessage);
   };
 
+  const sellerProducts = useMemo(() => (storeProductsQuery.data ?? []).map((product) => ({
+    id: product.id,
+    storeId: product.storeId,
+    name: product.name,
+    store: storeQuery.data?.name ?? "Minha loja",
+    price: `R$ ${Number(product.price).toFixed(2).replace(".", ",")}`,
+    distance: "sua loja",
+    category: product.category,
+    emoji: product.category === "Lanches" ? "🍔" : product.category === "Serviços" ? "🛠️" : "🍰",
+    available: Boolean(product.available),
+  })), [storeProductsQuery.data, storeQuery.data?.name]);
+
   const addProduct = () => {
-    if (!newProductName.trim()) return;
-    setProducts((current) => [
-      ...current,
-      {
-        id: Date.now(),
-        name: newProductName.trim(),
-        store: "Doce Encanto Bakery",
-        price: "R$ 18,00",
-        distance: "500 m",
-        category: "Doces",
-        emoji: "🍮",
-        available: true,
-      },
-    ]);
-    setNewProductName("");
-    setShowAddProduct(false);
-    notify("Produto adicionado ao catálogo");
+    const price = newProductPrice.replace(",", ".").trim();
+    const storeId = storeQuery.data?.id;
+    if (!storeId || !newProductName.trim() || !/^\\d+(\\.\\d{1,2})?$/.test(price)) {
+      notify("Informe nome, categoria e um preço válido");
+      return;
+    }
+    createProductMutation.mutate({
+      storeId,
+      name: newProductName.trim(),
+      category: newProductCategory.trim() || "Geral",
+      price,
+    });
   };
 
   const openVoiceAssistant = (mode: VoiceMode) => {
@@ -436,7 +464,7 @@ export default function HomeScreen() {
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
               {sellerTab === "home" && <><SellerHome onCatalog={() => setSellerTab("catalog")} onOrders={() => setSellerTab("orders")} onVoice={() => openVoiceAssistant("seller")} onNotice={notify} /><SellerVoiceLauncher onPress={() => openVoiceAssistant("seller")} /></>}
               {sellerTab === "orders" && <SellerOrders orders={storeOrdersQuery.data ?? []} onUpdateStatus={(orderId, status) => updateOrderStatusMutation.mutate({ orderId, status })} />}
-              {sellerTab === "catalog" && <SellerCatalog products={products} onAdd={() => setShowAddProduct(true)} onToggle={(id) => setProducts((current) => current.map((product) => product.id === id ? { ...product, available: !product.available } : product))} />}
+              {sellerTab === "catalog" && <SellerCatalog products={sellerProducts} loading={storeProductsQuery.isLoading} onAdd={() => setShowAddProduct(true)} onToggle={(id, available) => updateProductAvailabilityMutation.mutate({ productId: id, available })} />}
               {sellerTab === "clients" && <SellerClients customers={clientsQuery.data ?? []} onNotice={notify} />}
               {sellerTab === "settings" && <SellerSettings store={storeQuery.data} salesCount={salesQuery.data?.length ?? 0} onCustomerMode={() => { setRole("customer"); setCustomerTab("discover"); }} />}
             </ScrollView>
@@ -469,7 +497,7 @@ export default function HomeScreen() {
 
         <Modal visible={showAddProduct} transparent animationType="slide" onRequestClose={() => setShowAddProduct(false)}>
           <View style={styles.modalBackdrop}><View style={styles.sheet}>
-            <View style={styles.sheetHandle} /><Text style={styles.sheetTitle}>Novo produto</Text><Text style={styles.fieldLabel}>NOME DO PRODUTO</Text><TextInput value={newProductName} onChangeText={setNewProductName} placeholder="Ex.: Torta de morango" placeholderTextColor={COLORS.muted} style={styles.input} /><Pressable style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]} onPress={addProduct}><Text style={styles.primaryButtonText}>Adicionar ao catálogo</Text></Pressable><Pressable style={styles.textButton} onPress={() => setShowAddProduct(false)}><Text style={styles.textButtonLabel}>Cancelar</Text></Pressable>
+            <View style={styles.sheetHandle} /><Text style={styles.sheetTitle}>Novo produto</Text><Text style={styles.fieldLabel}>NOME DO PRODUTO</Text><TextInput value={newProductName} onChangeText={setNewProductName} placeholder="Ex.: Torta de morango" placeholderTextColor={COLORS.muted} style={styles.input} /><Text style={styles.fieldLabel}>CATEGORIA</Text><TextInput value={newProductCategory} onChangeText={setNewProductCategory} placeholder="Ex.: Doces" placeholderTextColor={COLORS.muted} style={styles.input} /><Text style={styles.fieldLabel}>PREÇO</Text><TextInput value={newProductPrice} onChangeText={setNewProductPrice} placeholder="Ex.: 18,00" placeholderTextColor={COLORS.muted} style={styles.input} keyboardType="decimal-pad" /><Pressable style={[styles.primaryButton, createProductMutation.isPending && styles.disabledButton]} disabled={createProductMutation.isPending} onPress={addProduct}><Text style={styles.primaryButtonText}>{createProductMutation.isPending ? "Salvando..." : "Adicionar ao catálogo"}</Text></Pressable><Pressable style={styles.textButton} onPress={() => setShowAddProduct(false)}><Text style={styles.textButtonLabel}>Cancelar</Text></Pressable>
           </View></View>
         </Modal>
 
@@ -618,8 +646,8 @@ function SellerOrders({
   );
 }
 
-function SellerCatalog({ products, onAdd, onToggle }: { products: Product[]; onAdd: () => void; onToggle: (id: number) => void }) {
-  return <><View style={styles.simpleHeader}><View><Text style={styles.eyebrow}>SUA VITRINE</Text><Text style={styles.pageTitle}>Catálogo</Text></View><Pressable style={styles.addCircle} onPress={onAdd}><MaterialIcons name="add" size={24} color={COLORS.white} /></Pressable></View><Text style={styles.muted}>Deixe seus produtos prontos para o próximo pedido.</Text>{products.map((product) => <View style={styles.catalogRow} key={product.id}><View style={styles.catalogEmoji}><Text>{product.emoji}</Text></View><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{product.name}</Text><Text style={styles.muted}>{product.category} · {product.price}</Text></View><Pressable style={[styles.stockSwitch, product.available && styles.stockSwitchOn]} onPress={() => onToggle(product.id)}><View style={[styles.stockKnob, product.available && styles.stockKnobOn]} /></Pressable></View>)}<View style={styles.publishCard}><MaterialIcons name="campaign" size={22} color={COLORS.coral} /><View style={{ flex: 1 }}><Text style={styles.tipTitle}>Divulgue seu catálogo</Text><Text style={styles.tipText}>Crie uma oferta com IA para compartilhar no WhatsApp.</Text></View><MaterialIcons name="chevron-right" size={22} color={COLORS.coral} /></View></>;
+function SellerCatalog({ products, loading, onAdd, onToggle }: { products: Product[]; loading: boolean; onAdd: () => void; onToggle: (id: number, available: boolean) => void }) {
+  return <><View style={styles.simpleHeader}><View><Text style={styles.eyebrow}>SUA VITRINE</Text><Text style={styles.pageTitle}>Catálogo</Text></View><Pressable style={styles.addCircle} onPress={onAdd}><MaterialIcons name="add" size={24} color={COLORS.white} /></Pressable></View><Text style={styles.muted}>Produtos persistidos da sua loja. Alterações ficam disponíveis para os clientes.</Text>{loading ? <View style={styles.emptyState}><Text style={styles.emptyTitle}>Carregando catálogo...</Text></View> : products.length ? products.map((product) => <View style={styles.catalogRow} key={product.id}><View style={styles.catalogEmoji}><Text>{product.emoji}</Text></View><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{product.name}</Text><Text style={styles.muted}>{product.category} · {product.price}</Text></View><Pressable style={[styles.stockSwitch, product.available && styles.stockSwitchOn]} onPress={() => onToggle(product.id, !product.available)}><View style={[styles.stockKnob, product.available && styles.stockKnobOn]} /></Pressable></View>) : <View style={styles.emptyState}><Text style={styles.emptyTitle}>Seu catálogo está vazio</Text><Text style={styles.emptyText}>Adicione o primeiro produto para começar a vender.</Text></View>}<View style={styles.publishCard}><MaterialIcons name="campaign" size={22} color={COLORS.coral} /><View style={{ flex: 1 }}><Text style={styles.tipTitle}>Divulgue seu catálogo</Text><Text style={styles.tipText}>Crie uma oferta com IA para compartilhar no WhatsApp.</Text></View><MaterialIcons name="chevron-right" size={22} color={COLORS.coral} /></View></>;
 }
 
 function SellerSettings({ store, salesCount, onCustomerMode }: { store?: { name: string; phone: string | null; pixKey: string | null }; salesCount: number; onCustomerMode: () => void }) {
