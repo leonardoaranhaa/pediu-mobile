@@ -104,6 +104,11 @@ export default function HomeScreen() {
   const [category, setCategory] = useState("Tudo");
   const marketplaceQuery = trpc.pediu.marketplace.products.useQuery({ category }, { staleTime: 30_000 });
   const storeQuery = trpc.pediu.stores.mine.useQuery(undefined, { enabled: isAuthenticated && role === "seller" });
+  const storeOrdersQuery = trpc.pediu.orders.storeMine.useQuery(undefined, { enabled: isAuthenticated && role === "seller", refetchInterval: 10_000 });
+  const updateOrderStatusMutation = trpc.pediu.orders.status.useMutation({
+    onSuccess: () => { void storeOrdersQuery.refetch(); },
+    onError: (error) => notify(error.message),
+  });
   const clientsQuery = trpc.pediu.clients.mine.useQuery(undefined, { enabled: isAuthenticated && role === "seller" });
   const salesQuery = trpc.pediu.sales.mine.useQuery(undefined, { enabled: isAuthenticated && role === "seller" });
   const notificationsQuery = trpc.pediu.notifications.mine.useQuery(undefined, { enabled: isAuthenticated });
@@ -429,7 +434,7 @@ export default function HomeScreen() {
           <>
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
               {sellerTab === "home" && <><SellerHome onCatalog={() => setSellerTab("catalog")} onOrders={() => setSellerTab("orders")} onVoice={() => openVoiceAssistant("seller")} onNotice={notify} /><SellerVoiceLauncher onPress={() => openVoiceAssistant("seller")} /></>}
-              {sellerTab === "orders" && <SellerOrders orderStatus={orderStatus} onAdvance={advanceOrder} onNotice={notify} />}
+              {sellerTab === "orders" && <SellerOrders orders={storeOrdersQuery.data ?? []} onUpdateStatus={(orderId, status) => updateOrderStatusMutation.mutate({ orderId, status })} />}
               {sellerTab === "catalog" && <SellerCatalog products={products} onAdd={() => setShowAddProduct(true)} onToggle={(id) => setProducts((current) => current.map((product) => product.id === id ? { ...product, available: !product.available } : product))} />}
               {sellerTab === "clients" && <SellerClients customers={clientsQuery.data ?? []} onNotice={notify} />}
               {sellerTab === "settings" && <SellerSettings store={storeQuery.data} salesCount={salesQuery.data?.length ?? 0} onCustomerMode={() => { setRole("customer"); setCustomerTab("discover"); }} />}
@@ -518,8 +523,93 @@ function SellerHome({ onCatalog, onOrders, onVoice, onNotice }: { onCatalog: () 
   return <><View style={styles.sellerHeader}><View><Text style={styles.eyebrowLight}>PAINEL DA LOJA</Text><Text style={styles.sellerTitle}>Doce Encanto Bakery</Text><Text style={styles.sellerSubtitle}>Bom dia, Helena. Tudo pronto?</Text></View><BrandMark /></View><View style={styles.statGrid}><View style={styles.statCard}><Text style={styles.statNumber}>3</Text><Text style={styles.statLabel}>pedidos novos</Text><MaterialIcons name="receipt-long" size={22} color={COLORS.coral} /></View><View style={styles.statCard}><Text style={styles.statNumber}>R$ 420</Text><Text style={styles.statLabel}>a receber</Text><MaterialIcons name="trending-up" size={22} color={COLORS.green} /></View></View><View style={styles.aiSellerCard}><View style={styles.aiIcon}><MaterialIcons name="mic" size={21} color={COLORS.white} /></View><View style={{ flex: 1 }}><Text style={styles.aiTitle}>Fale com o Pediu</Text><Text style={styles.aiText}>“Vendi um café para o João” ou “Quem me deve?”</Text></View><Pressable style={styles.smallLightButton} onPress={() => onNotice("Assistente ouvindo...")}><Text style={styles.smallLightButtonText}>Falar</Text></Pressable></View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Atalhos</Text></View><View style={styles.shortcutGrid}><Pressable style={({ pressed }) => [styles.shortcut, pressed && styles.cardPressed]} onPress={onCatalog}><MaterialIcons name="inventory-2" size={24} color={COLORS.coral} /><Text style={styles.shortcutTitle}>Catálogo</Text><Text style={styles.shortcutSub}>3 produtos ativos</Text></Pressable><Pressable style={({ pressed }) => [styles.shortcut, pressed && styles.cardPressed]} onPress={onOrders}><MaterialIcons name="local-shipping" size={24} color={COLORS.orange} /><Text style={styles.shortcutTitle}>Pedidos</Text><Text style={styles.shortcutSub}>1 aguardando ação</Text></Pressable><Pressable style={({ pressed }) => [styles.shortcut, pressed && styles.cardPressed]} onPress={() => onNotice("Divulgação pronta para compartilhar") }><MaterialIcons name="campaign" size={24} color={COLORS.ink} /><Text style={styles.shortcutTitle}>Divulgar</Text><Text style={styles.shortcutSub}>Criar com IA</Text></Pressable><Pressable style={({ pressed }) => [styles.shortcut, pressed && styles.cardPressed]} onPress={() => onNotice("Você tem R$ 420,00 em vendas fiadas") }><MaterialIcons name="people" size={24} color={COLORS.green} /><Text style={styles.shortcutTitle}>Clientes</Text><Text style={styles.shortcutSub}>48 cadastrados</Text></Pressable></View><View style={styles.tipCard}><MaterialIcons name="lightbulb" size={22} color={COLORS.orange} /><View style={{ flex: 1 }}><Text style={styles.tipTitle}>Dica do Pediu</Text><Text style={styles.tipText}>Uma boa foto e uma descrição curta ajudam seu produto a vender mais.</Text></View></View></>;
 }
 
-function SellerOrders({ orderStatus, onAdvance, onNotice }: { orderStatus: OrderStatus | null; onAdvance: () => void; onNotice: (message: string) => void }) {
-  return <><View style={styles.simpleHeader}><View><Text style={styles.eyebrow}>GESTÃO DA LOJA</Text><Text style={styles.pageTitle}>Pedidos</Text></View><View style={styles.statusPill}><Text style={styles.statusPillText}>12 HOJE</Text></View></View><View style={styles.filterRow}>{["Todos (12)", "Pendentes (4)", "Preparando (3)"].map((item, index) => <View style={[styles.filterChip, index === 0 && styles.filterChipActive]} key={item}><Text style={[styles.filterText, index === 0 && styles.filterTextActive]}>{item}</Text></View>)}</View><View style={styles.sellerOrderCard}><View style={styles.orderTop}><View><Text style={styles.eyebrow}>PENDENTE · #4902</Text><Text style={styles.orderStore}>Maria Oliveira</Text></View><Text style={styles.price}>R$ 68,50</Text></View><Text style={styles.muted}>2x Hambúrguer Artesanal · 1x Coca-Cola</Text><View style={styles.orderActions}><Pressable style={styles.outlineButtonSmall} onPress={() => onAdvance()}><Text style={styles.outlineButtonText}>Aceitar pedido</Text></Pressable><Pressable style={styles.rejectButton} onPress={() => onNotice("Pedido recusado") }><Text style={styles.rejectText}>Recusar</Text></Pressable></View></View><View style={styles.sellerOrderCard}><View style={styles.orderTop}><View><Text style={styles.eyebrow}>PREPARANDO · #4899</Text><Text style={styles.orderStore}>João Silva</Text></View><Text style={styles.price}>R$ 54,00</Text></View><Text style={styles.muted}>1x Pizza Família · Pago via PIX</Text><View style={styles.orderActions}><Pressable style={({ pressed }) => [styles.primaryButtonSmall, pressed && styles.pressed]} onPress={() => onAdvance()}><Text style={styles.primaryButtonText}>{orderStatus === "A caminho" ? "Finalizar" : "Chamar entrega"}</Text></Pressable></View></View></>;
+function SellerOrders({
+  orders,
+  onUpdateStatus,
+}: {
+  orders: Array<{
+    id: number;
+    customerId: number;
+    total: string;
+    status: string;
+    deliveryAddress: string | null;
+    createdAt: Date | null;
+  }>;
+  onUpdateStatus: (orderId: number, status: "Aceito" | "Preparando" | "Pronto" | "A caminho" | "Entregue" | "Cancelado") => void;
+}) {
+  const nextStatus: Record<string, "Aceito" | "Preparando" | "Pronto" | "A caminho" | "Entregue" | "Cancelado" | undefined> = {
+    Pendente: "Aceito",
+    Aceito: "Preparando",
+    Preparando: "Pronto",
+    Pronto: "A caminho",
+    "A caminho": "Entregue",
+  };
+
+  return (
+    <>
+      <View style={styles.simpleHeader}>
+        <View>
+          <Text style={styles.eyebrow}>GESTÃO DA LOJA</Text>
+          <Text style={styles.pageTitle}>Pedidos</Text>
+        </View>
+        <View style={styles.statusPill}>
+          <Text style={styles.statusPillText}>{orders.length} HOJE</Text>
+        </View>
+      </View>
+
+      {orders.length === 0 ? (
+        <View style={styles.sellerOrderCard}>
+          <Text style={styles.orderStore}>Nenhum pedido recebido</Text>
+          <Text style={styles.muted}>Quando um cliente fizer um pedido, ele aparecerá aqui.</Text>
+        </View>
+      ) : (
+        orders.map((order) => {
+          const next = nextStatus[order.status];
+          const actionLabel =
+            order.status === "Pendente" ? "Aceitar pedido" :
+            order.status === "Aceito" ? "Começar preparo" :
+            order.status === "Preparando" ? "Marcar como pronto" :
+            order.status === "Pronto" ? "Enviar para entrega" :
+            order.status === "A caminho" ? "Finalizar pedido" :
+            order.status;
+
+          return (
+            <View style={styles.sellerOrderCard} key={order.id}>
+              <View style={styles.orderTop}>
+                <View>
+                  <Text style={styles.eyebrow}>{order.status.toUpperCase()} · #{order.id}</Text>
+                  <Text style={styles.orderStore}>Cliente #{order.customerId}</Text>
+                </View>
+                <Text style={styles.price}>R$ {Number(order.total).toFixed(2).replace(".", ",")}</Text>
+              </View>
+              <Text style={styles.muted}>{order.deliveryAddress || "Endereço de entrega não informado"}</Text>
+
+              {next ? (
+                <View style={styles.orderActions}>
+                  <Pressable
+                    style={({ pressed }) => [styles.primaryButtonSmall, pressed && styles.pressed]}
+                    onPress={() => onUpdateStatus(order.id, next)}
+                  >
+                    <Text style={styles.primaryButtonText}>{actionLabel}</Text>
+                  </Pressable>
+                  {order.status === "Pendente" && (
+                    <Pressable
+                      style={styles.rejectButton}
+                      onPress={() => onUpdateStatus(order.id, "Cancelado")}
+                    >
+                      <Text style={styles.rejectText}>Recusar</Text>
+                    </Pressable>
+                  )}
+                </View>
+              ) : (
+                <Text style={styles.muted}>Pedido encerrado.</Text>
+              )}
+            </View>
+          );
+        })
+      )}
+    </>
+  );
 }
 
 function SellerCatalog({ products, onAdd, onToggle }: { products: Product[]; onAdd: () => void; onToggle: (id: number) => void }) {
