@@ -129,6 +129,51 @@ export async function updateProductAvailability(productId: number, available: bo
   await db.update(products).set({ available: available ? 1 : 0 }).where(eq(products.id, productId));
 }
 
+export async function getProductForStore(productId: number, storeId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(products).where(sql`${products.id} = ${productId} AND ${products.storeId} = ${storeId}`).limit(1);
+  return result[0];
+}
+
+export async function getOrderForUser(orderId: number, userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(orders).where(sql`${orders.id} = ${orderId} AND (${orders.customerId} = ${userId} OR ${orders.storeId} IN (SELECT id FROM pediu_stores WHERE ownerId = ${userId}))`).limit(1);
+  return result[0];
+}
+
+export async function listOrdersForStore(storeId: number): Promise<Order[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(orders).where(eq(orders.storeId, storeId));
+}
+
+export async function getCustomerCredit(storeId: number, customerId: number): Promise<Customer | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(customers).where(sql`${customers.id} = ${customerId} AND ${customers.storeId} = ${storeId}`).limit(1);
+  return result[0];
+}
+
+export async function updateStoreOpen(storeId: number, isOpen: boolean): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(stores).set({ isOpen: isOpen ? 1 : 0 }).where(eq(stores.id, storeId));
+}
+
+export async function setCustomerCreditLimit(storeId: number, customerId: number, creditLimit: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(customers).set({ creditLimit }).where(sql`${customers.id} = ${customerId} AND ${customers.storeId} = ${storeId}`);
+}
+
+export async function blockCustomer(storeId: number, customerId: number, blocked: boolean): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(customers).set({ status: blocked ? "blocked" : "active" }).where(sql`${customers.id} = ${customerId} AND ${customers.storeId} = ${storeId}`);
+}
+
 export async function createOrder(input: InsertOrder, items: Array<{ productId: number; quantity: number; unitPrice: string }>): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -137,6 +182,26 @@ export async function createOrder(input: InsertOrder, items: Array<{ productId: 
   if (items.length > 0) {
     await db.insert(orderItems).values(items.map((item) => ({ ...item, orderId })));
   }
+  return orderId;
+}
+
+export async function createOrderWithFiado(input: InsertOrder, items: Array<{ productId: number; quantity: number; unitPrice: string }>, customerId: number, storeId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const customer = await getCustomerCredit(storeId, customerId);
+  if (!customer) throw new Error("Cliente não cadastrado para esta loja");
+  if (customer.status !== "active") throw new Error("Cliente bloqueado");
+  const requested = Number(input.total);
+  const limit = Number(customer.creditLimit);
+  const balance = Number(customer.balance);
+  if (requested <= 0 || balance + requested > limit) throw new Error("Limite de fiado insuficiente");
+  const result = await db.insert(orders).values(input);
+  const orderId = Number((result as unknown as { insertId: number | string }).insertId);
+  await db.insert(orderItems).values(items.map((item) => ({ ...item, orderId })));
+  const newBalance = (balance + requested).toFixed(2);
+  await db.update(customers).set({ balance: newBalance }).where(eq(customers.id, customerId));
+  await db.insert(ledgerEntries).values({ storeId, customerId, orderId, type: "credit", amount: input.total, balanceAfter: newBalance, note: "Compra via Pediu" });
+  await db.insert(payments).values({ orderId, method: "fiado", status: "paid" });
   return orderId;
 }
 
@@ -189,9 +254,14 @@ export async function listLedgerEntriesForStore(storeId: number): Promise<Ledger
 export async function createLedgerEntry(input: InsertLedgerEntry): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(ledgerEntries).values(input);
-  const delta = input.type === "credit" ? input.amount : `-${input.amount}`;
-  await db.update(customers).set({ balance: sql`GREATEST(0, ${customers.balance} + ${delta})` }).where(eq(customers.id, input.customerId));
+  const customer = await getCustomerCredit(input.storeId, input.customerId);
+  if (!customer) throw new Error("Cliente não pertence a esta loja");
+  const current = Number(customer.balance);
+  const amount = Number(input.amount);
+  const newBalance = input.type === "credit" ? current + amount : Math.max(0, current - amount);
+  if (input.type === "credit" && newBalance > Number(customer.creditLimit)) throw new Error("Lançamento excede o limite de crédito");
+  const result = await db.insert(ledgerEntries).values({ ...input, balanceAfter: newBalance.toFixed(2) });
+  await db.update(customers).set({ balance: newBalance.toFixed(2) }).where(eq(customers.id, input.customerId));
   return Number((result as unknown as { insertId: number | string }).insertId);
 }
 
