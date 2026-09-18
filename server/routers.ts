@@ -103,6 +103,11 @@ export const appRouter = router({
       }),
     }),
     payments: router({
+      get: protectedProcedure.input(z.object({ paymentId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+        const payment = await db.getPaymentForUser(input.paymentId, ctx.user.id);
+        if (!payment) throw new Error("Pagamento não encontrado ou não autorizado");
+        return payment;
+      }),
       createPix: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
         const order = await db.getOrderForCustomer(input.orderId, ctx.user.id);
         if (!order) throw new Error("Pedido não encontrado ou não autorizado");
