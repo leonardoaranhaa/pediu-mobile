@@ -8,7 +8,7 @@ export type User = {
   name: string | null;
   email: string | null;
   loginMethod: string | null;
-  role: "user" | "merchant" | "admin";
+  role?: "user" | "merchant" | "admin";
   lastSignedIn: Date;
 };
 
