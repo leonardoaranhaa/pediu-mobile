@@ -1,6 +1,6 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputProps } from "react-native";
 
 export const PEDIU = {
@@ -32,7 +32,7 @@ export function Section({ title, children }: { title: string; children: ReactNod
 export function Field({ label, ...props }: TextInputProps & { label: string }) { return <View style={{ gap: 6 }}><Text style={s.label}>{label}</Text><TextInput {...props} placeholderTextColor={PEDIU.muted} style={[s.input, props.multiline && { minHeight: 86, textAlignVertical: "top" }]} /></View>; }
 export function PrimaryButton({ title, onPress, disabled }: { title: string; onPress?: () => void; disabled?: boolean }) { return <Pressable disabled={disabled} onPress={onPress} style={[s.primary, disabled && { opacity: .5 }]}><Text style={s.primaryText}>{title}</Text><MaterialIcons name="arrow-forward" size={18} color={PEDIU.white} /></Pressable>; }
 export function OutlineButton({ title, onPress }: { title: string; onPress?: () => void }) { return <Pressable onPress={onPress} style={s.outline}><Text style={s.outlineText}>{title}</Text></Pressable>; }
-export function Row({ icon, title, subtitle, onPress, right }: { icon: React.ComponentProps<typeof MaterialIcons>["name"]; title: string; subtitle?: string; onPress?: () => void; right?: ReactNode }) { return <Pressable onPress={onPress} style={s.row}><View style={s.icon}><MaterialIcons name={icon} size={20} color={PEDIU.ink} /></View><View style={{ flex: 1, gap: 2 }}><Text style={s.rowTitle}>{title}</Text>{subtitle ? <Text style={s.muted}>{subtitle}</Text> : null}</View>{right ?? <MaterialIcons name="chevron-right" size={21} color={PEDIU.muted} />}</Pressable>; }
+export function Row({ icon, title, subtitle, onPress, right }: { icon: ComponentProps<typeof MaterialIcons>["name"]; title: string; subtitle?: string; onPress?: () => void; right?: ReactNode }) { return <Pressable onPress={onPress} style={s.row}><View style={s.icon}><MaterialIcons name={icon} size={20} color={PEDIU.ink} /></View><View style={{ flex: 1, gap: 2 }}><Text style={s.rowTitle}>{title}</Text>{subtitle ? <Text style={s.muted}>{subtitle}</Text> : null}</View>{right ?? <MaterialIcons name="chevron-right" size={21} color={PEDIU.muted} />}</Pressable>; }
 export function ToggleRow({ icon, title, subtitle, value, onChange }: { icon: React.ComponentProps<typeof MaterialIcons>["name"]; title: string; subtitle?: string; value: boolean; onChange: (value: boolean) => void }) { return <Row icon={icon} title={title} subtitle={subtitle} right={<Pressable onPress={() => onChange(!value)} style={[s.toggle, value && s.toggleOn]}><View style={[s.knob, value && s.knobOn]} /></Pressable>} />; }
 
 export const s = StyleSheet.create({
