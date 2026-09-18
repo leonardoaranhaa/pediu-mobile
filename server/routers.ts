@@ -66,7 +66,7 @@ export const appRouter = router({
         if (input.paymentMethod === "fiado") {
           const customer = await db.getCustomerCreditByUser(input.storeId, ctx.user.id);
           if (!customer) throw new Error("Cliente não habilitado para fiado nesta loja");
-          const orderId = await db.createOrderWithFiado({ customerId: customer.id, storeId: input.storeId, total: input.total, deliveryAddress: input.deliveryAddress }, input.items.map((item, i) => ({ ...item, unitPrice: String(products[i]!.price) })), customer.id, input.storeId);
+          const orderId = await db.createOrderWithFiado({ customerId: ctx.user.id, storeId: input.storeId, total: input.total, deliveryAddress: input.deliveryAddress }, input.items.map((item, i) => ({ ...item, unitPrice: String(products[i]!.price) })), customer.id, input.storeId);
           return { orderId, paymentId: null, status: "Pendente" as const };
         }
         const orderId = await db.createOrder({ customerId: ctx.user.id, storeId: input.storeId, total: input.total, deliveryAddress: input.deliveryAddress }, input.items.map((item, i) => ({ ...item, unitPrice: String(products[i]!.price) })));
