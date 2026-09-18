@@ -80,6 +80,26 @@ describe("Pediu payment operational contract", () => {
       .rejects.toThrow("Somente o cliente do pedido pode solicitar confirmação de pagamento");
   });
 
+  it("returns payment status only to an authorized customer", async () => {
+    vi.spyOn(db, "getPaymentForUser").mockResolvedValue({
+      id: 701, orderId: 501, method: "pix", status: "pending",
+      pixKey: "store-pix@test.local", transactionId: "charge-501", createdAt: new Date(),
+    } as any);
+
+    const caller = appRouter.createCaller({ user: customer } as any);
+    const result = await caller.pediu.payments.get({ paymentId: 701 });
+
+    expect(result).toMatchObject({ id: 701, orderId: 501, status: "pending" });
+  });
+
+  it("rejects payment status lookup when the user is not authorized", async () => {
+    vi.spyOn(db, "getPaymentForUser").mockResolvedValue(undefined);
+    const caller = appRouter.createCaller({ user: merchant } as any);
+
+    await expect(caller.pediu.payments.get({ paymentId: 701 }))
+      .rejects.toThrow("Pagamento não encontrado ou não autorizado");
+  });
+
   it("creates PIX using the persisted order total and store PIX key", async () => {
     vi.spyOn(db, "getOrderForCustomer").mockResolvedValue({
       id: 501, customerId: 20, storeId: 7, total: "42.50", status: "Pendente",
