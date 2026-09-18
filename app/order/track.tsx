@@ -1,0 +1,5 @@
+import { useState } from "react";
+import { Text, View } from "react-native";
+import { Page, Card, PEDIU, s } from "@/components/pediu-page";
+const states=["Pendente","Aceito","Preparando","Pronto","A caminho","Entregue"];
+export default function TrackOrderPage(){const [active]=useState(2);return <Page title="Acompanhar pedido" eyebrow="PEDIDO #4902"><Card><Text style={s.sectionTitle}>Doce Encanto Bakery</Text><Text style={s.muted}>Seu pedido está sendo preparado.</Text>{states.map((state,i)=><View key={state} style={{flexDirection:"row",gap:12,alignItems:"center",paddingVertical:10}}><View style={{width:14,height:14,borderRadius:7,backgroundColor:i<=active?PEDIU.coral:PEDIU.line}}/><View><Text style={{fontSize:13,fontWeight:"900",color:i<=active?PEDIU.ink:PEDIU.muted}}>{state}</Text>{i===active?<Text style={s.muted}>A loja está preparando seus itens.</Text>:null}</View></View>)}</Card></Page>}
