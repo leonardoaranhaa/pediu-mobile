@@ -51,6 +51,11 @@ export const appRouter = router({
     }),
     orders: router({
       mine: protectedProcedure.query(({ ctx }) => db.listOrdersForCustomer(ctx.user.id)),
+      get: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+        const order = await db.getOrderForUser(input.orderId, ctx.user.id);
+        if (!order) throw new Error("Pedido não encontrado ou não autorizado");
+        return order;
+      }),
       storeMine: protectedProcedure.query(async ({ ctx }) => {
         const store = await db.getStoreForOwner(ctx.user.id);
         return store ? db.listOrdersForStore(store.id) : [];
