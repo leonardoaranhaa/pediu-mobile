@@ -75,7 +75,7 @@ export const customers = mysqlTable("pediu_customers", {
   balance: decimal("balance", { precision: 10, scale: 2 }).default("0.00").notNull(),
   status: mysqlEnum("status", ["active", "blocked"]).default("active").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => ({ userStoreUnique: unique("pediu_customers_store_user_unique").on(table.storeId, table.userId) }));
 
 export const ledgerEntries = mysqlTable("pediu_ledger_entries", {
   id: int("id").autoincrement().primaryKey(),
