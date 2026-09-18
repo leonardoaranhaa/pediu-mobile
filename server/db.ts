@@ -159,7 +159,7 @@ export async function listOrdersForStore(storeId: number): Promise<Order[]> {
 export async function getCustomerCredit(storeId: number, customerId: number): Promise<Customer | undefined> {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(customers).where(sql`${customers.id} = ${customerId} AND ${customers.storeId} = ${storeId}`).limit(1);
+  const result = await db.select().from(customers).where(sql`${customers.id} = ${creditCustomerId} AND ${customers.storeId} = ${storeId}`).limit(1);
   return result[0];
 }
 
@@ -199,7 +199,7 @@ export async function createOrder(input: InsertOrder, items: Array<{ productId: 
   return orderId;
 }
 
-export async function createOrderWithFiado(input: InsertOrder, items: Array<{ productId: number; quantity: number; unitPrice: string }>, customerId: number, storeId: number): Promise<number> {
+export async function createOrderWithFiado(input: InsertOrder, items: Array<{ productId: number; quantity: number; unitPrice: string }>, creditCustomerId: number, storeId: number): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   if (items.length === 0) throw new Error("Pedido sem itens");
@@ -228,7 +228,7 @@ export async function createOrderWithFiado(input: InsertOrder, items: Array<{ pr
     await tx.update(customers).set({ balance: newBalance })
       .where(sql`${customers.id} = ${customerId} AND ${customers.storeId} = ${storeId}`);
     await tx.insert(ledgerEntries).values({
-      storeId, customerId, orderId, type: "credit",
+      storeId, customerId: creditCustomerId, orderId, type: "credit",
       amount: input.total, balanceAfter: newBalance, note: "Compra via Pediu"
     });
     await tx.insert(payments).values({ orderId, method: "fiado", status: "paid" });
