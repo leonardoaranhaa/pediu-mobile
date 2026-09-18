@@ -1,8 +1,6 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { appRouter } from "../server/routers";
 import * as db from "../server/db";
-import { sendPushToUser } from "../server/push";
-
 const user = {
   id: 10,
   openId: "merchant-10",
@@ -45,7 +43,6 @@ describe("Pediu order operational contract", () => {
     vi.spyOn(db, "listOrdersForStore").mockResolvedValue([order] as any);
     vi.spyOn(db, "getOrderForUser").mockResolvedValue(order as any);
     vi.spyOn(db, "updateOrderStatus").mockResolvedValue(undefined as any);
-    vi.spyOn(sendPushToUser as any, "call");
 
     const caller = appRouter.createCaller({ user } as any);
     const visible = await caller.pediu.orders.storeMine();
