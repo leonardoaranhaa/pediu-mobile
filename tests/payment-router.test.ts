@@ -88,9 +88,11 @@ describe("Pediu payment operational contract", () => {
       id: 7, pixKey: "store-pix@test.local",
     } as any);
     const charge = vi.spyOn(payments, "createPixCharge").mockResolvedValue({
+      provider: "test",
       providerChargeId: "charge-501",
       checkoutUrl: "https://pix.test/charge-501",
       status: "pending",
+      message: "pending",
     });
     const createPayment = vi.spyOn(db, "createPendingPixPayment").mockResolvedValue(701);
 
