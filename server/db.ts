@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { Customer, InsertCustomer, InsertLedgerEntry, InsertNotification, InsertOrder, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Notification, Order, Product, PushToken, Sale, Store, customers, ledgerEntries, notifications, orderItems, orders, payments, products, pushTokens, sales, stores, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -110,11 +110,36 @@ export async function createStore(input: InsertStore): Promise<number> {
   return Number((result as unknown as { insertId: number | string }).insertId);
 }
 
-export async function listAvailableProducts(category?: string): Promise<Product[]> {
+export type MarketplaceProduct = Product & {
+  storeName: string;
+  deliveryFee: string;
+};
+
+export async function listAvailableProducts(category?: string): Promise<MarketplaceProduct[]> {
   const db = await getDb();
   if (!db) return [];
-  const result = await db.select().from(products);
-  return result.filter((product) => Boolean(product.available) && (!category || category === "Tudo" || product.category === category));
+
+  const filters = [eq(products.available, 1), eq(stores.isOpen, 1)];
+  if (category && category !== "Tudo") filters.push(eq(products.category, category));
+
+  const result = await db
+    .select({
+      id: products.id,
+      storeId: products.storeId,
+      name: products.name,
+      category: products.category,
+      description: products.description,
+      price: products.price,
+      available: products.available,
+      createdAt: products.createdAt,
+      storeName: stores.name,
+      deliveryFee: stores.deliveryFee,
+    })
+    .from(products)
+    .innerJoin(stores, eq(products.storeId, stores.id))
+    .where(and(...filters));
+
+  return result;
 }
 
 export async function createProduct(input: InsertProduct): Promise<number> {
