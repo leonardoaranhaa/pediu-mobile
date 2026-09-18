@@ -159,14 +159,14 @@ export async function listOrdersForStore(storeId: number): Promise<Order[]> {
 export async function getCustomerCredit(storeId: number, customerId: number): Promise<Customer | undefined> {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(customers).where(sql\`\${customers.id} = \${customerId} AND \${customers.storeId} = \${storeId}\`).limit(1);
+  const result = await db.select().from(customers).where(sql`${customers.id} = ${customerId} AND ${customers.storeId} = ${storeId}`).limit(1);
   return result[0];
 }
 
 export async function getCustomerCreditByUser(storeId: number, userId: number): Promise<Customer | undefined> {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(customers).where(sql\`\${customers.userId} = \${userId} AND \${customers.storeId} = \${storeId}\`).limit(1);
+  const result = await db.select().from(customers).where(sql`${customers.userId} = ${userId} AND ${customers.storeId} = ${storeId}`).limit(1);
   return result[0];
 }
 
@@ -208,7 +208,7 @@ export async function createOrderWithFiado(input: InsertOrder, items: Array<{ pr
 
   return db.transaction(async (tx) => {
     const customerRows = await tx.select().from(customers)
-      .where(sql\`\${customers.id} = \${customerId} AND \${customers.storeId} = \${storeId}\`)
+      .where(sql`${customers.id} = ${customerId} AND ${customers.storeId} = ${storeId}`)
       .limit(1);
     const customer = customerRows[0];
     if (!customer) throw new Error("Cliente não cadastrado para esta loja");
@@ -226,7 +226,7 @@ export async function createOrderWithFiado(input: InsertOrder, items: Array<{ pr
 
     const newBalance = (balance + requested).toFixed(2);
     await tx.update(customers).set({ balance: newBalance })
-      .where(sql\`\${customers.id} = \${customerId} AND \${customers.storeId} = \${storeId}\`);
+      .where(sql`${customers.id} = ${customerId} AND ${customers.storeId} = ${storeId}`);
     await tx.insert(ledgerEntries).values({
       storeId, customerId, orderId, type: "credit",
       amount: input.total, balanceAfter: newBalance, note: "Compra via Pediu"
@@ -290,7 +290,7 @@ export async function createLedgerEntry(input: InsertLedgerEntry): Promise<numbe
 
   return db.transaction(async (tx) => {
     const rows = await tx.select().from(customers)
-      .where(sql\`\${customers.id} = \${input.customerId} AND \${customers.storeId} = \${input.storeId}\`)
+      .where(sql`${customers.id} = ${input.customerId} AND ${customers.storeId} = ${input.storeId}`)
       .limit(1);
     const customer = rows[0];
     if (!customer) throw new Error("Cliente não pertence a esta loja");
@@ -304,7 +304,7 @@ export async function createLedgerEntry(input: InsertLedgerEntry): Promise<numbe
 
     const result = await tx.insert(ledgerEntries).values({ ...input, balanceAfter: newBalance.toFixed(2) });
     await tx.update(customers).set({ balance: newBalance.toFixed(2) })
-      .where(sql\`\${customers.id} = \${input.customerId} AND \${customers.storeId} = \${input.storeId}\`);
+      .where(sql`${customers.id} = ${input.customerId} AND ${customers.storeId} = ${input.storeId}`);
     return Number((result as unknown as { insertId: number | string }).insertId);
   });
 }
