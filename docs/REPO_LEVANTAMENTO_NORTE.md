@@ -658,3 +658,32 @@ Antes de criar migrations financeiras:
 **Princípio:** o banco do Pediu registra a verdade operacional e contábil da plataforma; o PSP é a fonte de verdade para o movimento financeiro externo.
 
 **Estado:** arquitetura aprovada para implementação; nenhuma migration financeira foi criada nesta etapa.
+
+
+## Validação da Fase 6 — Administração — F6.1 — 19/09/2026
+
+Implementado:
+- router administrativo separado em `server/admin-router.ts`;
+- todos os contratos administrativos protegidos por `adminProcedure`;
+- consultas administrativas para usuários, estabelecimentos, pedidos, pagamentos, clientes/fiado, ledger e auditoria;
+- paginação limitada no servidor (`limit` entre 1 e 100 e `offset` não negativo);
+- tabela `pediu_admin_audit_logs` criada por migration `0007_admin_audit_logs.sql`;
+- snapshot/journal Drizzle atualizados para a nova migration;
+- dados de usuários expostos ao administrador são selecionados explicitamente, evitando retornar campos desnecessários;
+- nenhuma mutation administrativa foi criada nesta camada inicial; operações destrutivas serão adicionadas somente com autorização, auditoria e testes específicos.
+
+Testes criados:
+- administrador acessa todos os contratos administrativos;
+- merchant recebe `FORBIDDEN`;
+- usuário comum recebe `FORBIDDEN`;
+- usuário anônimo recebe `FORBIDDEN`;
+- paginação inválida é rejeitada no boundary do router.
+
+Estado:
+- implementação criada na branch `feat/norte-phase-5-6`;
+- validação TypeScript/testes/build ainda deve ser confirmada pelo CI desta alteração;
+- migration e fluxo administrativo real contra MySQL ainda precisam ser observados no pipeline operacional;
+- interface administrativa ainda não foi criada; será iniciada somente após validar este contrato backend.
+
+Regra de continuidade:
+**F6.1 só será considerada validada após CI verde e validação da migration/fluxo administrativo.**
