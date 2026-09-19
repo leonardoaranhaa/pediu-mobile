@@ -55,10 +55,10 @@ jobs:
           const mysql = require('mysql2/promise');
           (async () => {
             const c = await mysql.createConnection(process.env.DATABASE_URL);
-            const [tables] = await c.query("SHOW TABLES LIKE 'pediu_%'");
+            const [tables] = await c.query('SHOW TABLES');
             const names = tables.map(row => Object.values(row)[0]);
             const required = [
-              'pediu_users',
+              'users',
               'pediu_stores',
               'pediu_orders',
               'pediu_payments',

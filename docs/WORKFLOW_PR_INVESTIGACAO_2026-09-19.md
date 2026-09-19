@@ -22,27 +22,30 @@ A primeira execução falhava na migration `drizzle/0005_delivery_fiado_core.sql
 
 Depois que os separadores foram adicionados, a execução avançou para a migration `drizzle/0006_marketplace_financial_domain.sql` e revelou uma segunda causa independente: as oito tabelas financeiras declaravam uma coluna `id` com `AUTO_INCREMENT`, mas não declaravam `PRIMARY KEY`. O MySQL rejeitou a primeira tabela com `ER_WRONG_AUTO_KEY` e a mensagem `there can be only one auto column and it must be defined as a key`.
 
-O schema Drizzle já declarava `.autoincrement().primaryKey()` para essas oito tabelas. As migrations SQL manuais estavam inconsistentes com essa fonte de verdade.
+Depois que as chaves primárias foram adicionadas, as migrations foram aplicadas com sucesso, mas a etapa `Verify migrated schema` do workflow falhou por um terceiro problema: o workflow exigia uma tabela chamada `pediu_users`, embora a migration e o schema real usem `users`. A consulta também usava `SHOW TABLES LIKE 'pediu_%'`, que nunca poderia retornar a tabela `users` sem prefixo.
 
 ## Correções
 
 Foram adicionados marcadores `--> statement-breakpoint` entre todas as 13 instruções da migration `0005_delivery_fiado_core.sql`.
 
-Também foram adicionadas as chaves primárias `id` às oito tabelas da migration `0006_marketplace_financial_domain.sql`, preservando as constraints únicas existentes e alinhando a migration ao schema Drizzle.
+Foram adicionadas as chaves primárias `id` às oito tabelas da migration `0006_marketplace_financial_domain.sql`, preservando as constraints únicas existentes e alinhando a migration ao schema Drizzle.
 
-Nenhuma regra de negócio, coluna ou tabela foi removida. As alterações corrigem somente a execução e a definição estrutural das migrations.
+A etapa de verificação do workflow foi corrigida para consultar todas as tabelas com `SHOW TABLES` e exigir o nome real `users`, mantendo as demais tabelas `pediu_*` esperadas.
+
+Nenhuma regra de negócio, coluna ou tabela foi removida. As alterações corrigem somente a execução das migrations, a definição estrutural financeira e a verificação do schema no CI.
 
 Este documento registra a investigação, as causas sequenciais e os critérios de aceite.
 
 ## Validação
 
 - `pnpm install --frozen-lockfile`: aprovado.
-- `pnpm check`: aprovado antes da correção estrutural de SQL; a alteração atual não envolve TypeScript.
-- `pnpm test`: aprovado antes da correção estrutural de SQL — 9 arquivos passaram; 36 testes passaram; 1 teste foi pulado por depender de autenticação externa.
-- `pnpm build`: aprovado antes da correção estrutural de SQL; a alteração atual não envolve o bundle.
+- `pnpm check`: aprovado.
+- `pnpm test`: aprovado — 9 arquivos passaram; 36 testes passaram; 1 teste foi pulado por depender de autenticação externa.
+- `pnpm build`: aprovado.
 - `pnpm lint`: não faz parte do workflow CI atual e não foi usado como critério do workflow.
 - Migration contra MySQL local: não executada, porque este sandbox possui o cliente `mysql`, mas não possui servidor MySQL ou Docker disponível.
-- Validação operacional no GitHub: a primeira execução após a correção de `0005` passou por essa etapa e encontrou o erro estrutural de `0006`; será confirmada novamente após o push desta segunda correção.
+- GitHub Actions no commit `bf0fbcf`: migrations aplicadas com sucesso; a falha ocorreu somente na verificação de nome de tabela, corrigida neste commit.
+- Validação operacional completa no GitHub: pendente da nova execução após o push desta correção.
 
 ## Critérios de aceite
 
@@ -50,4 +53,4 @@ Este documento registra a investigação, as causas sequenciais e os critérios 
 - As correções estão aplicadas no branch do pull request.
 - `pnpm check`, `pnpm test` e `pnpm build` passam localmente, ou falhas ambientais ficam explicitamente registradas.
 - O workflow do pull request é reexecutado com as correções.
-- Não há mudanças de negócio além do necessário para tornar as migrations compatíveis com MySQL.
+- Não há mudanças de negócio além do necessário para tornar as migrations e suas verificações compatíveis com MySQL.
