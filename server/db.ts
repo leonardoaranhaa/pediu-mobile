@@ -64,6 +64,63 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   }
 }
 
+export async function listAdminUsers(limit = 50, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: users.id,
+    name: users.name,
+    email: users.email,
+    role: users.role,
+    loginMethod: users.loginMethod,
+    createdAt: users.createdAt,
+    lastSignedIn: users.lastSignedIn,
+  }).from(users).limit(limit).offset(offset);
+}
+
+export async function listAdminStores(limit = 50, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(stores).limit(limit).offset(offset);
+}
+
+export async function listAdminOrders(limit = 50, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(orders).limit(limit).offset(offset);
+}
+
+export async function listAdminPayments(limit = 50, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(payments).limit(limit).offset(offset);
+}
+
+export async function listAdminCustomers(limit = 50, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(customers).limit(limit).offset(offset);
+}
+
+export async function listAdminLedgerEntries(limit = 50, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(ledgerEntries).limit(limit).offset(offset);
+}
+
+export async function createAdminAuditLog(input: InsertAdminAuditLog): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(adminAuditLogs).values(input);
+  return Number((result as unknown as { insertId: number | string }).insertId);
+}
+
+export async function listAdminAuditLogs(limit = 50, offset = 0): Promise<AdminAuditLog[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(adminAuditLogs).limit(limit).offset(offset);
+}
+
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
   if (!db) return undefined;
