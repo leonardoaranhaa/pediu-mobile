@@ -1,5 +1,5 @@
 import { Pressable, Text, View } from "react-native";
-import { Page, Card, s, COLORS } from "@/components/pediu-page";
+import { Page, Card, s, PEDIU } from "@/components/pediu-page";
 import { trpc } from "@/lib/trpc";
 
 export default function NotificationsPage() {
@@ -25,9 +25,9 @@ export default function NotificationsPage() {
             }}
           >
             <View style={{ flexDirection: "row", gap: 10 }}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: notification.readAt ? "#F0E9E3" : COLORS.coral, marginTop: 6 }} />
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: notification.readAt ? "#F0E9E3" : PEDIU.coral, marginTop: 6 }} />
               <View style={{ flex: 1 }}>
-                <Text style={s.cardTitle}>{notification.title}</Text>
+                <Text style={s.rowTitle}>{notification.title}</Text>
                 <Text style={s.muted}>{notification.body}</Text>
                 <Text style={[s.muted, { marginTop: 4 }]}>
                   {new Date(notification.createdAt).toLocaleString("pt-BR")}
