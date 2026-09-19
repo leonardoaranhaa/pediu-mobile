@@ -2,6 +2,7 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 import { appRouter } from "../server/routers";
 import * as db from "../server/db";
 import * as payments from "../server/payments";
+import * as push from "../server/push";
 
 const customer = {
   id: 20,
@@ -93,6 +94,7 @@ describe("Pediu payment operational contract", () => {
       message: "pending",
     });
     const createPayment = vi.spyOn(db, "createPendingPixPayment").mockResolvedValue(701);
+    const notify = vi.spyOn(push, "sendPushToUser").mockResolvedValue({ sent: 0 });
 
     const caller = appRouter.createCaller({ user: customer } as any);
     const result = await caller.pediu.payments.createPix({ orderId: 501 });
@@ -103,6 +105,7 @@ describe("Pediu payment operational contract", () => {
       pixKey: "store-pix@test.local",
     });
     expect(createPayment).toHaveBeenCalledWith(501, "store-pix@test.local", "charge-501");
+    expect(notify).toHaveBeenCalledWith(20, "PIX gerado", "A cobrança PIX do pedido #501 está pronta para pagamento.", { type: "payment", orderId: 501, paymentId: 701, status: "pending" });
     expect(result).toMatchObject({ paymentId: 701, amount: "42.50", providerChargeId: "charge-501" });
   });
 
