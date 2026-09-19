@@ -1,0 +1,54 @@
+name: Pediu Operational Validation
+
+on:
+  push:
+    branches: ["feat/**"]
+  workflow_dispatch:
+
+jobs:
+  mysql-and-api-smoke:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: pediu_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/pediu_test
+      NODE_ENV: test
+      PORT: 3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply database migrations
+        run: pnpm db:push
+      - name: Validate database connectivity
+        run: |
+          node -e "const mysql=require('mysql2/promise'); mysql.createConnection(process.env.DATABASE_URL).then(async c=>{const [r]=await c.query('SELECT 1 AS ok'); if(r[0].ok!==1) process.exit(1); await c.end(); console.log('MySQL operational')}).catch(e=>{console.error(e); process.exit(1)})"
+      - name: Start API
+        run: |
+          nohup pnpm dev:server > /tmp/pediu-api.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3000/api/health > /tmp/health.json; then
+              cat /tmp/health.json
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/pediu-api.log
+          exit 1

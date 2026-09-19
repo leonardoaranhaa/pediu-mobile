@@ -36,6 +36,20 @@
       "when": 1789385071931,
       "tag": "0004_fancy_wilson_fisk",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1789990000000,
+      "tag": "0005_delivery_fiado_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1790035500000,
+      "tag": "0006_marketplace_financial_domain",
+      "breakpoints": true
     }
   ]
 }

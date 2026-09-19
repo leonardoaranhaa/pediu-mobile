@@ -6,7 +6,7 @@ export const users = mysqlTable("users", {
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  role: mysqlEnum("role", ["user", "merchant", "admin"]).default("user").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -20,6 +20,7 @@ export const stores = mysqlTable("pediu_stores", {
   address: varchar("address", { length: 255 }),
   pixKey: varchar("pixKey", { length: 255 }),
   deliveryFee: decimal("deliveryFee", { precision: 10, scale: 2 }).default("0.00").notNull(),
+  isOpen: int("isOpen").default(1).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => ({ ownerUnique: unique("pediu_stores_owner_unique").on(table.ownerId) }));
 
@@ -38,7 +39,7 @@ export const orders = mysqlTable("pediu_orders", {
   id: int("id").autoincrement().primaryKey(),
   customerId: int("customerId").notNull(),
   storeId: int("storeId").notNull(),
-  status: mysqlEnum("status", ["Pendente", "Preparando", "A caminho", "Entregue", "Cancelado"]).default("Pendente").notNull(),
+  status: mysqlEnum("status", ["Pendente", "Aceito", "Preparando", "Pronto", "A caminho", "Entregue", "Cancelado"]).default("Pendente").notNull(),
   total: decimal("total", { precision: 10, scale: 2 }).notNull(),
   deliveryAddress: varchar("deliveryAddress", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -56,29 +57,145 @@ export const orderItems = mysqlTable("pediu_order_items", {
 export const payments = mysqlTable("pediu_payments", {
   id: int("id").autoincrement().primaryKey(),
   orderId: int("orderId").notNull(),
-  method: mysqlEnum("method", ["pix", "card", "cash"]).default("pix").notNull(),
-  status: mysqlEnum("status", ["pending", "paid", "failed"]).default("pending").notNull(),
+  method: mysqlEnum("method", ["pix", "card", "cash", "fiado"]).default("pix").notNull(),
+  status: mysqlEnum("status", ["pending", "paid", "failed", "cancelled"]).default("pending").notNull(),
   pixKey: varchar("pixKey", { length: 255 }),
   transactionId: varchar("transactionId", { length: 120 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
+
+export const paymentAccounts = mysqlTable("pediu_payment_accounts", {
+  id: int("id").autoincrement().primaryKey(),
+  storeId: int("storeId").notNull(),
+  provider: varchar("provider", { length: 40 }).notNull(),
+  providerAccountId: varchar("providerAccountId", { length: 160 }),
+  onboardingStatus: mysqlEnum("onboardingStatus", ["pending", "active", "restricted", "disabled"]).default("pending").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  storeUnique: unique("pediu_payment_accounts_store_unique").on(table.storeId),
+  providerAccountUnique: unique("pediu_payment_accounts_provider_account_unique").on(table.provider, table.providerAccountId),
+}));
+
+export const paymentTransactions = mysqlTable("pediu_payment_transactions", {
+  id: int("id").autoincrement().primaryKey(),
+  paymentId: int("paymentId").notNull(),
+  provider: varchar("provider", { length: 40 }).notNull(),
+  providerTransactionId: varchar("providerTransactionId", { length: 160 }),
+  status: mysqlEnum("status", ["pending", "authorized", "paid", "failed", "refunded", "cancelled"]).default("pending").notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  gatewayFee: decimal("gatewayFee", { precision: 10, scale: 2 }).default("0.00").notNull(),
+  currency: varchar("currency", { length: 3 }).default("BRL").notNull(),
+  idempotencyKey: varchar("idempotencyKey", { length: 160 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  providerTransactionUnique: unique("pediu_payment_transactions_provider_tx_unique").on(table.provider, table.providerTransactionId),
+  idempotencyUnique: unique("pediu_payment_transactions_idempotency_unique").on(table.provider, table.idempotencyKey),
+}));
+
+export const commissionRules = mysqlTable("pediu_commission_rules", {
+  id: int("id").autoincrement().primaryKey(),
+  storeId: int("storeId"),
+  type: mysqlEnum("type", ["percentage", "fixed", "hybrid"]).notNull(),
+  percentage: decimal("percentage", { precision: 7, scale: 4 }).default("0.0000").notNull(),
+  fixedAmount: decimal("fixedAmount", { precision: 10, scale: 2 }).default("0.00").notNull(),
+  activeFrom: timestamp("activeFrom").defaultNow().notNull(),
+  activeUntil: timestamp("activeUntil"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const commissionEntries = mysqlTable("pediu_commission_entries", {
+  id: int("id").autoincrement().primaryKey(),
+  orderId: int("orderId").notNull(),
+  paymentId: int("paymentId"),
+  ruleId: int("ruleId"),
+  grossAmount: decimal("grossAmount", { precision: 10, scale: 2 }).notNull(),
+  commissionAmount: decimal("commissionAmount", { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const financialLedger = mysqlTable("pediu_financial_ledger", {
+  id: int("id").autoincrement().primaryKey(),
+  storeId: int("storeId").notNull(),
+  orderId: int("orderId"),
+  paymentId: int("paymentId"),
+  type: mysqlEnum("type", ["sale", "gateway_fee", "commission", "receivable", "payout", "refund", "adjustment"]).notNull(),
+  direction: mysqlEnum("direction", ["credit", "debit"]).notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 3 }).default("BRL").notNull(),
+  referenceId: varchar("referenceId", { length: 160 }),
+  note: varchar("note", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const payouts = mysqlTable("pediu_payouts", {
+  id: int("id").autoincrement().primaryKey(),
+  storeId: int("storeId").notNull(),
+  provider: varchar("provider", { length: 40 }).notNull(),
+  providerPayoutId: varchar("providerPayoutId", { length: 160 }),
+  status: mysqlEnum("status", ["pending", "processing", "paid", "failed", "cancelled"]).default("pending").notNull(),
+  grossAmount: decimal("grossAmount", { precision: 10, scale: 2 }).notNull(),
+  fees: decimal("fees", { precision: 10, scale: 2 }).default("0.00").notNull(),
+  netAmount: decimal("netAmount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 3 }).default("BRL").notNull(),
+  scheduledAt: timestamp("scheduledAt"),
+  paidAt: timestamp("paidAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  providerPayoutUnique: unique("pediu_payouts_provider_payout_unique").on(table.provider, table.providerPayoutId),
+}));
+
+export const refunds = mysqlTable("pediu_refunds", {
+  id: int("id").autoincrement().primaryKey(),
+  paymentId: int("paymentId").notNull(),
+  orderId: int("orderId").notNull(),
+  provider: varchar("provider", { length: 40 }).notNull(),
+  providerRefundId: varchar("providerRefundId", { length: 160 }),
+  status: mysqlEnum("status", ["pending", "processing", "refunded", "failed"]).default("pending").notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  reason: varchar("reason", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  completedAt: timestamp("completedAt"),
+}, (table) => ({
+  providerRefundUnique: unique("pediu_refunds_provider_refund_unique").on(table.provider, table.providerRefundId),
+}));
+
+export const webhookEvents = mysqlTable("pediu_webhook_events", {
+  id: int("id").autoincrement().primaryKey(),
+  provider: varchar("provider", { length: 40 }).notNull(),
+  providerEventId: varchar("providerEventId", { length: 160 }).notNull(),
+  eventType: varchar("eventType", { length: 100 }).notNull(),
+  status: mysqlEnum("status", ["received", "processed", "ignored", "failed"]).default("received").notNull(),
+  payload: text("payload"),
+  processedAt: timestamp("processedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  providerEventUnique: unique("pediu_webhook_events_provider_event_unique").on(table.provider, table.providerEventId),
+}));
+
 export const customers = mysqlTable("pediu_customers", {
   id: int("id").autoincrement().primaryKey(),
   storeId: int("storeId").notNull(),
+  userId: int("userId"),
   name: varchar("name", { length: 160 }).notNull(),
   phone: varchar("phone", { length: 32 }),
   notes: text("notes"),
+  creditLimit: decimal("creditLimit", { precision: 10, scale: 2 }).default("0.00").notNull(),
   balance: decimal("balance", { precision: 10, scale: 2 }).default("0.00").notNull(),
+  status: mysqlEnum("status", ["active", "blocked"]).default("active").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => ({ userStoreUnique: unique("pediu_customers_store_user_unique").on(table.storeId, table.userId) }));
 
 export const ledgerEntries = mysqlTable("pediu_ledger_entries", {
   id: int("id").autoincrement().primaryKey(),
   storeId: int("storeId").notNull(),
   customerId: int("customerId").notNull(),
-  type: mysqlEnum("type", ["credit", "payment"]).notNull(),
+  orderId: int("orderId"),
+  type: mysqlEnum("type", ["credit", "payment", "adjustment", "reversal"]).notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  balanceAfter: decimal("balanceAfter", { precision: 10, scale: 2 }),
   note: varchar("note", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
@@ -121,6 +238,14 @@ export type InsertProduct = typeof products.$inferInsert;
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = typeof orders.$inferInsert;
 export type Payment = typeof payments.$inferSelect;
+export type PaymentAccount = typeof paymentAccounts.$inferSelect;
+export type PaymentTransaction = typeof paymentTransactions.$inferSelect;
+export type CommissionRule = typeof commissionRules.$inferSelect;
+export type CommissionEntry = typeof commissionEntries.$inferSelect;
+export type FinancialLedgerEntry = typeof financialLedger.$inferSelect;
+export type Payout = typeof payouts.$inferSelect;
+export type Refund = typeof refunds.$inferSelect;
+export type WebhookEvent = typeof webhookEvents.$inferSelect;
 export type InsertPayment = typeof payments.$inferInsert;
 export type Customer = typeof customers.$inferSelect;
 export type InsertCustomer = typeof customers.$inferInsert;

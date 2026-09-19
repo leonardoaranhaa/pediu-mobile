@@ -1,6 +1,6 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { Customer, InsertCustomer, InsertLedgerEntry, InsertNotification, InsertOrder, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Notification, Order, Product, PushToken, Sale, Store, customers, ledgerEntries, notifications, orderItems, orders, payments, products, pushTokens, sales, stores, users } from "../drizzle/schema";
+import { Customer, InsertCustomer, InsertLedgerEntry, InsertNotification, InsertOrder, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Notification, Order, Payment, Product, PushToken, Sale, Store, customers, ledgerEntries, notifications, orderItems, orders, payments, products, pushTokens, sales, stores, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -19,10 +19,7 @@ export async function getDb() {
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {
-  if (!user.openId) {
-    throw new Error("User openId is required for upsert");
-  }
-
+  if (!user.openId) throw new Error("User openId is required for upsert");
   const db = await getDb();
   if (!db) {
     console.warn("[Database] Cannot upsert user: database not available");
@@ -30,11 +27,8 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   }
 
   try {
-    const values: InsertUser = {
-      openId: user.openId,
-    };
+    const values: InsertUser = { openId: user.openId };
     const updateSet: Record<string, unknown> = {};
-
     const textFields = ["name", "email", "loginMethod"] as const;
     type TextField = (typeof textFields)[number];
 
@@ -60,17 +54,10 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       updateSet.role = "admin";
     }
 
-    if (!values.lastSignedIn) {
-      values.lastSignedIn = new Date();
-    }
+    if (!values.lastSignedIn) values.lastSignedIn = new Date();
+    if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
 
-    if (Object.keys(updateSet).length === 0) {
-      updateSet.lastSignedIn = new Date();
-    }
-
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
-      set: updateSet,
-    });
+    await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
   } catch (error) {
     console.error("[Database] Failed to upsert user:", error);
     throw error;
@@ -79,13 +66,8 @@ export async function upsertUser(user: InsertUser): Promise<void> {
 
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot get user: database not available");
-    return undefined;
-  }
-
+  if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
-
   return result.length > 0 ? result[0] : undefined;
 }
 
@@ -96,6 +78,13 @@ export async function getStoreForOwner(ownerId: number): Promise<Store | undefin
   return result[0];
 }
 
+export async function getStoreById(storeId: number): Promise<Store | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(stores).where(eq(stores.id, storeId)).limit(1);
+  return result[0];
+}
+
 export async function createStore(input: InsertStore): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -103,11 +92,32 @@ export async function createStore(input: InsertStore): Promise<number> {
   return Number((result as unknown as { insertId: number | string }).insertId);
 }
 
-export async function listAvailableProducts(category?: string): Promise<Product[]> {
+export type MarketplaceProduct = Product & { storeName: string; deliveryFee: string };
+
+export async function listAvailableProducts(category?: string): Promise<MarketplaceProduct[]> {
   const db = await getDb();
   if (!db) return [];
-  const result = await db.select().from(products);
-  return result.filter((product) => Boolean(product.available) && (!category || category === "Tudo" || product.category === category));
+  const filters = [eq(products.available, 1), eq(stores.isOpen, 1)];
+  if (category && category !== "Tudo") filters.push(eq(products.category, category));
+
+  const result = await db
+    .select({
+      id: products.id,
+      storeId: products.storeId,
+      name: products.name,
+      category: products.category,
+      description: products.description,
+      price: products.price,
+      available: products.available,
+      createdAt: products.createdAt,
+      storeName: stores.name,
+      deliveryFee: stores.deliveryFee,
+    })
+    .from(products)
+    .innerJoin(stores, eq(products.storeId, stores.id))
+    .where(and(...filters));
+
+  return result;
 }
 
 export async function createProduct(input: InsertProduct): Promise<number> {
@@ -129,15 +139,113 @@ export async function updateProductAvailability(productId: number, available: bo
   await db.update(products).set({ available: available ? 1 : 0 }).where(eq(products.id, productId));
 }
 
+export async function getProductForStore(productId: number, storeId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(products).where(sql`${products.id} = ${productId} AND ${products.storeId} = ${storeId}`).limit(1);
+  return result[0];
+}
+
+export async function getAvailableProductForStore(productId: number, storeId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(products).where(sql`${products.id} = ${productId} AND ${products.storeId} = ${storeId} AND ${products.available} = 1`).limit(1);
+  return result[0];
+}
+
+export async function getOrderForCustomer(orderId: number, userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(orders).where(sql`${orders.id} = ${orderId} AND ${orders.customerId} = ${userId}`).limit(1);
+  return result[0];
+}
+
+export async function getOrderForUser(orderId: number, userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(orders).where(sql`${orders.id} = ${orderId} AND (${orders.customerId} = ${userId} OR ${orders.storeId} IN (SELECT id FROM pediu_stores WHERE ownerId = ${userId}))`).limit(1);
+  return result[0];
+}
+
+export async function listOrdersForStore(storeId: number): Promise<Order[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(orders).where(eq(orders.storeId, storeId));
+}
+
+export async function getCustomerCredit(storeId: number, customerId: number): Promise<Customer | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(customers).where(sql`${customers.id} = ${customerId} AND ${customers.storeId} = ${storeId}`).limit(1);
+  return result[0];
+}
+
+export async function getCustomerCreditByUser(storeId: number, userId: number): Promise<Customer | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(customers).where(sql`${customers.userId} = ${userId} AND ${customers.storeId} = ${storeId}`).limit(1);
+  return result[0];
+}
+
+export async function updateStoreOpen(storeId: number, isOpen: boolean): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(stores).set({ isOpen: isOpen ? 1 : 0 }).where(eq(stores.id, storeId));
+}
+
+export async function setCustomerCreditLimit(storeId: number, customerId: number, creditLimit: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(customers).set({ creditLimit }).where(sql`${customers.id} = ${customerId} AND ${customers.storeId} = ${storeId}`);
+}
+
+export async function blockCustomer(storeId: number, customerId: number, blocked: boolean): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(customers).set({ status: blocked ? "blocked" : "active" }).where(sql`${customers.id} = ${customerId} AND ${customers.storeId} = ${storeId}`);
+}
+
 export async function createOrder(input: InsertOrder, items: Array<{ productId: number; quantity: number; unitPrice: string }>): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(orders).values(input);
   const orderId = Number((result as unknown as { insertId: number | string }).insertId);
-  if (items.length > 0) {
-    await db.insert(orderItems).values(items.map((item) => ({ ...item, orderId })));
-  }
+  if (items.length > 0) await db.insert(orderItems).values(items.map((item) => ({ ...item, orderId })));
   return orderId;
+}
+
+export async function createOrderWithFiado(input: InsertOrder, items: Array<{ productId: number; quantity: number; unitPrice: string }>, creditCustomerId: number, storeId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  if (items.length === 0) throw new Error("Pedido sem itens");
+  const requested = Number(input.total);
+  if (!Number.isFinite(requested) || requested <= 0) throw new Error("Valor de fiado inválido");
+
+  return db.transaction(async (tx) => {
+    const customerRows = await tx.select().from(customers).where(sql`${customers.id} = ${creditCustomerId} AND ${customers.storeId} = ${storeId}`).limit(1);
+    const customer = customerRows[0];
+    if (!customer) throw new Error("Cliente não cadastrado para esta loja");
+    if (customer.status !== "active") throw new Error("Cliente bloqueado");
+
+    const limit = Number(customer.creditLimit);
+    const balance = Number(customer.balance);
+    if (!Number.isFinite(limit) || !Number.isFinite(balance) || balance + requested > limit) {
+      throw new Error("Limite de fiado insuficiente");
+    }
+
+    const result = await tx.insert(orders).values(input);
+    const orderId = Number((result as unknown as { insertId: number | string }).insertId);
+    await tx.insert(orderItems).values(items.map((item) => ({ ...item, orderId })));
+
+    const newBalance = (balance + requested).toFixed(2);
+    await tx.update(customers).set({ balance: newBalance }).where(sql`${customers.id} = ${creditCustomerId} AND ${customers.storeId} = ${storeId}`);
+    await tx.insert(ledgerEntries).values({
+      storeId, customerId: creditCustomerId, orderId, type: "credit",
+      amount: input.total, balanceAfter: newBalance, note: "Compra via Pediu"
+    });
+    await tx.insert(payments).values({ orderId, method: "fiado", status: "paid" });
+    return orderId;
+  });
 }
 
 export async function listOrdersForCustomer(customerId: number): Promise<Order[]> {
@@ -152,10 +260,17 @@ export async function updateOrderStatus(orderId: number, status: Order["status"]
   await db.update(orders).set({ status }).where(eq(orders.id, orderId));
 }
 
-export async function createPendingPixPayment(orderId: number, pixKey: string) {
+export async function getPendingPixPaymentForOrder(orderId: number): Promise<Payment | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(payments).where(sql`${payments.orderId} = ${orderId} AND ${payments.method} = 'pix' AND ${payments.status} = 'pending'`).limit(1);
+  return result[0];
+}
+
+export async function createPendingPixPayment(orderId: number, pixKey: string, transactionId?: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(payments).values({ orderId, method: "pix", status: "pending", pixKey });
+  const result = await db.insert(payments).values({ orderId, method: "pix", status: "pending", pixKey, transactionId });
   return Number((result as unknown as { insertId: number | string }).insertId);
 }
 
@@ -166,6 +281,27 @@ export async function createOrderPayment(orderId: number, method: "pix" | "card"
   return Number((result as unknown as { insertId: number | string }).insertId);
 }
 
+export async function getPaymentForUser(paymentId: number, userId: number): Promise<Payment | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select({ payment: payments }).from(payments).innerJoin(orders, eq(payments.orderId, orders.id)).where(sql`${payments.id} = ${paymentId} AND (${orders.customerId} = ${userId} OR ${orders.storeId} IN (SELECT id FROM pediu_stores WHERE ownerId = ${userId}))`).limit(1);
+  return result[0]?.payment;
+}
+
+export type PaymentStatus = "pending" | "paid" | "failed" | "cancelled";
+
+export function canTransitionPayment(current: PaymentStatus, next: PaymentStatus): boolean {
+  if (current === next) return true;
+  if (current === "pending") return next === "paid" || next === "failed";
+  if (current === "failed") return next === "pending";
+  return false;
+}
+
+export async function updatePaymentStatus(paymentId: number, status: Exclude<PaymentStatus, "cancelled">): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(payments).set({ status }).where(eq(payments.id, paymentId));
+}
 
 export async function listCustomersForStore(storeId: number): Promise<Customer[]> {
   const db = await getDb();
@@ -189,10 +325,23 @@ export async function listLedgerEntriesForStore(storeId: number): Promise<Ledger
 export async function createLedgerEntry(input: InsertLedgerEntry): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(ledgerEntries).values(input);
-  const delta = input.type === "credit" ? input.amount : `-${input.amount}`;
-  await db.update(customers).set({ balance: sql`GREATEST(0, ${customers.balance} + ${delta})` }).where(eq(customers.id, input.customerId));
-  return Number((result as unknown as { insertId: number | string }).insertId);
+  const amount = Number(input.amount);
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("Valor de lançamento inválido");
+
+  return db.transaction(async (tx) => {
+    const rows = await tx.select().from(customers).where(sql`${customers.id} = ${input.customerId} AND ${customers.storeId} = ${input.storeId}`).limit(1);
+    const customer = rows[0];
+    if (!customer) throw new Error("Cliente não pertence a esta loja");
+    if (customer.status !== "active" && input.type !== "payment") throw new Error("Cliente bloqueado");
+
+    const current = Number(customer.balance);
+    const newBalance = input.type === "credit" ? current + amount : Math.max(0, current - amount);
+    if (input.type === "credit" && newBalance > Number(customer.creditLimit)) throw new Error("Lançamento excede o limite de crédito");
+
+    const result = await tx.insert(ledgerEntries).values({ ...input, balanceAfter: newBalance.toFixed(2) });
+    await tx.update(customers).set({ balance: newBalance.toFixed(2) }).where(sql`${customers.id} = ${input.customerId} AND ${customers.storeId} = ${input.storeId}`);
+    return Number((result as unknown as { insertId: number | string }).insertId);
+  });
 }
 
 export async function listSalesForStore(storeId: number): Promise<Sale[]> {
