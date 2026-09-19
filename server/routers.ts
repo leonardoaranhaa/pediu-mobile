@@ -72,10 +72,14 @@ export const appRouter = router({
           const customer = await db.getCustomerCreditByUser(input.storeId, ctx.user.id);
           if (!customer) throw new Error("Cliente não habilitado para fiado nesta loja");
           const orderId = await db.createOrderWithFiado({ customerId: ctx.user.id, storeId: input.storeId, total: input.total, deliveryAddress: input.deliveryAddress }, input.items.map((item, i) => ({ ...item, unitPrice: String(products[i]!.price) })), customer.id, input.storeId);
+          try { await sendPushToUser(store.ownerId, "Novo pedido", `O pedido #${orderId} foi recebido e está pendente de aceite.`, { type: "order", orderId, status: "Pendente" }); }
+          catch (error) { console.warn("[Orders] Failed to notify store owner about new fiado order:", error); }
           return { orderId, paymentId: null, status: "Pendente" as const };
         }
         const orderId = await db.createOrder({ customerId: ctx.user.id, storeId: input.storeId, total: input.total, deliveryAddress: input.deliveryAddress }, input.items.map((item, i) => ({ ...item, unitPrice: String(products[i]!.price) })));
         const paymentId = await db.createOrderPayment(orderId, input.paymentMethod);
+        try { await sendPushToUser(store.ownerId, "Novo pedido", `O pedido #${orderId} foi recebido e está pendente de aceite.`, { type: "order", orderId, status: "Pendente" }); }
+        catch (error) { console.warn("[Orders] Failed to notify store owner about new order:", error); }
         return { orderId, paymentId, status: "Pendente" as const };
       }),
       status: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), status: orderStatusSchema })).mutation(async ({ ctx, input }) => {
@@ -128,6 +132,8 @@ export const appRouter = router({
         }
         const charge = await createPixCharge({ orderId: order.id, amount: order.total, pixKey: store.pixKey });
         const paymentId = await db.createPendingPixPayment(order.id, store.pixKey, charge.providerChargeId);
+        try { await sendPushToUser(ctx.user.id, "PIX gerado", `A cobrança PIX do pedido #${order.id} está pronta para pagamento.`, { type: "payment", orderId: order.id, paymentId, status: "pending" }); }
+        catch (error) { console.warn("[Payments] Failed to notify customer about PIX creation:", error); }
         return { paymentId, amount: order.total, ...charge };
       }),
     }),
