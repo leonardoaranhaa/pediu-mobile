@@ -219,6 +219,16 @@ export const pushTokens = mysqlTable("pediu_push_tokens", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
+export const adminAuditLogs = mysqlTable("pediu_admin_audit_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  actorId: int("actorId").notNull(),
+  action: varchar("action", { length: 80 }).notNull(),
+  entityType: varchar("entityType", { length: 40 }).notNull(),
+  entityId: int("entityId"),
+  metadata: text("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
 export const notifications = mysqlTable("pediu_notifications", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull(),
@@ -255,5 +265,7 @@ export type Sale = typeof sales.$inferSelect;
 export type InsertSale = typeof sales.$inferInsert;
 export type PushToken = typeof pushTokens.$inferSelect;
 export type InsertPushToken = typeof pushTokens.$inferInsert;
+export type AdminAuditLog = typeof adminAuditLogs.$inferSelect;
+export type InsertAdminAuditLog = typeof adminAuditLogs.$inferInsert;
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = typeof notifications.$inferInsert;
