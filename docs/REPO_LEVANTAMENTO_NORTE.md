@@ -687,3 +687,18 @@ Estado:
 
 Regra de continuidade:
 **F6.1 só será considerada validada após CI verde e validação da migration/fluxo administrativo.**
+
+
+## Continuidade da Fase 6 — F6.2 — Painel administrativo — 19/09/2026
+
+Implementado após a validação do backend F6.1:
+- painel `/admin` para contas com papel `admin`;
+- visão operacional de usuários, estabelecimentos, pedidos, pagamentos e crédito/fiado;
+- tela `/admin/audit` para consulta dos registros de auditoria;
+- acesso ao painel exposto no perfil somente quando `user.role === "admin"`;
+- rotas continuam protegidas no backend por `adminProcedure`, portanto esconder a opção na UI não é tratado como mecanismo de segurança;
+- estados de carregamento e erro foram tratados na interface;
+- identidade visual reutiliza `Page`, `Card`, `Row`, `OutlineButton` e tokens Pediu existentes.
+
+Próxima validação:
+**CI + build + fluxo autenticado de administrador e tentativa de acesso com papéis não administrativos.**
