@@ -700,5 +700,17 @@ Implementado após a validação do backend F6.1:
 - estados de carregamento e erro foram tratados na interface;
 - identidade visual reutiliza `Page`, `Card`, `Row`, `OutlineButton` e tokens Pediu existentes.
 
-Próxima validação:
-**CI + build + fluxo autenticado de administrador e tentativa de acesso com papéis não administrativos.**
+Validação:
+- CI #245 — run 35452891308: **success**;
+- validação operacional #48 — run 35452891310: **success**;
+- TypeScript, testes e build foram aprovados no pipeline;
+- migration e smoke test operacional foram aprovados no pipeline;
+- fluxo administrativo foi validado pelo teste realizado nesta etapa;
+- autorização administrativa permanece coberta no backend, incluindo rejeição de papéis não administrativos;
+- nenhum dispositivo físico foi usado como substituto dos testes de backend/CI.
+
+Estado:
+**F6.2 validada.** A camada administrativa atual permanece deliberadamente somente leitura; não há mutations administrativas sem requisito operacional definido. Qualquer ação futura de suporte/moderação deverá nascer com autorização, auditoria e testes específicos.
+
+Próxima etapa:
+**revisar o fechamento da Fase 6 e somente então decidir se há lacunas reais antes da Fase 7.**
