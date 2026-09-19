@@ -455,3 +455,206 @@ Antes de criar qualquer nova página:
 - A tela de acompanhamento consulta o pedido persistido e atualiza periodicamente o status.
 - Foi adicionado teste de contrato para a nova consulta protegida.
 - A validação CI desta sequência permanece pendente no momento do registro; o último CI confirmado anteriormente falhou em TypeScript por import ausente em `app/account/settings.tsx`, correção já aplicada.
+
+
+## 17. Arquitetura financeira do marketplace — decisão de negócio — 18/09/2026
+
+A partir desta etapa, o Pediu deve ser projetado como **marketplace**, e não como uma carteira que recebe todo o dinheiro e redistribui manualmente.
+
+### Referências de mercado usadas para a decisão
+
+- O iFood documenta que, quando o cliente paga pelo iFood, a plataforma é responsável pelo repasse para a conta bancária cadastrada do parceiro e oferece histórico de vendas, taxas e repasses.
+- O Mercado Pago documenta Split de Pagamentos para marketplaces, com vendedor conectado via OAuth e divisão automática entre vendedor e marketplace.
+- A documentação atual do Mercado Pago também diferencia o custo do PSP da comissão do marketplace e exige identificação/KYC do vendedor para o fluxo de Split 1:1.
+
+Essas referências servem como **padrões arquiteturais**, não como cópia do modelo jurídico/comercial dessas empresas.
+
+### Decisão para o Pediu
+
+O Pediu será responsável por **orquestrar e registrar** a operação financeira; o Payment Service Provider (PSP) será responsável por **processar, liquidar e movimentar o dinheiro**.
+
+Fluxo-alvo:
+
+**Cliente → Pedido → Pagamento → PSP/Split → Recebível do estabelecimento → Repasse → Conciliação**
+
+O Pediu não deve depender de transferências manuais feitas por administradores.
+
+### Separação obrigatória de conceitos
+
+Não tratar os seguintes conceitos como uma única entidade:
+
+1. **Pedido** — obrigação comercial/operacional.
+2. **Pagamento** — tentativa/estado de pagamento do cliente.
+3. **Transação do gateway** — operação identificada pelo PSP.
+4. **Comissão** — receita do Pediu.
+5. **Recebível** — valor que pertence ao estabelecimento após regras e ajustes.
+6. **Repasse** — liquidação do recebível para o estabelecimento.
+7. **Estorno/reembolso** — movimento financeiro compensatório.
+8. **Conciliação** — comparação entre o que o Pediu registrou e o que o PSP confirmou.
+
+### Domínio financeiro alvo
+
+Entidades planejadas:
+
+- payment_accounts — vínculo financeiro do estabelecimento com o PSP;
+- payment_transactions — transações externas e estados financeiros;
+- commission_rules — regras versionadas de monetização;
+- commission_entries — comissão efetivamente gerada por venda;
+- financial_ledger — histórico imutável dos movimentos financeiros;
+- payouts — repasses/recebíveis liquidados;
+- refunds — estornos e reembolsos;
+- webhook_events — eventos externos recebidos, com idempotência.
+
+O financial_ledger será histórico de movimentos e não deverá ser tratado como uma tabela livre para edição de saldo.
+
+### Regra de cálculo
+
+Cada pedido deve preservar a fotografia financeira da venda no momento em que ela é processada.
+
+Exemplo conceitual:
+
+- bruto: R$ 100,00;
+- taxa do PSP: valor confirmado pelo provedor;
+- comissão Pediu: valor calculado pela regra vigente;
+- ajustes/estornos: valores efetivamente registrados;
+- líquido do estabelecimento: resultado da operação.
+
+Não recalcular vendas históricas usando regras atuais.
+
+### Provider abstraction
+
+O domínio do Pediu não deve conhecer diretamente o Mercado Pago.
+
+Arquitetura:
+
+Pediu Payment Domain → PaymentProvider → MercadoPagoProvider
+
+No estágio atual:
+
+Pediu Payment Domain → Fake/Manual Provider
+
+Posteriormente:
+
+Pediu Payment Domain → MercadoPagoProvider → Mercado Pago
+
+A integração real deverá utilizar os mecanismos oficiais de marketplace/Split e OAuth do provedor, sem armazenar credenciais do estabelecimento como se fossem credenciais do Pediu.
+
+### Segurança financeira
+
+Regras obrigatórias:
+
+- cliente nunca confirma o próprio pagamento;
+- estabelecimento nunca confirma unilateralmente pagamento de cliente;
+- status financeiro externo deve ser confirmado por fonte confiável;
+- webhook deve ser idempotente;
+- eventos externos devem ser auditáveis;
+- nenhuma mutation aceita saldo, comissão ou valor líquido calculado pelo cliente;
+- identificadores externos do PSP devem ser persistidos;
+- operações de estorno devem gerar novos movimentos, não apagar movimentos anteriores;
+- conciliação deve detectar divergências sem alterar silenciosamente o histórico.
+
+### Monetização
+
+O sistema será preparado para:
+
+- comissão percentual;
+- comissão fixa;
+- comissão híbrida;
+- regras diferentes por estabelecimento/plano;
+- vigência das regras;
+- eventual mensalidade no futuro.
+
+A primeira versão comercial poderá usar uma única regra simples, mas o modelo de dados não deve obrigar uma única estratégia para sempre.
+
+### Repasse
+
+O MVP não criará uma carteira financeira própria do Pediu.
+
+O painel do estabelecimento poderá apresentar:
+
+- vendas brutas;
+- taxas;
+- comissão Pediu;
+- valor líquido;
+- valores pendentes;
+- valores repassados;
+- histórico de repasses.
+
+Esses números serão uma representação operacional/contábil do Pediu. O dinheiro efetivo continuará sob responsabilidade do PSP e de sua infraestrutura de liquidação.
+
+### Escopo deliberadamente adiado
+
+Não implementar agora:
+
+- SDK ou credenciais reais do Mercado Pago;
+- OAuth real de estabelecimentos;
+- Split real;
+- webhook real;
+- antecipação de recebíveis;
+- conta digital própria;
+- crédito próprio do Pediu;
+- múltiplos recebedores em uma mesma venda.
+
+Primeiro construiremos o domínio financeiro com provider fake/manual, testes e idempotência. A integração real será uma etapa posterior.
+
+### Ordem de implementação financeira
+
+**F1 — Modelagem**
+- payment account;
+- transaction;
+- commission;
+- financial ledger;
+- payout;
+- refund;
+- webhook event.
+
+**F2 — Motor financeiro**
+- cálculo de comissão;
+- criação de recebível;
+- lançamentos imutáveis;
+- estados financeiros;
+- estorno;
+- conciliação.
+
+**F3 — Provider abstraction**
+- contrato PaymentProvider;
+- fake provider;
+- idempotência;
+- testes de contrato.
+
+**F4 — Marketplace onboarding**
+- vínculo do estabelecimento ao PSP;
+- KYC/estado de onboarding;
+- armazenamento seguro de referência externa.
+
+**F5 — Mercado Pago**
+- OAuth;
+- Split;
+- checkout;
+- webhook;
+- reconciliação real.
+
+### Critério de aceite desta arquitetura
+
+Antes de criar migrations financeiras:
+
+- arquitetura documentada;
+- fluxo financeiro revisado;
+- responsabilidades Pediu × PSP separadas;
+- estados financeiros definidos;
+- idempotência definida;
+- estorno definido;
+- comissão versionada definida;
+- estratégia de conciliação definida;
+- provider abstraction definida;
+- nenhuma dependência real do Mercado Pago nesta etapa.
+
+## 18. Registro da decisão
+
+**Decisão:** construir primeiro um Financial Domain independente de provedor e, somente depois, integrar o Mercado Pago por um adapter oficial de marketplace.
+
+**Motivo:** reduzir acoplamento, preservar possibilidade de troca de PSP, manter testes determinísticos e evitar transformar o Pediu prematuramente em custodiante de dinheiro.
+
+**Princípio:** o banco do Pediu registra a verdade operacional e contábil da plataforma; o PSP é a fonte de verdade para o movimento financeiro externo.
+
+**Estado:** arquitetura aprovada para implementação; nenhuma migration financeira foi criada nesta etapa.
