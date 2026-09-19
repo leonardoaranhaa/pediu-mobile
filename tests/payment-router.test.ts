@@ -29,8 +29,8 @@ describe("Pediu payment operational contract", () => {
   });
 
   it("does not expose a client-controlled payment confirmation mutation", () => {
-    const caller = appRouter.createCaller({ user: customer } as any);
-    expect((caller.pediu.payments as any).confirm).toBeUndefined();
+    const paymentRecord = (appRouter as any)._def.record.pediu._def.record.payments._def.record;
+    expect(paymentRecord.confirm).toBeUndefined();
   });
 
   it("returns payment status only to an authorized customer", async () => {
