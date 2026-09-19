@@ -11,11 +11,13 @@ import { storageGetSignedUrl, storagePut } from "./storage";
 import { sendPushToUser } from "./push";
 import { createPixCharge } from "./payments";
 import { canCustomerCancelOrder, canTransitionOrder } from "./order-state";
+import { adminRouter } from "./admin-router";
 
 const orderStatusSchema = z.enum(["Pendente", "Aceito", "Preparando", "Pronto", "A caminho", "Entregue", "Cancelado"]);
 
 export const appRouter = router({
   system: systemRouter,
+  admin: adminRouter,
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
