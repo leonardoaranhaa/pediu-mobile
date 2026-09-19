@@ -714,3 +714,43 @@ Estado:
 
 Próxima etapa:
 **revisar o fechamento da Fase 6 e somente então decidir se há lacunas reais antes da Fase 7.**
+
+
+## Fechamento da Fase 6 — F6.3 — Hardening administrativo — 19/09/2026
+
+Objetivo: encerrar a camada administrativa sem criar mutations sem necessidade operacional.
+
+Validado:
+- acesso administrativo permanece protegido no backend por adminProcedure;
+- a interface também restringe a entrada ao painel para role === "admin";
+- consultas administrativas possuem paginação limitada e validada;
+- o painel trata estados de carregamento, erro e ausência de dados;
+- a tela de auditoria consulta exclusivamente o endpoint protegido;
+- o schema possui pediu_admin_audit_logs para registrar futuras ações administrativas;
+- não existem operações destrutivas administrativas escondidas ou acessíveis pela UI;
+- qualquer futura mutation administrativa deverá escrever auditoria e possuir testes de autorização e erro próprios.
+
+Decisão:
+- manter Fase 6 deliberadamente read-only neste momento;
+- não criar CRUD administrativo artificial apenas para ampliar escopo;
+- suporte/moderação destrutiva será tratado como requisito separado quando houver fluxo de negócio definido.
+
+## Fechamento da Fase 6 — F6.4 — Validação final e encerramento — 19/09/2026
+
+Checklist final da Fase 6:
+- [x] contratos administrativos implementados;
+- [x] autorização de administrador testada;
+- [x] papéis não administrativos bloqueados;
+- [x] paginação validada;
+- [x] migration de auditoria criada;
+- [x] painel administrativo implementado;
+- [x] consulta de auditoria implementada;
+- [x] CI verde;
+- [x] validação operacional verde;
+- [x] documentação atualizada;
+- [x] nenhuma regressão conhecida identificada nos testes existentes.
+
+Resultado:
+FASE 6 — ADMINISTRAÇÃO: CONCLUÍDA.
+
+A Fase 7 só deve começar após uma nova revisão do Norte para confirmar se há alguma lacuna de produto realmente necessária no fluxo Cliente → Loja → Pedido → Pagamento → Fiado → Entrega. O roadmap continua priorizando o fluxo transacional antes de funcionalidades de escala.
