@@ -754,3 +754,45 @@ Resultado:
 FASE 6 — ADMINISTRAÇÃO: CONCLUÍDA.
 
 A Fase 7 só deve começar após uma nova revisão do Norte para confirmar se há alguma lacuna de produto realmente necessária no fluxo Cliente → Loja → Pedido → Pagamento → Fiado → Entrega. O roadmap continua priorizando o fluxo transacional antes de funcionalidades de escala.
+
+## Revisão do Norte antes da Fase 7 — 19/09/2026
+
+Revisão concluída sobre o estado atual do produto.
+
+### O que já está coberto
+- autenticação e papéis;
+- catálogo de estabelecimento;
+- marketplace cliente → catálogo → carrinho → pedido;
+- cálculo server-side do pedido;
+- operação da loja e máquina de estados do pedido;
+- acompanhamento protegido do pedido;
+- pagamento PIX preparado com valor e chave derivados do servidor;
+- Fiado com limite, saldo derivado e ledger;
+- notificações persistidas e push best-effort;
+- administração protegida, paginação e auditoria;
+- domínio financeiro estruturado para futura integração com PSP.
+
+### Lacunas que permanecem intencionalmente abertas
+- gateway Mercado Pago real, OAuth, Split e webhooks reais;
+- validação visual em dispositivo físico;
+- teste ponta a ponta completo com dois usuários e MySQL real;
+- rede própria de entregadores;
+- operações administrativas destrutivas;
+- busca/filtros avançados do marketplace;
+- funcionalidades de escala e observabilidade além do necessário para o MVP.
+
+Essas lacunas não bloqueiam a entrada na Fase 7 porque pertencem a integrações posteriores, validação operacional manual ou escopo deliberadamente adiado.
+
+### Direção da Fase 7
+A Fase 7 deve tratar **escala e confiabilidade**, não adicionar funcionalidades aleatórias. O foco inicial será:
+1. observabilidade e diagnóstico;
+2. idempotência e resiliência dos fluxos críticos;
+3. performance de consultas e paginação;
+4. consistência entre pedido, pagamento, Fiado e notificações;
+5. preparação para integrações externas sem acoplamento.
+
+Regra:
+**não avançar para Mercado Pago real ou expansão de funcionalidades enquanto os fluxos internos críticos não tiverem contratos, testes, idempotência e observabilidade suficientes.**
+
+Estado:
+**Fase 6 encerrada. Fase 7 autorizada para início.**
