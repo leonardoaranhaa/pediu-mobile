@@ -9,7 +9,7 @@ CREATE TABLE `pediu_payment_accounts` (
   CONSTRAINT `pediu_payment_accounts_store_unique` UNIQUE (`storeId`),
   CONSTRAINT `pediu_payment_accounts_provider_account_unique` UNIQUE (`provider`,`providerAccountId`)
 );
-
+--> statement-breakpoint
 CREATE TABLE `pediu_payment_transactions` (
   `id` int NOT NULL AUTO_INCREMENT,
   `paymentId` int NOT NULL,
@@ -25,7 +25,7 @@ CREATE TABLE `pediu_payment_transactions` (
   CONSTRAINT `pediu_payment_transactions_provider_tx_unique` UNIQUE (`provider`,`providerTransactionId`),
   CONSTRAINT `pediu_payment_transactions_idempotency_unique` UNIQUE (`provider`,`idempotencyKey`)
 );
-
+--> statement-breakpoint
 CREATE TABLE `pediu_commission_rules` (
   `id` int NOT NULL AUTO_INCREMENT,
   `storeId` int,
@@ -36,7 +36,7 @@ CREATE TABLE `pediu_commission_rules` (
   `activeUntil` timestamp,
   `createdAt` timestamp NOT NULL DEFAULT (now())
 );
-
+--> statement-breakpoint
 CREATE TABLE `pediu_commission_entries` (
   `id` int NOT NULL AUTO_INCREMENT,
   `orderId` int NOT NULL,
@@ -46,7 +46,7 @@ CREATE TABLE `pediu_commission_entries` (
   `commissionAmount` decimal(10,2) NOT NULL,
   `createdAt` timestamp NOT NULL DEFAULT (now())
 );
-
+--> statement-breakpoint
 CREATE TABLE `pediu_financial_ledger` (
   `id` int NOT NULL AUTO_INCREMENT,
   `storeId` int NOT NULL,
@@ -60,7 +60,7 @@ CREATE TABLE `pediu_financial_ledger` (
   `note` varchar(255),
   `createdAt` timestamp NOT NULL DEFAULT (now())
 );
-
+--> statement-breakpoint
 CREATE TABLE `pediu_payouts` (
   `id` int NOT NULL AUTO_INCREMENT,
   `storeId` int NOT NULL,
@@ -76,7 +76,7 @@ CREATE TABLE `pediu_payouts` (
   `createdAt` timestamp NOT NULL DEFAULT (now()),
   CONSTRAINT `pediu_payouts_provider_payout_unique` UNIQUE (`provider`,`providerPayoutId`)
 );
-
+--> statement-breakpoint
 CREATE TABLE `pediu_refunds` (
   `id` int NOT NULL AUTO_INCREMENT,
   `paymentId` int NOT NULL,
@@ -90,7 +90,7 @@ CREATE TABLE `pediu_refunds` (
   `completedAt` timestamp,
   CONSTRAINT `pediu_refunds_provider_refund_unique` UNIQUE (`provider`,`providerRefundId`)
 );
-
+--> statement-breakpoint
 CREATE TABLE `pediu_webhook_events` (
   `id` int NOT NULL AUTO_INCREMENT,
   `provider` varchar(40) NOT NULL,
