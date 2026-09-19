@@ -16,32 +16,38 @@ Identificar a causa da falha do workflow associada ao pull request aberto do rep
 
 ## Diagnóstico
 
-O alvo foi o PR #2, `feat: concluir fase 5 de notificações do Norte`, no branch `feat/norte-phase-5-6`. As execuções `35451607036` e `35451604233` falharam no job `mysql-and-api-smoke`, na etapa de aplicação das migrations.
+O alvo foi o PR #2, `feat: concluir fase 5 de notificações do Norte`, no branch `feat/norte-phase-5-6`.
 
-A causa raiz foi a migration `drizzle/0005_delivery_fiado_core.sql`. Ela continha 13 instruções `ALTER TABLE` separadas apenas por quebras de linha. O `drizzle-kit migrate` envia cada migration como uma unidade; sem os marcadores `--> statement-breakpoint`, o driver MySQL recebeu as 13 instruções em uma única query e retornou `ER_PARSE_ERROR` na segunda instrução (`ALTER TABLE ...`).
+A primeira execução falhava na migration `drizzle/0005_delivery_fiado_core.sql`. Ela continha 13 instruções `ALTER TABLE` separadas apenas por quebras de linha. O `drizzle-kit migrate` envia cada migration como uma unidade; sem os marcadores `--> statement-breakpoint`, o driver MySQL recebeu as 13 instruções em uma única query e retornou `ER_PARSE_ERROR` na segunda instrução.
 
-O commit anterior havia separado corretamente apenas as instruções da migration `0006_marketplace_financial_domain.sql`, deixando a migration `0005` ainda incompatível com a execução MySQL usada no CI.
+Depois que os separadores foram adicionados, a execução avançou para a migration `drizzle/0006_marketplace_financial_domain.sql` e revelou uma segunda causa independente: as oito tabelas financeiras declaravam uma coluna `id` com `AUTO_INCREMENT`, mas não declaravam `PRIMARY KEY`. O MySQL rejeitou a primeira tabela com `ER_WRONG_AUTO_KEY` e a mensagem `there can be only one auto column and it must be defined as a key`.
 
-## Correção
+O schema Drizzle já declarava `.autoincrement().primaryKey()` para essas oito tabelas. As migrations SQL manuais estavam inconsistentes com essa fonte de verdade.
 
-Foram adicionados marcadores `--> statement-breakpoint` entre todas as 13 instruções da migration `0005_delivery_fiado_core.sql`. Nenhuma regra de negócio, tabela ou instrução SQL foi removida ou alterada; apenas a unidade de execução foi corrigida.
+## Correções
 
-Também foi criado este documento para registrar a investigação e seus critérios de aceite.
+Foram adicionados marcadores `--> statement-breakpoint` entre todas as 13 instruções da migration `0005_delivery_fiado_core.sql`.
+
+Também foram adicionadas as chaves primárias `id` às oito tabelas da migration `0006_marketplace_financial_domain.sql`, preservando as constraints únicas existentes e alinhando a migration ao schema Drizzle.
+
+Nenhuma regra de negócio, coluna ou tabela foi removida. As alterações corrigem somente a execução e a definição estrutural das migrations.
+
+Este documento registra a investigação, as causas sequenciais e os critérios de aceite.
 
 ## Validação
 
 - `pnpm install --frozen-lockfile`: aprovado.
-- `pnpm check`: aprovado.
-- `pnpm test`: aprovado — 9 arquivos passaram; 36 testes passaram; 1 teste foi pulado por depender de autenticação externa.
-- `pnpm build`: aprovado.
+- `pnpm check`: aprovado antes da correção estrutural de SQL; a alteração atual não envolve TypeScript.
+- `pnpm test`: aprovado antes da correção estrutural de SQL — 9 arquivos passaram; 36 testes passaram; 1 teste foi pulado por depender de autenticação externa.
+- `pnpm build`: aprovado antes da correção estrutural de SQL; a alteração atual não envolve o bundle.
 - `pnpm lint`: não faz parte do workflow CI atual e não foi usado como critério do workflow.
 - Migration contra MySQL local: não executada, porque este sandbox possui o cliente `mysql`, mas não possui servidor MySQL ou Docker disponível.
-- Validação operacional no GitHub: será confirmada após o push da correção, por meio de uma nova execução do workflow no PR.
+- Validação operacional no GitHub: a primeira execução após a correção de `0005` passou por essa etapa e encontrou o erro estrutural de `0006`; será confirmada novamente após o push desta segunda correção.
 
 ## Critérios de aceite
 
-- A causa raiz da falha está identificada e documentada.
-- A correção está aplicada no branch do pull request.
+- As causas raiz estão identificadas e documentadas.
+- As correções estão aplicadas no branch do pull request.
 - `pnpm check`, `pnpm test` e `pnpm build` passam localmente, ou falhas ambientais ficam explicitamente registradas.
-- O workflow do pull request é reexecutado com a correção.
-- Não há mudanças de banco ou de comportamento além do necessário para corrigir o CI.
+- O workflow do pull request é reexecutado com as correções.
+- Não há mudanças de negócio além do necessário para tornar as migrations compatíveis com MySQL.
