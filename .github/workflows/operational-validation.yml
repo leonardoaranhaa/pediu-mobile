@@ -3,6 +3,8 @@ name: Pediu Operational Validation
 on:
   push:
     branches: ["feat/**"]
+  pull_request:
+    branches: ["main"]
   workflow_dispatch:
 
 jobs:
