@@ -35,6 +35,16 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Wait for MySQL
+        run: |
+          for i in {1..30}; do
+            if mysqladmin ping -h 127.0.0.1 -P 3306 -uroot -proot --silent; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker ps -a
+          exit 1
       - name: Apply database migrations
         run: pnpm db:push
       - name: Validate database connectivity
@@ -42,13 +52,26 @@ jobs:
           node -e "const mysql=require('mysql2/promise'); mysql.createConnection(process.env.DATABASE_URL).then(async c=>{const [r]=await c.query('SELECT 1 AS ok'); if(r[0].ok!==1) process.exit(1); await c.end(); console.log('MySQL operational')}).catch(e=>{console.error(e); process.exit(1)})"
       - name: Start API
         run: |
-          nohup pnpm dev:server > /tmp/pediu-api.log 2>&1 &
-          for i in {1..30}; do
+          pnpm dev:server > /tmp/pediu-api.log 2>&1 &
+          echo $! > /tmp/pediu-api.pid
+          for i in {1..60}; do
             if curl -fsS http://127.0.0.1:3000/api/health > /tmp/health.json; then
               cat /tmp/health.json
               exit 0
             fi
+            if ! kill -0 $(cat /tmp/pediu-api.pid) 2>/dev/null; then
+              echo "API process exited before becoming healthy"
+              cat /tmp/pediu-api.log
+              exit 1
+            fi
             sleep 2
           done
+          echo "API health check timed out"
           cat /tmp/pediu-api.log
           exit 1
+      - name: Verify API process cleanup
+        if: always()
+        run: |
+          if [ -f /tmp/pediu-api.pid ]; then
+            kill $(cat /tmp/pediu-api.pid) 2>/dev/null || true
+          fi
