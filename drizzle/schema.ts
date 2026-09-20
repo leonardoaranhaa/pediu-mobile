@@ -62,7 +62,9 @@ export const payments = mysqlTable("pediu_payments", {
   pixKey: varchar("pixKey", { length: 255 }),
   transactionId: varchar("transactionId", { length: 120 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => ({
+  transactionUnique: unique("pediu_payments_transaction_unique").on(table.transactionId),
+}));
 
 
 export const paymentAccounts = mysqlTable("pediu_payment_accounts", {
