@@ -9,6 +9,8 @@ const bundleId = rawBundleId
   .replace(/\.+/g, ".")
   .replace(/^\.+|\.+$/g, "")
   .toLowerCase();
+import { PEDIU_OAUTH_SCHEME } from "./constants/oauth-scheme";
+
 const timestamp = "pediu";
 
 const config: ExpoConfig = {
@@ -17,7 +19,7 @@ const config: ExpoConfig = {
   version: "1.0.0",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
-  scheme: `pediu${timestamp}`,
+  scheme: PEDIU_OAUTH_SCHEME,
   userInterfaceStyle: "light",
   newArchEnabled: true,
   ios: { supportsTablet: true, bundleIdentifier: bundleId, infoPlist: { ITSAppUsesNonExemptEncryption: false } },
@@ -32,7 +34,7 @@ const config: ExpoConfig = {
     predictiveBackGestureEnabled: false,
     package: bundleId,
     permissions: ["POST_NOTIFICATIONS"],
-    intentFilters: [{ action: "VIEW", autoVerify: true, data: [{ scheme: `pediu${timestamp}`, host: "*" }], category: ["BROWSABLE", "DEFAULT"] }],
+    intentFilters: [{ action: "VIEW", autoVerify: true, data: [{ scheme: PEDIU_OAUTH_SCHEME, host: "*" }], category: ["BROWSABLE", "DEFAULT"] }],
   },
   web: { bundler: "metro", output: "static", favicon: "./assets/images/favicon.png" },
   plugins: [
