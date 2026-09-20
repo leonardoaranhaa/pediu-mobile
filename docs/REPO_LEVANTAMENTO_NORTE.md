@@ -1,7 +1,7 @@
 # Pediu Mobile — Levantamento Técnico e Norte de Implementação
 
 > Documento de referência para todas as alterações futuras do projeto.
-> Atualizado em 2026-09-18.
+> Atualizado em 2026-09-19.
 
 ## 1. Regra de trabalho
 
@@ -658,3 +658,242 @@ Antes de criar migrations financeiras:
 **Princípio:** o banco do Pediu registra a verdade operacional e contábil da plataforma; o PSP é a fonte de verdade para o movimento financeiro externo.
 
 **Estado:** arquitetura aprovada para implementação; nenhuma migration financeira foi criada nesta etapa.
+
+
+## Validação da Fase 6 — Administração — F6.1 — 19/09/2026
+
+Implementado:
+- router administrativo separado em `server/admin-router.ts`;
+- todos os contratos administrativos protegidos por `adminProcedure`;
+- consultas administrativas para usuários, estabelecimentos, pedidos, pagamentos, clientes/fiado, ledger e auditoria;
+- paginação limitada no servidor (`limit` entre 1 e 100 e `offset` não negativo);
+- tabela `pediu_admin_audit_logs` criada por migration `0007_admin_audit_logs.sql`;
+- snapshot/journal Drizzle atualizados para a nova migration;
+- dados de usuários expostos ao administrador são selecionados explicitamente, evitando retornar campos desnecessários;
+- nenhuma mutation administrativa foi criada nesta camada inicial; operações destrutivas serão adicionadas somente com autorização, auditoria e testes específicos.
+
+Testes criados:
+- administrador acessa todos os contratos administrativos;
+- merchant recebe `FORBIDDEN`;
+- usuário comum recebe `FORBIDDEN`;
+- usuário anônimo recebe `FORBIDDEN`;
+- paginação inválida é rejeitada no boundary do router.
+
+Estado:
+- implementação criada na branch `feat/norte-phase-5-6`;
+- validação TypeScript/testes/build ainda deve ser confirmada pelo CI desta alteração;
+- migration e fluxo administrativo real contra MySQL ainda precisam ser observados no pipeline operacional;
+- interface administrativa ainda não foi criada; será iniciada somente após validar este contrato backend.
+
+Regra de continuidade:
+**F6.1 só será considerada validada após CI verde e validação da migration/fluxo administrativo.**
+
+
+## Continuidade da Fase 6 — F6.2 — Painel administrativo — 19/09/2026
+
+Implementado após a validação do backend F6.1:
+- painel `/admin` para contas com papel `admin`;
+- visão operacional de usuários, estabelecimentos, pedidos, pagamentos e crédito/fiado;
+- tela `/admin/audit` para consulta dos registros de auditoria;
+- acesso ao painel exposto no perfil somente quando `user.role === "admin"`;
+- rotas continuam protegidas no backend por `adminProcedure`, portanto esconder a opção na UI não é tratado como mecanismo de segurança;
+- estados de carregamento e erro foram tratados na interface;
+- identidade visual reutiliza `Page`, `Card`, `Row`, `OutlineButton` e tokens Pediu existentes.
+
+Validação:
+- CI #245 — run 35452891308: **success**;
+- validação operacional #48 — run 35452891310: **success**;
+- TypeScript, testes e build foram aprovados no pipeline;
+- migration e smoke test operacional foram aprovados no pipeline;
+- fluxo administrativo foi validado pelo teste realizado nesta etapa;
+- autorização administrativa permanece coberta no backend, incluindo rejeição de papéis não administrativos;
+- nenhum dispositivo físico foi usado como substituto dos testes de backend/CI.
+
+Estado:
+**F6.2 validada.** A camada administrativa atual permanece deliberadamente somente leitura; não há mutations administrativas sem requisito operacional definido. Qualquer ação futura de suporte/moderação deverá nascer com autorização, auditoria e testes específicos.
+
+Próxima etapa:
+**revisar o fechamento da Fase 6 e somente então decidir se há lacunas reais antes da Fase 7.**
+
+
+## Fechamento da Fase 6 — F6.3 — Hardening administrativo — 19/09/2026
+
+Objetivo: encerrar a camada administrativa sem criar mutations sem necessidade operacional.
+
+Validado:
+- acesso administrativo permanece protegido no backend por adminProcedure;
+- a interface também restringe a entrada ao painel para role === "admin";
+- consultas administrativas possuem paginação limitada e validada;
+- o painel trata estados de carregamento, erro e ausência de dados;
+- a tela de auditoria consulta exclusivamente o endpoint protegido;
+- o schema possui pediu_admin_audit_logs para registrar futuras ações administrativas;
+- não existem operações destrutivas administrativas escondidas ou acessíveis pela UI;
+- qualquer futura mutation administrativa deverá escrever auditoria e possuir testes de autorização e erro próprios.
+
+Decisão:
+- manter Fase 6 deliberadamente read-only neste momento;
+- não criar CRUD administrativo artificial apenas para ampliar escopo;
+- suporte/moderação destrutiva será tratado como requisito separado quando houver fluxo de negócio definido.
+
+## Fechamento da Fase 6 — F6.4 — Validação final e encerramento — 19/09/2026
+
+Checklist final da Fase 6:
+- [x] contratos administrativos implementados;
+- [x] autorização de administrador testada;
+- [x] papéis não administrativos bloqueados;
+- [x] paginação validada;
+- [x] migration de auditoria criada;
+- [x] painel administrativo implementado;
+- [x] consulta de auditoria implementada;
+- [x] CI verde;
+- [x] validação operacional verde;
+- [x] documentação atualizada;
+- [x] nenhuma regressão conhecida identificada nos testes existentes.
+
+Resultado:
+FASE 6 — ADMINISTRAÇÃO: CONCLUÍDA.
+
+A Fase 7 só deve começar após uma nova revisão do Norte para confirmar se há alguma lacuna de produto realmente necessária no fluxo Cliente → Loja → Pedido → Pagamento → Fiado → Entrega. O roadmap continua priorizando o fluxo transacional antes de funcionalidades de escala.
+
+## Revisão do Norte antes da Fase 7 — 19/09/2026
+
+Revisão concluída sobre o estado atual do produto.
+
+### O que já está coberto
+- autenticação e papéis;
+- catálogo de estabelecimento;
+- marketplace cliente → catálogo → carrinho → pedido;
+- cálculo server-side do pedido;
+- operação da loja e máquina de estados do pedido;
+- acompanhamento protegido do pedido;
+- pagamento PIX preparado com valor e chave derivados do servidor;
+- Fiado com limite, saldo derivado e ledger;
+- notificações persistidas e push best-effort;
+- administração protegida, paginação e auditoria;
+- domínio financeiro estruturado para futura integração com PSP.
+
+### Lacunas que permanecem intencionalmente abertas
+- gateway Mercado Pago real, OAuth, Split e webhooks reais;
+- validação visual em dispositivo físico;
+- teste ponta a ponta completo com dois usuários e MySQL real;
+- rede própria de entregadores;
+- operações administrativas destrutivas;
+- busca/filtros avançados do marketplace;
+- funcionalidades de escala e observabilidade além do necessário para o MVP.
+
+Essas lacunas não bloqueiam a entrada na Fase 7 porque pertencem a integrações posteriores, validação operacional manual ou escopo deliberadamente adiado.
+
+### Direção da Fase 7
+A Fase 7 deve tratar **escala e confiabilidade**, não adicionar funcionalidades aleatórias. O foco inicial será:
+1. observabilidade e diagnóstico;
+2. idempotência e resiliência dos fluxos críticos;
+3. performance de consultas e paginação;
+4. consistência entre pedido, pagamento, Fiado e notificações;
+5. preparação para integrações externas sem acoplamento.
+
+Regra:
+**não avançar para Mercado Pago real ou expansão de funcionalidades enquanto os fluxos internos críticos não tiverem contratos, testes, idempotência e observabilidade suficientes.**
+
+Estado:
+**Fase 6 encerrada. Fase 7 autorizada para início.**
+
+
+## Fase 7 — Escala e confiabilidade
+
+### F7.1 — Observabilidade e diagnóstico — 19/09/2026
+
+Implementado:
+- middleware de observabilidade aplicado às procedures tRPC públicas, protegidas e administrativas;
+- cada execução registra procedimento, duração, resultado (`ok`/`error`) e código de erro quando aplicável;
+- logs utilizam estrutura JSON e prefixo `[Pediu][Operation]`;
+- payloads de usuário, credenciais e dados de negócio não são registrados pelo mecanismo;
+- teste de contrato garante que uma execução bem-sucedida de `auth.me` gera evento de observabilidade sem expor o objeto do usuário;
+- erros preservam o código tRPC quando disponível e caem para `INTERNAL_SERVER_ERROR` quando a exceção não é um `TRPCError`.
+
+Validação automatizada:
+- commit: `2144586079c90a2ac537ff665c28013a1c42ee1b`;
+- CI #257 — run `35454667126`: **success**;
+- validação operacional #60 — run `35454667117`: **success**;
+- TypeScript, testes e build foram aprovados no CI;
+- migration e smoke test operacional permaneceram verdes no pipeline;
+- o workflow atual não executa `pnpm lint`, portanto lint não foi usado como critério desta validação.
+
+Limitações conhecidas:
+- observabilidade desta etapa é baseada em logs estruturados, não em métricas persistentes ou APM;
+- não há ainda correlation/request ID;
+- validação visual em dispositivo físico continua pendente;
+- fluxo ponta a ponta com dois usuários e MySQL real continua pendente.
+
+**Estado: F7.1 VALIDADA.**
+
+Regra de continuidade:
+**F7.2 só deve começar após este registro e nova inspeção dos fluxos críticos de idempotência/resiliência.**
+
+
+### F7.2 — Idempotência e resiliência financeira — 20/09/2026
+
+Implementado:
+- criação de PIX utiliza chave de idempotência derivada do pedido;
+- tentativa repetida reutiliza cobrança PIX pendente já persistida;
+- transações externas possuem identificadores persistidos e constraints de unicidade no domínio financeiro;
+- webhook externo possui idempotência por provedor + identificador do evento;
+- pagamentos possuem unicidade para transactionId;
+- concorrência na persistência da cobrança PIX possui fallback para localizar a transação já criada;
+- boundary do provider permanece independente do provedor real.
+
+Validação automatizada:
+- CI #278 — run 35479054981: **success**;
+- validação operacional #81 — run 35479055013: **success**;
+- TypeScript, testes e build aprovados;
+- migrations e smoke test operacional aprovados.
+
+**Estado: F7.2 VALIDADA.**
+
+### F7.3 — Performance de consultas e índices operacionais — 20/09/2026
+
+Implementado:
+- índices para catálogo por estabelecimento/disponibilidade;
+- índices para pedidos por cliente/data e estabelecimento/status/data;
+- índice de itens por pedido;
+- índice de pagamentos por pedido/status;
+- índice de notificações por usuário/leitura/data;
+- índices secundários para lojas abertas, clientes por estabelecimento, ledger, vendas, push tokens e auditoria;
+- migrations 0009_operational_query_indexes.sql e 0010_secondary_operational_indexes.sql registradas no journal Drizzle.
+
+Validação automatizada:
+- CI #290 — run 35479908948: **success**;
+- validação operacional #93 — run 35479908929: **success**;
+- migrations e smoke test aprovados.
+
+Limitação:
+- ainda não há benchmark de carga representativo; os índices foram definidos a partir dos padrões de consulta atuais.
+
+**Estado: F7.3 VALIDADA.**
+
+### F7.4 — Consistência transacional dos fluxos críticos — 20/09/2026
+
+Implementado:
+- criação de pedido normal, itens e pagamento agora ocorre em uma única transação de banco;
+- preços dos itens continuam sendo derivados do catálogo persistido no servidor;
+- falha de notificação push não desfaz a operação principal;
+- cancelamento de pedido pelo cliente também cancela pagamentos ainda pending daquele pedido;
+- pagamento já confirmado não é convertido em cancelled por essa rotina; estorno permanece como fluxo financeiro separado;
+- testes cobrem a criação atômica e a consistência do cancelamento.
+
+Validação automatizada final:
+- CI #300 — run 35481087783: **success**;
+- validação operacional #103 — run 35481087942: **success**;
+- CI final da correção de cancelamento: run 35481581771 — **success**;
+- validação operacional final: run 35481581772 — **success**;
+- TypeScript, testes, build, migration e smoke test aprovados.
+
+**Estado: F7.4 VALIDADA.**
+
+### Próxima etapa — F7.5 — Preparação para integrações externas
+
+Antes de integrar Mercado Pago real, revisar o contrato PaymentProvider, os estados financeiros, idempotência, webhook e conciliação já modelados. Não adicionar SDK, OAuth, Split ou webhook real nesta etapa sem uma validação específica de contrato e segurança.
+
+Após F7.5, fazer uma revisão final da Fase 7, atualizar este documento e somente então preparar o PR único para merge em main.
+
+**Regra de continuidade:**
+**VALIDATE → TEST → RECORD → THEN ADVANCE.**

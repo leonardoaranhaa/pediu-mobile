@@ -20,6 +20,7 @@ export default function ProfilePage() {
       <Row icon="notifications" title="Notificações" onPress={() => router.push("/account/notifications")} />
       <Row icon="settings" title="Configurações" onPress={() => router.push("/account/settings")} />
     </Card>
+    {user?.role === "admin" ? <OutlineButton title="Painel administrativo" onPress={() => router.push("/admin")} /> : null}
     {isAuthenticated ? <OutlineButton title="Sair da conta" onPress={() => void logout()} /> : null}
     <Text style={s.muted}>O modo vendedor aparece apenas quando a conta possui perfil de estabelecimento.</Text>
   </Page>;

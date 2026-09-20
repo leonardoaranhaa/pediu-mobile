@@ -1,0 +1,1 @@
+ALTER TABLE `pediu_payments` ADD CONSTRAINT `pediu_payments_transaction_unique` UNIQUE (`transactionId`);

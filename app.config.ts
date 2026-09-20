@@ -1,6 +1,7 @@
 // Load environment variables with proper priority (system > .env)
 import "./scripts/load-env.js";
 import type { ExpoConfig } from "expo/config";
+import { PEDIU_OAUTH_SCHEME } from "./constants/oauth-scheme";
 
 const rawBundleId = "space.manus.pediu.mobile";
 const bundleId = rawBundleId
@@ -9,15 +10,13 @@ const bundleId = rawBundleId
   .replace(/\.+/g, ".")
   .replace(/^\.+|\.+$/g, "")
   .toLowerCase();
-const timestamp = "pediu";
-
 const config: ExpoConfig = {
   name: "Pediu",
   slug: "pediu-mobile",
   version: "1.0.0",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
-  scheme: `pediu${timestamp}`,
+  scheme: PEDIU_OAUTH_SCHEME,
   userInterfaceStyle: "light",
   newArchEnabled: true,
   ios: { supportsTablet: true, bundleIdentifier: bundleId, infoPlist: { ITSAppUsesNonExemptEncryption: false } },
@@ -32,7 +31,7 @@ const config: ExpoConfig = {
     predictiveBackGestureEnabled: false,
     package: bundleId,
     permissions: ["POST_NOTIFICATIONS"],
-    intentFilters: [{ action: "VIEW", autoVerify: true, data: [{ scheme: `pediu${timestamp}`, host: "*" }], category: ["BROWSABLE", "DEFAULT"] }],
+    intentFilters: [{ action: "VIEW", autoVerify: true, data: [{ scheme: PEDIU_OAUTH_SCHEME, host: "*" }], category: ["BROWSABLE", "DEFAULT"] }],
   },
   web: { bundler: "metro", output: "static", favicon: "./assets/images/favicon.png" },
   plugins: [

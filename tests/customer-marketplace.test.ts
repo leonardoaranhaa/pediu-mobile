@@ -67,8 +67,7 @@ describe("Pediu customer marketplace contract", () => {
       available: 1,
       createdAt: new Date(),
     } as any);
-    const createOrder = vi.spyOn(db, "createOrder").mockResolvedValue(501);
-    const createPayment = vi.spyOn(db, "createOrderPayment").mockResolvedValue(601);
+    const createOrderWithPayment = vi.spyOn(db, "createOrderWithPayment").mockResolvedValue({ orderId: 501, paymentId: 601 });
 
     const caller = appRouter.createCaller({ user: customer } as any);
     const result = await caller.pediu.orders.create({
@@ -80,11 +79,11 @@ describe("Pediu customer marketplace contract", () => {
     });
 
     expect(result).toMatchObject({ orderId: 501, paymentId: 601, status: "Pendente" });
-    expect(createOrder).toHaveBeenCalledWith(
+    expect(createOrderWithPayment).toHaveBeenCalledWith(
       expect.objectContaining({ customerId: 20, storeId: 7, total: "23.00" }),
       [{ productId: 101, quantity: 1, unitPrice: "18.00" }],
+      "pix",
     );
-    expect(createPayment).toHaveBeenCalledWith(501, "pix");
   });
 
 
@@ -104,8 +103,7 @@ describe("Pediu customer marketplace contract", () => {
       price: "20.00",
       available: 1,
     } as any);
-    vi.spyOn(db, "createOrder").mockResolvedValue(502);
-    const createPayment = vi.spyOn(db, "createOrderPayment").mockResolvedValue(602);
+    const createOrderWithPayment = vi.spyOn(db, "createOrderWithPayment").mockResolvedValue({ orderId: 502, paymentId: 602 });
 
     const caller = appRouter.createCaller({ user: customer } as any);
     const result = await caller.pediu.orders.create({
@@ -117,7 +115,11 @@ describe("Pediu customer marketplace contract", () => {
     });
 
     expect(result).toMatchObject({ orderId: 502, paymentId: 602, status: "Pendente" });
-    expect(createPayment).toHaveBeenCalledWith(502, paymentMethod);
+    expect(createOrderWithPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ customerId: 20, storeId: 7, total: "20.00" }),
+      [{ productId: 101, quantity: 1, unitPrice: "20.00" }],
+      paymentMethod,
+    );
   });
 
   it("rejects a client-supplied total that does not match the catalog", async () => {

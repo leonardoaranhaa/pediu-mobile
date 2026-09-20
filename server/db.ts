@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { Customer, InsertCustomer, InsertLedgerEntry, InsertNotification, InsertOrder, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Notification, Order, Payment, Product, PushToken, Sale, Store, customers, ledgerEntries, notifications, orderItems, orders, payments, products, pushTokens, sales, stores, users } from "../drizzle/schema";
+import { AdminAuditLog, Customer, InsertAdminAuditLog, InsertCustomer, InsertLedgerEntry, InsertNotification, InsertOrder, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Notification, Order, Payment, Product, PushToken, Sale, Store, adminAuditLogs, customers, ledgerEntries, notifications, orderItems, orders, payments, products, pushTokens, sales, stores, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -62,6 +62,63 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     console.error("[Database] Failed to upsert user:", error);
     throw error;
   }
+}
+
+export async function listAdminUsers(limit = 50, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: users.id,
+    name: users.name,
+    email: users.email,
+    role: users.role,
+    loginMethod: users.loginMethod,
+    createdAt: users.createdAt,
+    lastSignedIn: users.lastSignedIn,
+  }).from(users).limit(limit).offset(offset);
+}
+
+export async function listAdminStores(limit = 50, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(stores).limit(limit).offset(offset);
+}
+
+export async function listAdminOrders(limit = 50, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(orders).limit(limit).offset(offset);
+}
+
+export async function listAdminPayments(limit = 50, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(payments).limit(limit).offset(offset);
+}
+
+export async function listAdminCustomers(limit = 50, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(customers).limit(limit).offset(offset);
+}
+
+export async function listAdminLedgerEntries(limit = 50, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(ledgerEntries).limit(limit).offset(offset);
+}
+
+export async function createAdminAuditLog(input: InsertAdminAuditLog): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(adminAuditLogs).values(input);
+  return Number((result as unknown as { insertId: number | string }).insertId);
+}
+
+export async function listAdminAuditLogs(limit = 50, offset = 0): Promise<AdminAuditLog[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(adminAuditLogs).limit(limit).offset(offset);
 }
 
 export async function getUserByOpenId(openId: string) {
@@ -214,6 +271,22 @@ export async function createOrder(input: InsertOrder, items: Array<{ productId: 
   return orderId;
 }
 
+export async function createOrderWithPayment(input: InsertOrder, items: Array<{ productId: number; quantity: number; unitPrice: string }>, paymentMethod: "pix" | "card" | "cash"): Promise<{ orderId: number; paymentId: number }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  if (items.length === 0) throw new Error("Pedido sem itens");
+
+  return db.transaction(async (tx) => {
+    const orderResult = await tx.insert(orders).values(input);
+    const orderId = Number((orderResult as unknown as { insertId: number | string }).insertId);
+    const itemRows = items.map((item) => ({ ...item, orderId }));
+    await tx.insert(orderItems).values(itemRows);
+    const paymentResult = await tx.insert(payments).values({ orderId, method: paymentMethod, status: "pending" });
+    const paymentId = Number((paymentResult as unknown as { insertId: number | string }).insertId);
+    return { orderId, paymentId };
+  });
+}
+
 export async function createOrderWithFiado(input: InsertOrder, items: Array<{ productId: number; quantity: number; unitPrice: string }>, creditCustomerId: number, storeId: number): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -267,6 +340,13 @@ export async function getPendingPixPaymentForOrder(orderId: number): Promise<Pay
   return result[0];
 }
 
+export async function getPaymentByTransactionId(transactionId: string): Promise<Payment | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(payments).where(eq(payments.transactionId, transactionId)).limit(1);
+  return result[0];
+}
+
 export async function createPendingPixPayment(orderId: number, pixKey: string, transactionId?: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -301,6 +381,12 @@ export async function updatePaymentStatus(paymentId: number, status: Exclude<Pay
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(payments).set({ status }).where(eq(payments.id, paymentId));
+}
+
+export async function cancelPendingPaymentForOrder(orderId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(payments).set({ status: "cancelled" }).where(and(eq(payments.orderId, orderId), eq(payments.status, "pending")));
 }
 
 export async function listCustomersForStore(storeId: number): Promise<Customer[]> {

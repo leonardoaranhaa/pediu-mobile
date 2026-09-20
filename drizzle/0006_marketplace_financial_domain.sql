@@ -6,10 +6,11 @@ CREATE TABLE `pediu_payment_accounts` (
   `onboardingStatus` enum('pending','active','restricted','disabled') NOT NULL DEFAULT 'pending',
   `createdAt` timestamp NOT NULL DEFAULT (now()),
   `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT `pediu_payment_accounts_id` PRIMARY KEY(`id`),
   CONSTRAINT `pediu_payment_accounts_store_unique` UNIQUE (`storeId`),
   CONSTRAINT `pediu_payment_accounts_provider_account_unique` UNIQUE (`provider`,`providerAccountId`)
 );
-
+--> statement-breakpoint
 CREATE TABLE `pediu_payment_transactions` (
   `id` int NOT NULL AUTO_INCREMENT,
   `paymentId` int NOT NULL,
@@ -22,10 +23,11 @@ CREATE TABLE `pediu_payment_transactions` (
   `idempotencyKey` varchar(160),
   `createdAt` timestamp NOT NULL DEFAULT (now()),
   `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT `pediu_payment_transactions_id` PRIMARY KEY(`id`),
   CONSTRAINT `pediu_payment_transactions_provider_tx_unique` UNIQUE (`provider`,`providerTransactionId`),
   CONSTRAINT `pediu_payment_transactions_idempotency_unique` UNIQUE (`provider`,`idempotencyKey`)
 );
-
+--> statement-breakpoint
 CREATE TABLE `pediu_commission_rules` (
   `id` int NOT NULL AUTO_INCREMENT,
   `storeId` int,
@@ -34,9 +36,10 @@ CREATE TABLE `pediu_commission_rules` (
   `fixedAmount` decimal(10,2) NOT NULL DEFAULT '0.00',
   `activeFrom` timestamp NOT NULL DEFAULT (now()),
   `activeUntil` timestamp,
-  `createdAt` timestamp NOT NULL DEFAULT (now())
+  `createdAt` timestamp NOT NULL DEFAULT (now()),
+  CONSTRAINT `pediu_commission_rules_id` PRIMARY KEY(`id`)
 );
-
+--> statement-breakpoint
 CREATE TABLE `pediu_commission_entries` (
   `id` int NOT NULL AUTO_INCREMENT,
   `orderId` int NOT NULL,
@@ -44,9 +47,10 @@ CREATE TABLE `pediu_commission_entries` (
   `ruleId` int,
   `grossAmount` decimal(10,2) NOT NULL,
   `commissionAmount` decimal(10,2) NOT NULL,
-  `createdAt` timestamp NOT NULL DEFAULT (now())
+  `createdAt` timestamp NOT NULL DEFAULT (now()),
+  CONSTRAINT `pediu_commission_entries_id` PRIMARY KEY(`id`)
 );
-
+--> statement-breakpoint
 CREATE TABLE `pediu_financial_ledger` (
   `id` int NOT NULL AUTO_INCREMENT,
   `storeId` int NOT NULL,
@@ -58,9 +62,10 @@ CREATE TABLE `pediu_financial_ledger` (
   `currency` varchar(3) NOT NULL DEFAULT 'BRL',
   `referenceId` varchar(160),
   `note` varchar(255),
-  `createdAt` timestamp NOT NULL DEFAULT (now())
+  `createdAt` timestamp NOT NULL DEFAULT (now()),
+  CONSTRAINT `pediu_financial_ledger_id` PRIMARY KEY(`id`)
 );
-
+--> statement-breakpoint
 CREATE TABLE `pediu_payouts` (
   `id` int NOT NULL AUTO_INCREMENT,
   `storeId` int NOT NULL,
@@ -74,9 +79,10 @@ CREATE TABLE `pediu_payouts` (
   `scheduledAt` timestamp,
   `paidAt` timestamp,
   `createdAt` timestamp NOT NULL DEFAULT (now()),
+  CONSTRAINT `pediu_payouts_id` PRIMARY KEY(`id`),
   CONSTRAINT `pediu_payouts_provider_payout_unique` UNIQUE (`provider`,`providerPayoutId`)
 );
-
+--> statement-breakpoint
 CREATE TABLE `pediu_refunds` (
   `id` int NOT NULL AUTO_INCREMENT,
   `paymentId` int NOT NULL,
@@ -88,9 +94,10 @@ CREATE TABLE `pediu_refunds` (
   `reason` varchar(255),
   `createdAt` timestamp NOT NULL DEFAULT (now()),
   `completedAt` timestamp,
+  CONSTRAINT `pediu_refunds_id` PRIMARY KEY(`id`),
   CONSTRAINT `pediu_refunds_provider_refund_unique` UNIQUE (`provider`,`providerRefundId`)
 );
-
+--> statement-breakpoint
 CREATE TABLE `pediu_webhook_events` (
   `id` int NOT NULL AUTO_INCREMENT,
   `provider` varchar(40) NOT NULL,
@@ -100,5 +107,6 @@ CREATE TABLE `pediu_webhook_events` (
   `payload` text,
   `processedAt` timestamp,
   `createdAt` timestamp NOT NULL DEFAULT (now()),
+  CONSTRAINT `pediu_webhook_events_id` PRIMARY KEY(`id`),
   CONSTRAINT `pediu_webhook_events_provider_event_unique` UNIQUE (`provider`,`providerEventId`)
 );
