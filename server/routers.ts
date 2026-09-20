@@ -96,6 +96,7 @@ export const appRouter = router({
         if (!isOwner) {
           if (input.status !== "Cancelado" || !canCustomerCancelOrder(order.status)) throw new Error("O cliente só pode cancelar pedidos ainda não preparados");
           await db.updateOrderStatus(input.orderId, input.status);
+          await db.cancelPendingPaymentForOrder(input.orderId);
           const store = await db.getStoreById(order.storeId);
           if (store) {
             try { await sendPushToUser(store.ownerId, "Pedido cancelado", `O pedido #${order.id} foi cancelado pelo cliente.`, { type: "order", orderId: order.id, status: input.status }); }
