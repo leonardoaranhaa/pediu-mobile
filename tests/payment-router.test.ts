@@ -110,6 +110,34 @@ describe("Pediu payment operational contract", () => {
     expect(result).toMatchObject({ paymentId: 701, amount: "42.50", providerChargeId: "charge-501" });
   });
 
+  it("reuses the persisted payment when the provider transaction was created by a concurrent retry", async () => {
+    vi.spyOn(db, "getOrderForCustomer").mockResolvedValue({
+      id: 501, customerId: 20, storeId: 7, total: "42.50", status: "Pendente",
+    } as any);
+    vi.spyOn(db, "getStoreById").mockResolvedValue({
+      id: 7, pixKey: "store-pix@test.local",
+    } as any);
+    vi.spyOn(db, "getPendingPixPaymentForOrder").mockResolvedValue(undefined);
+    vi.spyOn(payments, "createPixCharge").mockResolvedValue({
+      provider: "test",
+      providerChargeId: "charge-concurrent",
+      checkoutUrl: "https://pix.test/charge-concurrent",
+      status: "pending",
+      message: "pending",
+    });
+    vi.spyOn(db, "createPendingPixPayment").mockRejectedValue(new Error("duplicate transaction"));
+    vi.spyOn(db, "getPaymentByTransactionId").mockResolvedValue({
+      id: 702, orderId: 501, method: "pix", status: "pending",
+      pixKey: "store-pix@test.local", transactionId: "charge-concurrent", createdAt: new Date(),
+    } as any);
+    vi.spyOn(push, "sendPushToUser").mockResolvedValue({ sent: 0 });
+
+    const caller = appRouter.createCaller({ user: customer } as any);
+    const result = await caller.pediu.payments.createPix({ orderId: 501 });
+
+    expect(result).toMatchObject({ paymentId: 702, providerChargeId: "charge-concurrent" });
+  });
+
   it("rejects PIX creation for an order that is not owned by the customer", async () => {
     vi.spyOn(db, "getOrderForCustomer").mockResolvedValue(undefined);
     const caller = appRouter.createCaller({ user: customer } as any);
