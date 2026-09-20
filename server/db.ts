@@ -271,6 +271,22 @@ export async function createOrder(input: InsertOrder, items: Array<{ productId: 
   return orderId;
 }
 
+export async function createOrderWithPayment(input: InsertOrder, items: Array<{ productId: number; quantity: number; unitPrice: string }>, paymentMethod: "pix" | "card" | "cash"): Promise<{ orderId: number; paymentId: number }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  if (items.length === 0) throw new Error("Pedido sem itens");
+
+  return db.transaction(async (tx) => {
+    const orderResult = await tx.insert(orders).values(input);
+    const orderId = Number((orderResult as unknown as { insertId: number | string }).insertId);
+    const itemRows = items.map((item) => ({ ...item, orderId }));
+    await tx.insert(orderItems).values(itemRows);
+    const paymentResult = await tx.insert(payments).values({ orderId, method: paymentMethod, status: "pending" });
+    const paymentId = Number((paymentResult as unknown as { insertId: number | string }).insertId);
+    return { orderId, paymentId };
+  });
+}
+
 export async function createOrderWithFiado(input: InsertOrder, items: Array<{ productId: number; quantity: number; unitPrice: string }>, creditCustomerId: number, storeId: number): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
