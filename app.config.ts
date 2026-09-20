@@ -1,7 +1,11 @@
 // Load environment variables with proper priority (system > .env)
 import "./scripts/load-env.js";
 import type { ExpoConfig } from "expo/config";
-import { PEDIU_OAUTH_SCHEME } from "./constants/oauth-scheme";
+
+// Expo evaluates app.config.ts through a CommonJS loader that cannot resolve
+// extensionless imports of TypeScript files. Keep this build-time value local;
+// the runtime OAuth client uses the shared constant in constants/oauth-scheme.ts.
+const PEDIU_OAUTH_SCHEME = "pediupediu";
 
 const rawBundleId = "space.manus.pediu.mobile";
 const bundleId = rawBundleId
