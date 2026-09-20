@@ -71,6 +71,22 @@ describe("Pediu order operational contract", () => {
     ).rejects.toThrow("Transição de pedido inválida");
   });
 
+
+  it("customer cancellation also cancels any pending payment", async () => {
+    const customer = { ...user, id: 20, openId: "customer-20", role: "user" as const };
+    vi.spyOn(db, "getOrderForUser").mockResolvedValue(order as any);
+    vi.spyOn(db, "getStoreForOwner").mockResolvedValue(undefined as any);
+    vi.spyOn(db, "updateOrderStatus").mockResolvedValue(undefined as any);
+    const cancelPayment = vi.spyOn(db, "cancelPendingPaymentForOrder").mockResolvedValue(undefined as any);
+    vi.spyOn(db, "getStoreById").mockResolvedValue(undefined as any);
+
+    const caller = appRouter.createCaller({ user: customer } as any);
+    await caller.pediu.orders.status({ orderId: 101, status: "Cancelado" });
+
+    expect(db.updateOrderStatus).toHaveBeenCalledWith(101, "Cancelado");
+    expect(cancelPayment).toHaveBeenCalledWith(101);
+  });
+
   it("returns the customer's own order through the protected detail query", async () => {
     vi.spyOn(db, "getOrderForUser").mockResolvedValue(order as any);
 
