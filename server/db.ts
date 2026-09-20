@@ -324,7 +324,7 @@ export async function getPendingPixPaymentForOrder(orderId: number): Promise<Pay
   return result[0];
 }
 
-export async function createPendingPixPayment(orderId: number, pixKey: string, transactionId?: string) {
+export async function getPaymentByTransactionId(transactionId: string): Promise<Payment | undefined> {\n  const db = await getDb();\n  if (!db) return undefined;\n  const result = await db.select().from(payments).where(eq(payments.transactionId, transactionId)).limit(1);\n  return result[0];\n}\n\nexport async function createPendingPixPayment(orderId: number, pixKey: string, transactionId?: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(payments).values({ orderId, method: "pix", status: "pending", pixKey, transactionId });
