@@ -828,3 +828,72 @@ Limitações conhecidas:
 
 Regra de continuidade:
 **F7.2 só deve começar após este registro e nova inspeção dos fluxos críticos de idempotência/resiliência.**
+
+
+### F7.2 — Idempotência e resiliência financeira — 20/09/2026
+
+Implementado:
+- criação de PIX utiliza chave de idempotência derivada do pedido;
+- tentativa repetida reutiliza cobrança PIX pendente já persistida;
+- transações externas possuem identificadores persistidos e constraints de unicidade no domínio financeiro;
+- webhook externo possui idempotência por provedor + identificador do evento;
+- pagamentos possuem unicidade para transactionId;
+- concorrência na persistência da cobrança PIX possui fallback para localizar a transação já criada;
+- boundary do provider permanece independente do provedor real.
+
+Validação automatizada:
+- CI #278 — run 35479054981: **success**;
+- validação operacional #81 — run 35479055013: **success**;
+- TypeScript, testes e build aprovados;
+- migrations e smoke test operacional aprovados.
+
+**Estado: F7.2 VALIDADA.**
+
+### F7.3 — Performance de consultas e índices operacionais — 20/09/2026
+
+Implementado:
+- índices para catálogo por estabelecimento/disponibilidade;
+- índices para pedidos por cliente/data e estabelecimento/status/data;
+- índice de itens por pedido;
+- índice de pagamentos por pedido/status;
+- índice de notificações por usuário/leitura/data;
+- índices secundários para lojas abertas, clientes por estabelecimento, ledger, vendas, push tokens e auditoria;
+- migrations 0009_operational_query_indexes.sql e 0010_secondary_operational_indexes.sql registradas no journal Drizzle.
+
+Validação automatizada:
+- CI #290 — run 35479908948: **success**;
+- validação operacional #93 — run 35479908929: **success**;
+- migrations e smoke test aprovados.
+
+Limitação:
+- ainda não há benchmark de carga representativo; os índices foram definidos a partir dos padrões de consulta atuais.
+
+**Estado: F7.3 VALIDADA.**
+
+### F7.4 — Consistência transacional dos fluxos críticos — 20/09/2026
+
+Implementado:
+- criação de pedido normal, itens e pagamento agora ocorre em uma única transação de banco;
+- preços dos itens continuam sendo derivados do catálogo persistido no servidor;
+- falha de notificação push não desfaz a operação principal;
+- cancelamento de pedido pelo cliente também cancela pagamentos ainda pending daquele pedido;
+- pagamento já confirmado não é convertido em cancelled por essa rotina; estorno permanece como fluxo financeiro separado;
+- testes cobrem a criação atômica e a consistência do cancelamento.
+
+Validação automatizada final:
+- CI #300 — run 35481087783: **success**;
+- validação operacional #103 — run 35481087942: **success**;
+- CI final da correção de cancelamento: run 35481581771 — **success**;
+- validação operacional final: run 35481581772 — **success**;
+- TypeScript, testes, build, migration e smoke test aprovados.
+
+**Estado: F7.4 VALIDADA.**
+
+### Próxima etapa — F7.5 — Preparação para integrações externas
+
+Antes de integrar Mercado Pago real, revisar o contrato PaymentProvider, os estados financeiros, idempotência, webhook e conciliação já modelados. Não adicionar SDK, OAuth, Split ou webhook real nesta etapa sem uma validação específica de contrato e segurança.
+
+Após F7.5, fazer uma revisão final da Fase 7, atualizar este documento e somente então preparar o PR único para merge em main.
+
+**Regra de continuidade:**
+**VALIDATE → TEST → RECORD → THEN ADVANCE.**
