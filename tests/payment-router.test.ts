@@ -103,6 +103,7 @@ describe("Pediu payment operational contract", () => {
       orderId: 501,
       amount: "42.50",
       pixKey: "store-pix@test.local",
+      idempotencyKey: "pix-order-501",
     });
     expect(createPayment).toHaveBeenCalledWith(501, "store-pix@test.local", "charge-501");
     expect(notify).toHaveBeenCalledWith(20, "PIX gerado", "A cobrança PIX do pedido #501 está pronta para pagamento.", { type: "payment", orderId: 501, paymentId: 701, status: "pending" });
