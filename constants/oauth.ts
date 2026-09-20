@@ -4,7 +4,9 @@ import * as ReactNative from "react-native";
 // Keep the native OAuth callback scheme identical to app.config.ts.
 // This is part of the mobile login contract: the browser must reopen the
 // installed app on /oauth/callback after authentication.
-const schemeFromBundleId = "pediupediu";
+import { PEDIU_OAUTH_SCHEME } from "./oauth-scheme";
+
+const schemeFromBundleId = PEDIU_OAUTH_SCHEME;
 
 const env = {
   portal: process.env.EXPO_PUBLIC_OAUTH_PORTAL_URL ?? "",
