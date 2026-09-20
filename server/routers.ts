@@ -78,8 +78,11 @@ export const appRouter = router({
           catch (error) { console.warn("[Orders] Failed to notify store owner about new fiado order:", error); }
           return { orderId, paymentId: null, status: "Pendente" as const };
         }
-        const orderId = await db.createOrder({ customerId: ctx.user.id, storeId: input.storeId, total: input.total, deliveryAddress: input.deliveryAddress }, input.items.map((item, i) => ({ ...item, unitPrice: String(products[i]!.price) })));
-        const paymentId = await db.createOrderPayment(orderId, input.paymentMethod);
+        const { orderId, paymentId } = await db.createOrderWithPayment(
+          { customerId: ctx.user.id, storeId: input.storeId, total: input.total, deliveryAddress: input.deliveryAddress },
+          input.items.map((item, i) => ({ productId: item.productId, quantity: item.quantity, unitPrice: String(products[i]!.price) })),
+          input.paymentMethod,
+        );
         try { await sendPushToUser(store.ownerId, "Novo pedido", `O pedido #${orderId} foi recebido e está pendente de aceite.`, { type: "order", orderId, status: "Pendente" }); }
         catch (error) { console.warn("[Orders] Failed to notify store owner about new order:", error); }
         return { orderId, paymentId, status: "Pendente" as const };
