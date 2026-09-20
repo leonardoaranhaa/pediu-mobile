@@ -57,6 +57,13 @@
       "when": 1790112000000,
       "tag": "0007_admin_audit_logs",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1790120000000,
+      "tag": "0008_payment_transaction_unique",
+      "breakpoints": true
     }
   ]
 }
