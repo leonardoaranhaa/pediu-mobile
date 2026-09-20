@@ -383,6 +383,12 @@ export async function updatePaymentStatus(paymentId: number, status: Exclude<Pay
   await db.update(payments).set({ status }).where(eq(payments.id, paymentId));
 }
 
+export async function cancelPendingPaymentForOrder(orderId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(payments).set({ status: "cancelled" }).where(and(eq(payments.orderId, orderId), eq(payments.status, "pending")));
+}
+
 export async function listCustomersForStore(storeId: number): Promise<Customer[]> {
   const db = await getDb();
   if (!db) return [];
