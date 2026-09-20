@@ -22,7 +22,10 @@ export const stores = mysqlTable("pediu_stores", {
   deliveryFee: decimal("deliveryFee", { precision: 10, scale: 2 }).default("0.00").notNull(),
   isOpen: int("isOpen").default(1).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => ({ ownerUnique: unique("pediu_stores_owner_unique").on(table.ownerId) }));
+}, (table) => ({
+  ownerUnique: unique("pediu_stores_owner_unique").on(table.ownerId),
+  openIdx: index("pediu_stores_open_idx").on(table.isOpen),
+}));
 
 export const products = mysqlTable("pediu_products", {
   id: int("id").autoincrement().primaryKey(),
@@ -194,7 +197,10 @@ export const customers = mysqlTable("pediu_customers", {
   balance: decimal("balance", { precision: 10, scale: 2 }).default("0.00").notNull(),
   status: mysqlEnum("status", ["active", "blocked"]).default("active").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => ({ userStoreUnique: unique("pediu_customers_store_user_unique").on(table.storeId, table.userId) }));
+}, (table) => ({
+  userStoreUnique: unique("pediu_customers_store_user_unique").on(table.storeId, table.userId),
+  storeIdx: index("pediu_customers_store_idx").on(table.storeId),
+}));
 
 export const ledgerEntries = mysqlTable("pediu_ledger_entries", {
   id: int("id").autoincrement().primaryKey(),
@@ -206,7 +212,9 @@ export const ledgerEntries = mysqlTable("pediu_ledger_entries", {
   balanceAfter: decimal("balanceAfter", { precision: 10, scale: 2 }),
   note: varchar("note", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => ({
+  storeCustomerCreatedIdx: index("pediu_ledger_store_customer_created_idx").on(table.storeId, table.customerId, table.createdAt),
+}));
 
 export const sales = mysqlTable("pediu_sales", {
   id: int("id").autoincrement().primaryKey(),
@@ -217,7 +225,9 @@ export const sales = mysqlTable("pediu_sales", {
   paymentMethod: mysqlEnum("paymentMethod", ["pix", "card", "cash", "fiado"]).notNull(),
   note: varchar("note", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => ({
+  storeCreatedIdx: index("pediu_sales_store_created_idx").on(table.storeId, table.createdAt),
+}));
 
 export const pushTokens = mysqlTable("pediu_push_tokens", {
   id: int("id").autoincrement().primaryKey(),
@@ -225,7 +235,9 @@ export const pushTokens = mysqlTable("pediu_push_tokens", {
   token: varchar("token", { length: 255 }).notNull().unique(),
   platform: varchar("platform", { length: 32 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => ({
+  userIdx: index("pediu_push_tokens_user_idx").on(table.userId),
+}));
 
 export const adminAuditLogs = mysqlTable("pediu_admin_audit_logs", {
   id: int("id").autoincrement().primaryKey(),
@@ -235,7 +247,9 @@ export const adminAuditLogs = mysqlTable("pediu_admin_audit_logs", {
   entityId: int("entityId"),
   metadata: text("metadata"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => ({
+  createdIdx: index("pediu_admin_audit_created_idx").on(table.createdAt),
+}));
 
 export const notifications = mysqlTable("pediu_notifications", {
   id: int("id").autoincrement().primaryKey(),
