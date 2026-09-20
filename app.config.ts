@@ -1,6 +1,7 @@
 // Load environment variables with proper priority (system > .env)
 import "./scripts/load-env.js";
 import type { ExpoConfig } from "expo/config";
+import { PEDIU_OAUTH_SCHEME } from "./constants/oauth-scheme";
 
 const rawBundleId = "space.manus.pediu.mobile";
 const bundleId = rawBundleId
@@ -9,10 +10,6 @@ const bundleId = rawBundleId
   .replace(/\.+/g, ".")
   .replace(/^\.+|\.+$/g, "")
   .toLowerCase();
-import { PEDIU_OAUTH_SCHEME } from "./constants/oauth-scheme";
-
-const timestamp = "pediu";
-
 const config: ExpoConfig = {
   name: "Pediu",
   slug: "pediu-mobile",
