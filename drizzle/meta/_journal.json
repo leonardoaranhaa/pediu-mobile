@@ -64,6 +64,13 @@
       "when": 1790120000000,
       "tag": "0008_payment_transaction_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1790121000000,
+      "tag": "0009_operational_query_indexes",
+      "breakpoints": true
     }
   ]
 }
