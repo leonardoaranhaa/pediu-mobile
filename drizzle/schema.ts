@@ -1,4 +1,4 @@
-import { decimal, int, mysqlEnum, mysqlTable, text, timestamp, unique, varchar } from "drizzle-orm/mysql-core";
+import { decimal, int, mysqlEnum, mysqlTable, text, timestamp, unique, varchar, index } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -44,7 +44,10 @@ export const orders = mysqlTable("pediu_orders", {
   deliveryAddress: varchar("deliveryAddress", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (table) => ({
+  customerCreatedIdx: index("pediu_orders_customer_created_idx").on(table.customerId, table.createdAt),
+  storeStatusCreatedIdx: index("pediu_orders_store_status_created_idx").on(table.storeId, table.status, table.createdAt),
+}));
 
 export const orderItems = mysqlTable("pediu_order_items", {
   id: int("id").autoincrement().primaryKey(),
@@ -52,7 +55,9 @@ export const orderItems = mysqlTable("pediu_order_items", {
   productId: int("productId").notNull(),
   quantity: int("quantity").default(1).notNull(),
   unitPrice: decimal("unitPrice", { precision: 10, scale: 2 }).notNull(),
-});
+}, (table) => ({
+  orderIdx: index("pediu_order_items_order_idx").on(table.orderId),
+}));
 
 export const payments = mysqlTable("pediu_payments", {
   id: int("id").autoincrement().primaryKey(),
@@ -64,6 +69,7 @@ export const payments = mysqlTable("pediu_payments", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => ({
   transactionUnique: unique("pediu_payments_transaction_unique").on(table.transactionId),
+  orderStatusIdx: index("pediu_payments_order_status_idx").on(table.orderId, table.status),
 }));
 
 
@@ -239,7 +245,9 @@ export const notifications = mysqlTable("pediu_notifications", {
   type: varchar("type", { length: 40 }).default("general").notNull(),
   readAt: timestamp("readAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => ({
+  userReadCreatedIdx: index("pediu_notifications_user_read_created_idx").on(table.userId, table.readAt, table.createdAt),
+}));
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
