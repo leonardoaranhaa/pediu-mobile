@@ -1,7 +1,7 @@
 # Pediu Mobile — Levantamento Técnico e Norte de Implementação
 
 > Documento de referência para todas as alterações futuras do projeto.
-> Atualizado em 2026-09-18.
+> Atualizado em 2026-09-19.
 
 ## 1. Regra de trabalho
 
@@ -796,3 +796,35 @@ Regra:
 
 Estado:
 **Fase 6 encerrada. Fase 7 autorizada para início.**
+
+
+## Fase 7 — Escala e confiabilidade
+
+### F7.1 — Observabilidade e diagnóstico — 19/09/2026
+
+Implementado:
+- middleware de observabilidade aplicado às procedures tRPC públicas, protegidas e administrativas;
+- cada execução registra procedimento, duração, resultado (`ok`/`error`) e código de erro quando aplicável;
+- logs utilizam estrutura JSON e prefixo `[Pediu][Operation]`;
+- payloads de usuário, credenciais e dados de negócio não são registrados pelo mecanismo;
+- teste de contrato garante que uma execução bem-sucedida de `auth.me` gera evento de observabilidade sem expor o objeto do usuário;
+- erros preservam o código tRPC quando disponível e caem para `INTERNAL_SERVER_ERROR` quando a exceção não é um `TRPCError`.
+
+Validação automatizada:
+- commit: `2144586079c90a2ac537ff665c28013a1c42ee1b`;
+- CI #257 — run `35454667126`: **success**;
+- validação operacional #60 — run `35454667117`: **success**;
+- TypeScript, testes e build foram aprovados no CI;
+- migration e smoke test operacional permaneceram verdes no pipeline;
+- o workflow atual não executa `pnpm lint`, portanto lint não foi usado como critério desta validação.
+
+Limitações conhecidas:
+- observabilidade desta etapa é baseada em logs estruturados, não em métricas persistentes ou APM;
+- não há ainda correlation/request ID;
+- validação visual em dispositivo físico continua pendente;
+- fluxo ponta a ponta com dois usuários e MySQL real continua pendente.
+
+**Estado: F7.1 VALIDADA.**
+
+Regra de continuidade:
+**F7.2 só deve começar após este registro e nova inspeção dos fluxos críticos de idempotência/resiliência.**
