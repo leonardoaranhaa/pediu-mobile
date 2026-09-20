@@ -132,7 +132,7 @@ export const appRouter = router({
             message: "Cobrança PIX já existente.",
           };
         }
-        const charge = await createPixCharge({ orderId: order.id, amount: order.total, pixKey: store.pixKey });
+        const charge = await createPixCharge({ orderId: order.id, amount: order.total, pixKey: store.pixKey, idempotencyKey: `pix-order-${order.id}` });
         const paymentId = await db.createPendingPixPayment(order.id, store.pixKey, charge.providerChargeId);
         try { await sendPushToUser(ctx.user.id, "PIX gerado", `A cobrança PIX do pedido #${order.id} está pronta para pagamento.`, { type: "payment", orderId: order.id, paymentId, status: "pending" }); }
         catch (error) { console.warn("[Payments] Failed to notify customer about PIX creation:", error); }
