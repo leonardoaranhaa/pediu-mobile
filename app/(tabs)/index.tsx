@@ -26,6 +26,7 @@ import {
 import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
 import { canRegisterSale, cartTotal, formatLocationLabel, pixPaymentLabel } from "@/lib/pediu-mvp";
+import { useCart } from "@/providers/cart-provider";
 
 const COLORS = {
   coral: "#FF5A4F",
@@ -121,6 +122,7 @@ const CATEGORIES = [
 
 export default function HomeScreen() {
   const { user, isAuthenticated, logout } = useAuth();
+  const { items: globalCartItems, itemCount: globalCartCount, addItem: addGlobalItem, clear: clearGlobalCart } = useCart();
   const [role, setRole] = useState<"customer" | "seller">("customer");
   const [customerTab, setCustomerTab] = useState<"discover" | "orders" | "profile">("discover");
   const [sellerTab, setSellerTab] = useState<"home" | "orders" | "catalog" | "clients" | "settings">("home");
@@ -153,7 +155,7 @@ export default function HomeScreen() {
       if (checkoutPayment === "pix") {
         createPixMutation.mutate({ orderId: result.orderId }, {
           onSuccess: (charge) => {
-            setCart([]);
+            clearGlobalCart();
             setShowCheckout(false);
             setShowCart(false);
             setPixPaymentPending(true);
@@ -175,7 +177,7 @@ export default function HomeScreen() {
         return;
       }
 
-      setCart([]);
+      clearGlobalCart();
       setShowCheckout(false);
       setShowCart(false);
       setPixPaymentPending(false);
@@ -210,7 +212,18 @@ export default function HomeScreen() {
     onSuccess: () => { void storeProductsQuery.refetch(); },
     onError: (error) => notify(error.message),
   });
-  const [cart, setCart] = useState<Product[]>([]);
+  const cart = useMemo<Product[]>(() => globalCartItems.flatMap((item) => Array.from({ length: item.quantity }, () => ({
+    id: item.id,
+    storeId: item.storeId,
+    name: item.name,
+    store: item.storeName,
+    price: `R$ ${Number(item.price).toFixed(2).replace(".", ",")}`,
+    distance: "perto de você",
+    category: item.category,
+    emoji: item.emoji ?? "🍽️",
+    available: true,
+    deliveryFee: item.deliveryFee,
+  }))), [globalCartItems]);
   const [orderStatus, setOrderStatus] = useState<OrderStatus | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [showCart, setShowCart] = useState(false);
@@ -337,12 +350,20 @@ export default function HomeScreen() {
   };
 
   const addToCart = (product: Product) => {
-    const currentStoreId = cart[0]?.storeId;
-    if (currentStoreId && product.storeId !== currentStoreId) {
-      notify("Seu pedido só pode reunir produtos da mesma loja");
+    const result = addGlobalItem({
+      id: product.id,
+      storeId: product.storeId ?? 0,
+      name: product.name,
+      storeName: product.store,
+      category: product.category,
+      price: String(cartTotal([product.price]).toFixed(2)),
+      deliveryFee: String(product.deliveryFee ?? "0.00"),
+      emoji: product.emoji,
+    });
+    if (!result.ok) {
+      notify(result.error ?? "Não foi possível adicionar o produto");
       return;
     }
-    setCart((current) => [...current, product]);
     setSelectedProduct(null);
     setCartPulse(true);
     Animated.sequence([
@@ -533,10 +554,10 @@ export default function HomeScreen() {
                   category={category}
                   setCategory={setCategory}
                   onProductPress={setSelectedProduct}
-                  cartCount={cart.length}
+                  cartCount={globalCartCount}
                   cartScale={cartScale}
                   cartPulse={cartPulse}
-                  onCartPress={() => setShowCart(true)}
+                  onCartPress={() => router.push("/cart")}
                   locationLabel={locationLabel}
                   onLocationPress={requestLocation}
                   onAssistant={() => openVoiceAssistant("customer")}
