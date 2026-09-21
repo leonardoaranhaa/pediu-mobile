@@ -54,6 +54,28 @@ type Product = {
   deliveryFee?: string;
 };
 
+type SavedAddress = {
+  id: number;
+  label: string;
+  recipientName: string;
+  street: string;
+  number: string;
+  complement: string | null;
+  neighborhood: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  isDefault: number;
+};
+
+function formatSavedAddress(address: SavedAddress) {
+  return [`${address.street}, ${address.number}`, address.complement, `${address.neighborhood} · ${address.city}/${address.state}`, address.postalCode].filter(Boolean).join(", ");
+}
+
+function createCheckoutKey() {
+  return `checkout-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 type OrderStatus = "Pendente" | "Aceito" | "Preparando" | "Pronto" | "A caminho" | "Entregue" | "Cancelado";
 type VoiceMode = "customer" | "seller";
 
@@ -115,6 +137,7 @@ export default function HomeScreen() {
   );
   const storeOrdersQuery = trpc.pediu.orders.storeMine.useQuery(undefined, { enabled: isAuthenticated && role === "seller", refetchInterval: 10_000 });
   const customerOrdersQuery = trpc.pediu.orders.mine.useQuery(undefined, { enabled: isAuthenticated && role === "customer", refetchInterval: 5_000 });
+  const customerAddressesQuery = trpc.pediu.addresses.list.useQuery(undefined, { enabled: isAuthenticated && role === "customer" });
   const updateOrderStatusMutation = trpc.pediu.orders.status.useMutation({
     onSuccess: () => { void storeOrdersQuery.refetch(); void customerOrdersQuery.refetch(); },
     onError: (error) => notify(error.message),
@@ -193,6 +216,8 @@ export default function HomeScreen() {
   const [showCart, setShowCart] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [deliveryAddressId, setDeliveryAddressId] = useState<number | undefined>();
+  const [checkoutIdempotencyKey, setCheckoutIdempotencyKey] = useState("");
   const [checkoutPayment, setCheckoutPayment] = useState<"pix" | "card" | "cash">("pix");
   const [showVoice, setShowVoice] = useState(false);
   const [voiceMode, setVoiceMode] = useState<VoiceMode>("customer");
@@ -333,6 +358,9 @@ export default function HomeScreen() {
       void startOAuthLogin();
       return;
     }
+    const preferredAddress = customerAddressesQuery.data?.find((item) => item.isDefault === 1) ?? customerAddressesQuery.data?.[0];
+    if (!deliveryAddress.trim() && preferredAddress) { setDeliveryAddress(formatSavedAddress(preferredAddress)); setDeliveryAddressId(preferredAddress.id); }
+    setCheckoutIdempotencyKey(createCheckoutKey());
     setShowCart(false);
     setShowCheckout(true);
   };
@@ -346,9 +374,11 @@ export default function HomeScreen() {
     const deliveryFee = Number(cart[0]?.deliveryFee ?? 0);
     const total = (itemsTotal + deliveryFee).toFixed(2);
     createOrderMutation.mutate({
+      idempotencyKey: checkoutIdempotencyKey,
       storeId: cart[0]?.storeId ?? 1,
       total,
       paymentMethod: checkoutPayment,
+      addressId: deliveryAddressId,
       deliveryAddress: deliveryAddress.trim(),
       items: cart.map((item) => ({ productId: item.id, quantity: 1, unitPrice: cartTotal([item.price]).toFixed(2) })),
     });
@@ -555,7 +585,7 @@ export default function HomeScreen() {
         </Modal>
 
         <Modal visible={showCheckout} transparent animationType="slide" onRequestClose={() => setShowCheckout(false)}>
-          <CheckoutModal address={deliveryAddress} paymentMethod={checkoutPayment} total={cartTotal(cart.map((item) => item.price)) + Number(cart[0]?.deliveryFee ?? 0)} busy={createOrderMutation.isPending || createPixMutation.isPending} onChangeAddress={setDeliveryAddress} onChangePaymentMethod={setCheckoutPayment} onSubmit={submitOrder} onClose={() => setShowCheckout(false)} />
+          <CheckoutModal addresses={customerAddressesQuery.data ?? []} address={deliveryAddress} paymentMethod={checkoutPayment} total={cartTotal(cart.map((item) => item.price)) + Number(cart[0]?.deliveryFee ?? 0)} busy={createOrderMutation.isPending || createPixMutation.isPending} onChangeAddress={(value) => { setDeliveryAddressId(undefined); setDeliveryAddress(value); }} onSelectAddress={(savedAddress) => { setDeliveryAddressId(savedAddress.id); setDeliveryAddress(formatSavedAddress(savedAddress)); }} onChangePaymentMethod={setCheckoutPayment} onSubmit={submitOrder} onClose={() => setShowCheckout(false)} />
         </Modal>
 
         <Modal visible={showAddProduct} transparent animationType="slide" onRequestClose={() => setShowAddProduct(false)}>
@@ -908,12 +938,17 @@ const notificationStyles = StyleSheet.create({
 });
 
 
-function CheckoutModal({ address, paymentMethod, total, busy, onChangeAddress, onChangePaymentMethod, onSubmit, onClose }: { address: string; paymentMethod: "pix" | "card" | "cash"; total: number; busy: boolean; onChangeAddress: (value: string) => void; onChangePaymentMethod: (value: "pix" | "card" | "cash") => void; onSubmit: () => void; onClose: () => void }) {
-  return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalBackdrop}><View style={styles.sheet}><View style={styles.sheetHandle} /><Text style={styles.eyebrow}>FINALIZAR PEDIDO</Text><Text style={styles.sheetTitle}>Onde devemos entregar?</Text><Text style={styles.muted}>Informe um endereço completo para a loja preparar sua entrega.</Text><Text style={styles.fieldLabel}>ENDEREÇO DE ENTREGA</Text><TextInput value={address} onChangeText={onChangeAddress} placeholder="Rua, número, bairro e complemento" placeholderTextColor={COLORS.muted} style={[styles.input, checkoutStyles.addressInput]} multiline returnKeyType="done" /><Text style={styles.fieldLabel}>FORMA DE PAGAMENTO</Text><View style={checkoutStyles.methods}>{(["pix", "card", "cash"] as const).map((method) => <Pressable key={method} style={[checkoutStyles.method, paymentMethod === method && checkoutStyles.methodActive]} onPress={() => onChangePaymentMethod(method)}><MaterialIcons name={method === "pix" ? "pix" : method === "card" ? "credit-card" : "payments"} size={18} color={paymentMethod === method ? COLORS.coral : COLORS.muted} /><Text style={[checkoutStyles.methodText, paymentMethod === method && checkoutStyles.methodTextActive]}>{method === "pix" ? "PIX" : method === "card" ? "Cartão" : "Dinheiro"}</Text></Pressable>)}</View><View style={styles.totalRow}><Text style={styles.totalLabel}>Total do pedido</Text><Text style={styles.totalValue}>{`R$ ${total.toFixed(2).replace(".", ",")}`}</Text></View>{paymentMethod === "pix" ? <Text style={checkoutStyles.note}>Após confirmar, o pedido será criado e o PIX ficará disponível no acompanhamento.</Text> : null}<Pressable style={[styles.primaryButton, busy && styles.disabledButton]} disabled={busy} onPress={onSubmit}><Text style={styles.primaryButtonText}>{busy ? "Enviando pedido..." : "Confirmar pedido"}</Text><MaterialIcons name="check" size={18} color={COLORS.white} /></Pressable><Pressable style={styles.textButton} onPress={onClose}><Text style={styles.textButtonLabel}>Voltar ao carrinho</Text></Pressable></View></KeyboardAvoidingView>;
+function CheckoutModal({ addresses, address, paymentMethod, total, busy, onChangeAddress, onSelectAddress, onChangePaymentMethod, onSubmit, onClose }: { addresses: SavedAddress[]; address: string; paymentMethod: "pix" | "card" | "cash"; total: number; busy: boolean; onChangeAddress: (value: string) => void; onSelectAddress: (address: SavedAddress) => void; onChangePaymentMethod: (value: "pix" | "card" | "cash") => void; onSubmit: () => void; onClose: () => void }) {
+  return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalBackdrop}><View style={styles.sheet}><View style={styles.sheetHandle} /><Text style={styles.eyebrow}>FINALIZAR PEDIDO</Text><Text style={styles.sheetTitle}>Onde devemos entregar?</Text><Text style={styles.muted}>Escolha um endereço salvo ou informe outro para este pedido.</Text>{addresses.length ? <><Text style={styles.fieldLabel}>ENDEREÇOS SALVOS</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={checkoutStyles.savedAddresses}>{addresses.map((savedAddress) => <Pressable key={savedAddress.id} style={[checkoutStyles.savedAddress, address === formatSavedAddress(savedAddress) && checkoutStyles.savedAddressActive]} onPress={() => onSelectAddress(savedAddress)}><Text style={checkoutStyles.savedAddressLabel}>{savedAddress.label}{savedAddress.isDefault ? " · Padrão" : ""}</Text><Text style={checkoutStyles.savedAddressText}>{formatSavedAddress(savedAddress)}</Text></Pressable>)}</ScrollView></> : null}<Text style={styles.fieldLabel}>ENDEREÇO DE ENTREGA</Text><TextInput value={address} onChangeText={onChangeAddress} placeholder="Rua, número, bairro e complemento" placeholderTextColor={COLORS.muted} style={[styles.input, checkoutStyles.addressInput]} multiline returnKeyType="done" /><Text style={styles.fieldLabel}>FORMA DE PAGAMENTO</Text><View style={checkoutStyles.methods}>{(["pix", "card", "cash"] as const).map((method) => <Pressable key={method} style={[checkoutStyles.method, paymentMethod === method && checkoutStyles.methodActive]} onPress={() => onChangePaymentMethod(method)}><MaterialIcons name={method === "pix" ? "pix" : method === "card" ? "credit-card" : "payments"} size={18} color={paymentMethod === method ? COLORS.coral : COLORS.muted} /><Text style={[checkoutStyles.methodText, paymentMethod === method && checkoutStyles.methodTextActive]}>{method === "pix" ? "PIX" : method === "card" ? "Cartão" : "Dinheiro"}</Text></Pressable>)}</View><View style={styles.totalRow}><Text style={styles.totalLabel}>Total do pedido</Text><Text style={styles.totalValue}>{`R$ ${total.toFixed(2).replace(".", ",")}`}</Text></View>{paymentMethod === "pix" ? <Text style={checkoutStyles.note}>Após confirmar, o pedido será criado e o PIX ficará disponível no acompanhamento.</Text> : null}<Pressable style={[styles.primaryButton, busy && styles.disabledButton]} disabled={busy} onPress={onSubmit}><Text style={styles.primaryButtonText}>{busy ? "Enviando pedido..." : "Confirmar pedido"}</Text><MaterialIcons name="check" size={18} color={COLORS.white} /></Pressable><Pressable style={styles.textButton} onPress={onClose}><Text style={styles.textButtonLabel}>Voltar ao carrinho</Text></Pressable></View></KeyboardAvoidingView>;
 }
 
 const checkoutStyles = StyleSheet.create({
   addressInput: { minHeight: 70, textAlignVertical: "top", paddingTop: 12 },
+  savedAddresses: { gap: 8, paddingBottom: 4 },
+  savedAddress: { width: 190, minHeight: 72, borderWidth: 1, borderColor: COLORS.line, borderRadius: 13, backgroundColor: COLORS.white, padding: 10, gap: 3 },
+  savedAddressActive: { borderColor: COLORS.coral, backgroundColor: COLORS.coralSoft },
+  savedAddressLabel: { color: COLORS.ink, fontSize: 11, fontWeight: "900" },
+  savedAddressText: { color: COLORS.muted, fontSize: 10, lineHeight: 14 },
   methods: { flexDirection: "row", gap: 8 },
   method: { flex: 1, minHeight: 58, alignItems: "center", justifyContent: "center", gap: 4, borderWidth: 1, borderColor: COLORS.line, borderRadius: 13, backgroundColor: COLORS.white },
   methodActive: { borderColor: COLORS.coral, backgroundColor: COLORS.coralSoft },

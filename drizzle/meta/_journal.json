@@ -78,6 +78,20 @@
       "when": 1790122000000,
       "tag": "0010_secondary_operational_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1789988609530,
+      "tag": "0011_customer_experience_domains",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1789989352859,
+      "tag": "0012_order_idempotency",
+      "breakpoints": true
     }
   ]
 }

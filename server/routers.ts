@@ -10,10 +10,25 @@ import { storageGetSignedUrl, storagePut } from "./storage";
 import { sendPushToUser } from "./push";
 import { createPixCharge } from "./payments";
 import { canCustomerCancelOrder, canTransitionOrder } from "./order-state";
+import { normalizeIdempotencyKey } from "./domain/idempotency";
 import { adminRouter } from "./admin-router";
 import { experienceRouter } from "./experience-router";
 
 const orderStatusSchema = z.enum(["Pendente", "Aceito", "Preparando", "Pronto", "A caminho", "Entregue", "Cancelado"]);
+const addressInputSchema = z.object({
+  label: z.string().trim().min(1).max(40),
+  recipientName: z.string().trim().min(2).max(160),
+  street: z.string().trim().min(2).max(180),
+  number: z.string().trim().min(1).max(30),
+  complement: z.string().trim().max(120).optional().nullable(),
+  neighborhood: z.string().trim().min(2).max(100),
+  city: z.string().trim().min(2).max(100),
+  state: z.string().trim().length(2).transform((value) => value.toUpperCase()),
+  postalCode: z.string().trim().regex(/^\d{8}$/),
+  latitude: z.string().regex(/^-?\d+(\.\d+)?$/).optional().nullable(),
+  longitude: z.string().regex(/^-?\d+(\.\d+)?$/).optional().nullable(),
+  isDefault: z.boolean().optional(),
+});
 
 export const appRouter = router({
   system: systemRouter,
@@ -24,6 +39,13 @@ export const appRouter = router({
   }),
   pediu: router({
     experience: experienceRouter,
+    addresses: router({
+      list: protectedProcedure.query(({ ctx }) => db.listCustomerAddresses(ctx.user.id)),
+      create: protectedProcedure.input(addressInputSchema).mutation(({ ctx, input }) => db.createCustomerAddress(ctx.user.id, input)),
+      update: protectedProcedure.input(z.object({ addressId: z.number().int().positive(), data: addressInputSchema.partial() })).mutation(({ ctx, input }) => db.updateCustomerAddress(ctx.user.id, input.addressId, input.data)),
+      delete: protectedProcedure.input(z.object({ addressId: z.number().int().positive() })).mutation(({ ctx, input }) => db.deleteCustomerAddress(ctx.user.id, input.addressId)),
+      setDefault: protectedProcedure.input(z.object({ addressId: z.number().int().positive() })).mutation(({ ctx, input }) => db.setDefaultCustomerAddress(ctx.user.id, input.addressId)),
+    }),
     marketplace: router({
       products: publicProcedure.input(z.object({ category: z.string().optional() }).optional()).query(({ input }) => db.listAvailableProducts(input?.category)),
     }),
@@ -41,12 +63,25 @@ export const appRouter = router({
       mine: protectedProcedure.query(({ ctx }) => db.listOrdersForCustomer(ctx.user.id)),
       get: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).query(async ({ ctx, input }) => { const order = await db.getOrderForUser(input.orderId, ctx.user.id); if (!order) throw new Error("Pedido não encontrado ou não autorizado"); return order; }),
       storeMine: protectedProcedure.query(async ({ ctx }) => { const store = await db.getStoreForOwner(ctx.user.id); return store ? db.listOrdersForStore(store.id) : []; }),
-      create: protectedProcedure.input(z.object({ storeId: z.number().int().positive(), total: z.string().regex(/^\d+(\.\d{1,2})?$/), paymentMethod: z.enum(["pix", "card", "cash", "fiado"]).default("pix"), deliveryAddress: z.string().max(255).optional(), items: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().int().positive().max(50), unitPrice: z.string().regex(/^\d+(\.\d{1,2})?$/) })).min(1) })).mutation(async ({ ctx, input }) => {
+      create: protectedProcedure.input(z.object({ idempotencyKey: z.string().trim().min(8).max(160), storeId: z.number().int().positive(), total: z.string().regex(/^\d+(\.\d{1,2})?$/), paymentMethod: z.enum(["pix", "card", "cash", "fiado"]).default("pix"), addressId: z.number().int().positive().optional(), deliveryAddress: z.string().trim().max(255).optional(), items: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().int().positive().max(50), unitPrice: z.string().regex(/^\d+(\.\d{1,2})?$/) })).min(1) })).mutation(async ({ ctx, input }) => {
+        const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey);
+        const existing = await db.getOrderByIdempotencyKey(ctx.user.id, idempotencyKey);
+        if (existing) {
+          const payment = await db.getPaymentForOrder(existing.id, ctx.user.id);
+          return { orderId: existing.id, paymentId: payment?.id ?? null, status: existing.status };
+        }
+        let deliveryAddress = input.deliveryAddress?.trim() || "";
+        if (input.addressId) {
+          const savedAddress = await db.getCustomerAddress(ctx.user.id, input.addressId); if (!savedAddress) throw new Error("Endereço não encontrado ou não autorizado");
+          deliveryAddress = [`${savedAddress.street}, ${savedAddress.number}`, savedAddress.complement, `${savedAddress.neighborhood} · ${savedAddress.city}/${savedAddress.state}`, savedAddress.postalCode].filter(Boolean).join(", ");
+        }
+        if (!deliveryAddress) throw new Error("Informe o endereço de entrega");
         const store = await db.getStoreById(input.storeId); if (!store) throw new Error("Estabelecimento não encontrado"); if (!store.isOpen) throw new Error("Estabelecimento fechado no momento");
         const products = await Promise.all(input.items.map((item) => db.getAvailableProductForStore(item.productId, input.storeId))); if (products.some((p) => !p)) throw new Error("Há produto inválido ou de outro estabelecimento");
         const calculated = input.items.reduce((sum, item, i) => sum + Number(products[i]!.price) * item.quantity, 0) + Number(store.deliveryFee ?? 0); if (Math.abs(calculated - Number(input.total)) > 0.01) throw new Error("Total do pedido inválido");
-        if (input.paymentMethod === "fiado") { const customer = await db.getCustomerCreditByUser(input.storeId, ctx.user.id); if (!customer) throw new Error("Cliente não habilitado para fiado nesta loja"); const orderId = await db.createOrderWithFiado({ customerId: ctx.user.id, storeId: input.storeId, total: input.total, deliveryAddress: input.deliveryAddress }, input.items.map((item, i) => ({ ...item, unitPrice: String(products[i]!.price) })), customer.id, input.storeId); try { await sendPushToUser(store.ownerId, "Novo pedido", `O pedido #${orderId} foi recebido e está pendente de aceite.`, { type: "order", orderId, status: "Pendente" }); } catch (error) { console.warn("[Orders] Failed to notify store owner about new fiado order:", error); } return { orderId, paymentId: null, status: "Pendente" as const }; }
-        const { orderId, paymentId } = await db.createOrderWithPayment({ customerId: ctx.user.id, storeId: input.storeId, total: input.total, deliveryAddress: input.deliveryAddress }, input.items.map((item, i) => ({ productId: item.productId, quantity: item.quantity, unitPrice: String(products[i]!.price) })), input.paymentMethod);
+        const serverTotal = calculated.toFixed(2);
+        if (input.paymentMethod === "fiado") { const customer = await db.getCustomerCreditByUser(input.storeId, ctx.user.id); if (!customer) throw new Error("Cliente não habilitado para fiado nesta loja"); const orderId = await db.createOrderWithFiado({ customerId: ctx.user.id, storeId: input.storeId, total: serverTotal, deliveryAddress, idempotencyKey }, input.items.map((item, i) => ({ ...item, unitPrice: String(products[i]!.price) })), customer.id, input.storeId); try { await sendPushToUser(store.ownerId, "Novo pedido", `O pedido #${orderId} foi recebido e está pendente de aceite.`, { type: "order", orderId, status: "Pendente" }); } catch (error) { console.warn("[Orders] Failed to notify store owner about new fiado order:", error); } return { orderId, paymentId: null, status: "Pendente" as const }; }
+        const { orderId, paymentId } = await db.createOrderWithPayment({ customerId: ctx.user.id, storeId: input.storeId, total: serverTotal, deliveryAddress, idempotencyKey }, input.items.map((item, i) => ({ productId: item.productId, quantity: item.quantity, unitPrice: String(products[i]!.price) })), input.paymentMethod);
         try { await sendPushToUser(store.ownerId, "Novo pedido", `O pedido #${orderId} foi recebido e está pendente de aceite.`, { type: "order", orderId, status: "Pendente" }); } catch (error) { console.warn("[Orders] Failed to notify store owner about new order:", error); }
         return { orderId, paymentId, status: "Pendente" as const };
       }),

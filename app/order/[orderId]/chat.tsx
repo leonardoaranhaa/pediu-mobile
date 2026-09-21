@@ -16,7 +16,7 @@ export default function OrderChatPage() {
     </Card>
     <Card>
       <TextInput value={body} onChangeText={setBody} placeholder="Digite sua mensagem" multiline style={[s.input, { minHeight: 80 }]} />
-      <PrimaryButton title={send.isPending ? "Enviando..." : "Enviar"} disabled={!body.trim() || send.isPending} onPress={() => send.mutate({ orderId: id, role: "customer", body: body.trim() })} />
+      <PrimaryButton title={send.isPending ? "Enviando..." : "Enviar"} disabled={!body.trim() || send.isPending} onPress={() => send.mutate({ orderId: id, body: body.trim() })} />
     </Card>
   </Page>;
 }

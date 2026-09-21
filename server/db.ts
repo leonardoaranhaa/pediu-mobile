@@ -1,9 +1,18 @@
 import { and, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { AdminAuditLog, Customer, InsertAdminAuditLog, InsertCustomer, InsertLedgerEntry, InsertNotification, InsertOrder, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Notification, Order, Payment, Product, PushToken, Sale, Store, adminAuditLogs, customers, ledgerEntries, notifications, orderItems, orders, payments, products, pushTokens, sales, stores, users } from "../drizzle/schema";
+import { AdminAuditLog, Customer, CustomerAddress, InsertAdminAuditLog, InsertCustomer, InsertCustomerAddress, InsertLedgerEntry, InsertNotification, InsertOrder, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Notification, Order, Payment, Product, PushToken, Sale, Store, adminAuditLogs, customerAddresses, customers, ledgerEntries, notifications, orderItems, orders, payments, products, pushTokens, sales, stores, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+
+function getInsertId(result: unknown): number {
+  const header = Array.isArray(result) ? result[0] : result;
+  const insertId = Number((header as { insertId?: number | string } | undefined)?.insertId);
+  if (!Number.isInteger(insertId) || insertId <= 0) {
+    throw new Error("MySQL insert did not return a valid insertId");
+  }
+  return insertId;
+}
 
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
@@ -112,7 +121,7 @@ export async function createAdminAuditLog(input: InsertAdminAuditLog): Promise<n
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(adminAuditLogs).values(input);
-  return Number((result as unknown as { insertId: number | string }).insertId);
+  return getInsertId(result);
 }
 
 export async function listAdminAuditLogs(limit = 50, offset = 0): Promise<AdminAuditLog[]> {
@@ -126,6 +135,71 @@ export async function getUserByOpenId(openId: string) {
   if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
   return result.length > 0 ? result[0] : undefined;
+}
+
+type CustomerAddressWrite = Omit<InsertCustomerAddress, "id" | "userId" | "isDefault" | "createdAt" | "updatedAt"> & { isDefault?: boolean };
+
+export async function listCustomerAddresses(userId: number): Promise<CustomerAddress[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(customerAddresses).where(eq(customerAddresses.userId, userId)).orderBy(customerAddresses.createdAt);
+}
+
+export async function getCustomerAddress(userId: number, addressId: number): Promise<CustomerAddress | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(customerAddresses).where(sql`${customerAddresses.id} = ${addressId} AND ${customerAddresses.userId} = ${userId}`).limit(1);
+  return rows[0];
+}
+
+export async function createCustomerAddress(userId: number, input: CustomerAddressWrite): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const existing = await tx.select({ id: customerAddresses.id }).from(customerAddresses).where(eq(customerAddresses.userId, userId));
+    const isDefault = input.isDefault === true || existing.length === 0;
+    if (isDefault) await tx.update(customerAddresses).set({ isDefault: 0 }).where(eq(customerAddresses.userId, userId));
+    const { isDefault: _requestedDefault, ...fields } = input;
+    const result = await tx.insert(customerAddresses).values({ ...fields, userId, isDefault: isDefault ? 1 : 0 });
+    return getInsertId(result);
+  });
+}
+
+export async function updateCustomerAddress(userId: number, addressId: number, input: Partial<CustomerAddressWrite>): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.transaction(async (tx) => {
+    const current = await tx.select().from(customerAddresses).where(sql`${customerAddresses.id} = ${addressId} AND ${customerAddresses.userId} = ${userId}`).limit(1);
+    if (!current[0]) throw new Error("Endereço não encontrado");
+    const { isDefault, ...fields } = input;
+    if (isDefault === true) await tx.update(customerAddresses).set({ isDefault: 0 }).where(eq(customerAddresses.userId, userId));
+    await tx.update(customerAddresses).set({ ...fields, ...(isDefault === undefined ? {} : { isDefault: isDefault ? 1 : 0 }) }).where(sql`${customerAddresses.id} = ${addressId} AND ${customerAddresses.userId} = ${userId}`);
+  });
+}
+
+export async function deleteCustomerAddress(userId: number, addressId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.transaction(async (tx) => {
+    const current = await tx.select().from(customerAddresses).where(sql`${customerAddresses.id} = ${addressId} AND ${customerAddresses.userId} = ${userId}`).limit(1);
+    if (!current[0]) throw new Error("Endereço não encontrado");
+    await tx.delete(customerAddresses).where(sql`${customerAddresses.id} = ${addressId} AND ${customerAddresses.userId} = ${userId}`);
+    if (current[0].isDefault === 1) {
+      const next = await tx.select({ id: customerAddresses.id }).from(customerAddresses).where(eq(customerAddresses.userId, userId)).limit(1);
+      if (next[0]) await tx.update(customerAddresses).set({ isDefault: 1 }).where(eq(customerAddresses.id, next[0].id));
+    }
+  });
+}
+
+export async function setDefaultCustomerAddress(userId: number, addressId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.transaction(async (tx) => {
+    const current = await tx.select({ id: customerAddresses.id }).from(customerAddresses).where(sql`${customerAddresses.id} = ${addressId} AND ${customerAddresses.userId} = ${userId}`).limit(1);
+    if (!current[0]) throw new Error("Endereço não encontrado");
+    await tx.update(customerAddresses).set({ isDefault: 0 }).where(eq(customerAddresses.userId, userId));
+    await tx.update(customerAddresses).set({ isDefault: 1 }).where(eq(customerAddresses.id, addressId));
+  });
 }
 
 export async function getStoreForOwner(ownerId: number): Promise<Store | undefined> {
@@ -146,7 +220,7 @@ export async function createStore(input: InsertStore): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(stores).values(input);
-  return Number((result as unknown as { insertId: number | string }).insertId);
+  return getInsertId(result);
 }
 
 export type MarketplaceProduct = Product & { storeName: string; deliveryFee: string };
@@ -181,7 +255,7 @@ export async function createProduct(input: InsertProduct): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(products).values(input);
-  return Number((result as unknown as { insertId: number | string }).insertId);
+  return getInsertId(result);
 }
 
 export async function listProductsForStore(storeId: number): Promise<Product[]> {
@@ -214,6 +288,13 @@ export async function getOrderForCustomer(orderId: number, userId: number) {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(orders).where(sql`${orders.id} = ${orderId} AND ${orders.customerId} = ${userId}`).limit(1);
+  return result[0];
+}
+
+export async function getOrderByIdempotencyKey(userId: number, idempotencyKey: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(orders).where(sql`${orders.customerId} = ${userId} AND ${orders.idempotencyKey} = ${idempotencyKey}`).limit(1);
   return result[0];
 }
 
@@ -266,7 +347,7 @@ export async function createOrder(input: InsertOrder, items: Array<{ productId: 
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(orders).values(input);
-  const orderId = Number((result as unknown as { insertId: number | string }).insertId);
+  const orderId = getInsertId(result);
   if (items.length > 0) await db.insert(orderItems).values(items.map((item) => ({ ...item, orderId })));
   return orderId;
 }
@@ -278,11 +359,11 @@ export async function createOrderWithPayment(input: InsertOrder, items: Array<{ 
 
   return db.transaction(async (tx) => {
     const orderResult = await tx.insert(orders).values(input);
-    const orderId = Number((orderResult as unknown as { insertId: number | string }).insertId);
+    const orderId = getInsertId(orderResult);
     const itemRows = items.map((item) => ({ ...item, orderId }));
     await tx.insert(orderItems).values(itemRows);
     const paymentResult = await tx.insert(payments).values({ orderId, method: paymentMethod, status: "pending" });
-    const paymentId = Number((paymentResult as unknown as { insertId: number | string }).insertId);
+    const paymentId = getInsertId(paymentResult);
     return { orderId, paymentId };
   });
 }
@@ -307,7 +388,7 @@ export async function createOrderWithFiado(input: InsertOrder, items: Array<{ pr
     }
 
     const result = await tx.insert(orders).values(input);
-    const orderId = Number((result as unknown as { insertId: number | string }).insertId);
+    const orderId = getInsertId(result);
     await tx.insert(orderItems).values(items.map((item) => ({ ...item, orderId })));
 
     const newBalance = (balance + requested).toFixed(2);
@@ -351,20 +432,27 @@ export async function createPendingPixPayment(orderId: number, pixKey: string, t
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(payments).values({ orderId, method: "pix", status: "pending", pixKey, transactionId });
-  return Number((result as unknown as { insertId: number | string }).insertId);
+  return getInsertId(result);
 }
 
 export async function createOrderPayment(orderId: number, method: "pix" | "card" | "cash") {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(payments).values({ orderId, method, status: "pending" });
-  return Number((result as unknown as { insertId: number | string }).insertId);
+  return getInsertId(result);
 }
 
 export async function getPaymentForUser(paymentId: number, userId: number): Promise<Payment | undefined> {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select({ payment: payments }).from(payments).innerJoin(orders, eq(payments.orderId, orders.id)).where(sql`${payments.id} = ${paymentId} AND (${orders.customerId} = ${userId} OR ${orders.storeId} IN (SELECT id FROM pediu_stores WHERE ownerId = ${userId}))`).limit(1);
+  return result[0]?.payment;
+}
+
+export async function getPaymentForOrder(orderId: number, userId: number): Promise<Payment | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select({ payment: payments }).from(payments).innerJoin(orders, eq(payments.orderId, orders.id)).where(sql`${payments.orderId} = ${orderId} AND ${orders.customerId} = ${userId}`).limit(1);
   return result[0]?.payment;
 }
 
@@ -399,7 +487,7 @@ export async function createCustomer(input: InsertCustomer): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(customers).values(input);
-  return Number((result as unknown as { insertId: number | string }).insertId);
+  return getInsertId(result);
 }
 
 export async function listLedgerEntriesForStore(storeId: number): Promise<LedgerEntry[]> {
@@ -426,7 +514,7 @@ export async function createLedgerEntry(input: InsertLedgerEntry): Promise<numbe
 
     const result = await tx.insert(ledgerEntries).values({ ...input, balanceAfter: newBalance.toFixed(2) });
     await tx.update(customers).set({ balance: newBalance.toFixed(2) }).where(sql`${customers.id} = ${input.customerId} AND ${customers.storeId} = ${input.storeId}`);
-    return Number((result as unknown as { insertId: number | string }).insertId);
+    return getInsertId(result);
   });
 }
 
@@ -440,7 +528,7 @@ export async function createSale(input: InsertSale): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(sales).values(input);
-  return Number((result as unknown as { insertId: number | string }).insertId);
+  return getInsertId(result);
 }
 
 export async function registerPushToken(input: InsertPushToken): Promise<void> {
@@ -459,7 +547,7 @@ export async function createNotification(input: InsertNotification): Promise<num
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(notifications).values(input);
-  return Number((result as unknown as { insertId: number | string }).insertId);
+  return getInsertId(result);
 }
 
 export async function listNotificationsForUser(userId: number): Promise<Notification[]> {

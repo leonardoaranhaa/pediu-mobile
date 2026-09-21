@@ -71,6 +71,7 @@ describe("Pediu customer marketplace contract", () => {
 
     const caller = appRouter.createCaller({ user: customer } as any);
     const result = await caller.pediu.orders.create({
+      idempotencyKey: "test-order-501",
       storeId: 7,
       total: "23.00",
       paymentMethod: "pix",
@@ -107,6 +108,7 @@ describe("Pediu customer marketplace contract", () => {
 
     const caller = appRouter.createCaller({ user: customer } as any);
     const result = await caller.pediu.orders.create({
+      idempotencyKey: `test-order-${paymentMethod}`,
       storeId: 7,
       total: "20.00",
       paymentMethod,
@@ -141,6 +143,7 @@ describe("Pediu customer marketplace contract", () => {
 
     await expect(
       caller.pediu.orders.create({
+        idempotencyKey: "test-order-invalid-total",
         storeId: 7,
         total: "999.00",
         paymentMethod: "pix",
@@ -148,5 +151,24 @@ describe("Pediu customer marketplace contract", () => {
         items: [{ productId: 101, quantity: 1, unitPrice: "999.99" }],
       }),
     ).rejects.toThrow("Total do pedido inválido");
+  });
+
+  it("returns the persisted order on an idempotent retry", async () => {
+    vi.spyOn(db, "getOrderByIdempotencyKey").mockResolvedValue({ id: 501, customerId: 20, status: "Pendente" } as any);
+    vi.spyOn(db, "getPaymentForOrder").mockResolvedValue({ id: 601 } as any);
+    const createOrderWithPayment = vi.spyOn(db, "createOrderWithPayment");
+    const caller = appRouter.createCaller({ user: customer } as any);
+
+    const result = await caller.pediu.orders.create({
+      idempotencyKey: "test-order-retry",
+      storeId: 7,
+      total: "23.00",
+      paymentMethod: "pix",
+      deliveryAddress: "Rua Teste, 10",
+      items: [{ productId: 101, quantity: 1, unitPrice: "18.00" }],
+    });
+
+    expect(result).toMatchObject({ orderId: 501, paymentId: 601, status: "Pendente" });
+    expect(createOrderWithPayment).not.toHaveBeenCalled();
   });
 });

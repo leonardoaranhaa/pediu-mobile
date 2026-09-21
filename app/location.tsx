@@ -7,7 +7,7 @@ import { Page, Card, PrimaryButton, OutlineButton, PEDIU, s } from "@/components
 export default function LocationScreen() {
   const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(false);
-  const useGps = async () => {
+  const requestGps = async () => {
     setLoading(true);
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
@@ -25,7 +25,7 @@ export default function LocationScreen() {
     <Card>
       <Text style={s.sectionTitle}>Defina seu endereço</Text>
       <Text style={s.muted}>Usaremos sua localização para mostrar estabelecimentos e calcular opções de entrega.</Text>
-      <PrimaryButton title={loading ? "Localizando..." : "Usar minha localização"} onPress={() => void useGps()} disabled={loading} />
+      <PrimaryButton title={loading ? "Localizando..." : "Usar minha localização"} onPress={() => void requestGps()} disabled={loading} />
       <View style={{ gap: 8, marginTop: 8 }}>
         <Text style={s.label}>Ou informe manualmente</Text>
         <TextInput value={address} onChangeText={setAddress} placeholder="Rua, número, bairro e cidade" style={{ borderWidth: 1, borderColor: PEDIU.line, borderRadius: 14, padding: 14, color: PEDIU.text, backgroundColor: PEDIU.white }} />

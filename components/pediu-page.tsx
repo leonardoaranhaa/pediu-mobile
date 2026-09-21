@@ -72,9 +72,9 @@ export function PrimaryButton({ title, onPress, disabled }: { title: string; onP
   );
 }
 
-export function OutlineButton({ title, onPress }: { title: string; onPress?: () => void }) {
+export function OutlineButton({ title, onPress, disabled }: { title: string; onPress?: () => void; disabled?: boolean }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [s.outline, pressed && s.pressed]}>
+    <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [s.outline, pressed && s.pressed, disabled && s.disabled]}>
       <Text style={s.outlineText}>{title}</Text>
     </Pressable>
   );
@@ -108,6 +108,7 @@ export const s = StyleSheet.create({
   card: { backgroundColor: PEDIU.white, borderRadius: 20, padding: 16, borderWidth: 1, borderColor: PEDIU.line, gap: 13 },
   section: { gap: 10 },
   sectionTitle: { fontSize: 15, fontWeight: "900", color: PEDIU.ink },
+  body: { fontSize: 14, lineHeight: 21, color: PEDIU.text },
   label: { fontSize: 10, fontWeight: "900", letterSpacing: 1.1, color: PEDIU.muted },
   input: { backgroundColor: PEDIU.canvas, borderWidth: 1, borderColor: PEDIU.line, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, color: PEDIU.ink, fontSize: 14 },
   primary: { minHeight: 52, borderRadius: 16, backgroundColor: PEDIU.coral, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, paddingHorizontal: 16 },
