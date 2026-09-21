@@ -59,6 +59,8 @@ describe("Pediu order/payment consistency", () => {
         customerId: 20,
         storeId: 7,
         total: "35.00",
+        couponCode: undefined,
+        discount: "0.00",
         deliveryAddress: "Rua Teste, 10",
         idempotencyKey: "test-atomic-order",
       },

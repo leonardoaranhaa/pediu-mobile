@@ -3,6 +3,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { protectedProcedure, router } from "./_core/trpc";
 import { getDb } from "./db";
 import { coupons, orders, orderReviews, deliveryEvents, chatMessages } from "../drizzle/schema";
+import { calculateCouponDiscount } from "./domain/coupons";
 
 async function ownedOrder(db: any, orderId: number, userId: number) {
   const rows = await db.select().from(orders).where(and(eq(orders.id, orderId), eq(orders.customerId, userId))).limit(1);
@@ -13,13 +14,8 @@ export const experienceRouter = router({
   coupons: router({
     validate: protectedProcedure.input(z.object({ code: z.string().trim().min(1).max(40), subtotal: z.number().nonnegative() })).query(async ({ input }) => {
       const db = await getDb(); if (!db) throw new Error("Database unavailable");
-      const rows = await db.select().from(coupons).where(eq(coupons.code, input.code.toUpperCase())).limit(1); const coupon = rows[0];
-      if (!coupon || coupon.active !== 1 || (coupon.expiresAt && coupon.expiresAt.getTime() <= Date.now())) return { valid: false, discount: "0.00" };
-      const subtotal = Math.round(input.subtotal * 100), minimum = Math.round(Number(coupon.minSubtotal) * 100);
-      if (subtotal < minimum) return { valid: false, discount: "0.00", reason: "Valor mínimo não atingido" };
-      const raw = coupon.type === "percentage" ? Math.round(subtotal * Number(coupon.value) / 100) : Math.round(Number(coupon.value) * 100);
-      const cap = coupon.maxDiscount == null ? raw : Math.round(Number(coupon.maxDiscount) * 100);
-      return { valid: true, discount: (Math.min(raw, subtotal, cap) / 100).toFixed(2), code: coupon.code };
+      const rows = await db.select().from(coupons).where(eq(coupons.code, input.code.toUpperCase())).limit(1);
+      return calculateCouponDiscount(rows[0], input.subtotal);
     }),
   }),
   reviews: router({

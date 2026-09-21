@@ -20,10 +20,14 @@ export default function CheckoutScreen() {
   const { isAuthenticated } = useAuth();
   const { items, total: estimatedTotal, hydrated, clear } = useCart();
   const addresses = trpc.pediu.addresses.list.useQuery(undefined, { enabled: isAuthenticated });
+  const [couponCode, setCouponCode] = useState("");
+  const [appliedCouponCode, setAppliedCouponCode] = useState("");
+  const normalizedCouponInput = couponCode.trim().toUpperCase();
   const quoteInput = useMemo(() => ({
     storeId: items[0]?.storeId ?? 1,
     items: items.map((item) => ({ productId: item.id, quantity: item.quantity })),
-  }), [items]);
+    couponCode: appliedCouponCode || undefined,
+  }), [appliedCouponCode, items]);
   const quote = trpc.pediu.checkout.quote.useQuery(quoteInput, {
     enabled: isAuthenticated && hydrated && items.length > 0,
     retry: false,
@@ -32,7 +36,7 @@ export default function CheckoutScreen() {
   const createOrder = trpc.pediu.orders.create.useMutation({
     onSuccess: (result) => {
       clear();
-      router.replace({ pathname: "/order/track", params: { orderId: String(result.orderId), paymentId: result.paymentId ? String(result.paymentId) : "" } });
+      router.replace({ pathname: "/order/success", params: { orderId: String(result.orderId), paymentId: result.paymentId ? String(result.paymentId) : "", total: quote.data?.total ?? "" } });
     },
   });
   const [address, setAddress] = useState("");
@@ -52,6 +56,15 @@ export default function CheckoutScreen() {
     }
   }, [address, addresses.data]);
 
+  const applyCoupon = () => {
+    if (appliedCouponCode && normalizedCouponInput === appliedCouponCode) {
+      setAppliedCouponCode("");
+      setCouponCode("");
+      return;
+    }
+    if (normalizedCouponInput) setAppliedCouponCode(normalizedCouponInput);
+  };
+
   const submit = () => {
     if (!items.length || !address.trim() || !idempotencyKey || !quote.data || quote.isFetching) return;
     createOrder.mutate({
@@ -60,6 +73,7 @@ export default function CheckoutScreen() {
       total: quote.data.total,
       paymentMethod,
       addressId,
+      couponCode: quote.data.couponCode,
       deliveryAddress: address.trim(),
       items: quote.data.items.map((item) => ({ productId: item.productId, quantity: item.quantity, unitPrice: item.unitPrice })),
     });
@@ -70,13 +84,20 @@ export default function CheckoutScreen() {
   if (!items.length) return <Page title="Checkout" eyebrow="PEDIDO" back><Card><Text style={s.sectionTitle}>Seu carrinho está vazio</Text><PrimaryButton title="Voltar ao carrinho" onPress={() => router.replace("/cart")} /></Card></Page>;
 
   const quotedTotal = quote.data ? Number(quote.data.total) : estimatedTotal;
+  const couponCanBeRemoved = Boolean(appliedCouponCode && normalizedCouponInput === appliedCouponCode);
 
   return <Page title="Finalizar pedido" eyebrow="CHECKOUT" back>
     <Card>
       <Text style={s.sectionTitle}>Conferência do pedido</Text>
-      {quote.isLoading ? <Text style={s.muted}>Conferindo preços e disponibilidade...</Text> : null}
-      {quote.isError ? <><Text style={{ color: PEDIU.coral, fontSize: 12 }}>{quote.error.message}</Text><PrimaryButton title="Atualizar carrinho" onPress={() => void quote.refetch()} /></> : null}
-      {quote.data ? <><Text style={s.muted}>Valores confirmados pelo servidor.</Text><View style={{ gap: 6, marginTop: 10 }}>{quote.data.items.map((item) => <View key={item.productId} style={row}><Text style={s.muted}>{item.quantity} × {item.name}</Text><Text style={value}>{money(item.lineTotal)}</Text></View>)}</View><View style={{ gap: 8, borderTopWidth: 1, borderTopColor: PEDIU.line, paddingTop: 12, marginTop: 12 }}><View style={row}><Text style={s.muted}>Subtotal</Text><Text style={value}>{money(quote.data.subtotal)}</Text></View><View style={row}><Text style={s.muted}>Entrega</Text><Text style={value}>{money(quote.data.deliveryFee)}</Text></View><View style={row}><Text style={{ color: PEDIU.ink, fontWeight: "900" }}>Total confirmado</Text><Text style={{ color: PEDIU.coral, fontSize: 21, fontWeight: "900" }}>{money(quote.data.total)}</Text></View></View></> : <Text style={s.muted}>Total estimado localmente: {money(estimatedTotal)}. A confirmação depende da cotação do servidor.</Text>}
+      {quote.isLoading ? <Text style={s.muted}>Conferindo preços, disponibilidade e cupom...</Text> : null}
+      {quote.isError ? <><Text style={{ color: PEDIU.coral, fontSize: 12 }}>{quote.error.message}</Text><PrimaryButton title="Atualizar cotação" onPress={() => void quote.refetch()} /></> : null}
+      {quote.data ? <><Text style={s.muted}>Valores confirmados pelo servidor.</Text><View style={{ gap: 6, marginTop: 10 }}>{quote.data.items.map((item) => <View key={item.productId} style={row}><Text style={s.muted}>{item.quantity} × {item.name}</Text><Text style={value}>{money(item.lineTotal)}</Text></View>)}</View><View style={{ gap: 8, borderTopWidth: 1, borderTopColor: PEDIU.line, paddingTop: 12, marginTop: 12 }}><View style={row}><Text style={s.muted}>Subtotal</Text><Text style={value}>{money(quote.data.subtotal)}</Text></View><View style={row}><Text style={s.muted}>Entrega</Text><Text style={value}>{money(quote.data.deliveryFee)}</Text></View>{Number(quote.data.discount) > 0 ? <View style={row}><Text style={s.muted}>Desconto {quote.data.couponCode ? `(${quote.data.couponCode})` : ""}</Text><Text style={{ color: PEDIU.green, fontWeight: "900" }}>− {money(quote.data.discount)}</Text></View> : null}<View style={row}><Text style={{ color: PEDIU.ink, fontWeight: "900" }}>Total confirmado</Text><Text style={{ color: PEDIU.coral, fontSize: 21, fontWeight: "900" }}>{money(quote.data.total)}</Text></View></View></> : <Text style={s.muted}>Total estimado localmente: {money(estimatedTotal)}. A confirmação depende da cotação do servidor.</Text>}
+    </Card>
+    <Card>
+      <Text style={s.sectionTitle}>Cupom de desconto</Text>
+      <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}><View style={{ flex: 1 }}><Field label="CÓDIGO" value={couponCode} onChangeText={setCouponCode} placeholder="Ex.: BEMVINDO10" autoCapitalize="characters" /></View><PrimaryButton title={couponCanBeRemoved ? "Remover" : "Aplicar"} onPress={applyCoupon} disabled={!normalizedCouponInput && !appliedCouponCode} /></View>
+      {appliedCouponCode && !quote.isError && quote.data ? <Text style={{ color: PEDIU.green, fontSize: 12, fontWeight: "800" }}>Cupom {appliedCouponCode} validado. Desconto: {money(quote.data.discount)}.</Text> : null}
+      {appliedCouponCode && quote.isError ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>O cupom não foi aplicado. Remova-o ou informe outro código.</Text> : null}
     </Card>
     <Card>
       <Text style={s.sectionTitle}>Endereço de entrega</Text>

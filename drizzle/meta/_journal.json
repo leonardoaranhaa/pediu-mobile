@@ -92,6 +92,13 @@
       "when": 1789989352859,
       "tag": "0012_order_idempotency",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1790007198817,
+      "tag": "0013_order_coupon_discount",
+      "breakpoints": true
     }
   ]
 }

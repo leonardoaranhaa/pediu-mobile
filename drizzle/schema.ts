@@ -44,6 +44,8 @@ export const orders = mysqlTable("pediu_orders", {
   storeId: int("storeId").notNull(),
   status: mysqlEnum("status", ["Pendente", "Aceito", "Preparando", "Pronto", "A caminho", "Entregue", "Cancelado"]).default("Pendente").notNull(),
   total: decimal("total", { precision: 10, scale: 2 }).notNull(),
+  couponCode: varchar("couponCode", { length: 40 }),
+  discount: decimal("discount", { precision: 10, scale: 2 }).default("0.00").notNull(),
   deliveryAddress: varchar("deliveryAddress", { length: 255 }),
   idempotencyKey: varchar("idempotencyKey", { length: 160 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

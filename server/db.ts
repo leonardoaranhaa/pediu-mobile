@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { AdminAuditLog, Customer, CustomerAddress, InsertAdminAuditLog, InsertCustomer, InsertCustomerAddress, InsertLedgerEntry, InsertNotification, InsertOrder, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Notification, Order, Payment, Product, PushToken, Sale, Store, adminAuditLogs, customerAddresses, customers, ledgerEntries, notifications, orderItems, orders, payments, products, pushTokens, sales, stores, users } from "../drizzle/schema";
+import { AdminAuditLog, Coupon, Customer, CustomerAddress, InsertAdminAuditLog, InsertCustomer, InsertCustomerAddress, InsertLedgerEntry, InsertNotification, InsertOrder, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Notification, Order, Payment, Product, PushToken, Sale, Store, adminAuditLogs, coupons, customerAddresses, customers, ledgerEntries, notifications, orderItems, orders, payments, products, pushTokens, sales, stores, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -103,6 +103,15 @@ export async function listAdminPayments(limit = 50, offset = 0) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(payments).limit(limit).offset(offset);
+}
+
+export async function getCouponByCode(code: string): Promise<Coupon | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const normalized = code.trim().toUpperCase();
+  if (!normalized) return undefined;
+  const result = await db.select().from(coupons).where(eq(coupons.code, normalized)).limit(1);
+  return result[0];
 }
 
 export async function listAdminCustomers(limit = 50, offset = 0) {

@@ -76,6 +76,17 @@ describe("Pediu customer marketplace contract", () => {
     await expect(caller.pediu.checkout.quote({ storeId: 7, items: [{ productId: 101, quantity: 1 }] })).rejects.toThrow("produto inválido ou indisponível");
   });
 
+  it("applies a valid coupon to the server quote", async () => {
+    vi.spyOn(db, "getStoreById").mockResolvedValue({ id: 7, ownerId: 10, name: "Loja Teste", deliveryFee: "5.00", isOpen: true } as any);
+    vi.spyOn(db, "getAvailableProductForStore").mockResolvedValue({ id: 101, storeId: 7, name: "Produto Teste", price: "18.00", available: 1 } as any);
+    vi.spyOn(db, "getCouponByCode").mockResolvedValue({ code: "BEMVINDO10", type: "percentage", value: "10.00", minSubtotal: "20.00", maxDiscount: "10.00", active: 1, expiresAt: null } as any);
+
+    const caller = appRouter.createCaller({ user: customer } as any);
+    const quote = await caller.pediu.checkout.quote({ storeId: 7, couponCode: " bemvindo10 ", items: [{ productId: 101, quantity: 2 }] });
+
+    expect(quote).toMatchObject({ couponCode: "BEMVINDO10", subtotal: "36.00", discount: "3.60", total: "37.40" });
+  });
+
   it("recalculates the order total from persisted product prices", async () => {
     vi.spyOn(db, "getStoreById").mockResolvedValue({
       id: 7,
@@ -115,6 +126,30 @@ describe("Pediu customer marketplace contract", () => {
     expect(createOrderWithPayment).toHaveBeenCalledWith(
       expect.objectContaining({ customerId: 20, storeId: 7, total: "23.00" }),
       [{ productId: 101, quantity: 1, unitPrice: "18.00" }],
+      "pix",
+    );
+  });
+
+  it("persists the applied coupon and discount on the order", async () => {
+    vi.spyOn(db, "getStoreById").mockResolvedValue({ id: 7, ownerId: 10, name: "Loja Teste", deliveryFee: "5.00", isOpen: true } as any);
+    vi.spyOn(db, "getAvailableProductForStore").mockResolvedValue({ id: 101, storeId: 7, name: "Produto Teste", price: "20.00", available: 1 } as any);
+    vi.spyOn(db, "getCouponByCode").mockResolvedValue({ code: "BEMVINDO10", type: "percentage", value: "10.00", minSubtotal: "0.00", maxDiscount: null, active: 1, expiresAt: null } as any);
+    const createOrderWithPayment = vi.spyOn(db, "createOrderWithPayment").mockResolvedValue({ orderId: 503, paymentId: 603 });
+
+    const caller = appRouter.createCaller({ user: customer } as any);
+    await caller.pediu.orders.create({
+      idempotencyKey: "test-order-coupon",
+      storeId: 7,
+      total: "23.00",
+      paymentMethod: "pix",
+      couponCode: "BEMVINDO10",
+      deliveryAddress: "Rua Teste, 10",
+      items: [{ productId: 101, quantity: 1, unitPrice: "999.99" }],
+    });
+
+    expect(createOrderWithPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ couponCode: "BEMVINDO10", discount: "2.00", total: "23.00" }),
+      [{ productId: 101, quantity: 1, unitPrice: "20.00" }],
       "pix",
     );
   });
