@@ -17,9 +17,11 @@ Branch de execução: `feat/pediu-full-roadmap`
 - [x] `experienceRouter` presente.
 - [x] `experienceRouter` composto no `appRouter`.
 - [x] Marketplace/pedidos/pagamentos existentes preservados.
+- [x] Migration de experiência adicionada (`0011_experience.sql`).
+- [x] Publicação de tracking restrita ao proprietário do estabelecimento do pedido.
 - [ ] MFA real.
 - [ ] Suporte persistente.
-- [ ] Tracking com autorização de papel e publicação do entregador.
+- [ ] Papel/identidade de entregador dedicado para publicação de GPS.
 
 ### D — Navegação
 - [ ] Ligações finais entre páginas novas e rotas existentes.
@@ -31,11 +33,13 @@ Branch de execução: `feat/pediu-full-roadmap`
 - [ ] Validação de migrations.
 
 ### F — Integração
-- [ ] Cupom ligado ao fluxo de checkout existente.
-- [ ] Reviews ligadas ao pedido entregue.
-- [ ] Chat ligado ao pedido.
-- [ ] Tracking ligado ao pedido.
-- [ ] Pagamento ligado ao retorno do provedor.
+- [x] Cupom possui validação server-side.
+- [x] Reviews verificam propriedade e pedido entregue.
+- [x] Chat possui leitura/envio protegido ao cliente do pedido.
+- [x] Tracking possui leitura protegida e publicação autorizada.
+- [x] Pagamento PIX possui contrato server-side existente.
+- [ ] Aplicar desconto de cupom ao total transacional do checkout.
+- [ ] Retorno de pagamento conectado ao estado persistido do pagamento.
 
 ### G — Modernização
 - [ ] Design system.
