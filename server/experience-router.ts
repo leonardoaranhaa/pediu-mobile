@@ -28,6 +28,15 @@ export const experienceRouter = router({
   }),
   tracking: router({
     events: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).query(async ({ ctx, input }) => { const db = await getDb(); if (!db) throw new Error("Database unavailable"); if (!await ownedOrder(db, input.orderId, ctx.user.id)) throw new Error("Pedido não encontrado"); return db.select().from(deliveryEvents).where(eq(deliveryEvents.orderId, input.orderId)).orderBy(desc(deliveryEvents.createdAt)); }),
+    publish: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), eventType: z.string().trim().min(1).max(32), latitude: z.number().min(-90).max(90).optional(), longitude: z.number().min(-180).max(180).optional() })).mutation(async ({ ctx, input }) => {
+      const db = await getDb(); if (!db) throw new Error("Database unavailable");
+      const store = await db.query.stores.findFirst({ where: eq((await import("../drizzle/schema")).stores.id, 0) }).catch(() => undefined);
+      const rows = await db.select({ order: orders }).from(orders).where(eq(orders.id, input.orderId)).limit(1); const order = rows[0]?.order;
+      if (!order) throw new Error("Pedido não encontrado");
+      const ownerRows = await db.select().from((await import("../drizzle/schema")).stores).where(and(eq((await import("../drizzle/schema")).stores.id, order.storeId), eq((await import("../drizzle/schema")).stores.ownerId, ctx.user.id))).limit(1);
+      if (!ownerRows[0]) throw new Error("Usuário não autorizado a publicar tracking");
+      await db.insert(deliveryEvents).values(input); return { success: true };
+    }),
   }),
   chat: router({
     list: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).query(async ({ ctx, input }) => { const db = await getDb(); if (!db) throw new Error("Database unavailable"); if (!await ownedOrder(db, input.orderId, ctx.user.id)) throw new Error("Pedido não encontrado"); return db.select().from(chatMessages).where(eq(chatMessages.orderId, input.orderId)).orderBy(chatMessages.createdAt); }),
