@@ -2,7 +2,7 @@ import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
 import { protectedProcedure, router } from "./_core/trpc";
 import { getDb } from "./db";
-import { coupons, orders, orderReviews, deliveryEvents, chatMessages } from "../drizzle/schema";
+import { coupons, orders, orderReviews, deliveryEvents, chatMessages, stores } from "../drizzle/schema";
 
 async function ownedOrder(db: any, orderId: number, userId: number) {
   const rows = await db.select().from(orders).where(and(eq(orders.id, orderId), eq(orders.customerId, userId))).limit(1);
@@ -30,10 +30,9 @@ export const experienceRouter = router({
     events: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).query(async ({ ctx, input }) => { const db = await getDb(); if (!db) throw new Error("Database unavailable"); if (!await ownedOrder(db, input.orderId, ctx.user.id)) throw new Error("Pedido não encontrado"); return db.select().from(deliveryEvents).where(eq(deliveryEvents.orderId, input.orderId)).orderBy(desc(deliveryEvents.createdAt)); }),
     publish: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), eventType: z.string().trim().min(1).max(32), latitude: z.number().min(-90).max(90).optional(), longitude: z.number().min(-180).max(180).optional() })).mutation(async ({ ctx, input }) => {
       const db = await getDb(); if (!db) throw new Error("Database unavailable");
-      const store = await db.query.stores.findFirst({ where: eq((await import("../drizzle/schema")).stores.id, 0) }).catch(() => undefined);
-      const rows = await db.select({ order: orders }).from(orders).where(eq(orders.id, input.orderId)).limit(1); const order = rows[0]?.order;
+      const rows = await db.select().from(orders).where(eq(orders.id, input.orderId)).limit(1); const order = rows[0];
       if (!order) throw new Error("Pedido não encontrado");
-      const ownerRows = await db.select().from((await import("../drizzle/schema")).stores).where(and(eq((await import("../drizzle/schema")).stores.id, order.storeId), eq((await import("../drizzle/schema")).stores.ownerId, ctx.user.id))).limit(1);
+      const ownerRows = await db.select().from(stores).where(and(eq(stores.id, order.storeId), eq(stores.ownerId, ctx.user.id))).limit(1);
       if (!ownerRows[0]) throw new Error("Usuário não autorizado a publicar tracking");
       await db.insert(deliveryEvents).values(input); return { success: true };
     }),
