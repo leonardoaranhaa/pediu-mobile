@@ -56,3 +56,11 @@ Foram adicionados três testes unitários do domínio do carrinho. O typecheck, 
 No preview web, a rota `/product/101` foi aberta com o produto persistido. O item foi adicionado ao carrinho, a rota `/cart` exibiu subtotal de R$ 18,00, entrega de R$ 5,00 e total de R$ 23,00. O botão de quantidade atualizou o carrinho para dois itens, subtotal de R$ 36,00 e total de R$ 41,00. Uma recarga da rota preservou os dois itens, confirmando a persistência local.
 
 O checkout anônimo exibiu corretamente a exigência de sessão. O checkout autenticado completo ficou **não validado operacionalmente** neste ambiente porque o token temporário disponível retornou HTTP 401 no endpoint oficial `/api/auth/session`; essa limitação foi registrada sem assumir sucesso indevido.
+
+## Correção de autenticação e dados de demonstração — 2026-09-21
+
+A revisão operacional encontrou uma inconsistência entre a aparência e a sessão real: o perfil da home usava `Ana Beatriz` e `ana.beatriz@email.com` como fallback, enquanto as queries protegidas de pedidos permaneciam desabilitadas sem cookie de sessão. O fallback foi removido. Visitantes agora são identificados como `Visitante`, a home usa `Olá!` e a aba de pedidos informa explicitamente que a sessão é necessária para consultar o histórico real.
+
+O painel vendedor deixou de exibir nome de loja, pessoa, pedidos, vendas e clientes artificiais. O conteúdo agora deriva das queries de loja, pedidos, produtos e vendas. A função de login OAuth passou a validar `EXPO_PUBLIC_OAUTH_PORTAL_URL` e `EXPO_PUBLIC_APP_ID` antes de construir a URL. Quando o ambiente não possui essas variáveis, a interface mostra um aviso controlado em vez de lançar `Failed to construct 'URL': Invalid URL`.
+
+No Expo Web, foi validado que a home não inventa mais uma conta, a aba de pedidos apresenta o botão de login e o acionamento de modo vendedor permanece estável com o aviso de configuração ausente. O fluxo OAuth real continua dependente da configuração das variáveis públicas do ambiente de preview.

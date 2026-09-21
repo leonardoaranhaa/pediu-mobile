@@ -24,6 +24,7 @@ export const APP_ID = env.appId;
 export const OWNER_OPEN_ID = env.ownerId;
 export const OWNER_NAME = env.ownerName;
 export const API_BASE_URL = env.apiBaseUrl;
+export const isOAuthConfigured = Boolean(OAUTH_PORTAL_URL.trim() && APP_ID.trim());
 
 /**
  * Get the API base URL, deriving from current hostname if not set.
@@ -79,11 +80,21 @@ export const getRedirectUri = () => {
   }
 };
 
-export const getLoginUrl = () => {
+export const getLoginUrl = (): string | null => {
+  if (!isOAuthConfigured) {
+    console.warn("[OAuth] Login indisponível: EXPO_PUBLIC_OAUTH_PORTAL_URL e EXPO_PUBLIC_APP_ID precisam estar configurados.");
+    return null;
+  }
   const redirectUri = getRedirectUri();
   const state = encodeState(redirectUri);
 
-  const url = new URL(`${OAUTH_PORTAL_URL}/app-auth`);
+  let url: URL;
+  try {
+    url = new URL(`${OAUTH_PORTAL_URL.replace(/\/$/, "")}/app-auth`);
+  } catch {
+    console.warn("[OAuth] Login indisponível: portal OAuth inválido.");
+    return null;
+  }
   url.searchParams.set("appId", APP_ID);
   url.searchParams.set("redirectUri", redirectUri);
   url.searchParams.set("state", state);
@@ -104,6 +115,7 @@ export const getLoginUrl = () => {
  */
 export async function startOAuthLogin(): Promise<string | null> {
   const loginUrl = getLoginUrl();
+  if (!loginUrl) return null;
 
   if (ReactNative.Platform.OS === "web") {
     // On web, just redirect
