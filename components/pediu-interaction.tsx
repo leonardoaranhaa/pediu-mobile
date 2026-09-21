@@ -1,5 +1,5 @@
-import { useRef } from "react";
-import { Animated, Easing, Pressable, type ReactNode, type StyleProp, type ViewStyle } from "react-native";
+import { useEffect, useRef, type ReactNode } from "react";
+import { Animated, Easing, Pressable, type StyleProp, type ViewStyle } from "react-native";
 
 export function PressFeedback({ children, onPress, disabled = false, style }: { children: ReactNode; onPress?: () => void; disabled?: boolean; style?: StyleProp<ViewStyle> }) {
   const scale = useRef(new Animated.Value(1)).current;
@@ -12,7 +12,6 @@ export function PressFeedback({ children, onPress, disabled = false, style }: { 
 export function Stagger({ children, index = 0, step = 45 }: { children: ReactNode; index?: number; step?: number }) {
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(10)).current;
-  const { useEffect } = require("react") as typeof import("react");
   useEffect(() => {
     Animated.parallel([
       Animated.timing(opacity, { toValue: 1, duration: 260, delay: index * step, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
