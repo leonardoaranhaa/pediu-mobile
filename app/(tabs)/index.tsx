@@ -12,7 +12,6 @@ import {
   Animated,
   Easing,
   KeyboardAvoidingView,
-  Linking,
   Modal,
   Platform,
   Pressable,
@@ -126,7 +125,6 @@ export default function HomeScreen() {
             setShowCheckout(false);
             setShowCart(false);
             setPixPaymentPending(true);
-            setOrderStatus("Pendente");
             setCustomerTab("orders");
             void customerOrdersQuery.refetch();
             void notifyWithHaptic("Pedido enviado. PIX aguardando confirmação");
@@ -148,7 +146,6 @@ export default function HomeScreen() {
       setShowCheckout(false);
       setShowCart(false);
       setPixPaymentPending(false);
-      setOrderStatus("Pendente");
       setCustomerTab("orders");
       void customerOrdersQuery.refetch();
       void notifyWithHaptic("Pedido enviado para a loja");
@@ -191,7 +188,6 @@ export default function HomeScreen() {
     available: true,
     deliveryFee: item.deliveryFee,
   }))), [globalCartItems]);
-  const [orderStatus, setOrderStatus] = useState<OrderStatus | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [showCart, setShowCart] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
@@ -258,7 +254,7 @@ export default function HomeScreen() {
         // Push registration depends on a physical device and native credentials.
       }
     })();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, registerPushMutation]);
 
   const notifyWithHaptic = async (message: string, success = true) => {
     notify(message);
@@ -378,15 +374,6 @@ export default function HomeScreen() {
       deliveryAddress: deliveryAddress.trim(),
       items: cart.map((item) => ({ productId: item.id, quantity: 1, unitPrice: cartTotal([item.price]).toFixed(2) })),
     });
-  };
-
-  const advanceOrder = () => {
-    if (orderStatus === "Pendente") setOrderStatus("Preparando");
-    if (orderStatus === "Preparando") setOrderStatus("A caminho");
-    if (orderStatus === "A caminho") setOrderStatus("Entregue");
-    const nextMessage = orderStatus === "A caminho" ? "Pedido entregue" : "Status atualizado";
-    void notifyWithHaptic(nextMessage);
-    void scheduleOrderNotification(nextMessage);
   };
 
   const sellerProducts = useMemo(() => (storeProductsQuery.data ?? []).map((product) => ({
@@ -632,7 +619,7 @@ function ProductModal({ product, onClose, onAdd }: { product: Product; onClose: 
   return <View style={styles.modalBackdrop}><View style={styles.sheet}><View style={styles.sheetHandle} /><View style={styles.modalProductImage}><Text style={styles.modalEmoji}>{product.emoji}</Text></View><Text style={styles.eyebrow}>{product.store.toUpperCase()}</Text><Text style={styles.sheetTitle}>{product.name}</Text><Text style={styles.muted}>A 500 m · disponível agora</Text><Text style={styles.modalDescription}>Uma opção deliciosa e feita com carinho por quem vende perto de você.</Text><View style={styles.totalRow}><Text style={styles.totalLabel}>Preço</Text><Text style={styles.totalValue}>{product.price}</Text></View><Pressable style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]} onPress={onAdd}><Text style={styles.primaryButtonText}>Adicionar ao pedido</Text><MaterialIcons name="add" size={19} color={COLORS.white} /></Pressable><Pressable style={styles.textButton} onPress={onClose}><Text style={styles.textButtonLabel}>Voltar</Text></Pressable></View></View>;
 }
 
-function CustomerOrders({ orders, loading, isAuthenticated, onLogin, onCancel, onDiscover }: { orders: Array<{ id: number; storeId: number; status: OrderStatus; total: string; deliveryAddress: string | null; createdAt: Date | string | null }>; loading: boolean; isAuthenticated: boolean; onLogin: () => void; onCancel: (orderId: number) => void; onDiscover: () => void }) {
+function CustomerOrders({ orders, loading, isAuthenticated, onLogin, onCancel, onDiscover }: { orders: { id: number; storeId: number; status: OrderStatus; total: string; deliveryAddress: string | null; createdAt: Date | string | null }[]; loading: boolean; isAuthenticated: boolean; onLogin: () => void; onCancel: (orderId: number) => void; onDiscover: () => void }) {
   const progress: OrderStatus[] = ["Pendente", "Aceito", "Preparando", "Pronto", "A caminho", "Entregue"];
   const progressWidth = (status: OrderStatus): `${number}%` => {
     if (status === "Cancelado") return "0%";
@@ -644,14 +631,14 @@ function CustomerOrders({ orders, loading, isAuthenticated, onLogin, onCancel, o
   }
   return <><View style={styles.simpleHeader}><Text style={styles.pageTitle}>Meus pedidos</Text><View style={styles.avatar}><Text style={styles.avatarText}>?</Text></View></View>{loading ? <View style={styles.emptyState}><Text style={styles.emptyTitle}>Carregando pedidos...</Text><Text style={styles.emptyText}>Buscando seus pedidos mais recentes.</Text></View> : orders.length ? orders.map((order) => <View style={styles.orderCard} key={order.id}><View style={styles.orderTop}><View><Text style={styles.eyebrow}>`PEDIDO #${order.id}`</Text><Text style={styles.orderStore}>`Estabelecimento #${order.storeId}`</Text></View><View style={styles.statusPill}><Text style={styles.statusPillText}>{order.status.toUpperCase()}</Text></View></View><View style={styles.totalRow}><Text style={styles.totalLabel}>Total</Text><Text style={styles.totalValue}>`R$ ${Number(order.total).toFixed(2).replace(".", ",")}`</Text></View>{order.deliveryAddress ? <Text style={styles.muted}>Entrega: {order.deliveryAddress}</Text> : null}{order.status !== "Cancelado" ? <><View style={styles.progressTrack}><View style={[styles.progressFill, { width: progressWidth(order.status) }]} /></View><View style={styles.progressLabels}>{progress.map((status) => <Text key={status} style={styles.progressLabelsText}>{status}</Text>)}</View></> : <Text style={styles.muted}>Este pedido foi cancelado.</Text>}<Pressable style={styles.outlineButtonSmall} onPress={() => router.push({ pathname: "/order/track", params: { orderId: String(order.id) } })}><Text style={styles.outlineButtonText}>Acompanhar pedido</Text></Pressable>{order.status === "Pendente" || order.status === "Aceito" ? <Pressable style={styles.outlineButtonSmall} onPress={() => onCancel(order.id)}><Text style={styles.outlineButtonText}>Cancelar pedido</Text></Pressable> : null}</View>) : <View style={styles.emptyState}><Text style={styles.emptyIllustration}>🛍️</Text><Text style={styles.emptyTitle}>Você ainda não fez um pedido</Text><Text style={styles.emptyText}>Encontre algo gostoso perto de você e peça em poucos toques.</Text><Pressable style={styles.primaryButton} onPress={onDiscover}><Text style={styles.primaryButtonText}>Explorar agora</Text></Pressable></View>}</>;
 }
-function CustomerProfile({ user, isAuthenticated, notifications, onReadNotification, onLogin, onLogout, onSellerMode }: { user: { name: string | null; email: string | null } | null; isAuthenticated: boolean; notifications: Array<{ id: number; title: string; body: string; readAt: Date | null }>; onReadNotification: (id: number) => void; onLogin: () => void; onLogout: () => void; onSellerMode: () => void }) {
+function CustomerProfile({ user, isAuthenticated, notifications, onReadNotification, onLogin, onLogout, onSellerMode }: { user: { name: string | null; email: string | null } | null; isAuthenticated: boolean; notifications: { id: number; title: string; body: string; readAt: Date | null }[]; onReadNotification: (id: number) => void; onLogin: () => void; onLogout: () => void; onSellerMode: () => void }) {
   const profileName = user?.name ?? "Visitante";
   const profileEmail = user?.email ?? "Entre para sincronizar seus pedidos";
   const avatarLetter = user?.name?.trim()?.[0]?.toUpperCase() ?? "?";
   return <><View style={styles.simpleHeader}><View><Text style={styles.eyebrow}>SUA CONTA</Text><Text style={styles.pageTitle}>Perfil</Text></View><View style={styles.avatar}><Text style={styles.avatarText}>{avatarLetter}</Text></View></View><View style={styles.profileCard}><View style={styles.avatarLarge}><Text style={styles.avatarLargeText}>{avatarLetter}</Text></View><Text style={styles.profileName}>{profileName}</Text><Text style={styles.muted}>{profileEmail}</Text>{!isAuthenticated ? <Text style={styles.muted}>Você está navegando como visitante.</Text> : null}</View>{["Dados pessoais", "Meus endereços", "Pagamentos", "Notificações", "Segurança"].map((item) => <Pressable style={styles.settingsRow} key={item} onPress={() => item === "Meus endereços" ? router.push("/account/addresses") : item === "Pagamentos" ? router.push("/account/payment-methods") : item === "Notificações" ? router.push("/account/notifications") : item === "Segurança" ? router.push("/account/settings/advanced") : router.push("/account/profile")}><View style={styles.settingsIcon}><MaterialIcons name={item === "Pagamentos" ? "credit-card" : item === "Meus endereços" ? "location-on" : item === "Notificações" ? "notifications" : "person"} size={20} color={COLORS.ink} /></View><Text style={styles.cardTitle}>{item}</Text><MaterialIcons name="chevron-right" size={20} color={COLORS.muted} /></Pressable>)}<View style={notificationStyles.card}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Histórico de notificações</Text><Text style={styles.link}>{notifications.filter((item) => !item.readAt).length} novas</Text></View>{notifications.length ? notifications.slice(0, 4).map((item) => <Pressable key={item.id} style={[notificationStyles.item, !item.readAt && notificationStyles.unread]} onPress={() => onReadNotification(item.id)}><MaterialIcons name="notifications" size={18} color={COLORS.coral} /><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{item.title}</Text><Text style={styles.muted}>{item.body}</Text></View></Pressable>) : <Text style={styles.muted}>Suas confirmações de pedido e pagamento aparecerão aqui.</Text>}</View><View style={styles.sellerInvite}><Text style={styles.sellerInviteTitle}>Você também vende?</Text><Text style={styles.sellerInviteText}>Crie sua vitrine e comece a vender para sua comunidade.</Text><Pressable style={styles.outlineButton} onPress={onSellerMode}><Text style={styles.outlineButtonText}>Abrir modo vendedor</Text></Pressable></View></>;
 }
 
-function SellerHome({ store, ownerName, orders, productCount, salesTotal, onCatalog, onOrders, onVoice, onNotice }: { store?: { name?: string | null }; ownerName?: string | null; orders: Array<{ status: string }>; productCount: number; salesTotal: number; onCatalog: () => void; onOrders: () => void; onVoice: () => void; onNotice: (message: string) => void }) {
+function SellerHome({ store, ownerName, orders, productCount, salesTotal, onCatalog, onOrders, onVoice, onNotice }: { store?: { name?: string | null }; ownerName?: string | null; orders: { status: string }[]; productCount: number; salesTotal: number; onCatalog: () => void; onOrders: () => void; onVoice: () => void; onNotice: (message: string) => void }) {
   const pendingOrders = orders.filter((order) => order.status === "Pendente").length;
   const firstName = ownerName?.trim().split(/\s+/)[0];
   return <><View style={styles.sellerHeader}><View><Text style={styles.eyebrowLight}>PAINEL DA LOJA</Text><Text style={styles.sellerTitle}>{store?.name ?? "Sua loja"}</Text><Text style={styles.sellerSubtitle}>{firstName ? `Bom dia, ${firstName}. Tudo pronto?` : "Configure sua loja para começar."}</Text></View><BrandMark /></View><View style={styles.statGrid}><View style={styles.statCard}><Text style={styles.statNumber}>{pendingOrders}</Text><Text style={styles.statLabel}>pedidos pendentes</Text><MaterialIcons name="receipt-long" size={22} color={COLORS.coral} /></View><View style={styles.statCard}><Text style={styles.statNumber}>{`R$ ${salesTotal.toFixed(2).replace(".", ",")}`}</Text><Text style={styles.statLabel}>vendas registradas</Text><MaterialIcons name="trending-up" size={22} color={COLORS.green} /></View></View><View style={styles.aiSellerCard}><View style={styles.aiIcon}><MaterialIcons name="mic" size={21} color={COLORS.white} /></View><View style={{ flex: 1 }}><Text style={styles.aiTitle}>Fale com o Pediu</Text><Text style={styles.aiText}>Registre vendas e consulte sua operação por voz.</Text></View><Pressable style={styles.smallLightButton} onPress={onVoice}><Text style={styles.smallLightButtonText}>Falar</Text></Pressable></View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Atalhos</Text></View><View style={styles.shortcutGrid}><Pressable style={({ pressed }) => [styles.shortcut, pressed && styles.cardPressed]} onPress={onCatalog}><MaterialIcons name="inventory-2" size={24} color={COLORS.coral} /><Text style={styles.shortcutTitle}>Catálogo</Text><Text style={styles.shortcutSub}>{productCount} produto(s) ativo(s)</Text></Pressable><Pressable style={({ pressed }) => [styles.shortcut, pressed && styles.cardPressed]} onPress={onOrders}><MaterialIcons name="local-shipping" size={24} color={COLORS.orange} /><Text style={styles.shortcutTitle}>Pedidos</Text><Text style={styles.shortcutSub}>{pendingOrders} aguardando ação</Text></Pressable><Pressable style={({ pressed }) => [styles.shortcut, pressed && styles.cardPressed]} onPress={() => onNotice("A divulgação será conectada ao catálogo da loja") }><MaterialIcons name="campaign" size={24} color={COLORS.ink} /><Text style={styles.shortcutTitle}>Divulgar</Text><Text style={styles.shortcutSub}>Compartilhe seu catálogo</Text></Pressable><Pressable style={({ pressed }) => [styles.shortcut, pressed && styles.cardPressed]} onPress={() => onNotice("Cadastre clientes para acompanhar o fiado") }><MaterialIcons name="people" size={24} color={COLORS.green} /><Text style={styles.shortcutTitle}>Clientes</Text><Text style={styles.shortcutSub}>Dados do backend</Text></Pressable></View><View style={styles.tipCard}><MaterialIcons name="lightbulb" size={22} color={COLORS.orange} /><View style={{ flex: 1 }}><Text style={styles.tipTitle}>Dica do Pediu</Text><Text style={styles.tipText}>Uma boa foto e uma descrição curta ajudam seu produto a vender mais.</Text></View></View></>;
@@ -661,14 +648,14 @@ function SellerOrders({
   orders,
   onUpdateStatus,
 }: {
-  orders: Array<{
+  orders: {
     id: number;
     customerId: number;
     total: string;
     status: string;
     deliveryAddress: string | null;
     createdAt: Date | null;
-  }>;
+  }[];
   onUpdateStatus: (orderId: number, status: "Aceito" | "Preparando" | "Pronto" | "A caminho" | "Entregue" | "Cancelado") => void;
 }) {
   const nextStatus: Record<string, "Aceito" | "Preparando" | "Pronto" | "A caminho" | "Entregue" | "Cancelado" | undefined> = {
@@ -793,27 +780,6 @@ const paymentStyles = StyleSheet.create({
   pending: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#FFF0D7", borderRadius: 13, padding: 12 },
   pendingText: { flex: 1, color: COLORS.orange, fontSize: 11, fontWeight: "800", lineHeight: 16 },
 });
-
-
-function TrackingMapCard({ orderStatus, onOpenMap }: { orderStatus: OrderStatus | null; onOpenMap: () => void }) {
-  if (!orderStatus || orderStatus === "Pendente") return null;
-  return <View style={trackingStyles.card}><View style={trackingStyles.mapPreview}><View style={trackingStyles.routeLine} /><View style={trackingStyles.pinStore}><MaterialIcons name="storefront" size={14} color={COLORS.white} /></View><View style={trackingStyles.pinDriver}><MaterialIcons name="two-wheeler" size={14} color={COLORS.white} /></View><View style={trackingStyles.pinHome}><MaterialIcons name="home" size={14} color={COLORS.white} /></View></View><View style={trackingStyles.copy}><View style={{ flex: 1 }}><Text style={trackingStyles.title}>{orderStatus === "Entregue" ? "Pedido entregue" : "Seu entregador está a caminho"}</Text><Text style={trackingStyles.text}>{orderStatus === "Entregue" ? "Esperamos que aproveite." : "Acompanhe a rota até sua porta."}</Text></View><Pressable style={trackingStyles.mapButton} onPress={onOpenMap}><MaterialIcons name="map" size={17} color={COLORS.white} /></Pressable></View></View>;
-}
-
-const trackingStyles = StyleSheet.create({
-  card: { backgroundColor: COLORS.ink, borderRadius: 20, padding: 12, gap: 11 },
-  mapPreview: { height: 92, borderRadius: 14, backgroundColor: "#DCE9E1", overflow: "hidden", position: "relative" },
-  routeLine: { position: "absolute", left: 45, right: 48, top: 43, height: 5, borderRadius: 3, backgroundColor: COLORS.coral, transform: [{ rotate: "-12deg" }] },
-  pinStore: { position: "absolute", left: 30, top: 31, width: 28, height: 28, borderRadius: 14, backgroundColor: COLORS.ink, alignItems: "center", justifyContent: "center" },
-  pinDriver: { position: "absolute", left: "48%", top: 17, width: 28, height: 28, borderRadius: 14, backgroundColor: COLORS.orange, alignItems: "center", justifyContent: "center" },
-  pinHome: { position: "absolute", right: 28, top: 48, width: 28, height: 28, borderRadius: 14, backgroundColor: COLORS.green, alignItems: "center", justifyContent: "center" },
-  copy: { flexDirection: "row", alignItems: "center", gap: 10 },
-  title: { color: COLORS.white, fontSize: 13, fontWeight: "800" },
-  text: { color: "#BCD0D1", fontSize: 11, marginTop: 3 },
-  mapButton: { width: 38, height: 38, borderRadius: 12, backgroundColor: COLORS.coral, alignItems: "center", justifyContent: "center" },
-});
-
-
 function VoiceWaveform({ active, processing }: { active: boolean; processing: boolean }) {
   const levels = useRef(Array.from({ length: 17 }, () => new Animated.Value(0.22))).current;
 
@@ -868,7 +834,7 @@ function SellerVoiceLauncher({ onPress }: { onPress: () => void }) {
   return <Pressable style={({ pressed }) => [voiceStyles.launcher, pressed && styles.pressed]} onPress={onPress}><View style={voiceStyles.launcherIcon}><MaterialIcons name="mic" size={18} color={COLORS.white} /></View><View style={{ flex: 1 }}><Text style={voiceStyles.launcherTitle}>Fale com o Pediu</Text><Text style={voiceStyles.launcherText}>Registrar venda, consultar fiado ou divulgar</Text></View><MaterialIcons name="arrow-forward" size={18} color={COLORS.ink} /></Pressable>;
 }
 
-function SellerClients({ customers, onNotice }: { customers: Array<{ id: number; name: string; balance: string }>; onNotice: (message: string) => void }) {
+function SellerClients({ customers, onNotice }: { customers: { id: number; name: string; balance: string }[]; onNotice: (message: string) => void }) {
   const visibleCustomers = customers.length ? customers.map((customer, index) => ({ name: customer.name, detail: `Fiado · R$ ${Number(customer.balance).toFixed(2).replace(".", ",")}`, emoji: customer.name.slice(0, 1).toUpperCase(), tone: [COLORS.yellow, "#BDE6D3", "#D8C8F5"][index % 3] })) : [{ name: "Nenhum cliente cadastrado", detail: "Use o assistente para registrar uma venda", emoji: "+", tone: COLORS.coralSoft }];
   const totalOwed = customers.reduce((sum, customer) => sum + Number(customer.balance), 0);
   return <><View style={styles.simpleHeader}><View><Text style={styles.eyebrow}>RELACIONAMENTO</Text><Text style={styles.pageTitle}>Meus clientes</Text></View><View style={styles.avatar}><Text style={styles.avatarText}>{customers.length}</Text></View></View><View style={clientStyles.summary}><View><Text style={clientStyles.summaryNumber}>R$ {totalOwed.toFixed(2).replace(".", ",")}</Text><Text style={clientStyles.summaryLabel}>em vendas fiadas</Text></View><MaterialIcons name="account-balance-wallet" size={28} color={COLORS.orange} /></View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Clientes recentes</Text><Text style={styles.link}>Persistidos</Text></View>{visibleCustomers.map((client) => <View style={clientStyles.row} key={client.name}><View style={[clientStyles.clientAvatar, { backgroundColor: client.tone }]}><Text style={clientStyles.clientAvatarText}>{client.emoji}</Text></View><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{client.name}</Text><Text style={styles.muted}>{client.detail}</Text></View><Pressable style={clientStyles.action} onPress={() => onNotice(`${client.name}: histórico aberto`)}><MaterialIcons name="chevron-right" size={20} color={COLORS.ink} /></Pressable></View>)}<View style={clientStyles.reminder}><MaterialIcons name="notifications-active" size={21} color={COLORS.coral} /><View style={{ flex: 1 }}><Text style={styles.tipTitle}>Lembrete de fiado</Text><Text style={styles.tipText}>Envie uma cobrança amigável para quem está com pagamento pendente.</Text></View><Pressable style={clientStyles.reminderButton} onPress={() => onNotice("Lembrete de cobrança preparado")}><Text style={clientStyles.reminderButtonText}>Preparar</Text></Pressable></View></>;

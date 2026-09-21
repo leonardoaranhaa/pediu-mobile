@@ -44,6 +44,18 @@ describe("Pediu customer marketplace contract", () => {
     });
   });
 
+  it("searches the marketplace through the paginated server contract", async () => {
+    vi.spyOn(db, "searchAvailableProducts").mockResolvedValue({
+      items: [{ id: 101, storeId: 7, name: "Brownie", category: "Doces", price: "12.00", available: 1, description: null, createdAt: new Date(), storeName: "Loja Teste", deliveryFee: "5.00" }],
+      hasMore: true,
+    } as any);
+
+    const result = await appRouter.createCaller({ user: customer } as any).pediu.marketplace.search({ query: "brownie", category: "Doces", minPrice: 5, maxPrice: 20, limit: 12, offset: 0 });
+
+    expect(result).toMatchObject({ hasMore: true, items: [{ name: "Brownie", storeName: "Loja Teste" }] });
+    expect(db.searchAvailableProducts).toHaveBeenCalledWith({ query: "brownie", category: "Doces", minPrice: 5, maxPrice: 20, limit: 12, offset: 0 });
+  });
+
   it("quotes current prices and delivery fee from the server", async () => {
     vi.spyOn(db, "getStoreById").mockResolvedValue({
       id: 7,

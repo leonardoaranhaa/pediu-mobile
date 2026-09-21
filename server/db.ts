@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { AdminAuditLog, Coupon, Customer, CustomerAddress, InsertAdminAuditLog, InsertCustomer, InsertCustomerAddress, InsertLedgerEntry, InsertNotification, InsertOrder, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Notification, Order, Payment, Product, PushToken, Sale, Store, adminAuditLogs, coupons, customerAddresses, customers, ledgerEntries, notifications, orderItems, orders, payments, products, pushTokens, sales, stores, users } from "../drizzle/schema";
+import { AdminAuditLog, Coupon, Customer, CustomerAddress, InsertAdminAuditLog, InsertCustomer, InsertCustomerAddress, InsertDeliveryEvent, InsertLedgerEntry, InsertNotification, InsertOrder, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Notification, Order, Payment, Product, PushToken, Sale, Store, adminAuditLogs, coupons, customerAddresses, customers, deliveryEvents, ledgerEntries, notifications, orderItems, orders, payments, products, pushTokens, sales, stores, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -234,11 +234,28 @@ export async function createStore(input: InsertStore): Promise<number> {
 
 export type MarketplaceProduct = Product & { storeName: string; deliveryFee: string };
 
-export async function listAvailableProducts(category?: string): Promise<MarketplaceProduct[]> {
+export type MarketplaceSearchInput = {
+  category?: string;
+  query?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  limit?: number;
+  offset?: number;
+};
+
+export async function searchAvailableProducts(input: MarketplaceSearchInput = {}): Promise<{ items: MarketplaceProduct[]; hasMore: boolean }> {
   const db = await getDb();
-  if (!db) return [];
+  if (!db) return { items: [], hasMore: false };
   const filters = [eq(products.available, 1), eq(stores.isOpen, 1)];
-  if (category && category !== "Tudo") filters.push(eq(products.category, category));
+  if (input.category && input.category !== "Tudo") filters.push(eq(products.category, input.category));
+  if (input.query?.trim()) {
+    const pattern = `%${input.query.trim().toLowerCase()}%`;
+    filters.push(sql`(LOWER(${products.name}) LIKE ${pattern} OR LOWER(${products.category}) LIKE ${pattern} OR LOWER(${stores.name}) LIKE ${pattern})`);
+  }
+  if (input.minPrice !== undefined) filters.push(sql`${products.price} >= ${input.minPrice.toFixed(2)}`);
+  if (input.maxPrice !== undefined) filters.push(sql`${products.price} <= ${input.maxPrice.toFixed(2)}`);
+  const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
+  const offset = Math.max(input.offset ?? 0, 0);
 
   const result = await db
     .select({
@@ -255,9 +272,16 @@ export async function listAvailableProducts(category?: string): Promise<Marketpl
     })
     .from(products)
     .innerJoin(stores, eq(products.storeId, stores.id))
-    .where(and(...filters));
+    .where(and(...filters))
+    .orderBy(products.createdAt, products.id)
+    .limit(limit + 1)
+    .offset(offset);
 
-  return result;
+  return { items: result.slice(0, limit), hasMore: result.length > limit };
+}
+
+export async function listAvailableProducts(category?: string): Promise<MarketplaceProduct[]> {
+  return (await searchAvailableProducts({ category, limit: 50 })).items;
 }
 
 export async function createProduct(input: InsertProduct): Promise<number> {
@@ -352,7 +376,7 @@ export async function blockCustomer(storeId: number, customerId: number, blocked
   await db.update(customers).set({ status: blocked ? "blocked" : "active" }).where(sql`${customers.id} = ${customerId} AND ${customers.storeId} = ${storeId}`);
 }
 
-export async function createOrder(input: InsertOrder, items: Array<{ productId: number; quantity: number; unitPrice: string }>): Promise<number> {
+export async function createOrder(input: InsertOrder, items: Array<{ productId: number; quantity: number; unitPrice: string; note?: string }>): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(orders).values(input);
@@ -361,7 +385,7 @@ export async function createOrder(input: InsertOrder, items: Array<{ productId: 
   return orderId;
 }
 
-export async function createOrderWithPayment(input: InsertOrder, items: Array<{ productId: number; quantity: number; unitPrice: string }>, paymentMethod: "pix" | "card" | "cash"): Promise<{ orderId: number; paymentId: number }> {
+export async function createOrderWithPayment(input: InsertOrder, items: Array<{ productId: number; quantity: number; unitPrice: string; note?: string }>, paymentMethod: "pix" | "card" | "cash"): Promise<{ orderId: number; paymentId: number }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   if (items.length === 0) throw new Error("Pedido sem itens");
@@ -377,7 +401,7 @@ export async function createOrderWithPayment(input: InsertOrder, items: Array<{ 
   });
 }
 
-export async function createOrderWithFiado(input: InsertOrder, items: Array<{ productId: number; quantity: number; unitPrice: string }>, creditCustomerId: number, storeId: number): Promise<number> {
+export async function createOrderWithFiado(input: InsertOrder, items: Array<{ productId: number; quantity: number; unitPrice: string; note?: string }>, creditCustomerId: number, storeId: number): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   if (items.length === 0) throw new Error("Pedido sem itens");
@@ -421,6 +445,13 @@ export async function updateOrderStatus(orderId: number, status: Order["status"]
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(orders).set({ status }).where(eq(orders.id, orderId));
+}
+
+export async function createDeliveryEvent(input: InsertDeliveryEvent): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(deliveryEvents).values(input);
+  return getInsertId(result);
 }
 
 export async function getPendingPixPaymentForOrder(orderId: number): Promise<Payment | undefined> {

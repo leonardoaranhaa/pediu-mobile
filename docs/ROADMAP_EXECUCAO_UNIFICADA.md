@@ -1,0 +1,52 @@
+# Pediu — Roadmap de execução unificada
+
+## Decisão de execução
+
+As etapas restantes do mapa vertical serão executadas em uma única frente sobre o pull request aberto `feat/core-marketplace-flow`. A frente seguirá conexões verticais completas em vez de criar telas isoladas. Cada bloco deverá atravessar interface, estado local ou global, tRPC, backend, banco ou serviço externo e retorno visual.
+
+As entregas já publicadas não serão reabertas sem necessidade. O estado inicial desta frente inclui autenticação com estado de visitante controlado, catálogo, loja, produto, carrinho persistente, endereços, cotação server-side, cupons server-side, idempotência, pedido transacional, PIX, tracking básico, chat persistente, notificações, avaliações autorizadas e CI operacional.
+
+## Ordem consolidada
+
+A primeira camada fecha as dependências de acesso e contexto: sessão, expiração, logout, localização, endereço e área de entrega. A segunda camada completa descoberta e loja: busca, filtros, paginação, distância, avaliação, disponibilidade e informações operacionais. A terceira camada completa compra: adicionais, observações, carrinho sincronizado, cotação, pagamento, confirmação, cancelamento e recuperação após falha.
+
+A quarta camada implementa a operação pós-compra: máquina de estados, eventos de entrega, posição atual, ETA, tracking, entregador e realtime. A quinta camada fecha comunicação e confiança: chat, notificações, suporte, avaliação, respostas da loja e histórico. A sexta camada completa perfil, pagamentos, privacidade e LGPD. A sétima camada aplica UX, acessibilidade, performance e segurança transversalmente. A última camada executa E2E, CI/CD, auditoria e preparação de release.
+
+## Critérios transversais
+
+Nenhum valor financeiro será confiado ao cliente. Toda leitura protegida verificará o usuário da sessão e a propriedade do recurso. Toda operação repetível deverá possuir idempotência quando produzir pedido, pagamento, mensagem ou evento. Cada nova migration deverá aplicar em banco MySQL vazio. Cada bloco deverá possuir testes de contrato e pelo menos um fluxo operacional verificável.
+
+Estados de carregamento, vazio, erro e retry deverão ser explícitos nas telas novas. Dados de cartão serão representados apenas por tokens ou referências do provedor. Logs não deverão registrar tokens, payloads sensíveis ou dados completos de pagamento.
+
+## Estado inicial e entregas pendentes
+
+| Bloco | Estado inicial | Próximo resultado verificável |
+|---|---|---|
+| Autenticação e localização | Parcial | Sessão expirada, logout, endereço e validação de área |
+| Descoberta e loja | Parcial | Busca com filtros, paginação e dados operacionais |
+| Compra | Núcleo implementado | Adicionais, observações, estoque, carrinho sincronizado e recuperação |
+| Pedido e tracking | Base implementada | Timeline por eventos, transições e acompanhamento operacional |
+| Entregador | Pendente | Posição, ETA, identificação e encerramento |
+| Chat e notificações | Base persistida | Realtime, leitura, preferências e deep links |
+| Pagamentos e avaliações | Backend parcial | Métodos seguros, estados completos e envio de avaliações |
+| Perfil e LGPD | Base de telas | Dados, consentimentos, exportação e exclusão |
+| Qualidade transversal | Parcial | Acessibilidade, performance, segurança e observabilidade |
+| Testes e release | CI básico verde | E2E completo, auditoria e release candidate |
+
+## Validação final
+
+A frente só será considerada concluída após `pnpm check`, `pnpm test`, `pnpm build`, `pnpm lint`, migrations em banco vazio, smoke test da API, E2E web e confirmação dos workflows do GitHub. Limitações causadas por OAuth externo, provedor de pagamentos ou dispositivo nativo serão registradas com reprodução e não serão declaradas como aprovadas sem evidência.
+
+## Referências
+
+[1]: ./IMPLEMENTATION_NEXT_PHASE.md "Plano da próxima fase de implementação"
+[2]: ./FASE_G11_PRODUTO_CARRINHO.md "Fase G11 de produto e carrinho global"
+[3]: ./FASE_G12_COTACAO_CARRINHO_COMPLETO.md "Fase G12 de cotação server-side e carrinho"
+[4]: ./FASE_G13_CUPOM_CHECKOUT_CONFIRMACAO.md "Fase G13 de cupom, checkout e confirmação"
+[5]: ./FASE_ENDERECOS_CHECKOUT_INTEGRACAO.md "Fase de endereços e checkout server-side"
+
+## Atualização de execução — 2026-09-21
+
+Na mesma frente do PR foram implementados busca server-side com categoria, texto, preço e paginação; observações de item persistidas da interface ao pedido; eventos de tracking registrados na criação, cancelamento e transição de status; timeline de entrega com atualização periódica; avaliação de estabelecimento, produto e entregador; chat com polling, erro e retry; tickets persistentes de suporte; e consentimentos persistentes de termos e privacidade.
+
+As migrations `0014_support_tickets.sql`, `0015_order_item_notes.sql` e `0016_privacy_consents.sql` foram geradas no journal do Drizzle. O conjunto local continua passando typecheck e testes, com 62 testes aprovados e 1 ignorado. A aplicação das migrations 0000–0015 já foi verificada em banco vazio; a migration 0016 será incluída na validação final antes do push.

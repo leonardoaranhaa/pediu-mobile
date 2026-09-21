@@ -1,6 +1,6 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { useLocalSearchParams } from "expo-router";
-import { Linking, Pressable, Text } from "react-native";
+import { Linking, Text } from "react-native";
 import { Page, Card, PrimaryButton, PEDIU, s } from "@/components/pediu-page";
 import { trpc } from "@/lib/trpc";
 

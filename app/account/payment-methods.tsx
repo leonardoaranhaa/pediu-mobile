@@ -1,4 +1,3 @@
 import { useState } from "react";
-import { Text } from "react-native";
-import { Page, Card, ToggleRow, Row, s } from "@/components/pediu-page";
+import { Page, Card, ToggleRow, Row } from "@/components/pediu-page";
 export default function PaymentMethodsPage(){const [pix,setPix]=useState(true);const [card,setCard]=useState(false);const [cash,setCash]=useState(true);return <Page title="Pagamentos" eyebrow="COMO VOCÊ PAGA"><Card><ToggleRow icon="pix" title="PIX" subtitle="Disponível para checkout" value={pix} onChange={setPix}/><ToggleRow icon="credit-card" title="Cartão" subtitle="Preferência de pagamento" value={card} onChange={setCard}/><ToggleRow icon="payments" title="Dinheiro" subtitle="Pagamento na entrega" value={cash} onChange={setCash}/></Card><Card><Row icon="account-balance-wallet" title="Fiado" subtitle="Disponível apenas quando uma loja habilitar seu crédito"/></Card></Page>}

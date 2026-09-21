@@ -25,7 +25,7 @@ export default function CheckoutScreen() {
   const normalizedCouponInput = couponCode.trim().toUpperCase();
   const quoteInput = useMemo(() => ({
     storeId: items[0]?.storeId ?? 1,
-    items: items.map((item) => ({ productId: item.id, quantity: item.quantity })),
+    items: items.map((item) => ({ productId: item.id, quantity: item.quantity, note: item.note })),
     couponCode: appliedCouponCode || undefined,
   }), [appliedCouponCode, items]);
   const quote = trpc.pediu.checkout.quote.useQuery(quoteInput, {
@@ -75,7 +75,7 @@ export default function CheckoutScreen() {
       addressId,
       couponCode: quote.data.couponCode,
       deliveryAddress: address.trim(),
-      items: quote.data.items.map((item) => ({ productId: item.productId, quantity: item.quantity, unitPrice: item.unitPrice })),
+      items: quote.data.items.map((item) => ({ productId: item.productId, quantity: item.quantity, unitPrice: item.unitPrice, note: item.note })),
     });
   };
 

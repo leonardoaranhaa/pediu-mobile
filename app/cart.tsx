@@ -1,4 +1,4 @@
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import { Card, OutlineButton, Page, PEDIU, PrimaryButton, s } from "@/components/pediu-page";
 import { useCart } from "@/providers/cart-provider";
@@ -8,7 +8,7 @@ function money(value: number) {
 }
 
 export default function CartPage() {
-  const { items, hydrated, error, subtotal, deliveryFee, total, itemCount, updateQuantity, removeItem, clear } = useCart();
+  const { items, hydrated, error, subtotal, deliveryFee, total, itemCount, updateQuantity, updateNote, removeItem, clear } = useCart();
 
   if (!hydrated) return <Page title="Seu carrinho" eyebrow="PEDIDO" back><Card><Text style={s.sectionTitle}>Restaurando carrinho...</Text><Text style={s.muted}>Carregando os itens salvos neste dispositivo.</Text></Card></Page>;
 
@@ -32,6 +32,7 @@ export default function CartPage() {
           <Pressable onPress={() => updateQuantity(item.id, item.quantity + 1)} style={{ width: 34, height: 34, borderRadius: 11, borderWidth: 1, borderColor: PEDIU.line, alignItems: "center", justifyContent: "center" }}><Text style={{ color: PEDIU.ink, fontSize: 18, fontWeight: "900" }}>+</Text></Pressable>
           <Pressable onPress={() => removeItem(item.id)} style={{ marginLeft: "auto" }}><Text style={{ color: PEDIU.coral, fontWeight: "800" }}>Remover</Text></Pressable>
         </View>
+        <TextInput value={item.note ?? ""} onChangeText={(note) => updateNote(item.id, note)} placeholder="Observação para este item (opcional)" placeholderTextColor={PEDIU.muted} style={{ borderWidth: 1, borderColor: PEDIU.line, borderRadius: 12, padding: 10, color: PEDIU.ink, backgroundColor: PEDIU.canvas }} />
       </View>)}
     </Card> : null}
     {items.length ? <Card>

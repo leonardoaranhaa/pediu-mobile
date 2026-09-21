@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { addProductToCart, cartDeliveryFee, cartItemCount, cartSubtotal, cartTotal, removeCartItem, updateCartQuantity, type CartItem, type CartProduct } from "@/lib/cart";
+import { addProductToCart, cartDeliveryFee, cartItemCount, cartSubtotal, cartTotal, removeCartItem, updateCartNote, updateCartQuantity, type CartItem, type CartProduct } from "@/lib/cart";
 
 const CART_STORAGE_KEY = "pediu:cart:v1";
 
@@ -14,6 +14,7 @@ type CartContextValue = {
   total: number;
   addItem: (product: CartProduct, quantity?: number) => { ok: boolean; error?: string };
   updateQuantity: (productId: number, quantity: number) => void;
+  updateNote: (productId: number, note: string) => void;
   removeItem: (productId: number) => void;
   clear: () => void;
 };
@@ -68,6 +69,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     total: cartTotal(items),
     addItem,
     updateQuantity: (productId, quantity) => setItems((current) => updateCartQuantity(current, productId, quantity)),
+    updateNote: (productId, note) => setItems((current) => updateCartNote(current, productId, note)),
     removeItem: (productId) => setItems((current) => removeCartItem(current, productId)),
     clear: () => setItems([]),
   }), [addItem, error, hydrated, items]);

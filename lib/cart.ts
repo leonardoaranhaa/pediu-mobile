@@ -35,6 +35,10 @@ export function updateCartQuantity(items: CartItem[], productId: number, quantit
   return items.map((item) => item.id === productId ? { ...item, quantity } : item);
 }
 
+export function updateCartNote(items: CartItem[], productId: number, note: string): CartItem[] {
+  return items.map((item) => item.id === productId ? { ...item, note: note.trim().slice(0, 500) || undefined } : item);
+}
+
 export function removeCartItem(items: CartItem[], productId: number): CartItem[] {
   return items.filter((item) => item.id !== productId);
 }

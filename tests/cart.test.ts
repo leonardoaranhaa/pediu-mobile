@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addProductToCart, cartDeliveryFee, cartItemCount, cartSubtotal, cartTotal, updateCartQuantity, type CartProduct } from "../lib/cart";
+import { addProductToCart, cartDeliveryFee, cartItemCount, cartSubtotal, cartTotal, updateCartNote, updateCartQuantity, type CartProduct } from "../lib/cart";
 
 const burger: CartProduct = {
   id: 1,
@@ -38,5 +38,11 @@ describe("cart domain", () => {
     const current = addProductToCart([], burger, 2).items;
     expect(updateCartQuantity(current, burger.id, 1)[0]?.quantity).toBe(1);
     expect(updateCartQuantity(current, burger.id, 0)).toEqual([]);
+  });
+
+  it("stores a bounded item note", () => {
+    const current = addProductToCart([], burger).items;
+    expect(updateCartNote(current, burger.id, "  sem cebola  ")[0]?.note).toBe("sem cebola");
+    expect(updateCartNote(current, burger.id, "   ")[0]?.note).toBeUndefined();
   });
 });

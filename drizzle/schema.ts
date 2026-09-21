@@ -62,6 +62,7 @@ export const orderItems = mysqlTable("pediu_order_items", {
   productId: int("productId").notNull(),
   quantity: int("quantity").default(1).notNull(),
   unitPrice: decimal("unitPrice", { precision: 10, scale: 2 }).notNull(),
+  note: varchar("note", { length: 500 }),
 }, (table) => ({
   orderIdx: index("pediu_order_items_order_idx").on(table.orderId),
 }));
@@ -310,6 +311,31 @@ export const chatMessages = mysqlTable("pediu_chat_messages", {
   orderCreatedIdx: index("pediu_chat_order_created_idx").on(table.orderId, table.createdAt),
 }));
 
+export const supportTickets = mysqlTable("pediu_support_tickets", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  orderId: int("orderId"),
+  subject: varchar("subject", { length: 160 }).notNull(),
+  body: text("body").notNull(),
+  status: mysqlEnum("status", ["open", "in_progress", "resolved", "closed"]).default("open").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  userCreatedIdx: index("pediu_support_user_created_idx").on(table.userId, table.createdAt),
+  orderIdx: index("pediu_support_order_idx").on(table.orderId),
+}));
+
+export const privacyConsents = mysqlTable("pediu_privacy_consents", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  kind: varchar("kind", { length: 40 }).notNull(),
+  version: varchar("version", { length: 20 }).notNull(),
+  acceptedAt: timestamp("acceptedAt").defaultNow().notNull(),
+}, (table) => ({
+  consentUnique: unique("pediu_privacy_consent_unique").on(table.userId, table.kind, table.version),
+  userIdx: index("pediu_privacy_consent_user_idx").on(table.userId),
+}));
+
 export const adminAuditLogs = mysqlTable("pediu_admin_audit_logs", {
   id: int("id").autoincrement().primaryKey(),
   actorId: int("actorId").notNull(),
@@ -370,6 +396,10 @@ export type DeliveryEvent = typeof deliveryEvents.$inferSelect;
 export type InsertDeliveryEvent = typeof deliveryEvents.$inferInsert;
 export type ChatMessage = typeof chatMessages.$inferSelect;
 export type InsertChatMessage = typeof chatMessages.$inferInsert;
+export type SupportTicket = typeof supportTickets.$inferSelect;
+export type InsertSupportTicket = typeof supportTickets.$inferInsert;
+export type PrivacyConsent = typeof privacyConsents.$inferSelect;
+export type InsertPrivacyConsent = typeof privacyConsents.$inferInsert;
 export type AdminAuditLog = typeof adminAuditLogs.$inferSelect;
 export type InsertAdminAuditLog = typeof adminAuditLogs.$inferInsert;
 export type Notification = typeof notifications.$inferSelect;
