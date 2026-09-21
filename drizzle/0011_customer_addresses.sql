@@ -1,0 +1,21 @@
+CREATE TABLE `pediu_customer_addresses` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `userId` int NOT NULL,
+  `label` varchar(40) NOT NULL,
+  `recipientName` varchar(160) NOT NULL,
+  `street` varchar(180) NOT NULL,
+  `number` varchar(30) NOT NULL,
+  `complement` varchar(120),
+  `neighborhood` varchar(100) NOT NULL,
+  `city` varchar(100) NOT NULL,
+  `state` varchar(2) NOT NULL,
+  `postalCode` varchar(8) NOT NULL,
+  `latitude` decimal(10,7),
+  `longitude` decimal(10,7),
+  `isDefault` int NOT NULL DEFAULT 0,
+  `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updatedAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `pediu_customer_addresses_user_idx` (`userId`),
+  KEY `pediu_customer_addresses_user_default_idx` (`userId`, `isDefault`)
+);
