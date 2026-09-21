@@ -350,11 +350,8 @@ export default function HomeScreen() {
       requestLogin();
       return;
     }
-    const preferredAddress = customerAddressesQuery.data?.find((item) => item.isDefault === 1) ?? customerAddressesQuery.data?.[0];
-    if (!deliveryAddress.trim() && preferredAddress) { setDeliveryAddress(formatSavedAddress(preferredAddress)); setDeliveryAddressId(preferredAddress.id); }
-    setCheckoutIdempotencyKey(createCheckoutKey());
     setShowCart(false);
-    setShowCheckout(true);
+    router.push("/checkout");
   };
 
   const submitOrder = () => {

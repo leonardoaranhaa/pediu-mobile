@@ -50,3 +50,5 @@ A frente só será considerada concluída após `pnpm check`, `pnpm test`, `pnpm
 Na mesma frente do PR foram implementados busca server-side com categoria, texto, preço e paginação; observações de item persistidas da interface ao pedido; eventos de tracking registrados na criação, cancelamento e transição de status; timeline de entrega com atualização periódica; avaliação de estabelecimento, produto e entregador; chat com polling, erro e retry; tickets persistentes de suporte; e consentimentos persistentes de termos e privacidade.
 
 As migrations `0014_support_tickets.sql`, `0015_order_item_notes.sql` e `0016_privacy_consents.sql` foram geradas no journal do Drizzle. O conjunto local continua passando typecheck e testes, com 62 testes aprovados e 1 ignorado. A aplicação das migrations 0000–0015 já foi verificada em banco vazio; a migration 0016 será incluída na validação final antes do push.
+
+A home também foi alinhada ao checkout dedicado: a entrada de finalização deixou de abrir o modal legado e redireciona para `/checkout`, garantindo que cotação, cupom, observações, idempotência e confirmação usem o mesmo contrato server-side.
