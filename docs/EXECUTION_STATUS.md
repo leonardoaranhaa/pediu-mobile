@@ -14,14 +14,14 @@ Branch de execução: `feat/pediu-full-roadmap`
 - [ ] Auditoria final de todas as rotas ainda necessária.
 
 ### C — Backend / Contratos
-- [x] `experienceRouter` presente.
-- [x] `experienceRouter` composto no `appRouter`.
+- [x] `experienceRouter` presente e composto.
 - [x] Marketplace/pedidos/pagamentos existentes preservados.
 - [x] Migration de experiência adicionada (`0011_experience.sql`).
-- [x] Publicação de tracking restrita ao proprietário do estabelecimento do pedido.
-- [ ] MFA real.
+- [x] MFA persistente com hash, expiração, consumo único e limite de tentativas.
+- [x] Perfil persistente de entregador e atribuição por pedido (`0013_mfa_couriers.sql`).
+- [x] Tracking pode ser publicado pelo lojista autorizado ou entregador atribuído.
+- [x] Provedor MFA externo isolado por `MFA_DELIVERY_URL`.
 - [ ] Suporte persistente.
-- [ ] Papel/identidade de entregador dedicado para publicação de GPS.
 
 ### D — Navegação
 - [ ] Ligações finais entre páginas novas e rotas existentes.
@@ -30,16 +30,17 @@ Branch de execução: `feat/pediu-full-roadmap`
 - [ ] TypeScript.
 - [ ] Lint.
 - [ ] Testes.
-- [ ] Validação de migrations.
+- [ ] Validação das migrations em banco real.
 
 ### F — Integração
 - [x] Cupom possui validação server-side.
+- [x] Novo fluxo `couponOrders.create` calcula subtotal, desconto, entrega e total no servidor e grava pedido/pagamento em transação.
 - [x] Reviews verificam propriedade e pedido entregue.
 - [x] Chat possui leitura/envio protegido ao cliente do pedido.
 - [x] Tracking possui leitura protegida e publicação autorizada.
 - [x] Pagamento PIX possui contrato server-side existente.
-- [ ] Aplicar desconto de cupom ao total transacional do checkout.
 - [ ] Retorno de pagamento conectado ao estado persistido do pagamento.
+- [ ] Checkout existente migrado para `couponOrders.create` sem alterar a página atual até validação da navegação.
 
 ### G — Modernização
 - [ ] Design system.
