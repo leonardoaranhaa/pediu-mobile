@@ -44,6 +44,38 @@ describe("Pediu customer marketplace contract", () => {
     });
   });
 
+  it("quotes current prices and delivery fee from the server", async () => {
+    vi.spyOn(db, "getStoreById").mockResolvedValue({
+      id: 7,
+      ownerId: 10,
+      name: "Loja Teste",
+      deliveryFee: "5.00",
+      isOpen: true,
+    } as any);
+    vi.spyOn(db, "getAvailableProductForStore").mockResolvedValue({
+      id: 101,
+      storeId: 7,
+      name: "Produto Teste",
+      price: "18.00",
+      available: 1,
+    } as any);
+
+    const caller = appRouter.createCaller({ user: customer } as any);
+    const quote = await caller.pediu.checkout.quote({ storeId: 7, items: [{ productId: 101, quantity: 2 }] });
+
+    expect(quote).toMatchObject({ storeId: 7, subtotal: "36.00", deliveryFee: "5.00", total: "41.00" });
+    expect(quote.items[0]).toMatchObject({ productId: 101, quantity: 2, unitPrice: "18.00", lineTotal: "36.00" });
+  });
+
+  it("rejects a quote when a product is unavailable", async () => {
+    vi.spyOn(db, "getStoreById").mockResolvedValue({ id: 7, ownerId: 10, name: "Loja Teste", deliveryFee: "0.00", isOpen: true } as any);
+    vi.spyOn(db, "getAvailableProductForStore").mockResolvedValue(undefined);
+
+    const caller = appRouter.createCaller({ user: customer } as any);
+
+    await expect(caller.pediu.checkout.quote({ storeId: 7, items: [{ productId: 101, quantity: 1 }] })).rejects.toThrow("produto inválido ou indisponível");
+  });
+
   it("recalculates the order total from persisted product prices", async () => {
     vi.spyOn(db, "getStoreById").mockResolvedValue({
       id: 7,

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { router } from "expo-router";
 import { Card, Field, Page, PrimaryButton, PEDIU, s } from "@/components/pediu-page";
@@ -8,8 +8,8 @@ import { trpc } from "@/lib/trpc";
 
 type PaymentMethod = "pix" | "card" | "cash";
 
-function money(value: number) {
-  return `R$ ${value.toFixed(2).replace(".", ",")}`;
+function money(value: number | string) {
+  return `R$ ${Number(value).toFixed(2).replace(".", ",")}`;
 }
 
 function checkoutKey() {
@@ -18,8 +18,17 @@ function checkoutKey() {
 
 export default function CheckoutScreen() {
   const { isAuthenticated } = useAuth();
-  const { items, subtotal, deliveryFee, total, hydrated, clear } = useCart();
+  const { items, total: estimatedTotal, hydrated, clear } = useCart();
   const addresses = trpc.pediu.addresses.list.useQuery(undefined, { enabled: isAuthenticated });
+  const quoteInput = useMemo(() => ({
+    storeId: items[0]?.storeId ?? 1,
+    items: items.map((item) => ({ productId: item.id, quantity: item.quantity })),
+  }), [items]);
+  const quote = trpc.pediu.checkout.quote.useQuery(quoteInput, {
+    enabled: isAuthenticated && hydrated && items.length > 0,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
   const createOrder = trpc.pediu.orders.create.useMutation({
     onSuccess: (result) => {
       clear();
@@ -44,15 +53,15 @@ export default function CheckoutScreen() {
   }, [address, addresses.data]);
 
   const submit = () => {
-    if (!items.length || !address.trim() || !idempotencyKey) return;
+    if (!items.length || !address.trim() || !idempotencyKey || !quote.data || quote.isFetching) return;
     createOrder.mutate({
       idempotencyKey,
-      storeId: items[0].storeId,
-      total: total.toFixed(2),
+      storeId: quote.data.storeId,
+      total: quote.data.total,
       paymentMethod,
       addressId,
       deliveryAddress: address.trim(),
-      items: items.map((item) => ({ productId: item.id, quantity: item.quantity, unitPrice: Number(item.price).toFixed(2) })),
+      items: quote.data.items.map((item) => ({ productId: item.productId, quantity: item.quantity, unitPrice: item.unitPrice })),
     });
   };
 
@@ -60,7 +69,15 @@ export default function CheckoutScreen() {
   if (!isAuthenticated) return <Page title="Checkout" eyebrow="PEDIDO" back><Card><Text style={s.sectionTitle}>Entre para continuar</Text><Text style={s.muted}>Sua sessão é necessária para criar um pedido e acompanhar o pagamento.</Text></Card></Page>;
   if (!items.length) return <Page title="Checkout" eyebrow="PEDIDO" back><Card><Text style={s.sectionTitle}>Seu carrinho está vazio</Text><PrimaryButton title="Voltar ao carrinho" onPress={() => router.replace("/cart")} /></Card></Page>;
 
+  const quotedTotal = quote.data ? Number(quote.data.total) : estimatedTotal;
+
   return <Page title="Finalizar pedido" eyebrow="CHECKOUT" back>
+    <Card>
+      <Text style={s.sectionTitle}>Conferência do pedido</Text>
+      {quote.isLoading ? <Text style={s.muted}>Conferindo preços e disponibilidade...</Text> : null}
+      {quote.isError ? <><Text style={{ color: PEDIU.coral, fontSize: 12 }}>{quote.error.message}</Text><PrimaryButton title="Atualizar carrinho" onPress={() => void quote.refetch()} /></> : null}
+      {quote.data ? <><Text style={s.muted}>Valores confirmados pelo servidor.</Text><View style={{ gap: 6, marginTop: 10 }}>{quote.data.items.map((item) => <View key={item.productId} style={row}><Text style={s.muted}>{item.quantity} × {item.name}</Text><Text style={value}>{money(item.lineTotal)}</Text></View>)}</View><View style={{ gap: 8, borderTopWidth: 1, borderTopColor: PEDIU.line, paddingTop: 12, marginTop: 12 }}><View style={row}><Text style={s.muted}>Subtotal</Text><Text style={value}>{money(quote.data.subtotal)}</Text></View><View style={row}><Text style={s.muted}>Entrega</Text><Text style={value}>{money(quote.data.deliveryFee)}</Text></View><View style={row}><Text style={{ color: PEDIU.ink, fontWeight: "900" }}>Total confirmado</Text><Text style={{ color: PEDIU.coral, fontSize: 21, fontWeight: "900" }}>{money(quote.data.total)}</Text></View></View></> : <Text style={s.muted}>Total estimado localmente: {money(estimatedTotal)}. A confirmação depende da cotação do servidor.</Text>}
+    </Card>
     <Card>
       <Text style={s.sectionTitle}>Endereço de entrega</Text>
       {addresses.data?.length ? <View style={{ gap: 8 }}>{addresses.data.map((saved) => {
@@ -76,11 +93,10 @@ export default function CheckoutScreen() {
       {paymentMethod === "card" ? <Text style={s.muted}>O cartão será processado pelo provedor. O Pediu não armazena dados completos.</Text> : null}
     </Card>
     <Card>
-      <Text style={s.sectionTitle}>Resumo do pedido</Text>
-      {items.map((item) => <View key={item.id} style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}><Text style={s.muted}>{item.quantity} × {item.name}</Text><Text style={{ color: PEDIU.ink, fontWeight: "800" }}>{money(Number(item.price) * item.quantity)}</Text></View>)}
-      <View style={{ gap: 8, borderTopWidth: 1, borderTopColor: PEDIU.line, paddingTop: 12 }}><View style={row}><Text style={s.muted}>Subtotal</Text><Text style={value}>{money(subtotal)}</Text></View><View style={row}><Text style={s.muted}>Entrega</Text><Text style={value}>{money(deliveryFee)}</Text></View><View style={row}><Text style={{ color: PEDIU.ink, fontWeight: "900" }}>Total</Text><Text style={{ color: PEDIU.coral, fontSize: 21, fontWeight: "900" }}>{money(total)}</Text></View></View>
+      <Text style={s.sectionTitle}>Confirmação</Text>
+      <Text style={s.muted}>O total exibido será enviado ao servidor: {money(quotedTotal)}.</Text>
       {createOrder.error ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{createOrder.error.message}</Text> : null}
-      <PrimaryButton title={createOrder.isPending ? "Criando pedido..." : "Confirmar pedido"} onPress={submit} disabled={createOrder.isPending || !address.trim()} />
+      <PrimaryButton title={createOrder.isPending ? "Criando pedido..." : "Confirmar pedido"} onPress={submit} disabled={createOrder.isPending || quote.isFetching || !quote.data || !address.trim()} />
     </Card>
   </Page>;
 }

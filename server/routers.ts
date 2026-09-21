@@ -49,6 +49,37 @@ export const appRouter = router({
     marketplace: router({
       products: publicProcedure.input(z.object({ category: z.string().optional() }).optional()).query(({ input }) => db.listAvailableProducts(input?.category)),
     }),
+    checkout: router({
+      quote: protectedProcedure.input(z.object({
+        storeId: z.number().int().positive(),
+        items: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().int().positive().max(50) })).min(1),
+      })).query(async ({ input }) => {
+        const store = await db.getStoreById(input.storeId);
+        if (!store) throw new Error("Estabelecimento não encontrado");
+        if (!store.isOpen) throw new Error("Estabelecimento fechado no momento");
+        const quotedItems = await Promise.all(input.items.map(async (item) => {
+          const product = await db.getAvailableProductForStore(item.productId, input.storeId);
+          if (!product) throw new Error("Há produto inválido ou indisponível no carrinho");
+          const unitPrice = Number(product.price);
+          return {
+            productId: product.id,
+            name: product.name,
+            quantity: item.quantity,
+            unitPrice: unitPrice.toFixed(2),
+            lineTotal: (unitPrice * item.quantity).toFixed(2),
+          };
+        }));
+        const subtotal = quotedItems.reduce((sum, item) => sum + Number(item.lineTotal), 0);
+        const deliveryFee = Number(store.deliveryFee ?? 0);
+        return {
+          storeId: store.id,
+          items: quotedItems,
+          subtotal: subtotal.toFixed(2),
+          deliveryFee: deliveryFee.toFixed(2),
+          total: (subtotal + deliveryFee).toFixed(2),
+        };
+      }),
+    }),
     stores: router({
       mine: protectedProcedure.query(({ ctx }) => db.getStoreForOwner(ctx.user.id)),
       create: protectedProcedure.input(z.object({ name: z.string().min(2).max(160), phone: z.string().max(32).optional(), address: z.string().max(255).optional(), pixKey: z.string().max(255).optional(), deliveryFee: z.string().regex(/^\d+(\.\d{1,2})?$/).default("0.00") })).mutation(({ ctx, input }) => db.createStore({ ...input, ownerId: ctx.user.id })),
