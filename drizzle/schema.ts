@@ -374,6 +374,20 @@ export const supportTickets = mysqlTable("pediu_support_tickets", {
   orderIdx: index("pediu_support_order_idx").on(table.orderId),
 }));
 
+export const supportTicketMessages = mysqlTable("pediu_support_ticket_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  ticketId: int("ticketId").notNull(),
+  userId: int("userId").notNull(),
+  role: varchar("role", { length: 16 }).notNull(),
+  body: varchar("body", { length: 4000 }).notNull(),
+  idempotencyKey: varchar("idempotencyKey", { length: 160 }),
+  readAt: timestamp("readAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  idempotencyUnique: unique("pediu_support_message_idempotency_unique").on(table.idempotencyKey),
+  ticketCreatedIdx: index("pediu_support_message_ticket_created_idx").on(table.ticketId, table.createdAt),
+}));
+
 export const privacyConsents = mysqlTable("pediu_privacy_consents", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull(),
@@ -466,6 +480,8 @@ export type DeliveryLocation = typeof deliveryLocations.$inferSelect;
 export type InsertDeliveryLocation = typeof deliveryLocations.$inferInsert;
 export type SupportTicket = typeof supportTickets.$inferSelect;
 export type InsertSupportTicket = typeof supportTickets.$inferInsert;
+export type SupportTicketMessage = typeof supportTicketMessages.$inferSelect;
+export type InsertSupportTicketMessage = typeof supportTicketMessages.$inferInsert;
 export type PrivacyConsent = typeof privacyConsents.$inferSelect;
 export type InsertPrivacyConsent = typeof privacyConsents.$inferInsert;
 export type AdminAuditLog = typeof adminAuditLogs.$inferSelect;

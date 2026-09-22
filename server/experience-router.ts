@@ -25,6 +25,14 @@ async function participantOrder(orderId: number, userId: number) {
   return { order, role: store?.id === order.storeId ? "merchant" as const : "customer" as const };
 }
 
+async function supportParticipant(ticketId: number, user: { id: number; role: "user" | "merchant" | "admin" }) {
+  const ticket = await data.getSupportTicket(ticketId);
+  if (!ticket) return undefined;
+  if (ticket.userId === user.id) return { ticket, role: "customer" as const };
+  if (user.role === "admin") return { ticket, role: "admin" as const };
+  return undefined;
+}
+
 export const experienceRouter = router({
   coupons: router({
     validate: protectedProcedure.input(z.object({ code: z.string().trim().min(1).max(40), subtotal: z.number().nonnegative() })).query(async ({ input }) => {
@@ -85,6 +93,11 @@ export const experienceRouter = router({
   support: router({
     list: protectedProcedure.query(async ({ ctx }) => { const db = await getDb(); if (!db) throw new Error("Database unavailable"); return db.select().from(supportTickets).where(eq(supportTickets.userId, ctx.user.id)).orderBy(desc(supportTickets.createdAt)); }),
     create: protectedProcedure.input(z.object({ subject: z.string().trim().min(3).max(160), body: z.string().trim().min(10).max(4000), orderId: z.number().int().positive().optional() })).mutation(async ({ ctx, input }) => { const db = await getDb(); if (!db) throw new Error("Database unavailable"); if (input.orderId && !await ownedOrder(db, input.orderId, ctx.user.id)) throw new Error("Pedido não encontrado"); const result = await db.insert(supportTickets).values({ userId: ctx.user.id, subject: input.subject, body: input.body, orderId: input.orderId }); return { ticketId: Number((Array.isArray(result) ? result[0] : result).insertId) }; }),
+    messages: router({
+      list: protectedProcedure.input(z.object({ ticketId: z.number().int().positive() })).query(async ({ ctx, input }) => { if (!await supportParticipant(input.ticketId, ctx.user)) throw new Error("Chamado não encontrado ou não autorizado"); return data.listSupportTicketMessages(input.ticketId); }),
+      send: protectedProcedure.input(z.object({ ticketId: z.number().int().positive(), body: z.string().trim().min(1).max(4000), idempotencyKey: z.string().trim().min(8).max(160) })).mutation(async ({ ctx, input }) => { const participant = await supportParticipant(input.ticketId, ctx.user); if (!participant) throw new Error("Chamado não encontrado ou não autorizado"); const existing = await data.getSupportTicketMessageByIdempotencyKey(input.idempotencyKey); if (existing) return { messageId: existing.id, duplicate: true as const }; const created = await data.createSupportTicketMessage({ ticketId: input.ticketId, userId: ctx.user.id, role: participant.role, body: input.body, idempotencyKey: input.idempotencyKey }); if (!created.duplicate && participant.role === "admin") { try { await sendPushToUser(participant.ticket.userId, "Nova mensagem do suporte", `Há uma atualização no chamado #${participant.ticket.id}.`, { type: "support", ticketId: participant.ticket.id }); } catch (error) { console.warn("[Support] Failed to notify ticket owner:", error); } } return { messageId: created.id, duplicate: created.duplicate }; }),
+      markRead: protectedProcedure.input(z.object({ ticketId: z.number().int().positive() })).mutation(async ({ ctx, input }) => { if (!await supportParticipant(input.ticketId, ctx.user)) throw new Error("Chamado não encontrado ou não autorizado"); await data.markSupportTicketMessagesRead(input.ticketId); return { success: true as const }; }),
+    }),
   }),
   privacy: router({
     mine: protectedProcedure.query(async ({ ctx }) => { const db = await getDb(); if (!db) throw new Error("Database unavailable"); return db.select().from(privacyConsents).where(eq(privacyConsents.userId, ctx.user.id)).orderBy(desc(privacyConsents.acceptedAt)); }),

@@ -76,3 +76,9 @@ A validação confirmou 75 testes aprovados e 1 ignorado, typecheck, build, lint
 A frente de avaliações pós-entrega foi concluída. Reviews agora exigem pedido entregue e propriedade do cliente, possuem chave de idempotência por alvo e podem ser repetidas com segurança após falhas parciais. O formulário de feedback foi protegido para visitantes e mantém a separação entre avaliação e suporte.
 
 A validação confirmou 79 testes aprovados e 1 ignorado, typecheck, build, lint e 21 migrations aplicadas em banco vazio. O smoke web confirmou o bloqueio do formulário para visitantes.
+
+## Atualização de execução — 2026-09-22
+
+A frente de mensagens de suporte foi concluída. Chamados agora possuem conversa persistente, leitura, polling, autorização do proprietário ou administrador e idempotência de envio. Respostas administrativas geram notificação interna ao cliente sem misturar o fluxo com o chat do pedido.
+
+A validação confirmou 83 testes aprovados e 1 ignorado, typecheck, build, lint e 22 migrations aplicadas em banco vazio. O smoke web confirmou o bloqueio de suporte para visitantes.

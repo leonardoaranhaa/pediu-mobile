@@ -1,6 +1,6 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { AdminAuditLog, ChatMessage, Coupon, Customer, CustomerAddress, CustomerPaymentPreferences, DeliveryAssignment, DeliveryLocation, InsertAdminAuditLog, InsertChatMessage, InsertCustomer, InsertCustomerAddress, InsertDeliveryAssignment, InsertDeliveryEvent, InsertDeliveryLocation, InsertLedgerEntry, InsertNotification, InsertOrder, InsertOrderReview, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Notification, NotificationPreferences, Order, OrderReview, Payment, Product, PushToken, Sale, Store, User, adminAuditLogs, chatMessages, coupons, customerAddresses, customerPaymentPreferences, customers, deliveryAssignments, deliveryEvents, deliveryLocations, ledgerEntries, notificationPreferences, notifications, orderItems, orderReviews, orders, payments, privacyConsents, products, pushTokens, sales, stores, supportTickets, users } from "../drizzle/schema";
+import { AdminAuditLog, ChatMessage, Coupon, Customer, CustomerAddress, CustomerPaymentPreferences, DeliveryAssignment, DeliveryLocation, InsertAdminAuditLog, InsertChatMessage, InsertCustomer, InsertCustomerAddress, InsertDeliveryAssignment, InsertDeliveryEvent, InsertDeliveryLocation, InsertLedgerEntry, InsertNotification, InsertOrder, InsertOrderReview, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertSupportTicketMessage, InsertUser, LedgerEntry, Notification, NotificationPreferences, Order, OrderReview, Payment, Product, PushToken, Sale, Store, SupportTicket, SupportTicketMessage, User, adminAuditLogs, chatMessages, coupons, customerAddresses, customerPaymentPreferences, customers, deliveryAssignments, deliveryEvents, deliveryLocations, ledgerEntries, notificationPreferences, notifications, orderItems, orderReviews, orders, payments, privacyConsents, products, pushTokens, sales, stores, supportTicketMessages, supportTickets, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -86,6 +86,45 @@ export async function createSupportTicket(input: { userId: number; subject: stri
   if (!db) throw new Error("Database not available");
   const result = await db.insert(supportTickets).values(input);
   return getInsertId(result);
+}
+
+export async function getSupportTicket(ticketId: number): Promise<SupportTicket | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
+  return result[0];
+}
+
+export async function listSupportTicketMessages(ticketId: number): Promise<SupportTicketMessage[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(supportTicketMessages).where(eq(supportTicketMessages.ticketId, ticketId)).orderBy(desc(supportTicketMessages.createdAt));
+}
+
+export async function getSupportTicketMessageByIdempotencyKey(idempotencyKey: string): Promise<SupportTicketMessage | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(supportTicketMessages).where(eq(supportTicketMessages.idempotencyKey, idempotencyKey)).limit(1);
+  return result[0];
+}
+
+export async function createSupportTicketMessage(input: InsertSupportTicketMessage): Promise<{ id: number; duplicate: boolean }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  try {
+    const result = await db.insert(supportTicketMessages).values(input);
+    return { id: getInsertId(result), duplicate: false };
+  } catch (error) {
+    const existing = input.idempotencyKey ? await getSupportTicketMessageByIdempotencyKey(input.idempotencyKey) : undefined;
+    if (existing) return { id: existing.id, duplicate: true };
+    throw error;
+  }
+}
+
+export async function markSupportTicketMessagesRead(ticketId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(supportTicketMessages).set({ readAt: new Date() }).where(and(eq(supportTicketMessages.ticketId, ticketId), sql`${supportTicketMessages.readAt} IS NULL`));
 }
 
 export async function listOrderReviews(orderId: number): Promise<OrderReview[]> {
