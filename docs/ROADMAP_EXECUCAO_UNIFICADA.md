@@ -86,3 +86,9 @@ A validação confirmou 83 testes aprovados e 1 ignorado, typecheck, build, lint
 ## Atualização de execução — 2026-09-22
 
 O suporte ganhou um painel administrativo protegido para listar chamados, responder clientes e alterar status. Cada transição de status é registrada na auditoria, enquanto usuários não administrativos permanecem bloqueados.
+
+## Atualização de execução — 2026-09-22
+
+A auditoria da etapa de MFA e recuperação confirmou que o repositório usa um provedor OAuth externo, mas o ambiente atual não possui `EXPO_PUBLIC_OAUTH_PORTAL_URL`, `EXPO_PUBLIC_OAUTH_SERVER_URL` ou `EXPO_PUBLIC_APP_ID`. Não foi inventado um fluxo OTP local. Login e cadastro agora exibem estado explícito de indisponibilidade no preview, em vez de aparentar funcionamento ou construir URL inválida.
+
+A integração real de MFA, recuperação de senha e recuperação de conta permanece **não implementada e bloqueada por configuração/contrato do provedor externo**. O próximo passo para concluí-la é disponibilizar o provedor autorizado, seus endpoints de recuperação/MFA, URLs de callback e variáveis públicas/seguras correspondentes.

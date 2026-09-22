@@ -5,32 +5,32 @@ Legenda: `OK` = existe de forma funcional/estrutural; `PARCIAL` = existe, mas pr
 | Área | Requisito | Estado atual | Próxima implementação |
 |---|---|---:|---|
 | Entrada | Onboarding 3 telas | FALTA | criar fluxo persistente de primeiro acesso |
-| Entrada | Login/cadastro | PARCIAL | completar credenciais + OAuth e estados |
-| Entrada | MFA SMS/WhatsApp | FALTA | abstração OTP + provedor |
-| Entrada | Recuperação de senha | FALTA | fluxo de recuperação |
+| Entrada | Login/cadastro | PARCIAL | OAuth seguro implementado; falta configurar provedor |
+| Entrada | MFA SMS/WhatsApp | FALTA/BLOQUEADO | abstração OTP + provedor externo |
+| Entrada | Recuperação de senha | FALTA/BLOQUEADO | fluxo do provedor de autenticação |
 | Localização | GPS | PARCIAL | consolidar permissões e endereço |
 | Localização | Endereço manual/autocomplete | FALTA | serviço de geocoding + CRUD |
 | Home | Home/categorias | PARCIAL | separar descoberta da tela monolítica |
-| Descoberta | Busca/filtros | FALTA | endpoint paginado + filtros |
-| Loja | Catálogo | PARCIAL | tela dedicada e dados reais |
+| Descoberta | Busca/filtros | OK/PARCIAL | endpoint paginado + filtros implementados |
+| Loja | Catálogo | OK/PARCIAL | tela dedicada e dados reais implementados |
 | Produto | Detalhes/adicionais | PARCIAL | modelo de opções/modificadores |
-| Carrinho | Carrinho | PARCIAL | item quantity, observações e cupom |
-| Checkout | Endereço/entrega/pagamento/taxas | PARCIAL | checkout server-side |
+| Carrinho | Carrinho | OK/PARCIAL | quantity, observações, cotação e cupom implementados |
+| Checkout | Endereço/entrega/pagamento/taxas | OK/PARCIAL | checkout server-side e confirmação implementados |
 | Pagamento | Pix | OK/PARCIAL | webhooks e reconciliação |
 | Pagamento | Cartão | FALTA/PARCIAL | tokenização via gateway |
 | Pedido | Histórico | OK/PARCIAL | detalhes e reorder |
 | Pedido | Timeline | PARCIAL | estado persistente e eventos |
-| Entrega | GPS entregador | FALTA | modelo de delivery + tracking |
-| Entrega | Chat | FALTA | conversa cliente/loja/entregador |
-| Pós-venda | Avaliações | FALTA | reviews por loja/produto/entregador |
-| Conta | Perfil | OK | integrar dados completos |
-| Conta | Endereços | PARCIAL | persistência e endereço padrão |
-| Conta | Pagamentos salvos | FALTA | referências tokenizadas |
-| Conta | Notificações | PARCIAL | preferências + canais |
-| Conta | Ajuda/FAQ/chat | FALTA | central + tickets |
-| Privacidade | Termos/LGPD/exclusão | PARCIAL | consentimentos e account deletion |
-| Marketplace | Cupons/promoções | FALTA | motor de cupom/promoção |
-| Operação | Admin/auditoria | OK/PARCIAL | ampliar moderação e métricas |
+| Entrega | GPS entregador | OK/PARCIAL | atribuição, posição, ETA e eventos implementados |
+| Entrega | Chat | OK/PARCIAL | chat persistente de pedido implementado |
+| Pós-venda | Avaliações | OK/PARCIAL | reviews elegíveis e idempotentes implementados |
+| Conta | Perfil | OK/PARCIAL | edição persistente de dados básicos implementada |
+| Conta | Endereços | OK/PARCIAL | persistência e endereço padrão implementados |
+| Conta | Pagamentos salvos | FALTA/PARCIAL | preferências persistentes; tokenização externa pendente |
+| Conta | Notificações | OK/PARCIAL | preferências, leitura, push e deep links implementados |
+| Conta | Ajuda/FAQ/chat | OK/PARCIAL | tickets, mensagens e painel admin implementados |
+| Privacidade | Termos/LGPD/exclusão | OK/PARCIAL | consentimentos, exportação e exclusão assistida implementados |
+| Marketplace | Cupons/promoções | OK/PARCIAL | motor de cupom server-side implementado |
+| Operação | Admin/auditoria | OK/PARCIAL | suporte operacional e auditoria implementados |
 
 ## Ordem de execução
 
