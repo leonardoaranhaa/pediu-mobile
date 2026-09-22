@@ -1,6 +1,6 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { AdminAuditLog, ChatMessage, Coupon, Customer, CustomerAddress, DeliveryAssignment, DeliveryLocation, InsertAdminAuditLog, InsertChatMessage, InsertCustomer, InsertCustomerAddress, InsertDeliveryAssignment, InsertDeliveryEvent, InsertDeliveryLocation, InsertLedgerEntry, InsertNotification, InsertOrder, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Notification, NotificationPreferences, Order, Payment, Product, PushToken, Sale, Store, adminAuditLogs, chatMessages, coupons, customerAddresses, customers, deliveryAssignments, deliveryEvents, deliveryLocations, ledgerEntries, notificationPreferences, notifications, orderItems, orders, payments, products, pushTokens, sales, stores, users } from "../drizzle/schema";
+import { AdminAuditLog, ChatMessage, Coupon, Customer, CustomerAddress, CustomerPaymentPreferences, DeliveryAssignment, DeliveryLocation, InsertAdminAuditLog, InsertChatMessage, InsertCustomer, InsertCustomerAddress, InsertDeliveryAssignment, InsertDeliveryEvent, InsertDeliveryLocation, InsertLedgerEntry, InsertNotification, InsertOrder, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Notification, NotificationPreferences, Order, Payment, Product, PushToken, Sale, Store, User, adminAuditLogs, chatMessages, coupons, customerAddresses, customerPaymentPreferences, customers, deliveryAssignments, deliveryEvents, deliveryLocations, ledgerEntries, notificationPreferences, notifications, orderItems, orders, payments, privacyConsents, products, pushTokens, sales, stores, supportTickets, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -25,6 +25,66 @@ export async function getDb() {
     }
   }
   return _db;
+}
+
+export async function getUserProfile(userId: number): Promise<User | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  return result[0];
+}
+
+export async function updateUserProfile(userId: number, input: { name?: string; email?: string | null }): Promise<User> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(users).set({ ...input, updatedAt: new Date() }).where(eq(users.id, userId));
+  const updated = await getUserProfile(userId);
+  if (!updated) throw new Error("User profile not found after update");
+  return updated;
+}
+
+export async function getCustomerPaymentPreferences(userId: number): Promise<CustomerPaymentPreferences> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const current = await db.select().from(customerPaymentPreferences).where(eq(customerPaymentPreferences.userId, userId)).limit(1);
+  if (current[0]) return current[0];
+  await db.insert(customerPaymentPreferences).values({ userId }).onDuplicateKeyUpdate({ set: { userId } });
+  const created = await db.select().from(customerPaymentPreferences).where(eq(customerPaymentPreferences.userId, userId)).limit(1);
+  if (!created[0]) throw new Error("Payment preferences not found after creation");
+  return created[0];
+}
+
+export async function updateCustomerPaymentPreferences(userId: number, input: Partial<Pick<CustomerPaymentPreferences, "pixEnabled" | "cardEnabled" | "cashEnabled">>): Promise<CustomerPaymentPreferences> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const current = await getCustomerPaymentPreferences(userId);
+  await db.update(customerPaymentPreferences).set({ ...input, updatedAt: new Date() }).where(eq(customerPaymentPreferences.id, current.id));
+  const updated = await db.select().from(customerPaymentPreferences).where(eq(customerPaymentPreferences.id, current.id)).limit(1);
+  if (!updated[0]) throw new Error("Payment preferences not found after update");
+  return updated[0];
+}
+
+export async function exportUserData(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [profile, addresses, customerOrders, userNotifications, consents, tickets, paymentPreferences] = await Promise.all([
+    db.select({ id: users.id, openId: users.openId, name: users.name, email: users.email, role: users.role, createdAt: users.createdAt, updatedAt: users.updatedAt, lastSignedIn: users.lastSignedIn }).from(users).where(eq(users.id, userId)).limit(1),
+    db.select().from(customerAddresses).where(eq(customerAddresses.userId, userId)),
+    db.select().from(orders).where(eq(orders.customerId, userId)).orderBy(desc(orders.createdAt)),
+    db.select().from(notifications).where(eq(notifications.userId, userId)).orderBy(desc(notifications.createdAt)),
+    db.select().from(privacyConsents).where(eq(privacyConsents.userId, userId)).orderBy(desc(privacyConsents.acceptedAt)),
+    db.select().from(supportTickets).where(eq(supportTickets.userId, userId)).orderBy(desc(supportTickets.createdAt)),
+    db.select().from(customerPaymentPreferences).where(eq(customerPaymentPreferences.userId, userId)).limit(1),
+  ]);
+  if (!profile[0]) throw new Error("User profile not found");
+  return { exportedAt: new Date().toISOString(), profile: profile[0], addresses, orders: customerOrders, notifications: userNotifications, consents, supportTickets: tickets, paymentPreferences: paymentPreferences[0] ?? null };
+}
+
+export async function createSupportTicket(input: { userId: number; subject: string; body: string; orderId?: number }): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(supportTickets).values(input);
+  return getInsertId(result);
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {

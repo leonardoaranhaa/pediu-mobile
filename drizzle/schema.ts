@@ -80,6 +80,17 @@ export const payments = mysqlTable("pediu_payments", {
   orderStatusIdx: index("pediu_payments_order_status_idx").on(table.orderId, table.status),
 }));
 
+export const customerPaymentPreferences = mysqlTable("pediu_customer_payment_preferences", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  pixEnabled: int("pixEnabled").default(1).notNull(),
+  cardEnabled: int("cardEnabled").default(0).notNull(),
+  cashEnabled: int("cashEnabled").default(1).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  userUnique: unique("pediu_customer_payment_preferences_user_unique").on(table.userId),
+}));
+
 
 export const paymentAccounts = mysqlTable("pediu_payment_accounts", {
   id: int("id").autoincrement().primaryKey(),
@@ -418,6 +429,8 @@ export type InsertProduct = typeof products.$inferInsert;
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = typeof orders.$inferInsert;
 export type Payment = typeof payments.$inferSelect;
+export type CustomerPaymentPreferences = typeof customerPaymentPreferences.$inferSelect;
+export type InsertCustomerPaymentPreferences = typeof customerPaymentPreferences.$inferInsert;
 export type PaymentAccount = typeof paymentAccounts.$inferSelect;
 export type PaymentTransaction = typeof paymentTransactions.$inferSelect;
 export type CommissionRule = typeof commissionRules.$inferSelect;

@@ -47,6 +47,16 @@ export const appRouter = router({
       delete: protectedProcedure.input(z.object({ addressId: z.number().int().positive() })).mutation(({ ctx, input }) => db.deleteCustomerAddress(ctx.user.id, input.addressId)),
       setDefault: protectedProcedure.input(z.object({ addressId: z.number().int().positive() })).mutation(({ ctx, input }) => db.setDefaultCustomerAddress(ctx.user.id, input.addressId)),
     }),
+    account: router({
+      profile: router({
+        mine: protectedProcedure.query(({ ctx }) => db.getUserProfile(ctx.user.id)),
+        update: protectedProcedure.input(z.object({ name: z.string().trim().min(2).max(160).optional(), email: z.string().trim().email().max(320).nullable().optional() })).mutation(({ ctx, input }) => db.updateUserProfile(ctx.user.id, input)),
+      }),
+      paymentPreferences: router({
+        mine: protectedProcedure.query(({ ctx }) => db.getCustomerPaymentPreferences(ctx.user.id)),
+        update: protectedProcedure.input(z.object({ pixEnabled: z.boolean().optional(), cardEnabled: z.boolean().optional(), cashEnabled: z.boolean().optional() })).mutation(({ ctx, input }) => db.updateCustomerPaymentPreferences(ctx.user.id, Object.fromEntries(Object.entries(input).map(([key, value]) => [key, value ? 1 : 0])))),
+      }),
+    }),
     marketplace: router({
       products: publicProcedure.input(z.object({ category: z.string().optional() }).optional()).query(({ input }) => db.listAvailableProducts(input?.category)),
       search: publicProcedure.input(z.object({ query: z.string().trim().max(120).optional(), category: z.string().optional(), minPrice: z.number().nonnegative().optional(), maxPrice: z.number().nonnegative().optional(), limit: z.number().int().min(1).max(50).default(20), offset: z.number().int().min(0).default(0) })).query(({ input }) => db.searchAvailableProducts(input)),

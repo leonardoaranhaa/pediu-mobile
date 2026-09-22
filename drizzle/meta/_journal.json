@@ -134,6 +134,13 @@
       "when": 1790070036592,
       "tag": "0018_communication_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1790071028794,
+      "tag": "0019_customer_payment_preferences",
+      "breakpoints": true
     }
   ]
 }

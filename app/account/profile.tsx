@@ -14,7 +14,7 @@ export default function ProfilePage() {
       <Text style={{ color: "#BCD0D1", fontSize: 12 }}>{user?.email ?? "Entre para sincronizar seus dados"}</Text>
     </View>
     <Card>
-      <Row icon="person" title="Dados pessoais" subtitle="Nome e informações da conta" />
+      <Row icon="person" title="Dados pessoais" subtitle="Nome e informações da conta" onPress={() => router.push("/account/personal")} />
       <Row icon="location-on" title="Meus endereços" onPress={() => router.push("/account/addresses")} />
       <Row icon="credit-card" title="Pagamentos" onPress={() => router.push("/account/payment-methods")} />
       <Row icon="notifications" title="Notificações" onPress={() => router.push("/account/notifications")} />

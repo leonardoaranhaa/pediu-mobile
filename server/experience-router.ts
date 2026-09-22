@@ -89,5 +89,7 @@ export const experienceRouter = router({
   privacy: router({
     mine: protectedProcedure.query(async ({ ctx }) => { const db = await getDb(); if (!db) throw new Error("Database unavailable"); return db.select().from(privacyConsents).where(eq(privacyConsents.userId, ctx.user.id)).orderBy(desc(privacyConsents.acceptedAt)); }),
     accept: protectedProcedure.input(z.object({ kind: z.enum(["terms", "privacy"]), version: z.string().trim().min(1).max(20) })).mutation(async ({ ctx, input }) => { const db = await getDb(); if (!db) throw new Error("Database unavailable"); await db.insert(privacyConsents).values({ userId: ctx.user.id, kind: input.kind, version: input.version }).onDuplicateKeyUpdate({ set: { acceptedAt: new Date() } }); return { success: true as const }; }),
+    export: protectedProcedure.query(({ ctx }) => data.exportUserData(ctx.user.id)),
+    requestDeletion: protectedProcedure.mutation(async ({ ctx }) => { const ticketId = await data.createSupportTicket({ userId: ctx.user.id, subject: "Solicitação de exclusão de conta", body: "Solicito a análise e a exclusão assistida dos dados da minha conta, respeitando as retenções legais e financeiras aplicáveis." }); return { ticketId, success: true as const }; }),
   }),
 });

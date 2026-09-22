@@ -64,3 +64,9 @@ A validação local confirmou 67 testes aprovados e 1 ignorado, além de typeche
 A frente de comunicação foi concluída. O chat agora possui participantes autorizados da loja e do cliente, leitura, polling e idempotência. A central de notificações possui preferências persistentes e deep links internos. O serviço de push passou a respeitar preferências sem perder o histórico interno.
 
 A validação confirmou 71 testes aprovados e 1 ignorado, typecheck, build, lint e 19 migrations aplicadas em banco vazio. O smoke web confirmou o estado de visitante da central e o bloqueio privado do chat.
+
+## Atualização de execução — 2026-09-22
+
+A frente de conta real foi concluída. O usuário pode editar nome e e-mail, persistir preferências de pagamento, consultar exportação estruturada e abrir uma solicitação de exclusão assistida. A interface não armazena dados de cartão e mantém o papel e o identificador de login protegidos.
+
+A validação confirmou 75 testes aprovados e 1 ignorado, typecheck, build, lint e 20 migrations aplicadas em banco vazio. O smoke web confirmou os estados de visitante das telas de dados pessoais, pagamentos e privacidade.
