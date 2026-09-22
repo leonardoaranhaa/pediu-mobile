@@ -120,6 +120,13 @@
       "when": 1790008306615,
       "tag": "0016_privacy_consents",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1790069087197,
+      "tag": "0017_delivery_assignments_locations",
+      "breakpoints": true
     }
   ]
 }

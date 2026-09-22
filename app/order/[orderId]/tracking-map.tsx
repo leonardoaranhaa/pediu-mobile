@@ -12,13 +12,16 @@ export default function TrackingMapPage() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const id = Number(orderId);
   const events = trpc.pediu.experience.tracking.events.useQuery({ orderId: id }, { enabled: Number.isInteger(id) && id > 0, refetchInterval: 10000 });
+  const current = trpc.pediu.experience.delivery.current.useQuery({ orderId: id }, { enabled: Number.isInteger(id) && id > 0, refetchInterval: 8000 });
   const latest = events.data?.find((event) => event.latitude != null && event.longitude != null);
   return <Page title="Acompanhar entrega" eyebrow="RASTREAMENTO">
     <Card>
       <View style={{ height: 240, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "#F2F2F2", gap: 8 }}>
         <Text style={s.sectionTitle}>Mapa da entrega</Text>
-        {latest ? <Text style={s.muted}>Última posição: {Number(latest.latitude).toFixed(5)}, {Number(latest.longitude).toFixed(5)}</Text> : <Text style={s.muted}>Aguardando posição do entregador.</Text>}
-        <Text style={{ color: PEDIU.green, fontSize: 11, fontWeight: "800" }}>Atualização automática a cada 10 segundos</Text>
+        {current.data?.assignment ? <Text style={s.muted}>Entregador: {current.data.assignment.courierName}{current.data.assignment.courierPhone ? ` · ${current.data.assignment.courierPhone}` : ""}</Text> : <Text style={s.muted}>Aguardando atribuição do entregador.</Text>}
+        {current.data?.assignment?.etaMinutes != null ? <Text style={{ color: PEDIU.coral, fontSize: 14, fontWeight: "900" }}>ETA: {current.data.assignment.etaMinutes} min</Text> : null}
+        {current.data?.latestLocation ? <Text style={s.muted}>Última posição: {Number(current.data.latestLocation.latitude).toFixed(5)}, {Number(current.data.latestLocation.longitude).toFixed(5)}</Text> : latest ? <Text style={s.muted}>Última posição registrada no evento: {Number(latest.latitude).toFixed(5)}, {Number(latest.longitude).toFixed(5)}</Text> : <Text style={s.muted}>Aguardando posição do entregador.</Text>}
+        <Text style={{ color: PEDIU.green, fontSize: 11, fontWeight: "800" }}>Atualização automática a cada 8 segundos</Text>
       </View>
     </Card>
     <Card>

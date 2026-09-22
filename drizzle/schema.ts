@@ -300,6 +300,39 @@ export const deliveryEvents = mysqlTable("pediu_delivery_events", {
   orderCreatedIdx: index("pediu_delivery_events_order_created_idx").on(table.orderId, table.createdAt),
 }));
 
+export const deliveryAssignments = mysqlTable("pediu_delivery_assignments", {
+  id: int("id").autoincrement().primaryKey(),
+  orderId: int("orderId").notNull(),
+  courierId: int("courierId").notNull(),
+  courierName: varchar("courierName", { length: 160 }).notNull(),
+  courierPhone: varchar("courierPhone", { length: 32 }),
+  etaMinutes: int("etaMinutes"),
+  status: mysqlEnum("status", ["assigned", "in_transit", "delivered", "cancelled"]).default("assigned").notNull(),
+  currentLatitude: decimal("currentLatitude", { precision: 10, scale: 7 }),
+  currentLongitude: decimal("currentLongitude", { precision: 10, scale: 7 }),
+  lastLocationAt: timestamp("lastLocationAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  orderUnique: unique("pediu_delivery_assignment_order_unique").on(table.orderId),
+  courierIdx: index("pediu_delivery_assignment_courier_idx").on(table.courierId, table.status),
+}));
+
+export const deliveryLocations = mysqlTable("pediu_delivery_locations", {
+  id: int("id").autoincrement().primaryKey(),
+  assignmentId: int("assignmentId").notNull(),
+  orderId: int("orderId").notNull(),
+  courierId: int("courierId").notNull(),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }).notNull(),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }).notNull(),
+  etaMinutes: int("etaMinutes"),
+  idempotencyKey: varchar("idempotencyKey", { length: 160 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  idempotencyUnique: unique("pediu_delivery_location_idempotency_unique").on(table.idempotencyKey),
+  assignmentCreatedIdx: index("pediu_delivery_location_assignment_created_idx").on(table.assignmentId, table.createdAt),
+}));
+
 export const chatMessages = mysqlTable("pediu_chat_messages", {
   id: int("id").autoincrement().primaryKey(),
   orderId: int("orderId"),
@@ -396,6 +429,10 @@ export type DeliveryEvent = typeof deliveryEvents.$inferSelect;
 export type InsertDeliveryEvent = typeof deliveryEvents.$inferInsert;
 export type ChatMessage = typeof chatMessages.$inferSelect;
 export type InsertChatMessage = typeof chatMessages.$inferInsert;
+export type DeliveryAssignment = typeof deliveryAssignments.$inferSelect;
+export type InsertDeliveryAssignment = typeof deliveryAssignments.$inferInsert;
+export type DeliveryLocation = typeof deliveryLocations.$inferSelect;
+export type InsertDeliveryLocation = typeof deliveryLocations.$inferInsert;
 export type SupportTicket = typeof supportTickets.$inferSelect;
 export type InsertSupportTicket = typeof supportTickets.$inferInsert;
 export type PrivacyConsent = typeof privacyConsents.$inferSelect;

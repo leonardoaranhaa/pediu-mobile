@@ -1,7 +1,7 @@
 import { MaterialIcons } from "@expo/vector-icons";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Linking, Pressable, Text, View } from "react-native";
-import { Page, Card, PEDIU, s } from "@/components/pediu-page";
+import { Page, Card, OutlineButton, PEDIU, s } from "@/components/pediu-page";
 import { trpc } from "@/lib/trpc";
 
 const states = ["Pendente", "Aceito", "Preparando", "Pronto", "A caminho", "Entregue"] as const;
@@ -62,6 +62,7 @@ export default function TrackOrderPage() {
         </View>
       </View>)}
       {query.data.status === "Cancelado" ? <Text style={s.muted}>Este pedido foi cancelado.</Text> : null}
+      {query.data.status !== "Cancelado" ? <OutlineButton title="Ver entregador e posição" onPress={() => router.push({ pathname: "/order/[orderId]/tracking-map", params: { orderId: String(query.data.id) } })} /> : null}
     </Card>
   </Page>;
 }

@@ -2,12 +2,20 @@ import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
 import { protectedProcedure, router } from "./_core/trpc";
 import { getDb } from "./db";
+import * as data from "./db";
+import { sendPushToUser } from "./push";
 import { coupons, orders, orderReviews, deliveryEvents, chatMessages, supportTickets, privacyConsents } from "../drizzle/schema";
 import { calculateCouponDiscount } from "./domain/coupons";
 
 async function ownedOrder(db: any, orderId: number, userId: number) {
   const rows = await db.select().from(orders).where(and(eq(orders.id, orderId), eq(orders.customerId, userId))).limit(1);
   return rows[0];
+}
+
+async function storeOwnedOrder(orderId: number, userId: number) {
+  const order = await data.getOrderForUser(orderId, userId);
+  const store = await data.getStoreForOwner(userId);
+  return order && store?.id === order.storeId ? order : undefined;
 }
 
 export const experienceRouter = router({
@@ -24,6 +32,43 @@ export const experienceRouter = router({
   }),
   tracking: router({
     events: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).query(async ({ ctx, input }) => { const db = await getDb(); if (!db) throw new Error("Database unavailable"); if (!await ownedOrder(db, input.orderId, ctx.user.id)) throw new Error("Pedido não encontrado"); return db.select().from(deliveryEvents).where(eq(deliveryEvents.orderId, input.orderId)).orderBy(desc(deliveryEvents.createdAt)); }),
+  }),
+  delivery: router({
+    current: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+      const order = await data.getOrderForUser(input.orderId, ctx.user.id);
+      if (!order) throw new Error("Pedido não encontrado ou não autorizado");
+      const assignment = await data.getDeliveryAssignmentByOrder(input.orderId);
+      const latestLocation = await data.getLatestDeliveryLocation(input.orderId);
+      return { orderId: input.orderId, status: order.status, assignment: assignment ?? null, latestLocation: latestLocation ?? null };
+    }),
+    assign: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), courierName: z.string().trim().min(2).max(160).optional(), courierPhone: z.string().trim().max(32).optional(), etaMinutes: z.number().int().min(1).max(240).optional() })).mutation(async ({ ctx, input }) => {
+      const order = await storeOwnedOrder(input.orderId, ctx.user.id);
+      if (!order) throw new Error("Pedido não encontrado ou loja não autorizada");
+      if (!["Pronto", "A caminho"].includes(order.status)) throw new Error("A entrega só pode ser atribuída quando o pedido estiver pronto");
+      return data.upsertDeliveryAssignment({ orderId: input.orderId, courierId: ctx.user.id, courierName: input.courierName ?? ctx.user.name?.trim() ?? "Entregador da loja", courierPhone: input.courierPhone, etaMinutes: input.etaMinutes, status: order.status === "A caminho" ? "in_transit" : "assigned" });
+    }),
+    location: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180), etaMinutes: z.number().int().min(0).max(240).optional(), idempotencyKey: z.string().trim().min(8).max(160) })).mutation(async ({ ctx, input }) => {
+      const order = await storeOwnedOrder(input.orderId, ctx.user.id);
+      if (!order) throw new Error("Pedido não encontrado ou loja não autorizada");
+      if (!["Pronto", "A caminho"].includes(order.status)) throw new Error("A posição só pode ser atualizada durante a entrega");
+      const assignment = await data.getDeliveryAssignmentByOrder(input.orderId);
+      if (!assignment || assignment.courierId !== ctx.user.id) throw new Error("A entrega ainda não foi atribuída a este operador");
+      const result = await data.recordDeliveryLocation({ assignmentId: assignment.id, orderId: input.orderId, courierId: ctx.user.id, latitude: input.latitude.toFixed(7), longitude: input.longitude.toFixed(7), etaMinutes: input.etaMinutes, idempotencyKey: input.idempotencyKey });
+      if (result.created && order.status === "Pronto") { await data.updateOrderStatus(input.orderId, "A caminho"); await data.createDeliveryEvent({ orderId: input.orderId, eventType: "A caminho", latitude: input.latitude.toFixed(7), longitude: input.longitude.toFixed(7) }); try { await sendPushToUser(order.customerId, "Entrega a caminho", `O pedido #${order.id} saiu para entrega.`, { type: "delivery", orderId: order.id, status: "A caminho" }); } catch (error) { console.warn("[Delivery] Failed to notify customer about dispatch:", error); } }
+      return { locationId: result.location.id, assignment: result.assignment, status: "A caminho" as const };
+    }),
+    complete: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const order = await storeOwnedOrder(input.orderId, ctx.user.id);
+      if (!order) throw new Error("Pedido não encontrado ou loja não autorizada");
+      if (order.status !== "A caminho") throw new Error("A entrega só pode ser encerrada quando estiver a caminho");
+      const assignment = await data.getDeliveryAssignmentByOrder(input.orderId);
+      if (!assignment || assignment.courierId !== ctx.user.id) throw new Error("A entrega ainda não foi atribuída a este operador");
+      await data.updateOrderStatus(input.orderId, "Entregue");
+      await data.updateDeliveryAssignmentStatus(input.orderId, "delivered");
+      await data.createDeliveryEvent({ orderId: input.orderId, eventType: "Entregue" });
+      try { await sendPushToUser(order.customerId, "Pedido entregue", `O pedido #${order.id} foi marcado como entregue.`, { type: "delivery", orderId: order.id, status: "Entregue" }); } catch (error) { console.warn("[Delivery] Failed to notify customer about completion:", error); }
+      return { success: true as const, status: "Entregue" as const };
+    }),
   }),
   chat: router({
     list: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).query(async ({ ctx, input }) => { const db = await getDb(); if (!db) throw new Error("Database unavailable"); if (!await ownedOrder(db, input.orderId, ctx.user.id)) throw new Error("Pedido não encontrado"); return db.select().from(chatMessages).where(eq(chatMessages.orderId, input.orderId)).orderBy(chatMessages.createdAt); }),

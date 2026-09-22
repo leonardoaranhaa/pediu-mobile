@@ -1,6 +1,6 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { AdminAuditLog, Coupon, Customer, CustomerAddress, InsertAdminAuditLog, InsertCustomer, InsertCustomerAddress, InsertDeliveryEvent, InsertLedgerEntry, InsertNotification, InsertOrder, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Notification, Order, Payment, Product, PushToken, Sale, Store, adminAuditLogs, coupons, customerAddresses, customers, deliveryEvents, ledgerEntries, notifications, orderItems, orders, payments, products, pushTokens, sales, stores, users } from "../drizzle/schema";
+import { AdminAuditLog, Coupon, Customer, CustomerAddress, DeliveryAssignment, DeliveryLocation, InsertAdminAuditLog, InsertCustomer, InsertCustomerAddress, InsertDeliveryAssignment, InsertDeliveryEvent, InsertDeliveryLocation, InsertLedgerEntry, InsertNotification, InsertOrder, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Notification, Order, Payment, Product, PushToken, Sale, Store, adminAuditLogs, coupons, customerAddresses, customers, deliveryAssignments, deliveryEvents, deliveryLocations, ledgerEntries, notifications, orderItems, orders, payments, products, pushTokens, sales, stores, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -452,6 +452,72 @@ export async function createDeliveryEvent(input: InsertDeliveryEvent): Promise<n
   if (!db) throw new Error("Database not available");
   const result = await db.insert(deliveryEvents).values(input);
   return getInsertId(result);
+}
+
+export async function getDeliveryAssignmentByOrder(orderId: number): Promise<DeliveryAssignment | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(deliveryAssignments).where(eq(deliveryAssignments.orderId, orderId)).limit(1);
+  return result[0];
+}
+
+export async function getLatestDeliveryLocation(orderId: number): Promise<DeliveryLocation | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(deliveryLocations).where(eq(deliveryLocations.orderId, orderId)).orderBy(desc(deliveryLocations.createdAt), desc(deliveryLocations.id)).limit(1);
+  return result[0];
+}
+
+export async function upsertDeliveryAssignment(input: InsertDeliveryAssignment): Promise<DeliveryAssignment> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const current = await getDeliveryAssignmentByOrder(input.orderId);
+  if (current) {
+    const assignmentFields = { ...input };
+    delete assignmentFields.id;
+    await db.update(deliveryAssignments).set({ ...assignmentFields, updatedAt: new Date() }).where(eq(deliveryAssignments.id, current.id));
+    const updated = await getDeliveryAssignmentByOrder(input.orderId);
+    if (!updated) throw new Error("Atribuição de entrega não encontrada após atualização");
+    return updated;
+  }
+  const result = await db.insert(deliveryAssignments).values(input);
+  const id = getInsertId(result);
+  const created = await db.select().from(deliveryAssignments).where(eq(deliveryAssignments.id, id)).limit(1);
+  if (!created[0]) throw new Error("Atribuição de entrega não encontrada após criação");
+  return created[0];
+}
+
+export async function recordDeliveryLocation(input: InsertDeliveryLocation): Promise<{ location: DeliveryLocation; assignment: DeliveryAssignment; created: boolean }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await db.select().from(deliveryLocations).where(eq(deliveryLocations.idempotencyKey, input.idempotencyKey)).limit(1);
+  if (existing[0]) {
+    const assignment = await getDeliveryAssignmentByOrder(input.orderId);
+    if (!assignment) throw new Error("Atribuição de entrega não encontrada");
+    return { location: existing[0], assignment, created: false };
+  }
+  let location: DeliveryLocation;
+  try {
+    const result = await db.insert(deliveryLocations).values(input);
+    const id = getInsertId(result);
+    const created = await db.select().from(deliveryLocations).where(eq(deliveryLocations.id, id)).limit(1);
+    if (!created[0]) throw new Error("Posição não encontrada após criação");
+    location = created[0];
+  } catch (error) {
+    const concurrent = await db.select().from(deliveryLocations).where(eq(deliveryLocations.idempotencyKey, input.idempotencyKey)).limit(1);
+    if (!concurrent[0]) throw error;
+    location = concurrent[0];
+  }
+  await db.update(deliveryAssignments).set({ currentLatitude: input.latitude, currentLongitude: input.longitude, etaMinutes: input.etaMinutes, lastLocationAt: input.createdAt ?? new Date(), status: "in_transit", updatedAt: new Date() }).where(eq(deliveryAssignments.id, input.assignmentId));
+  const assignment = await getDeliveryAssignmentByOrder(input.orderId);
+  if (!assignment) throw new Error("Atribuição de entrega não encontrada após atualização");
+  return { location, assignment, created: true };
+}
+
+export async function updateDeliveryAssignmentStatus(orderId: number, status: DeliveryAssignment["status"]): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(deliveryAssignments).set({ status, updatedAt: new Date() }).where(eq(deliveryAssignments.orderId, orderId));
 }
 
 export async function getPendingPixPaymentForOrder(orderId: number): Promise<Payment | undefined> {

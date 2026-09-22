@@ -72,10 +72,6 @@ function formatSavedAddress(address: SavedAddress) {
   return [`${address.street}, ${address.number}`, address.complement, `${address.neighborhood} · ${address.city}/${address.state}`, address.postalCode].filter(Boolean).join(", ");
 }
 
-function createCheckoutKey() {
-  return `checkout-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
 type OrderStatus = "Pendente" | "Aceito" | "Preparando" | "Pronto" | "A caminho" | "Entregue" | "Cancelado";
 type VoiceMode = "customer" | "seller";
 
@@ -193,7 +189,7 @@ export default function HomeScreen() {
   const [showCheckout, setShowCheckout] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryAddressId, setDeliveryAddressId] = useState<number | undefined>();
-  const [checkoutIdempotencyKey, setCheckoutIdempotencyKey] = useState("");
+  const [checkoutIdempotencyKey] = useState(() => `legacy-checkout-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
   const [checkoutPayment, setCheckoutPayment] = useState<"pix" | "card" | "cash">("pix");
   const [showVoice, setShowVoice] = useState(false);
   const [voiceMode, setVoiceMode] = useState<VoiceMode>("customer");

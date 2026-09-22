@@ -52,3 +52,9 @@ Na mesma frente do PR foram implementados busca server-side com categoria, texto
 As migrations `0014_support_tickets.sql`, `0015_order_item_notes.sql` e `0016_privacy_consents.sql` foram geradas no journal do Drizzle. O conjunto local continua passando typecheck e testes, com 62 testes aprovados e 1 ignorado. A aplicação das migrations 0000–0015 já foi verificada em banco vazio; a migration 0016 será incluída na validação final antes do push.
 
 A home também foi alinhada ao checkout dedicado: a entrada de finalização deixou de abrir o modal legado e redireciona para `/checkout`, garantindo que cotação, cupom, observações, idempotência e confirmação usem o mesmo contrato server-side.
+
+## Atualização de execução — 2026-09-22
+
+O bloco de entregador foi implementado sobre o PR aberto. A fase adicionou atribuição única por pedido, posição histórica com idempotência, ETA, operador autorizado, transição automática para `A caminho`, encerramento para `Entregue` e notificações transacionais. A loja recebeu uma tela operacional de entregas. O cliente recebeu a visualização de entregador e última posição com polling.
+
+A validação local confirmou 67 testes aprovados e 1 ignorado, além de typecheck, build e lint sem erros. As 18 migrations foram aplicadas em banco MySQL vazio. O smoke visual no Expo Web confirmou os estados vazio, aguardando atribuição e aguardando posição sem falhas de renderização.
