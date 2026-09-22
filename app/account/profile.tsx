@@ -3,13 +3,15 @@ import { router } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
 import { Text, View } from "react-native";
 import { Page, Card, Row, OutlineButton, PEDIU, s } from "@/components/pediu-page";
+import { useAppPreferences } from "@/lib/app-preferences";
 
 export default function ProfilePage() {
   const { user, isAuthenticated, logout } = useAuth();
+  const { theme } = useAppPreferences();
   return <Page title="Perfil" eyebrow="SUA CONTA">
-    <View style={{ backgroundColor: PEDIU.ink, borderRadius: 28, padding: 21, alignItems: "center", gap: 6, shadowColor: PEDIU.ink, shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 4 }}>
-      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: PEDIU.yellow, alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
-        <Text style={{ fontSize: 25, fontWeight: "900", color: PEDIU.ink }}>{(user?.name ?? "A").slice(0, 1).toUpperCase()}</Text>
+    <View style={{ backgroundColor: theme.ink, borderRadius: 28, padding: 21, alignItems: "center", gap: 6, shadowColor: theme.ink, shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 4 }}>
+      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.highlight, alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
+        <Text style={{ fontSize: 25, fontWeight: "900", color: theme.highlightText }}>{(user?.name ?? "A").slice(0, 1).toUpperCase()}</Text>
       </View>
       <Text style={{ color: PEDIU.white, fontSize: 18, fontWeight: "800" }}>{user?.name ?? "Sua conta"}</Text>
       <Text style={{ color: "#BCD0D1", fontSize: 12 }}>{user?.email ?? "Entre para sincronizar seus dados"}</Text>
@@ -21,7 +23,7 @@ export default function ProfilePage() {
       <Row icon="location-on" title="Meus endereços" onPress={() => router.push("/account/addresses")} />
       <Row icon="credit-card" title="Pagamentos" onPress={() => router.push("/account/payment-methods")} />
       <Row icon="notifications" title="Notificações" onPress={() => router.push("/account/notifications")} />
-      <Row icon="settings" title="Configurações" onPress={() => router.push("/account/settings")} />
+      <Row icon="settings" title="Personalizar o Pediu" subtitle={`${theme.label} · escolha seu tema`} onPress={() => router.push("/account/settings")} />
     </Card>
     {user?.role === "admin" ? <OutlineButton title="Painel administrativo" onPress={() => router.push("/admin")} /> : null}
     {isAuthenticated ? <OutlineButton title="Sair da conta" onPress={() => void logout()} /> : null}

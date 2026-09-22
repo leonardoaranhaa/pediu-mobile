@@ -2,6 +2,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import type { ComponentProps, ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputProps } from "react-native";
+import { useAppPreferences } from "@/lib/app-preferences";
 
 export const PEDIU = {
   coral: "#FF5A4F",
@@ -19,8 +20,9 @@ export const PEDIU = {
 };
 
 export function Page({ children, title, eyebrow, back = true, action }: { children: ReactNode; title: string; eyebrow?: string; back?: boolean; action?: ReactNode }) {
+  const { theme } = useAppPreferences();
   return (
-    <View style={s.root}>
+    <View style={[s.root, { backgroundColor: theme.canvas }]}>
       <View pointerEvents="none" style={[s.backgroundOrb, s.backgroundOrbOne]} />
       <View pointerEvents="none" style={[s.backgroundOrb, s.backgroundOrbTwo]} />
       <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
@@ -33,8 +35,8 @@ export function Page({ children, title, eyebrow, back = true, action }: { childr
             <View style={s.backPlaceholder} />
           )}
           <View style={{ flex: 1 }}>
-            {eyebrow ? <Text style={s.eyebrow}>{eyebrow}</Text> : null}
-            <Text style={s.title}>{title}</Text>
+            {eyebrow ? <Text style={[s.eyebrow, { color: theme.primary }]}>{eyebrow}</Text> : null}
+            <Text style={[s.title, { color: theme.ink }]}>{title}</Text>
           </View>
           {action}
         </View>
@@ -45,7 +47,8 @@ export function Page({ children, title, eyebrow, back = true, action }: { childr
 }
 
 export function Card({ children, style }: { children: ReactNode; style?: object }) {
-  return <View style={[s.card, style]}>{children}</View>;
+  const { theme } = useAppPreferences();
+  return <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.line }, style]}>{children}</View>;
 }
 
 export function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -66,8 +69,9 @@ export function Field({ label, ...props }: TextInputProps & { label: string }) {
 }
 
 export function PrimaryButton({ title, onPress, disabled }: { title: string; onPress?: () => void; disabled?: boolean }) {
+  const { theme } = useAppPreferences();
   return (
-    <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [s.primary, pressed && s.pressed, disabled && s.disabled]}>
+    <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [s.primary, { backgroundColor: theme.primary, shadowColor: theme.primary }, pressed && s.pressed, disabled && s.disabled]}>
       <Text style={s.primaryText}>{title}</Text>
       <MaterialIcons name="arrow-forward" size={18} color={PEDIU.white} />
     </Pressable>
@@ -75,9 +79,10 @@ export function PrimaryButton({ title, onPress, disabled }: { title: string; onP
 }
 
 export function OutlineButton({ title, onPress, disabled }: { title: string; onPress?: () => void; disabled?: boolean }) {
+  const { theme } = useAppPreferences();
   return (
-    <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [s.outline, pressed && s.pressed, disabled && s.disabled]}>
-      <Text style={s.outlineText}>{title}</Text>
+    <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [s.outline, { borderColor: theme.primary }, pressed && s.pressed, disabled && s.disabled]}>
+      <Text style={[s.outlineText, { color: theme.primary }]}>{title}</Text>
     </Pressable>
   );
 }

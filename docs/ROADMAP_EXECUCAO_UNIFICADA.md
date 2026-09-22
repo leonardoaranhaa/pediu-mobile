@@ -98,3 +98,11 @@ A integração real de MFA, recuperação de senha e recuperação de conta perm
 Foi aplicada uma reformulação visual completa no cliente mobile. A home agora usa hero de descoberta local, dock inferior flutuante, ação central de assistente, cartões elevados, chips e movimento decorativo sutil. Pedidos e perfil seguem a mesma linguagem visual. Modais existentes foram refinados como bottom sheets com backdrop, handle, hierarquia e ação primária consistentes.
 
 A lógica de negócio permaneceu intacta e a validação completa passou: 83 testes aprovados, 1 ignorado, typecheck, build, lint e smoke visual no Expo Web.
+
+## Atualização de execução — 2026-09-22 — Personalização e descoberta
+
+A experiência do assistente foi refinada com microfone pulsante, FAB pulsante, estado de escuta, ações rápidas com ícones agrupados e cores derivadas do tema escolhido. A localização agora usa permissão foreground, coordenadas atuais e reverse geocoding para montar endereço completo com rua, número, bairro, cidade, região e CEP quando disponíveis; o Web Preview mantém fallback seguro e a tela permite edição manual.
+
+O perfil passou a expor a personalização do Pediu. O provider local persistente oferece três identidades: Pediu original, Onda local e Pôr do sol. A escolha é salva no dispositivo, reaplicada ao reabrir a experiência e refletida no shell, descoberta, menu flutuante, assistente e telas de conta. A mensagem de produto foi incorporada à tela: “O app de delivery de sempre, só que do seu jeito.”
+
+O typecheck, lint, build, suíte automatizada e smoke test web foram executados com sucesso. A captura GPS depende do ambiente nativo e foi mantida protegida contra ausência de permissão.
