@@ -106,3 +106,9 @@ A experiência do assistente foi refinada com microfone pulsante, FAB pulsante, 
 O perfil passou a expor a personalização do Pediu. O provider local persistente oferece três identidades: Pediu original, Onda local e Pôr do sol. A escolha é salva no dispositivo, reaplicada ao reabrir a experiência e refletida no shell, descoberta, menu flutuante, assistente e telas de conta. A mensagem de produto foi incorporada à tela: “O app de delivery de sempre, só que do seu jeito.”
 
 O typecheck, lint, build, suíte automatizada e smoke test web foram executados com sucesso. A captura GPS depende do ambiente nativo e foi mantida protegida contra ausência de permissão.
+
+## Atualização de execução — 2026-09-22 — Experiência compartilhada cliente e lojista
+
+A personalização foi extraída para o componente compartilhado `components/theme-picker.tsx` e passou a estar disponível tanto em `/account/settings` quanto em `/seller/settings` e nos ajustes embutidos do modo lojista. O painel dedicado do lojista também passou a consumir a paleta ativa.
+
+O assistente agora é acessível pelos dois perfis: o cliente mantém o FAB e o modal pulsantes, enquanto o lojista possui atalho próprio e pode retornar à home com o modo seller selecionado. A navegação usa parâmetro controlado, sem misturar dados comerciais, pedidos, catálogo ou entregas entre os papéis. A preferência continua persistida no dispositivo nesta etapa, conforme documentado na fase compartilhada.
