@@ -1,6 +1,6 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { AdminAuditLog, ChatMessage, Coupon, Customer, CustomerAddress, CustomerPaymentPreferences, DeliveryAssignment, DeliveryLocation, InsertAdminAuditLog, InsertChatMessage, InsertCustomer, InsertCustomerAddress, InsertDeliveryAssignment, InsertDeliveryEvent, InsertDeliveryLocation, InsertLedgerEntry, InsertNotification, InsertOrder, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Notification, NotificationPreferences, Order, Payment, Product, PushToken, Sale, Store, User, adminAuditLogs, chatMessages, coupons, customerAddresses, customerPaymentPreferences, customers, deliveryAssignments, deliveryEvents, deliveryLocations, ledgerEntries, notificationPreferences, notifications, orderItems, orders, payments, privacyConsents, products, pushTokens, sales, stores, supportTickets, users } from "../drizzle/schema";
+import { AdminAuditLog, ChatMessage, Coupon, Customer, CustomerAddress, CustomerPaymentPreferences, DeliveryAssignment, DeliveryLocation, InsertAdminAuditLog, InsertChatMessage, InsertCustomer, InsertCustomerAddress, InsertDeliveryAssignment, InsertDeliveryEvent, InsertDeliveryLocation, InsertLedgerEntry, InsertNotification, InsertOrder, InsertOrderReview, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Notification, NotificationPreferences, Order, OrderReview, Payment, Product, PushToken, Sale, Store, User, adminAuditLogs, chatMessages, coupons, customerAddresses, customerPaymentPreferences, customers, deliveryAssignments, deliveryEvents, deliveryLocations, ledgerEntries, notificationPreferences, notifications, orderItems, orderReviews, orders, payments, privacyConsents, products, pushTokens, sales, stores, supportTickets, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -77,7 +77,8 @@ export async function exportUserData(userId: number) {
     db.select().from(customerPaymentPreferences).where(eq(customerPaymentPreferences.userId, userId)).limit(1),
   ]);
   if (!profile[0]) throw new Error("User profile not found");
-  return { exportedAt: new Date().toISOString(), profile: profile[0], addresses, orders: customerOrders, notifications: userNotifications, consents, supportTickets: tickets, paymentPreferences: paymentPreferences[0] ?? null };
+  const paymentPreference: CustomerPaymentPreferences | null = paymentPreferences.length > 0 ? paymentPreferences[0] : null;
+  return { exportedAt: new Date().toISOString(), profile: profile[0], addresses, orders: customerOrders, notifications: userNotifications, consents, supportTickets: tickets, paymentPreferences: paymentPreference };
 }
 
 export async function createSupportTicket(input: { userId: number; subject: string; body: string; orderId?: number }): Promise<number> {
@@ -85,6 +86,32 @@ export async function createSupportTicket(input: { userId: number; subject: stri
   if (!db) throw new Error("Database not available");
   const result = await db.insert(supportTickets).values(input);
   return getInsertId(result);
+}
+
+export async function listOrderReviews(orderId: number): Promise<OrderReview[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(orderReviews).where(eq(orderReviews.orderId, orderId)).orderBy(desc(orderReviews.createdAt));
+}
+
+export async function getOrderReviewByIdempotencyKey(idempotencyKey: string): Promise<OrderReview | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(orderReviews).where(eq(orderReviews.idempotencyKey, idempotencyKey)).limit(1);
+  return result[0];
+}
+
+export async function createOrderReview(input: InsertOrderReview): Promise<{ id: number; duplicate: boolean }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  try {
+    const result = await db.insert(orderReviews).values(input);
+    return { id: getInsertId(result), duplicate: false };
+  } catch (error) {
+    const existing = input.idempotencyKey ? await getOrderReviewByIdempotencyKey(input.idempotencyKey) : undefined;
+    if (existing) return { id: existing.id, duplicate: true };
+    throw error;
+  }
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {

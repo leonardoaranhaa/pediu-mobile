@@ -70,3 +70,9 @@ A validação confirmou 71 testes aprovados e 1 ignorado, typecheck, build, lint
 A frente de conta real foi concluída. O usuário pode editar nome e e-mail, persistir preferências de pagamento, consultar exportação estruturada e abrir uma solicitação de exclusão assistida. A interface não armazena dados de cartão e mantém o papel e o identificador de login protegidos.
 
 A validação confirmou 75 testes aprovados e 1 ignorado, typecheck, build, lint e 20 migrations aplicadas em banco vazio. O smoke web confirmou os estados de visitante das telas de dados pessoais, pagamentos e privacidade.
+
+## Atualização de execução — 2026-09-22
+
+A frente de avaliações pós-entrega foi concluída. Reviews agora exigem pedido entregue e propriedade do cliente, possuem chave de idempotência por alvo e podem ser repetidas com segurança após falhas parciais. O formulário de feedback foi protegido para visitantes e mantém a separação entre avaliação e suporte.
+
+A validação confirmou 79 testes aprovados e 1 ignorado, typecheck, build, lint e 21 migrations aplicadas em banco vazio. O smoke web confirmou o bloqueio do formulário para visitantes.

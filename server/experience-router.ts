@@ -4,7 +4,7 @@ import { protectedProcedure, router } from "./_core/trpc";
 import { getDb } from "./db";
 import * as data from "./db";
 import { sendPushToUser } from "./push";
-import { coupons, orders, orderReviews, deliveryEvents, supportTickets, privacyConsents } from "../drizzle/schema";
+import { coupons, orders, deliveryEvents, supportTickets, privacyConsents } from "../drizzle/schema";
 import { calculateCouponDiscount } from "./domain/coupons";
 
 async function ownedOrder(db: any, orderId: number, userId: number) {
@@ -34,8 +34,8 @@ export const experienceRouter = router({
     }),
   }),
   reviews: router({
-    create: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), target: z.enum(["store", "product", "courier"]), productId: z.number().int().positive().optional(), rating: z.number().int().min(1).max(5), comment: z.string().max(2000).optional() })).mutation(async ({ ctx, input }) => { const db = await getDb(); if (!db) throw new Error("Database unavailable"); const order = await ownedOrder(db, input.orderId, ctx.user.id); if (!order || order.status !== "Entregue") throw new Error("Pedido não elegível para avaliação"); await db.insert(orderReviews).values({ ...input, userId: ctx.user.id }); return { success: true }; }),
-    list: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).query(async ({ ctx, input }) => { const db = await getDb(); if (!db) throw new Error("Database unavailable"); if (!await ownedOrder(db, input.orderId, ctx.user.id)) throw new Error("Pedido não encontrado"); return db.select().from(orderReviews).where(eq(orderReviews.orderId, input.orderId)); }),
+    create: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), target: z.enum(["store", "product", "courier"]), productId: z.number().int().positive().optional(), rating: z.number().int().min(1).max(5), comment: z.string().max(2000).optional(), idempotencyKey: z.string().trim().min(8).max(160) })).mutation(async ({ ctx, input }) => { const order = await data.getOrderForUser(input.orderId, ctx.user.id); if (!order || order.status !== "Entregue") throw new Error("Pedido não elegível para avaliação"); const existing = await data.getOrderReviewByIdempotencyKey(input.idempotencyKey); if (existing) return { success: true as const, reviewId: existing.id, duplicate: true as const }; const created = await data.createOrderReview({ ...input, userId: ctx.user.id }); return { success: true as const, reviewId: created.id, duplicate: created.duplicate }; }),
+    list: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).query(async ({ ctx, input }) => { if (!await data.getOrderForUser(input.orderId, ctx.user.id)) throw new Error("Pedido não encontrado"); return data.listOrderReviews(input.orderId); }),
   }),
   tracking: router({
     events: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).query(async ({ ctx, input }) => { const db = await getDb(); if (!db) throw new Error("Database unavailable"); if (!await ownedOrder(db, input.orderId, ctx.user.id)) throw new Error("Pedido não encontrado"); return db.select().from(deliveryEvents).where(eq(deliveryEvents.orderId, input.orderId)).orderBy(desc(deliveryEvents.createdAt)); }),

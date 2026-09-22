@@ -294,9 +294,11 @@ export const orderReviews = mysqlTable("pediu_order_reviews", {
   productId: int("productId"),
   rating: int("rating").notNull(),
   comment: text("comment"),
+  idempotencyKey: varchar("idempotencyKey", { length: 160 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => ({
   reviewUnique: unique("pediu_review_unique").on(table.orderId, table.userId, table.target, table.productId),
+  idempotencyUnique: unique("pediu_review_idempotency_unique").on(table.idempotencyKey),
   orderIdx: index("pediu_review_order_idx").on(table.orderId),
 }));
 
