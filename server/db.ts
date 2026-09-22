@@ -231,6 +231,18 @@ export async function listAdminPayments(limit = 50, offset = 0) {
   return db.select().from(payments).limit(limit).offset(offset);
 }
 
+export async function listAdminSupportTickets(limit = 50, offset = 0): Promise<SupportTicket[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(supportTickets).orderBy(desc(supportTickets.updatedAt)).limit(limit).offset(offset);
+}
+
+export async function updateSupportTicketStatus(ticketId: number, status: "open" | "in_progress" | "resolved" | "closed"): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(supportTickets).set({ status, updatedAt: new Date() }).where(eq(supportTickets.id, ticketId));
+}
+
 export async function getCouponByCode(code: string): Promise<Coupon | undefined> {
   const db = await getDb();
   if (!db) return undefined;

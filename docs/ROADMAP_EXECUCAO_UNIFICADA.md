@@ -82,3 +82,7 @@ A validação confirmou 79 testes aprovados e 1 ignorado, typecheck, build, lint
 A frente de mensagens de suporte foi concluída. Chamados agora possuem conversa persistente, leitura, polling, autorização do proprietário ou administrador e idempotência de envio. Respostas administrativas geram notificação interna ao cliente sem misturar o fluxo com o chat do pedido.
 
 A validação confirmou 83 testes aprovados e 1 ignorado, typecheck, build, lint e 22 migrations aplicadas em banco vazio. O smoke web confirmou o bloqueio de suporte para visitantes.
+
+## Atualização de execução — 2026-09-22
+
+O suporte ganhou um painel administrativo protegido para listar chamados, responder clientes e alterar status. Cada transição de status é registrada na auditoria, enquanto usuários não administrativos permanecem bloqueados.
