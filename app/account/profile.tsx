@@ -8,7 +8,7 @@ export default function ProfilePage() {
   return <Page title="Perfil" eyebrow="SUA CONTA">
     <View style={{ backgroundColor: PEDIU.ink, borderRadius: 24, padding: 20, alignItems: "center", gap: 6 }}>
       <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: PEDIU.yellow, alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
-        <Text style={{ fontSize: 25, fontWeight: "900", color: PEDIU.ink }}>{(user?.name ?? "A").slice(0, 1).toUpperCase()}</Text>
+        <Text style={{ fontSize: 25, fontWeight: "900", color: PEDIU.ink }}>{user?.name?.trim()?.slice(0, 1).toUpperCase() || "P"}</Text>
       </View>
       <Text style={{ color: PEDIU.white, fontSize: 18, fontWeight: "800" }}>{user?.name ?? "Sua conta"}</Text>
       <Text style={{ color: "#BCD0D1", fontSize: 12 }}>{user?.email ?? "Entre para sincronizar seus dados"}</Text>

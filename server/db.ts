@@ -145,7 +145,11 @@ export async function getStoreById(storeId: number): Promise<Store | undefined> 
 export async function createStore(input: InsertStore): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(stores).values(input);
+  const result = await db.transaction(async (tx) => {
+    const insertResult = await tx.insert(stores).values(input);
+    await tx.update(users).set({ role: "merchant" }).where(and(eq(users.id, input.ownerId), eq(users.role, "user")));
+    return insertResult;
+  });
   return Number((result as unknown as { insertId: number | string }).insertId);
 }
 
