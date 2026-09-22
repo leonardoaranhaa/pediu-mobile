@@ -127,6 +127,13 @@
       "when": 1790069087197,
       "tag": "0017_delivery_assignments_locations",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1790070036592,
+      "tag": "0018_communication_preferences",
+      "breakpoints": true
     }
   ]
 }

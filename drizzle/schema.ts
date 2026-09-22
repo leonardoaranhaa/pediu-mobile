@@ -339,8 +339,11 @@ export const chatMessages = mysqlTable("pediu_chat_messages", {
   userId: int("userId").notNull(),
   role: varchar("role", { length: 16 }).notNull(),
   body: varchar("body", { length: 2000 }).notNull(),
+  idempotencyKey: varchar("idempotencyKey", { length: 160 }),
+  readAt: timestamp("readAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => ({
+  idempotencyUnique: unique("pediu_chat_message_idempotency_unique").on(table.idempotencyKey),
   orderCreatedIdx: index("pediu_chat_order_created_idx").on(table.orderId, table.createdAt),
 }));
 
@@ -387,10 +390,23 @@ export const notifications = mysqlTable("pediu_notifications", {
   title: varchar("title", { length: 160 }).notNull(),
   body: text("body").notNull(),
   type: varchar("type", { length: 40 }).default("general").notNull(),
+  actionPath: varchar("actionPath", { length: 255 }),
   readAt: timestamp("readAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => ({
   userReadCreatedIdx: index("pediu_notifications_user_read_created_idx").on(table.userId, table.readAt, table.createdAt),
+}));
+
+export const notificationPreferences = mysqlTable("pediu_notification_preferences", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  orderUpdates: int("orderUpdates").default(1).notNull(),
+  supportMessages: int("supportMessages").default(1).notNull(),
+  promotions: int("promotions").default(1).notNull(),
+  pushEnabled: int("pushEnabled").default(1).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  userUnique: unique("pediu_notification_preferences_user_unique").on(table.userId),
 }));
 
 export type User = typeof users.$inferSelect;
@@ -441,3 +457,5 @@ export type AdminAuditLog = typeof adminAuditLogs.$inferSelect;
 export type InsertAdminAuditLog = typeof adminAuditLogs.$inferInsert;
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = typeof notifications.$inferInsert;
+export type NotificationPreferences = typeof notificationPreferences.$inferSelect;
+export type InsertNotificationPreferences = typeof notificationPreferences.$inferInsert;

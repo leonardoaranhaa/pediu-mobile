@@ -1,6 +1,6 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { AdminAuditLog, Coupon, Customer, CustomerAddress, DeliveryAssignment, DeliveryLocation, InsertAdminAuditLog, InsertCustomer, InsertCustomerAddress, InsertDeliveryAssignment, InsertDeliveryEvent, InsertDeliveryLocation, InsertLedgerEntry, InsertNotification, InsertOrder, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Notification, Order, Payment, Product, PushToken, Sale, Store, adminAuditLogs, coupons, customerAddresses, customers, deliveryAssignments, deliveryEvents, deliveryLocations, ledgerEntries, notifications, orderItems, orders, payments, products, pushTokens, sales, stores, users } from "../drizzle/schema";
+import { AdminAuditLog, ChatMessage, Coupon, Customer, CustomerAddress, DeliveryAssignment, DeliveryLocation, InsertAdminAuditLog, InsertChatMessage, InsertCustomer, InsertCustomerAddress, InsertDeliveryAssignment, InsertDeliveryEvent, InsertDeliveryLocation, InsertLedgerEntry, InsertNotification, InsertOrder, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertUser, LedgerEntry, Notification, NotificationPreferences, Order, Payment, Product, PushToken, Sale, Store, adminAuditLogs, chatMessages, coupons, customerAddresses, customers, deliveryAssignments, deliveryEvents, deliveryLocations, ledgerEntries, notificationPreferences, notifications, orderItems, orders, payments, products, pushTokens, sales, stores, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -520,6 +520,38 @@ export async function updateDeliveryAssignmentStatus(orderId: number, status: De
   await db.update(deliveryAssignments).set({ status, updatedAt: new Date() }).where(eq(deliveryAssignments.orderId, orderId));
 }
 
+export async function listChatMessages(orderId: number): Promise<ChatMessage[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(chatMessages).where(eq(chatMessages.orderId, orderId)).orderBy(chatMessages.createdAt, chatMessages.id);
+}
+
+export async function getChatMessageByIdempotencyKey(idempotencyKey: string): Promise<ChatMessage | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(chatMessages).where(eq(chatMessages.idempotencyKey, idempotencyKey)).limit(1);
+  return result[0];
+}
+
+export async function createChatMessage(input: InsertChatMessage): Promise<{ id: number; duplicate: boolean }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  try {
+    const result = await db.insert(chatMessages).values(input);
+    return { id: getInsertId(result), duplicate: false };
+  } catch (error) {
+    const existing = input.idempotencyKey ? await getChatMessageByIdempotencyKey(input.idempotencyKey) : undefined;
+    if (existing) return { id: existing.id, duplicate: true };
+    throw error;
+  }
+}
+
+export async function markChatMessagesRead(orderId: number, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(chatMessages).set({ readAt: new Date() }).where(sql`${chatMessages.orderId} = ${orderId} AND ${chatMessages.userId} <> ${userId} AND ${chatMessages.readAt} IS NULL`);
+}
+
 export async function getPendingPixPaymentForOrder(orderId: number): Promise<Payment | undefined> {
   const db = await getDb();
   if (!db) return undefined;
@@ -659,11 +691,32 @@ export async function createNotification(input: InsertNotification): Promise<num
 export async function listNotificationsForUser(userId: number): Promise<Notification[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(notifications).where(eq(notifications.userId, userId));
+  return db.select().from(notifications).where(eq(notifications.userId, userId)).orderBy(desc(notifications.createdAt));
 }
 
 export async function markNotificationRead(userId: number, notificationId: number): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(notifications).set({ readAt: new Date() }).where(sql`${notifications.id} = ${notificationId} AND ${notifications.userId} = ${userId}`);
+}
+
+export async function getNotificationPreferences(userId: number): Promise<NotificationPreferences> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const current = await db.select().from(notificationPreferences).where(eq(notificationPreferences.userId, userId)).limit(1);
+  if (current[0]) return current[0];
+  await db.insert(notificationPreferences).values({ userId }).onDuplicateKeyUpdate({ set: { userId } });
+  const created = await db.select().from(notificationPreferences).where(eq(notificationPreferences.userId, userId)).limit(1);
+  if (!created[0]) throw new Error("Notification preferences not found after creation");
+  return created[0];
+}
+
+export async function updateNotificationPreferences(userId: number, input: Partial<Pick<NotificationPreferences, "orderUpdates" | "supportMessages" | "promotions" | "pushEnabled">>): Promise<NotificationPreferences> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const current = await getNotificationPreferences(userId);
+  await db.update(notificationPreferences).set({ ...input, updatedAt: new Date() }).where(eq(notificationPreferences.id, current.id));
+  const updated = await db.select().from(notificationPreferences).where(eq(notificationPreferences.id, current.id)).limit(1);
+  if (!updated[0]) throw new Error("Notification preferences not found after update");
+  return updated[0];
 }

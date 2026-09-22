@@ -180,6 +180,10 @@ export const appRouter = router({
       register: protectedProcedure.input(z.object({ token: z.string().min(10).max(255), platform: z.enum(["ios", "android", "web"]) })).mutation(({ ctx, input }) => db.registerPushToken({ ...input, userId: ctx.user.id })),
       mine: protectedProcedure.query(({ ctx }) => db.listNotificationsForUser(ctx.user.id)),
       markRead: protectedProcedure.input(z.object({ notificationId: z.number().int().positive() })).mutation(({ ctx, input }) => db.markNotificationRead(ctx.user.id, input.notificationId)),
+      preferences: router({
+        mine: protectedProcedure.query(({ ctx }) => db.getNotificationPreferences(ctx.user.id)),
+        update: protectedProcedure.input(z.object({ orderUpdates: z.boolean().optional(), supportMessages: z.boolean().optional(), promotions: z.boolean().optional(), pushEnabled: z.boolean().optional() })).mutation(({ ctx, input }) => db.updateNotificationPreferences(ctx.user.id, Object.fromEntries(Object.entries(input).map(([key, value]) => [key, value ? 1 : 0])))),
+      }),
     }),
   }),
 });

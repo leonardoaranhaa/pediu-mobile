@@ -4,7 +4,7 @@ import { protectedProcedure, router } from "./_core/trpc";
 import { getDb } from "./db";
 import * as data from "./db";
 import { sendPushToUser } from "./push";
-import { coupons, orders, orderReviews, deliveryEvents, chatMessages, supportTickets, privacyConsents } from "../drizzle/schema";
+import { coupons, orders, orderReviews, deliveryEvents, supportTickets, privacyConsents } from "../drizzle/schema";
 import { calculateCouponDiscount } from "./domain/coupons";
 
 async function ownedOrder(db: any, orderId: number, userId: number) {
@@ -16,6 +16,13 @@ async function storeOwnedOrder(orderId: number, userId: number) {
   const order = await data.getOrderForUser(orderId, userId);
   const store = await data.getStoreForOwner(userId);
   return order && store?.id === order.storeId ? order : undefined;
+}
+
+async function participantOrder(orderId: number, userId: number) {
+  const order = await data.getOrderForUser(orderId, userId);
+  if (!order) return undefined;
+  const store = await data.getStoreForOwner(userId);
+  return { order, role: store?.id === order.storeId ? "merchant" as const : "customer" as const };
 }
 
 export const experienceRouter = router({
@@ -71,8 +78,9 @@ export const experienceRouter = router({
     }),
   }),
   chat: router({
-    list: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).query(async ({ ctx, input }) => { const db = await getDb(); if (!db) throw new Error("Database unavailable"); if (!await ownedOrder(db, input.orderId, ctx.user.id)) throw new Error("Pedido não encontrado"); return db.select().from(chatMessages).where(eq(chatMessages.orderId, input.orderId)).orderBy(chatMessages.createdAt); }),
-    send: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), body: z.string().trim().min(1).max(2000) })).mutation(async ({ ctx, input }) => { const db = await getDb(); if (!db) throw new Error("Database unavailable"); if (!await ownedOrder(db, input.orderId, ctx.user.id)) throw new Error("Pedido não encontrado"); await db.insert(chatMessages).values({ orderId: input.orderId, userId: ctx.user.id, role: "customer", body: input.body }); return { success: true }; }),
+    list: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).query(async ({ ctx, input }) => { if (!await participantOrder(input.orderId, ctx.user.id)) throw new Error("Pedido não encontrado"); return data.listChatMessages(input.orderId); }),
+    send: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), body: z.string().trim().min(1).max(2000), idempotencyKey: z.string().trim().min(8).max(160) })).mutation(async ({ ctx, input }) => { const participant = await participantOrder(input.orderId, ctx.user.id); if (!participant) throw new Error("Pedido não encontrado"); const existing = await data.getChatMessageByIdempotencyKey(input.idempotencyKey); if (existing) return { messageId: existing.id, duplicate: true as const }; const created = await data.createChatMessage({ orderId: input.orderId, userId: ctx.user.id, role: participant.role, body: input.body, idempotencyKey: input.idempotencyKey }); const recipientId = participant.role === "customer" ? (await data.getStoreById(participant.order.storeId))?.ownerId : participant.order.customerId; if (!created.duplicate && recipientId) { try { await sendPushToUser(recipientId, "Nova mensagem no pedido", `Há uma nova mensagem no pedido #${participant.order.id}.`, { type: "order", orderId: participant.order.id }); } catch (error) { console.warn("[Chat] Failed to notify participant:", error); } } return { messageId: created.id, duplicate: created.duplicate }; }),
+    markRead: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).mutation(async ({ ctx, input }) => { if (!await participantOrder(input.orderId, ctx.user.id)) throw new Error("Pedido não encontrado"); await data.markChatMessagesRead(input.orderId, ctx.user.id); return { success: true as const }; }),
   }),
   support: router({
     list: protectedProcedure.query(async ({ ctx }) => { const db = await getDb(); if (!db) throw new Error("Database unavailable"); return db.select().from(supportTickets).where(eq(supportTickets.userId, ctx.user.id)).orderBy(desc(supportTickets.createdAt)); }),

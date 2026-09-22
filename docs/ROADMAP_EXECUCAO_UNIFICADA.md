@@ -58,3 +58,9 @@ A home também foi alinhada ao checkout dedicado: a entrada de finalização dei
 O bloco de entregador foi implementado sobre o PR aberto. A fase adicionou atribuição única por pedido, posição histórica com idempotência, ETA, operador autorizado, transição automática para `A caminho`, encerramento para `Entregue` e notificações transacionais. A loja recebeu uma tela operacional de entregas. O cliente recebeu a visualização de entregador e última posição com polling.
 
 A validação local confirmou 67 testes aprovados e 1 ignorado, além de typecheck, build e lint sem erros. As 18 migrations foram aplicadas em banco MySQL vazio. O smoke visual no Expo Web confirmou os estados vazio, aguardando atribuição e aguardando posição sem falhas de renderização.
+
+## Atualização de execução — 2026-09-22
+
+A frente de comunicação foi concluída. O chat agora possui participantes autorizados da loja e do cliente, leitura, polling e idempotência. A central de notificações possui preferências persistentes e deep links internos. O serviço de push passou a respeitar preferências sem perder o histórico interno.
+
+A validação confirmou 71 testes aprovados e 1 ignorado, typecheck, build, lint e 19 migrations aplicadas em banco vazio. O smoke web confirmou o estado de visitante da central e o bloqueio privado do chat.
