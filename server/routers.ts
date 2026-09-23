@@ -14,6 +14,9 @@ import { normalizeIdempotencyKey } from "./domain/idempotency";
 import { adminRouter } from "./admin-router";
 import { experienceRouter } from "./experience-router";
 import { calculateCouponDiscount } from "./domain/coupons";
+import { consumeRateLimit, rateLimitKey, withConcurrencyLimit, withTimeout } from "./_core/security";
+import crypto from "node:crypto";
+import { hashEmailToken, sendEmailVerification } from "./email-verification";
 
 const orderStatusSchema = z.enum(["Pendente", "Aceito", "Preparando", "Pronto", "A caminho", "Entregue", "Cancelado"]);
 const addressInputSchema = z.object({
@@ -31,11 +34,20 @@ const addressInputSchema = z.object({
   isDefault: z.boolean().optional(),
 });
 
+function hasAudioSignature(audio: Buffer, mimeType: string): boolean {
+  if (mimeType === "audio/wav") return audio.subarray(0, 4).toString("ascii") === "RIFF" && audio.subarray(8, 12).toString("ascii") === "WAVE";
+  if (mimeType === "audio/webm") return audio.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
+  if (mimeType === "audio/m4a" || mimeType === "audio/mp4") return audio.subarray(4, 8).toString("ascii") === "ftyp";
+  if (mimeType === "audio/mpeg") return audio.subarray(0, 3).toString("ascii") === "ID3" || (audio[0] === 0xff && (audio[1] & 0xe0) === 0xe0);
+  return false;
+}
+
 export const appRouter = router({
   system: systemRouter,
   admin: adminRouter,
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
+    confirmEmail: publicProcedure.input(z.object({ token: z.string().regex(/^[a-f0-9]{32,128}$/i) })).mutation(async ({ input }) => ({ confirmed: await db.confirmEmailVerification(hashEmailToken(input.token)) })),
     logout: publicProcedure.mutation(({ ctx }) => { const cookieOptions = getSessionCookieOptions(ctx.req); ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 }); return { success: true } as const; }),
   }),
   pediu: router({
@@ -50,7 +62,20 @@ export const appRouter = router({
     account: router({
       profile: router({
         mine: protectedProcedure.query(({ ctx }) => db.getUserProfile(ctx.user.id)),
-        update: protectedProcedure.input(z.object({ name: z.string().trim().min(2).max(160).optional(), email: z.string().trim().email().max(320).nullable().optional() })).mutation(({ ctx, input }) => db.updateUserProfile(ctx.user.id, input)),
+        update: protectedProcedure.input(z.object({ name: z.string().trim().min(2).max(160).optional() })).mutation(({ ctx, input }) => db.updateUserProfile(ctx.user.id, input)),
+        requestEmailChange: protectedProcedure.input(z.object({ email: z.string().trim().email().max(320) })).mutation(async ({ ctx, input }) => {
+          const profile = await db.getUserProfile(ctx.user.id);
+          if (!profile) throw new Error("Perfil não encontrado");
+          if (profile.email?.toLowerCase() === input.email.toLowerCase()) return { verificationSent: false, unchanged: true as const };
+          const token = crypto.randomBytes(32).toString("hex");
+          await db.createEmailVerificationToken({ userId: ctx.user.id, email: input.email.toLowerCase(), tokenHash: hashEmailToken(token), expiresAt: new Date(Date.now() + 30 * 60_000) });
+          let verificationSent = false;
+          try { verificationSent = await sendEmailVerification({ email: input.email.toLowerCase(), token }); } catch { verificationSent = false; }
+          return { verificationSent, unchanged: false as const };
+        }),
+        theme: router({
+          update: protectedProcedure.input(z.object({ themeId: z.enum(["classic", "ocean", "sunset"]) })).mutation(({ ctx, input }) => db.updateUserTheme(ctx.user.id, input.themeId)),
+        }),
       }),
       paymentPreferences: router({
         mine: protectedProcedure.query(({ ctx }) => db.getCustomerPaymentPreferences(ctx.user.id)),
@@ -106,7 +131,7 @@ export const appRouter = router({
     }),
     stores: router({
       mine: protectedProcedure.query(({ ctx }) => db.getStoreForOwner(ctx.user.id)),
-      create: protectedProcedure.input(z.object({ name: z.string().min(2).max(160), phone: z.string().max(32).optional(), address: z.string().max(255).optional(), pixKey: z.string().max(255).optional(), deliveryFee: z.string().regex(/^\d+(\.\d{1,2})?$/).default("0.00") })).mutation(({ ctx, input }) => db.createStore({ ...input, ownerId: ctx.user.id })),
+      create: protectedProcedure.input(z.object({ name: z.string().trim().min(2).max(160), phone: z.string().trim().max(32).optional(), address: z.string().trim().max(255).optional(), pixKey: z.string().trim().max(255).optional(), deliveryFee: z.string().regex(/^\d+(\.\d{1,2})?$/).default("0.00") })).mutation(async ({ ctx, input }) => { if (await db.getStoreForOwner(ctx.user.id)) throw new Error("Este usuário já possui uma loja"); return db.createStore({ ...input, ownerId: ctx.user.id }); }),
     }),
     products: router({
       mine: protectedProcedure.input(z.object({ storeId: z.number().int().positive() })).query(async ({ ctx, input }) => { const store = await db.getStoreForOwner(ctx.user.id); return store?.id === input.storeId ? db.listProductsForStore(input.storeId) : []; }),
@@ -115,10 +140,10 @@ export const appRouter = router({
       storeOpen: protectedProcedure.input(z.object({ storeId: z.number().int().positive(), isOpen: z.boolean() })).mutation(async ({ ctx, input }) => { const store = await db.getStoreForOwner(ctx.user.id); if (!store || store.id !== input.storeId) throw new Error("Loja não autorizada"); return db.updateStoreOpen(input.storeId, input.isOpen); }),
     }),
     orders: router({
-      mine: protectedProcedure.query(({ ctx }) => db.listOrdersForCustomer(ctx.user.id)),
+      mine: protectedProcedure.input(z.object({ limit: z.number().int().min(1).max(100).default(50), offset: z.number().int().min(0).default(0) }).optional()).query(({ ctx, input }) => db.listOrdersForCustomer(ctx.user.id, input?.limit ?? 50, input?.offset ?? 0)),
       get: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).query(async ({ ctx, input }) => { const order = await db.getOrderForUser(input.orderId, ctx.user.id); if (!order) throw new Error("Pedido não encontrado ou não autorizado"); return order; }),
-      storeMine: protectedProcedure.query(async ({ ctx }) => { const store = await db.getStoreForOwner(ctx.user.id); return store ? db.listOrdersForStore(store.id) : []; }),
-      create: protectedProcedure.input(z.object({ idempotencyKey: z.string().trim().min(8).max(160), storeId: z.number().int().positive(), total: z.string().regex(/^\d+(\.\d{1,2})?$/), paymentMethod: z.enum(["pix", "card", "cash", "fiado"]).default("pix"), addressId: z.number().int().positive().optional(), deliveryAddress: z.string().trim().max(255).optional(), couponCode: z.string().trim().min(1).max(40).optional(), items: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().int().positive().max(50), unitPrice: z.string().regex(/^\d+(\.\d{1,2})?$/), note: z.string().trim().max(500).optional() })).min(1) })).mutation(async ({ ctx, input }) => {
+      storeMine: protectedProcedure.input(z.object({ limit: z.number().int().min(1).max(100), offset: z.number().int().min(0).default(0) }).optional()).query(async ({ ctx, input }) => { const store = await db.getStoreForOwner(ctx.user.id); return store ? db.listOrdersForStore(store.id, input?.limit ?? 50, input?.offset ?? 0) : []; }),
+      create: protectedProcedure.input(z.object({ idempotencyKey: z.string().trim().min(8).max(160), storeId: z.number().int().positive(), total: z.string().regex(/^\d+(\.\d{1,2})?$/), paymentMethod: z.enum(["pix", "cash", "fiado"]).default("pix"), addressId: z.number().int().positive().optional(), deliveryAddress: z.string().trim().max(255).optional(), couponCode: z.string().trim().min(1).max(40).optional(), items: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().int().positive().max(50), unitPrice: z.string().regex(/^\d+(\.\d{1,2})?$/), note: z.string().trim().max(500).optional() })).min(1) })).mutation(async ({ ctx, input }) => {
         const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey);
         const existing = await db.getOrderByIdempotencyKey(ctx.user.id, idempotencyKey);
         if (existing) {
@@ -183,12 +208,25 @@ export const appRouter = router({
       create: protectedProcedure.input(z.object({ customerId: z.number().int().positive().optional(), total: z.string().regex(/^\d+(\.\d{1,2})?$/), paymentMethod: z.enum(["pix", "card", "cash", "fiado"]), note: z.string().max(255).optional() })).mutation(async ({ ctx, input }) => { const store = await db.getStoreForOwner(ctx.user.id); if (!store) throw new Error("Cadastre sua loja antes de registrar vendas"); return db.createSale({ ...input, storeId: store.id }); }),
     }),
     voice: router({
-      interpret: publicProcedure.input(z.object({ mode: z.enum(["customer", "seller"]), command: z.string().min(1).max(500) })).mutation(({ input }) => interpretVoiceCommand(input.mode, input.command)),
-      transcribe: protectedProcedure.input(z.object({ audioBase64: z.string().min(1000).max(22_000_000), mimeType: z.string().max(80).default("audio/m4a") })).mutation(async ({ ctx, input }) => { const upload = await storagePut(`voice/${ctx.user.id}/${Date.now()}.m4a`, Buffer.from(input.audioBase64, "base64"), input.mimeType); const signedUrl = await storageGetSignedUrl(upload.key); const result = await transcribeAudio({ audioUrl: signedUrl, language: "pt" }); if ("error" in result) throw new Error(result.error); return { text: result.text, language: result.language }; }),
+      interpret: publicProcedure.input(z.object({ mode: z.enum(["customer", "seller"]), command: z.string().trim().min(1).max(500) })).mutation(async ({ ctx, input }) => { if (!consumeRateLimit(rateLimitKey(ctx.req, "voice:interpret"), 20, 5 * 60_000)) throw new Error("Limite de comandos de voz atingido. Tente novamente em alguns minutos."); return withConcurrencyLimit("voice:interpret", 4, () => withTimeout(interpretVoiceCommand(input.mode, input.command), 15_000, "O assistente demorou para responder. Tente novamente.")); }),
+      transcribe: protectedProcedure.input(z.object({ audioBase64: z.string().min(1000).max(12_000_000), mimeType: z.enum(["audio/m4a", "audio/mp4", "audio/wav", "audio/mpeg", "audio/webm"]).default("audio/m4a") })).mutation(async ({ ctx, input }) => {
+        if (!consumeRateLimit(rateLimitKey(ctx.req, "voice:transcribe", ctx.user.id), 10, 10 * 60_000)) throw new Error("Limite de transcrição atingido. Tente novamente mais tarde.");
+        const encoded = input.audioBase64.replace(/\s/g, "");
+        if (!/^[A-Za-z0-9+/]*={0,2}$/.test(encoded) || encoded.length % 4 !== 0) throw new Error("Áudio codificado inválido");
+        const audio = Buffer.from(encoded, "base64");
+        if (audio.length < 1024 || audio.length > 8 * 1024 * 1024) throw new Error("O áudio deve ter entre 1 KB e 8 MB");
+        if (!hasAudioSignature(audio, input.mimeType)) throw new Error("O conteúdo do áudio não corresponde ao formato informado");
+        const extension = input.mimeType.split("/")[1] === "mpeg" ? "mp3" : input.mimeType.split("/")[1];
+        const upload = await storagePut(`voice/${ctx.user.id}/${Date.now()}.${extension}`, audio, input.mimeType);
+        const signedUrl = await storageGetSignedUrl(upload.key);
+        const result = await withConcurrencyLimit("voice:transcribe", 2, () => withTimeout(transcribeAudio({ audioUrl: signedUrl, language: "pt" }), 45_000, "A transcrição demorou para responder. Tente novamente."));
+        if ("error" in result) throw new Error(result.error);
+        return { text: result.text, language: result.language };
+      }),
     }),
     notifications: router({
       register: protectedProcedure.input(z.object({ token: z.string().min(10).max(255), platform: z.enum(["ios", "android", "web"]) })).mutation(({ ctx, input }) => db.registerPushToken({ ...input, userId: ctx.user.id })),
-      mine: protectedProcedure.query(({ ctx }) => db.listNotificationsForUser(ctx.user.id)),
+      mine: protectedProcedure.input(z.object({ limit: z.number().int().min(1).max(100).default(50), offset: z.number().int().min(0).default(0) }).optional()).query(({ ctx, input }) => db.listNotificationsForUser(ctx.user.id, input?.limit ?? 50, input?.offset ?? 0)),
       markRead: protectedProcedure.input(z.object({ notificationId: z.number().int().positive() })).mutation(({ ctx, input }) => db.markNotificationRead(ctx.user.id, input.notificationId)),
       preferences: router({
         mine: protectedProcedure.query(({ ctx }) => db.getNotificationPreferences(ctx.user.id)),

@@ -44,20 +44,24 @@ function buildUserResponse(
   user:
     | Awaited<ReturnType<typeof getUserByOpenId>>
     | {
+        id?: number | null;
         openId: string;
         name?: string | null;
         email?: string | null;
         loginMethod?: string | null;
+        role?: "user" | "merchant" | "courier" | "admin";
+        themePreference?: "classic" | "ocean" | "sunset";
         lastSignedIn?: Date | null;
       },
-) {
+  ) {
   return {
-    id: (user as any)?.id ?? null,
+    id: user?.id ?? null,
     openId: user?.openId ?? null,
     name: user?.name ?? null,
     email: user?.email ?? null,
     loginMethod: user?.loginMethod ?? null,
-    role: (user as any)?.role ?? "user",
+    role: user?.role ?? "user",
+    themePreference: user?.themePreference ?? "classic",
     lastSignedIn: (user?.lastSignedIn ?? new Date()).toISOString(),
   };
 }
@@ -89,8 +93,8 @@ export function registerOAuthRoutes(app: Express) {
         process.env.EXPO_PACKAGER_PROXY_URL ||
         "http://localhost:8081";
       res.redirect(302, frontendUrl);
-    } catch (error) {
-      console.error("[OAuth] Callback failed", error);
+    } catch {
+      console.error("[OAuth] Callback failed");
       res.status(500).json({ error: "OAuth callback failed" });
     }
   });
@@ -121,8 +125,8 @@ export function registerOAuthRoutes(app: Express) {
         app_session_id: sessionToken,
         user: buildUserResponse(user),
       });
-    } catch (error) {
-      console.error("[OAuth] Mobile exchange failed", error);
+    } catch {
+      console.error("[OAuth] Mobile exchange failed");
       res.status(500).json({ error: "OAuth mobile exchange failed" });
     }
   });
@@ -137,8 +141,8 @@ export function registerOAuthRoutes(app: Express) {
     try {
       const user = await sdk.authenticateRequest(req);
       res.json({ user: buildUserResponse(user) });
-    } catch (error) {
-      console.error("[Auth] /api/auth/me failed:", error);
+    } catch {
+      console.error("[Auth] /api/auth/me failed");
       res.status(401).json({ error: "Not authenticated", user: null });
     }
   });
@@ -158,8 +162,8 @@ export function registerOAuthRoutes(app: Express) {
       res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: ONE_YEAR_MS });
 
       res.json({ success: true, user: buildUserResponse(user) });
-    } catch (error) {
-      console.error("[Auth] /api/auth/session failed:", error);
+    } catch {
+      console.error("[Auth] /api/auth/session failed");
       res.status(401).json({ error: "Invalid token" });
     }
   });

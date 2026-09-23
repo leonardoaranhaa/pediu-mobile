@@ -155,6 +155,20 @@
       "when": 1790072598670,
       "tag": "0021_support_ticket_messages",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1790080000000,
+      "tag": "0022_user_theme_email_verification",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1790080100000,
+      "tag": "0023_core_foreign_keys",
+      "breakpoints": true
     }
   ]
 }

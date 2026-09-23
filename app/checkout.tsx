@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useCart } from "@/providers/cart-provider";
 import { trpc } from "@/lib/trpc";
 
-type PaymentMethod = "pix" | "card" | "cash";
+type PaymentMethod = "pix" | "cash";
 
 function money(value: number | string) {
   return `R$ ${Number(value).toFixed(2).replace(".", ",")}`;
@@ -110,8 +110,7 @@ export default function CheckoutScreen() {
     </Card>
     <Card>
       <Text style={s.sectionTitle}>Pagamento</Text>
-      <View style={{ flexDirection: "row", gap: 8 }}>{(["pix", "card", "cash"] as const).map((method) => <Pressable key={method} onPress={() => setPaymentMethod(method)} style={{ flex: 1, minHeight: 58, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: paymentMethod === method ? PEDIU.coral : PEDIU.line, backgroundColor: paymentMethod === method ? PEDIU.coralSoft : PEDIU.white, borderRadius: 14 }}><Text style={{ color: paymentMethod === method ? PEDIU.coral : PEDIU.muted, fontWeight: "900" }}>{method === "pix" ? "PIX" : method === "card" ? "Cartão" : "Dinheiro"}</Text></Pressable>)}</View>
-      {paymentMethod === "card" ? <Text style={s.muted}>O cartão será processado pelo provedor. O Pediu não armazena dados completos.</Text> : null}
+      <View style={{ flexDirection: "row", gap: 8 }}>{(["pix", "cash"] as const).map((method) => <Pressable key={method} onPress={() => setPaymentMethod(method)} style={{ flex: 1, minHeight: 58, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: paymentMethod === method ? PEDIU.coral : PEDIU.line, backgroundColor: paymentMethod === method ? PEDIU.coralSoft : PEDIU.white, borderRadius: 14 }}><Text style={{ color: paymentMethod === method ? PEDIU.coral : PEDIU.muted, fontWeight: "900" }}>{method === "pix" ? "PIX" : "Dinheiro"}</Text></Pressable>)}</View>
     </Card>
     <Card>
       <Text style={s.sectionTitle}>Confirmação</Text>

@@ -47,17 +47,13 @@ describe("Pediu delivery operational contract", () => {
     vi.spyOn(db, "getOrderForUser").mockResolvedValue(pronto);
     vi.spyOn(db, "getStoreForOwner").mockResolvedValue(store);
     vi.spyOn(db, "getDeliveryAssignmentByOrder").mockResolvedValue(assignment);
-    const record = vi.spyOn(db, "recordDeliveryLocation").mockResolvedValue({ location, assignment: { ...assignment, status: "in_transit" }, created: true });
-    const update = vi.spyOn(db, "updateOrderStatus").mockResolvedValue(undefined);
-    const event = vi.spyOn(db, "createDeliveryEvent").mockResolvedValue(700);
+    const record = vi.spyOn(db, "recordDeliveryLocation").mockResolvedValue({ location, assignment: { ...assignment, status: "in_transit" }, created: true, dispatched: true });
     const notify = vi.spyOn(push, "sendPushToUser").mockResolvedValue({ sent: 1 });
 
     const caller = appRouter.createCaller({ user: merchant } as any);
     const result = await caller.pediu.experience.delivery.location({ orderId: 101, latitude: -23.55052, longitude: -46.633308, etaMinutes: 18, idempotencyKey: "location-key-101" });
 
     expect(record).toHaveBeenCalledWith(expect.objectContaining({ assignmentId: 501, orderId: 101, courierId: 10, idempotencyKey: "location-key-101" }));
-    expect(update).toHaveBeenCalledWith(101, "A caminho");
-    expect(event).toHaveBeenCalledWith(expect.objectContaining({ orderId: 101, eventType: "A caminho" }));
     expect(notify).toHaveBeenCalled();
     expect(result.status).toBe("A caminho");
   });
@@ -66,17 +62,12 @@ describe("Pediu delivery operational contract", () => {
     vi.spyOn(db, "getOrderForUser").mockResolvedValue(emRota);
     vi.spyOn(db, "getStoreForOwner").mockResolvedValue(store);
     vi.spyOn(db, "getDeliveryAssignmentByOrder").mockResolvedValue({ ...assignment, status: "in_transit" });
-    const update = vi.spyOn(db, "updateOrderStatus").mockResolvedValue(undefined);
-    const assignmentUpdate = vi.spyOn(db, "updateDeliveryAssignmentStatus").mockResolvedValue(undefined);
-    const event = vi.spyOn(db, "createDeliveryEvent").mockResolvedValue(701);
+    vi.spyOn(db, "completeDelivery").mockResolvedValue({ changed: true, status: "Entregue" });
     vi.spyOn(push, "sendPushToUser").mockResolvedValue({ sent: 1 });
 
     const caller = appRouter.createCaller({ user: merchant } as any);
     const result = await caller.pediu.experience.delivery.complete({ orderId: 101 });
 
-    expect(update).toHaveBeenCalledWith(101, "Entregue");
-    expect(assignmentUpdate).toHaveBeenCalledWith(101, "delivered");
-    expect(event).toHaveBeenCalledWith({ orderId: 101, eventType: "Entregue" });
     expect(result.status).toBe("Entregue");
   });
 

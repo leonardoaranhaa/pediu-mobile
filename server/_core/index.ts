@@ -7,6 +7,10 @@ import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
+import { isAllowedOrigin, isUnsafeMethod, requestHasAllowedOrigin, requestUsesBearer } from "./security";
+import { registerPaymentWebhookRoutes } from "../payment-webhook";
+import { registerEmailVerificationRoutes } from "../email-verification";
+import { assertRuntimeConfig } from "./env";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -28,32 +32,39 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
+  assertRuntimeConfig();
   const app = express();
+  app.set("trust proxy", 1);
   const server = createServer(app);
 
-  // Enable CORS for all routes - reflect the request origin to support credentials
   app.use((req, res, next) => {
     const origin = req.headers.origin;
-    if (origin) {
+    if (typeof origin === "string" && isAllowedOrigin(origin)) {
       res.header("Access-Control-Allow-Origin", origin);
+      res.header("Access-Control-Allow-Credentials", "true");
     }
+    res.header("Vary", "Origin");
     res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
     res.header(
       "Access-Control-Allow-Headers",
-      "Origin, X-Requested-With, Content-Type, Accept, Authorization",
+      "Origin, X-Requested-With, Content-Type, Accept, Authorization, X-CSRF-Token",
     );
-    res.header("Access-Control-Allow-Credentials", "true");
 
-    // Handle preflight requests
     if (req.method === "OPTIONS") {
-      res.sendStatus(200);
+      if (typeof origin === "string" && !isAllowedOrigin(origin)) {
+        res.sendStatus(403);
+        return;
+      }
+      res.sendStatus(204);
       return;
     }
     next();
   });
 
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  registerPaymentWebhookRoutes(app);
+  registerEmailVerificationRoutes(app);
+  app.use(express.json({ limit: "16mb" }));
+  app.use(express.urlencoded({ limit: "16mb", extended: true }));
 
   registerStorageProxy(app);
   registerOAuthRoutes(app);
@@ -64,6 +75,13 @@ async function startServer() {
 
   app.use(
     "/api/trpc",
+    (req, res, next) => {
+      if (isUnsafeMethod(req.method) && !requestUsesBearer(req) && !requestHasAllowedOrigin(req)) {
+        res.status(403).json({ error: "Origin not allowed for cookie-authenticated mutation" });
+        return;
+      }
+      next();
+    },
     createExpressMiddleware({
       router: appRouter,
       createContext,

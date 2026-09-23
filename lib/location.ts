@@ -1,11 +1,13 @@
 import * as Location from "expo-location";
 import { formatCompleteAddress, formatShortAddress } from "@/lib/location-format";
+import type { GeocodedAddressLike } from "@/lib/location-format";
 
 export type ResolvedLocation = {
   latitude: number;
   longitude: number;
   address: string;
   shortAddress: string;
+  details: GeocodedAddressLike;
 };
 
 export async function resolveCurrentLocation(): Promise<ResolvedLocation> {
@@ -22,5 +24,6 @@ export async function resolveCurrentLocation(): Promise<ResolvedLocation> {
     longitude: current.coords.longitude,
     address: address || `${current.coords.latitude.toFixed(5)}, ${current.coords.longitude.toFixed(5)}`,
     shortAddress: formatShortAddress(result),
+    details: result ?? {},
   };
 }

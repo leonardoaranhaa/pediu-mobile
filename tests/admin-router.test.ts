@@ -67,4 +67,12 @@ describe("Pediu admin authorization and contracts", () => {
     await expect(caller.admin.users({ limit: 0, offset: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(caller.admin.users({ limit: 20, offset: -1 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
+
+  it("does not audit a status change for a missing ticket", async () => {
+    vi.spyOn(db, "updateSupportTicketStatus").mockRejectedValue(new Error("Support ticket not found"));
+    const audit = vi.spyOn(db, "createAdminAuditLog");
+    const caller = appRouter.createCaller({ user: admin } as any);
+    await expect(caller.admin.supportStatus({ ticketId: 9999, status: "closed" })).rejects.toThrow("Support ticket not found");
+    expect(audit).not.toHaveBeenCalled();
+  });
 });

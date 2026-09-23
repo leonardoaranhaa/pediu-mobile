@@ -167,7 +167,7 @@ describe("Pediu customer marketplace contract", () => {
   });
 
 
-  it.each(["card", "cash"] as const)("creates a pending payment for %s checkout", async (paymentMethod) => {
+  it.each(["pix", "cash"] as const)("creates a pending payment for %s checkout", async (paymentMethod) => {
     vi.spyOn(db, "getStoreById").mockResolvedValue({
       id: 7,
       ownerId: 10,

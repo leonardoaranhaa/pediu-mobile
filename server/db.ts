@@ -1,6 +1,6 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { AdminAuditLog, ChatMessage, Coupon, Customer, CustomerAddress, CustomerPaymentPreferences, DeliveryAssignment, DeliveryLocation, InsertAdminAuditLog, InsertChatMessage, InsertCustomer, InsertCustomerAddress, InsertDeliveryAssignment, InsertDeliveryEvent, InsertDeliveryLocation, InsertLedgerEntry, InsertNotification, InsertOrder, InsertOrderReview, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertSupportTicketMessage, InsertUser, LedgerEntry, Notification, NotificationPreferences, Order, OrderReview, Payment, Product, PushToken, Sale, Store, SupportTicket, SupportTicketMessage, User, adminAuditLogs, chatMessages, coupons, customerAddresses, customerPaymentPreferences, customers, deliveryAssignments, deliveryEvents, deliveryLocations, ledgerEntries, notificationPreferences, notifications, orderItems, orderReviews, orders, payments, privacyConsents, products, pushTokens, sales, stores, supportTicketMessages, supportTickets, users } from "../drizzle/schema";
+import { AdminAuditLog, ChatMessage, Coupon, Customer, CustomerAddress, CustomerPaymentPreferences, DeliveryAssignment, DeliveryLocation, InsertAdminAuditLog, InsertChatMessage, InsertCustomer, InsertCustomerAddress, InsertDeliveryAssignment, InsertDeliveryEvent, InsertDeliveryLocation, InsertLedgerEntry, InsertNotification, InsertOrder, InsertOrderReview, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertSupportTicketMessage, InsertUser, LedgerEntry, Notification, NotificationPreferences, Order, OrderReview, Payment, Product, PushToken, Sale, Store, SupportTicket, SupportTicketMessage, User, adminAuditLogs, chatMessages, coupons, customerAddresses, customerPaymentPreferences, customers, deliveryAssignments, deliveryEvents, deliveryLocations, emailVerificationTokens, ledgerEntries, notificationPreferences, notifications, orderItems, orderReviews, orders, payments, privacyConsents, products, pushTokens, sales, stores, supportTicketMessages, supportTickets, users, webhookEvents } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -41,6 +41,35 @@ export async function updateUserProfile(userId: number, input: { name?: string; 
   const updated = await getUserProfile(userId);
   if (!updated) throw new Error("User profile not found after update");
   return updated;
+}
+
+export async function updateUserTheme(userId: number, themePreference: "classic" | "ocean" | "sunset"): Promise<User> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(users).set({ themePreference, updatedAt: new Date() }).where(eq(users.id, userId));
+  const updated = await getUserProfile(userId);
+  if (!updated) throw new Error("User profile not found after theme update");
+  return updated;
+}
+
+export async function createEmailVerificationToken(input: { userId: number; email: string; tokenHash: string; expiresAt: Date }): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(emailVerificationTokens).where(and(eq(emailVerificationTokens.userId, input.userId), isNull(emailVerificationTokens.verifiedAt)));
+  await db.insert(emailVerificationTokens).values(input);
+}
+
+export async function confirmEmailVerification(tokenHash: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const rows = await tx.select().from(emailVerificationTokens).where(and(eq(emailVerificationTokens.tokenHash, tokenHash), isNull(emailVerificationTokens.verifiedAt), gt(emailVerificationTokens.expiresAt, new Date()))).limit(1);
+    const token = rows[0];
+    if (!token) return false;
+    await tx.update(users).set({ email: token.email, updatedAt: new Date() }).where(eq(users.id, token.userId));
+    await tx.update(emailVerificationTokens).set({ verifiedAt: new Date() }).where(eq(emailVerificationTokens.id, token.id));
+    return true;
+  });
 }
 
 export async function getCustomerPaymentPreferences(userId: number): Promise<CustomerPaymentPreferences> {
@@ -95,10 +124,16 @@ export async function getSupportTicket(ticketId: number): Promise<SupportTicket 
   return result[0];
 }
 
-export async function listSupportTicketMessages(ticketId: number): Promise<SupportTicketMessage[]> {
+export async function listSupportTicketsForUser(userId: number, limit = 50, offset = 0): Promise<SupportTicket[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(supportTicketMessages).where(eq(supportTicketMessages.ticketId, ticketId)).orderBy(desc(supportTicketMessages.createdAt));
+  return db.select().from(supportTickets).where(eq(supportTickets.userId, userId)).orderBy(desc(supportTickets.updatedAt), desc(supportTickets.id)).limit(Math.min(limit, 100)).offset(Math.max(offset, 0));
+}
+
+export async function listSupportTicketMessages(ticketId: number, limit = 100, offset = 0): Promise<SupportTicketMessage[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(supportTicketMessages).where(eq(supportTicketMessages.ticketId, ticketId)).orderBy(desc(supportTicketMessages.createdAt), desc(supportTicketMessages.id)).limit(Math.min(limit, 200)).offset(Math.max(offset, 0));
 }
 
 export async function getSupportTicketMessageByIdempotencyKey(idempotencyKey: string): Promise<SupportTicketMessage | undefined> {
@@ -130,7 +165,7 @@ export async function markSupportTicketMessagesRead(ticketId: number): Promise<v
 export async function listOrderReviews(orderId: number): Promise<OrderReview[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(orderReviews).where(eq(orderReviews.orderId, orderId)).orderBy(desc(orderReviews.createdAt));
+  return db.select().from(orderReviews).where(eq(orderReviews.orderId, orderId)).orderBy(desc(orderReviews.createdAt)).limit(100);
 }
 
 export async function getOrderReviewByIdempotencyKey(idempotencyKey: string): Promise<OrderReview | undefined> {
@@ -240,7 +275,11 @@ export async function listAdminSupportTickets(limit = 50, offset = 0): Promise<S
 export async function updateSupportTicketStatus(ticketId: number, status: "open" | "in_progress" | "resolved" | "closed"): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(supportTickets).set({ status, updatedAt: new Date() }).where(eq(supportTickets.id, ticketId));
+  const current = await db.select({ id: supportTickets.id, status: supportTickets.status }).from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
+  if (!current[0]) throw new Error("Support ticket not found");
+  if (current[0].status === status) return;
+  const result = await db.update(supportTickets).set({ status, updatedAt: new Date() }).where(eq(supportTickets.id, ticketId));
+  if (Number((result as { affectedRows?: number }).affectedRows ?? 0) !== 1) throw new Error("Support ticket not found");
 }
 
 export async function getCouponByCode(code: string): Promise<Coupon | undefined> {
@@ -289,7 +328,7 @@ type CustomerAddressWrite = Omit<InsertCustomerAddress, "id" | "userId" | "isDef
 export async function listCustomerAddresses(userId: number): Promise<CustomerAddress[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(customerAddresses).where(eq(customerAddresses.userId, userId)).orderBy(customerAddresses.createdAt);
+  return db.select().from(customerAddresses).where(eq(customerAddresses.userId, userId)).orderBy(customerAddresses.createdAt).limit(100);
 }
 
 export async function getCustomerAddress(userId: number, addressId: number): Promise<CustomerAddress | undefined> {
@@ -366,8 +405,12 @@ export async function getStoreById(storeId: number): Promise<Store | undefined> 
 export async function createStore(input: InsertStore): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(stores).values(input);
-  return getInsertId(result);
+  return db.transaction(async (tx) => {
+    const result = await tx.insert(stores).values(input);
+    const storeId = getInsertId(result);
+    await tx.update(users).set({ role: "merchant", updatedAt: new Date() }).where(and(eq(users.id, input.ownerId), eq(users.role, "user")));
+    return storeId;
+  });
 }
 
 export type MarketplaceProduct = Product & { storeName: string; deliveryFee: string };
@@ -432,7 +475,7 @@ export async function createProduct(input: InsertProduct): Promise<number> {
 export async function listProductsForStore(storeId: number): Promise<Product[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(products).where(eq(products.storeId, storeId));
+  return db.select().from(products).where(eq(products.storeId, storeId)).orderBy(products.createdAt, products.id).limit(200);
 }
 
 export async function updateProductAvailability(productId: number, available: boolean): Promise<void> {
@@ -476,10 +519,10 @@ export async function getOrderForUser(orderId: number, userId: number) {
   return result[0];
 }
 
-export async function listOrdersForStore(storeId: number): Promise<Order[]> {
+export async function listOrdersForStore(storeId: number, limit = 50, offset = 0): Promise<Order[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(orders).where(eq(orders.storeId, storeId));
+  return db.select().from(orders).where(eq(orders.storeId, storeId)).orderBy(desc(orders.updatedAt), desc(orders.id)).limit(Math.min(limit, 100)).offset(Math.max(offset, 0));
 }
 
 export async function getCustomerCredit(storeId: number, customerId: number): Promise<Customer | undefined> {
@@ -573,10 +616,10 @@ export async function createOrderWithFiado(input: InsertOrder, items: Array<{ pr
   });
 }
 
-export async function listOrdersForCustomer(customerId: number): Promise<Order[]> {
+export async function listOrdersForCustomer(customerId: number, limit = 50, offset = 0): Promise<Order[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(orders).where(eq(orders.customerId, customerId));
+  return db.select().from(orders).where(eq(orders.customerId, customerId)).orderBy(desc(orders.updatedAt), desc(orders.id)).limit(Math.min(limit, 100)).offset(Math.max(offset, 0));
 }
 
 export async function updateOrderStatus(orderId: number, status: Order["status"]): Promise<void> {
@@ -625,31 +668,42 @@ export async function upsertDeliveryAssignment(input: InsertDeliveryAssignment):
   return created[0];
 }
 
-export async function recordDeliveryLocation(input: InsertDeliveryLocation): Promise<{ location: DeliveryLocation; assignment: DeliveryAssignment; created: boolean }> {
+export async function recordDeliveryLocation(input: InsertDeliveryLocation): Promise<{ location: DeliveryLocation; assignment: DeliveryAssignment; created: boolean; dispatched: boolean }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const existing = await db.select().from(deliveryLocations).where(eq(deliveryLocations.idempotencyKey, input.idempotencyKey)).limit(1);
-  if (existing[0]) {
-    const assignment = await getDeliveryAssignmentByOrder(input.orderId);
-    if (!assignment) throw new Error("Atribuição de entrega não encontrada");
-    return { location: existing[0], assignment, created: false };
-  }
-  let location: DeliveryLocation;
-  try {
-    const result = await db.insert(deliveryLocations).values(input);
-    const id = getInsertId(result);
-    const created = await db.select().from(deliveryLocations).where(eq(deliveryLocations.id, id)).limit(1);
-    if (!created[0]) throw new Error("Posição não encontrada após criação");
-    location = created[0];
-  } catch (error) {
-    const concurrent = await db.select().from(deliveryLocations).where(eq(deliveryLocations.idempotencyKey, input.idempotencyKey)).limit(1);
-    if (!concurrent[0]) throw error;
-    location = concurrent[0];
-  }
-  await db.update(deliveryAssignments).set({ currentLatitude: input.latitude, currentLongitude: input.longitude, etaMinutes: input.etaMinutes, lastLocationAt: input.createdAt ?? new Date(), status: "in_transit", updatedAt: new Date() }).where(eq(deliveryAssignments.id, input.assignmentId));
-  const assignment = await getDeliveryAssignmentByOrder(input.orderId);
-  if (!assignment) throw new Error("Atribuição de entrega não encontrada após atualização");
-  return { location, assignment, created: true };
+  return db.transaction(async (tx) => {
+    const existing = await tx.select().from(deliveryLocations).where(eq(deliveryLocations.idempotencyKey, input.idempotencyKey)).limit(1);
+    if (existing[0]) {
+      const assignments = await tx.select().from(deliveryAssignments).where(eq(deliveryAssignments.orderId, input.orderId)).limit(1);
+      if (!assignments[0]) throw new Error("Atribuição de entrega não encontrada");
+      return { location: existing[0], assignment: assignments[0], created: false, dispatched: false };
+    }
+
+    let location: DeliveryLocation;
+    try {
+      const result = await tx.insert(deliveryLocations).values(input);
+      const id = getInsertId(result);
+      const created = await tx.select().from(deliveryLocations).where(eq(deliveryLocations.id, id)).limit(1);
+      if (!created[0]) throw new Error("Posição não encontrada após criação");
+      location = created[0];
+    } catch (error) {
+      const concurrent = await tx.select().from(deliveryLocations).where(eq(deliveryLocations.idempotencyKey, input.idempotencyKey)).limit(1);
+      if (!concurrent[0]) throw error;
+      const assignments = await tx.select().from(deliveryAssignments).where(eq(deliveryAssignments.orderId, input.orderId)).limit(1);
+      if (!assignments[0]) throw new Error("Atribuição de entrega não encontrada");
+      return { location: concurrent[0], assignment: assignments[0], created: false, dispatched: false };
+    }
+
+    await tx.update(deliveryAssignments).set({ currentLatitude: input.latitude, currentLongitude: input.longitude, etaMinutes: input.etaMinutes, lastLocationAt: input.createdAt ?? new Date(), status: "in_transit", updatedAt: new Date() }).where(eq(deliveryAssignments.id, input.assignmentId));
+    const orderUpdate = await tx.update(orders).set({ status: "A caminho", updatedAt: new Date() }).where(sql`${orders.id} = ${input.orderId} AND ${orders.status} = 'Pronto'`);
+    const dispatched = Number((orderUpdate as { affectedRows?: number }).affectedRows ?? 0) === 1;
+    if (dispatched) {
+      await tx.insert(deliveryEvents).values({ orderId: input.orderId, eventType: "A caminho", latitude: input.latitude, longitude: input.longitude });
+    }
+    const assignments = await tx.select().from(deliveryAssignments).where(eq(deliveryAssignments.orderId, input.orderId)).limit(1);
+    if (!assignments[0]) throw new Error("Atribuição de entrega não encontrada após atualização");
+    return { location, assignment: assignments[0], created: true, dispatched };
+  });
 }
 
 export async function updateDeliveryAssignmentStatus(orderId: number, status: DeliveryAssignment["status"]): Promise<void> {
@@ -658,10 +712,27 @@ export async function updateDeliveryAssignmentStatus(orderId: number, status: De
   await db.update(deliveryAssignments).set({ status, updatedAt: new Date() }).where(eq(deliveryAssignments.orderId, orderId));
 }
 
-export async function listChatMessages(orderId: number): Promise<ChatMessage[]> {
+export async function completeDelivery(orderId: number): Promise<{ changed: boolean; status: Order["status"] }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const result = await tx.update(orders).set({ status: "Entregue", updatedAt: new Date() }).where(sql`${orders.id} = ${orderId} AND ${orders.status} = 'A caminho'`);
+    const changed = Number((result as { affectedRows?: number }).affectedRows ?? 0) === 1;
+    if (changed) {
+      await tx.update(deliveryAssignments).set({ status: "delivered", updatedAt: new Date() }).where(eq(deliveryAssignments.orderId, orderId));
+      await tx.insert(deliveryEvents).values({ orderId, eventType: "Entregue" });
+      return { changed: true, status: "Entregue" as const };
+    }
+    const current = await tx.select({ status: orders.status }).from(orders).where(eq(orders.id, orderId)).limit(1);
+    if (current[0]?.status === "Entregue") return { changed: false, status: "Entregue" as const };
+    throw new Error("A entrega não está pronta para ser encerrada");
+  });
+}
+
+export async function listChatMessages(orderId: number, limit = 100, offset = 0): Promise<ChatMessage[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(chatMessages).where(eq(chatMessages.orderId, orderId)).orderBy(chatMessages.createdAt, chatMessages.id);
+  return db.select().from(chatMessages).where(eq(chatMessages.orderId, orderId)).orderBy(chatMessages.createdAt, chatMessages.id).limit(Math.min(limit, 200)).offset(Math.max(offset, 0));
 }
 
 export async function getChatMessageByIdempotencyKey(idempotencyKey: string): Promise<ChatMessage | undefined> {
@@ -704,6 +775,13 @@ export async function getPaymentByTransactionId(transactionId: string): Promise<
   return result[0];
 }
 
+export async function getPaymentById(paymentId: number): Promise<Payment | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(payments).where(eq(payments.id, paymentId)).limit(1);
+  return result[0];
+}
+
 export async function createPendingPixPayment(orderId: number, pixKey: string, transactionId?: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -736,7 +814,7 @@ export type PaymentStatus = "pending" | "paid" | "failed" | "cancelled";
 
 export function canTransitionPayment(current: PaymentStatus, next: PaymentStatus): boolean {
   if (current === next) return true;
-  if (current === "pending") return next === "paid" || next === "failed";
+  if (current === "pending") return next === "paid" || next === "failed" || next === "cancelled";
   if (current === "failed") return next === "pending";
   return false;
 }
@@ -745,6 +823,50 @@ export async function updatePaymentStatus(paymentId: number, status: Exclude<Pay
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(payments).set({ status }).where(eq(payments.id, paymentId));
+}
+
+export async function applyPaymentWebhook(input: {
+  provider: string;
+  providerEventId: string;
+  eventType: string;
+  paymentId?: number;
+  transactionId?: string;
+  status: PaymentStatus;
+}): Promise<{ paymentId: number; status: PaymentStatus; duplicate: boolean }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const existingEvent = await db.select().from(webhookEvents).where(and(eq(webhookEvents.provider, input.provider), eq(webhookEvents.providerEventId, input.providerEventId))).limit(1);
+  if (existingEvent[0]?.status === "processed") {
+    const existingPayment = input.paymentId ? await getPaymentById(input.paymentId) : input.transactionId ? await getPaymentByTransactionId(input.transactionId) : undefined;
+    if (!existingPayment) throw new Error("Payment webhook already processed without a resolvable payment");
+    return { paymentId: existingPayment.id, status: existingPayment.status, duplicate: true };
+  }
+
+  return db.transaction(async (tx) => {
+    let event = existingEvent[0];
+    if (!event) {
+      const result = await tx.insert(webhookEvents).values({ provider: input.provider, providerEventId: input.providerEventId, eventType: input.eventType, status: "received" });
+      const eventId = getInsertId(result);
+      const rows = await tx.select().from(webhookEvents).where(eq(webhookEvents.id, eventId)).limit(1);
+      event = rows[0];
+    }
+    if (!event) throw new Error("Webhook event was not persisted");
+
+    const paymentRows = await tx.select().from(payments).where(input.paymentId ? eq(payments.id, input.paymentId) : eq(payments.transactionId, input.transactionId ?? "")).limit(1);
+    const payment = paymentRows[0];
+    if (!payment) {
+      await tx.update(webhookEvents).set({ status: "failed" }).where(eq(webhookEvents.id, event.id));
+      throw new Error("Payment not found for webhook");
+    }
+    if (!canTransitionPayment(payment.status, input.status)) {
+      await tx.update(webhookEvents).set({ status: "ignored", processedAt: new Date() }).where(eq(webhookEvents.id, event.id));
+      return { paymentId: payment.id, status: payment.status, duplicate: false };
+    }
+    await tx.update(payments).set({ status: input.status, transactionId: input.transactionId ?? payment.transactionId }).where(eq(payments.id, payment.id));
+    await tx.update(webhookEvents).set({ status: "processed", processedAt: new Date() }).where(eq(webhookEvents.id, event.id));
+    return { paymentId: payment.id, status: input.status, duplicate: false };
+  });
 }
 
 export async function cancelPendingPaymentForOrder(orderId: number): Promise<void> {
@@ -756,7 +878,7 @@ export async function cancelPendingPaymentForOrder(orderId: number): Promise<voi
 export async function listCustomersForStore(storeId: number): Promise<Customer[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(customers).where(eq(customers.storeId, storeId));
+  return db.select().from(customers).where(eq(customers.storeId, storeId)).orderBy(customers.createdAt, customers.id).limit(200);
 }
 
 export async function createCustomer(input: InsertCustomer): Promise<number> {
@@ -769,7 +891,7 @@ export async function createCustomer(input: InsertCustomer): Promise<number> {
 export async function listLedgerEntriesForStore(storeId: number): Promise<LedgerEntry[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(ledgerEntries).where(eq(ledgerEntries.storeId, storeId));
+  return db.select().from(ledgerEntries).where(eq(ledgerEntries.storeId, storeId)).orderBy(desc(ledgerEntries.createdAt), desc(ledgerEntries.id)).limit(200);
 }
 
 export async function createLedgerEntry(input: InsertLedgerEntry): Promise<number> {
@@ -797,7 +919,7 @@ export async function createLedgerEntry(input: InsertLedgerEntry): Promise<numbe
 export async function listSalesForStore(storeId: number): Promise<Sale[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(sales).where(eq(sales.storeId, storeId));
+  return db.select().from(sales).where(eq(sales.storeId, storeId)).orderBy(desc(sales.createdAt), desc(sales.id)).limit(200);
 }
 
 export async function createSale(input: InsertSale): Promise<number> {
@@ -826,10 +948,10 @@ export async function createNotification(input: InsertNotification): Promise<num
   return getInsertId(result);
 }
 
-export async function listNotificationsForUser(userId: number): Promise<Notification[]> {
+export async function listNotificationsForUser(userId: number, limit = 50, offset = 0): Promise<Notification[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(notifications).where(eq(notifications.userId, userId)).orderBy(desc(notifications.createdAt));
+  return db.select().from(notifications).where(eq(notifications.userId, userId)).orderBy(desc(notifications.createdAt), desc(notifications.id)).limit(Math.min(limit, 100)).offset(Math.max(offset, 0));
 }
 
 export async function markNotificationRead(userId: number, notificationId: number): Promise<void> {

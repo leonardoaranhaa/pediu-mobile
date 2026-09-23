@@ -99,7 +99,7 @@ export async function transcribeAudio(
     let audioBuffer: Buffer;
     let mimeType: string;
     try {
-      const response = await fetch(options.audioUrl);
+      const response = await fetch(options.audioUrl, { signal: AbortSignal.timeout(10_000) });
       if (!response.ok) {
         return {
           error: "Failed to download audio file",
@@ -154,6 +154,7 @@ export async function transcribeAudio(
 
     const response = await fetch(fullUrl, {
       method: "POST",
+      signal: AbortSignal.timeout(30_000),
       headers: {
         authorization: `Bearer ${ENV.forgeApiKey}`,
         "Accept-Encoding": "identity",

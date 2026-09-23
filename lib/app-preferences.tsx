@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import * as Auth from "@/lib/_core/auth";
 
 export type AppThemeId = "classic" | "ocean" | "sunset";
 
@@ -71,12 +72,21 @@ export const APP_THEMES: AppTheme[] = [
   },
 ];
 
-const STORAGE_KEY = "pediu:app-theme";
+const STORAGE_KEY = "pediu:app-theme:visitor";
+
+function storageKeyForUser(userId?: number | null) {
+  return userId ? `pediu:app-theme:user:${userId}` : STORAGE_KEY;
+}
+
+function isAppThemeId(value: string | null | undefined): value is AppThemeId {
+  return value === "classic" || value === "ocean" || value === "sunset";
+}
 
 type AppPreferencesValue = {
   themeId: AppThemeId;
   theme: AppTheme;
   setTheme: (themeId: AppThemeId) => void;
+  setThemeForUser: (userId: number, themeId: AppThemeId) => void;
   ready: boolean;
 };
 
@@ -100,12 +110,42 @@ export function AppPreferencesProvider({ children }: { children: ReactNode }) {
     void AsyncStorage.setItem(STORAGE_KEY, nextTheme);
   }, []);
 
+  const setThemeForUser = useCallback((userId: number, nextTheme: AppThemeId) => {
+    setThemeId(nextTheme);
+    void AsyncStorage.setItem(storageKeyForUser(userId), nextTheme);
+  }, []);
+
+  const applyUserTheme = useCallback((user: Auth.User | null) => {
+    if (!user?.id) {
+      void AsyncStorage.getItem(STORAGE_KEY).then((stored) => {
+        if (isAppThemeId(stored)) setThemeId(stored);
+      });
+      return;
+    }
+
+    if (isAppThemeId(user.themePreference)) {
+      setThemeForUser(user.id, user.themePreference);
+      return;
+    }
+
+    void AsyncStorage.getItem(storageKeyForUser(user.id)).then((stored) => {
+      if (isAppThemeId(stored)) setThemeId(stored);
+    });
+  }, [setThemeForUser]);
+
+  useEffect(() => {
+    const unsubscribe = Auth.subscribeUserInfo(applyUserTheme);
+    void Auth.getUserInfo().then(applyUserTheme);
+    return unsubscribe;
+  }, [applyUserTheme]);
+
   const value = useMemo(() => ({
     themeId,
     theme: APP_THEMES.find((item) => item.id === themeId) ?? APP_THEMES[0],
     setTheme,
+    setThemeForUser,
     ready,
-  }), [ready, setTheme, themeId]);
+  }), [ready, setTheme, setThemeForUser, themeId]);
 
   return <AppPreferencesContext.Provider value={value}>{children}</AppPreferencesContext.Provider>;
 }

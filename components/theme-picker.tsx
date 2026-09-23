@@ -1,6 +1,9 @@
+import { useEffect } from "react";
 import { Pressable, Text, View } from "react-native";
 import { APP_THEMES, useAppPreferences, type AppTheme } from "@/lib/app-preferences";
 import { s } from "@/components/pediu-page";
+import { useAuth } from "@/hooks/use-auth";
+import { trpc } from "@/lib/trpc";
 
 function ThemeOption({ theme, selected, onPress }: { theme: AppTheme; selected: boolean; onPress: () => void }) {
   return <Pressable onPress={onPress} style={({ pressed }) => [{ borderRadius: 20, padding: 14, borderWidth: 1.5, borderColor: selected ? theme.primary : theme.line, backgroundColor: theme.canvas, gap: 11 }, pressed && { opacity: 0.82, transform: [{ scale: 0.985 }] }]}>
@@ -15,11 +18,29 @@ function ThemeOption({ theme, selected, onPress }: { theme: AppTheme; selected: 
   </Pressable>;
 }
 
-export function ThemePicker({ title = "Personalize sua experiência", description = "A escolha fica salva neste dispositivo e pode ser alterada quando quiser." }: { title?: string; description?: string }) {
-  const { themeId, setTheme } = useAppPreferences();
+export function ThemePicker({ title = "Personalize sua experiência", description = "A escolha fica salva no seu perfil e também neste dispositivo." }: { title?: string; description?: string }) {
+  const { user, isAuthenticated } = useAuth();
+  const { themeId, setTheme, setThemeForUser } = useAppPreferences();
+  const profileQuery = trpc.pediu.account.profile.mine.useQuery(undefined, { enabled: isAuthenticated, staleTime: 60_000 });
+  const updateTheme = trpc.pediu.account.profile.theme.update.useMutation();
+
+  useEffect(() => {
+    const remoteTheme = profileQuery.data?.themePreference;
+    if (remoteTheme === "classic" || remoteTheme === "ocean" || remoteTheme === "sunset") {
+      if (user?.id) setThemeForUser(user.id, remoteTheme);
+      else setTheme(remoteTheme);
+    }
+  }, [profileQuery.data?.themePreference, setTheme, setThemeForUser, user?.id]);
+
+  const chooseTheme = (next: AppTheme["id"]) => {
+    if (user?.id) setThemeForUser(user.id, next);
+    else setTheme(next);
+    if (isAuthenticated) updateTheme.mutate({ themeId: next });
+  };
+
   return <View style={{ gap: 10 }}>
     <Text style={s.sectionTitle}>{title}</Text>
     <Text style={s.muted}>{description}</Text>
-    {APP_THEMES.map((theme) => <ThemeOption key={theme.id} theme={theme} selected={theme.id === themeId} onPress={() => setTheme(theme.id)} />)}
+    {APP_THEMES.map((theme) => <ThemeOption key={theme.id} theme={theme} selected={theme.id === themeId} onPress={() => chooseTheme(theme.id)} />)}
   </View>;
 }

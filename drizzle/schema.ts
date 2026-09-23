@@ -7,14 +7,27 @@ export const users = mysqlTable("users", {
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: mysqlEnum("role", ["user", "merchant", "admin"]).default("user").notNull(),
+  themePreference: varchar("themePreference", { length: 16 }).default("classic").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
+export const emailVerificationTokens = mysqlTable("pediu_email_verification_tokens", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  email: varchar("email", { length: 320 }).notNull(),
+  tokenHash: varchar("tokenHash", { length: 128 }).notNull().unique(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  verifiedAt: timestamp("verifiedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  userIdx: index("pediu_email_verification_user_idx").on(table.userId, table.createdAt),
+}));
+
 export const stores = mysqlTable("pediu_stores", {
   id: int("id").autoincrement().primaryKey(),
-  ownerId: int("ownerId").notNull(),
+  ownerId: int("ownerId").notNull().references(() => users.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 160 }).notNull(),
   phone: varchar("phone", { length: 32 }),
   address: varchar("address", { length: 255 }),
@@ -29,7 +42,7 @@ export const stores = mysqlTable("pediu_stores", {
 
 export const products = mysqlTable("pediu_products", {
   id: int("id").autoincrement().primaryKey(),
-  storeId: int("storeId").notNull(),
+  storeId: int("storeId").notNull().references(() => stores.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 180 }).notNull(),
   category: varchar("category", { length: 80 }).notNull(),
   description: text("description"),
@@ -40,8 +53,8 @@ export const products = mysqlTable("pediu_products", {
 
 export const orders = mysqlTable("pediu_orders", {
   id: int("id").autoincrement().primaryKey(),
-  customerId: int("customerId").notNull(),
-  storeId: int("storeId").notNull(),
+  customerId: int("customerId").notNull().references(() => users.id, { onDelete: "restrict" }),
+  storeId: int("storeId").notNull().references(() => stores.id, { onDelete: "restrict" }),
   status: mysqlEnum("status", ["Pendente", "Aceito", "Preparando", "Pronto", "A caminho", "Entregue", "Cancelado"]).default("Pendente").notNull(),
   total: decimal("total", { precision: 10, scale: 2 }).notNull(),
   couponCode: varchar("couponCode", { length: 40 }),
@@ -58,8 +71,8 @@ export const orders = mysqlTable("pediu_orders", {
 
 export const orderItems = mysqlTable("pediu_order_items", {
   id: int("id").autoincrement().primaryKey(),
-  orderId: int("orderId").notNull(),
-  productId: int("productId").notNull(),
+  orderId: int("orderId").notNull().references(() => orders.id, { onDelete: "cascade" }),
+  productId: int("productId").notNull().references(() => products.id, { onDelete: "restrict" }),
   quantity: int("quantity").default(1).notNull(),
   unitPrice: decimal("unitPrice", { precision: 10, scale: 2 }).notNull(),
   note: varchar("note", { length: 500 }),
@@ -69,7 +82,7 @@ export const orderItems = mysqlTable("pediu_order_items", {
 
 export const payments = mysqlTable("pediu_payments", {
   id: int("id").autoincrement().primaryKey(),
-  orderId: int("orderId").notNull(),
+  orderId: int("orderId").notNull().references(() => orders.id, { onDelete: "cascade" }),
   method: mysqlEnum("method", ["pix", "card", "cash", "fiado"]).default("pix").notNull(),
   status: mysqlEnum("status", ["pending", "paid", "failed", "cancelled"]).default("pending").notNull(),
   pixKey: varchar("pixKey", { length: 255 }),
@@ -82,7 +95,7 @@ export const payments = mysqlTable("pediu_payments", {
 
 export const customerPaymentPreferences = mysqlTable("pediu_customer_payment_preferences", {
   id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   pixEnabled: int("pixEnabled").default(1).notNull(),
   cardEnabled: int("cardEnabled").default(0).notNull(),
   cashEnabled: int("cashEnabled").default(1).notNull(),
@@ -257,7 +270,7 @@ export const pushTokens = mysqlTable("pediu_push_tokens", {
 
 export const customerAddresses = mysqlTable("pediu_customer_addresses", {
   id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   label: varchar("label", { length: 40 }).notNull(),
   recipientName: varchar("recipientName", { length: 160 }).notNull(),
   street: varchar("street", { length: 180 }).notNull(),
@@ -304,7 +317,7 @@ export const orderReviews = mysqlTable("pediu_order_reviews", {
 
 export const deliveryEvents = mysqlTable("pediu_delivery_events", {
   id: int("id").autoincrement().primaryKey(),
-  orderId: int("orderId").notNull(),
+  orderId: int("orderId").notNull().references(() => orders.id, { onDelete: "cascade" }),
   eventType: varchar("eventType", { length: 32 }).notNull(),
   latitude: decimal("latitude", { precision: 10, scale: 7 }),
   longitude: decimal("longitude", { precision: 10, scale: 7 }),
@@ -315,8 +328,8 @@ export const deliveryEvents = mysqlTable("pediu_delivery_events", {
 
 export const deliveryAssignments = mysqlTable("pediu_delivery_assignments", {
   id: int("id").autoincrement().primaryKey(),
-  orderId: int("orderId").notNull(),
-  courierId: int("courierId").notNull(),
+  orderId: int("orderId").notNull().references(() => orders.id, { onDelete: "cascade" }),
+  courierId: int("courierId").notNull().references(() => users.id, { onDelete: "restrict" }),
   courierName: varchar("courierName", { length: 160 }).notNull(),
   courierPhone: varchar("courierPhone", { length: 32 }),
   etaMinutes: int("etaMinutes"),
@@ -333,9 +346,9 @@ export const deliveryAssignments = mysqlTable("pediu_delivery_assignments", {
 
 export const deliveryLocations = mysqlTable("pediu_delivery_locations", {
   id: int("id").autoincrement().primaryKey(),
-  assignmentId: int("assignmentId").notNull(),
-  orderId: int("orderId").notNull(),
-  courierId: int("courierId").notNull(),
+  assignmentId: int("assignmentId").notNull().references(() => deliveryAssignments.id, { onDelete: "cascade" }),
+  orderId: int("orderId").notNull().references(() => orders.id, { onDelete: "cascade" }),
+  courierId: int("courierId").notNull().references(() => users.id, { onDelete: "restrict" }),
   latitude: decimal("latitude", { precision: 10, scale: 7 }).notNull(),
   longitude: decimal("longitude", { precision: 10, scale: 7 }).notNull(),
   etaMinutes: int("etaMinutes"),
@@ -348,8 +361,8 @@ export const deliveryLocations = mysqlTable("pediu_delivery_locations", {
 
 export const chatMessages = mysqlTable("pediu_chat_messages", {
   id: int("id").autoincrement().primaryKey(),
-  orderId: int("orderId"),
-  userId: int("userId").notNull(),
+  orderId: int("orderId").references(() => orders.id, { onDelete: "cascade" }),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   role: varchar("role", { length: 16 }).notNull(),
   body: varchar("body", { length: 2000 }).notNull(),
   idempotencyKey: varchar("idempotencyKey", { length: 160 }),
@@ -362,8 +375,8 @@ export const chatMessages = mysqlTable("pediu_chat_messages", {
 
 export const supportTickets = mysqlTable("pediu_support_tickets", {
   id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  orderId: int("orderId"),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  orderId: int("orderId").references(() => orders.id, { onDelete: "set null" }),
   subject: varchar("subject", { length: 160 }).notNull(),
   body: text("body").notNull(),
   status: mysqlEnum("status", ["open", "in_progress", "resolved", "closed"]).default("open").notNull(),
@@ -376,8 +389,8 @@ export const supportTickets = mysqlTable("pediu_support_tickets", {
 
 export const supportTicketMessages = mysqlTable("pediu_support_ticket_messages", {
   id: int("id").autoincrement().primaryKey(),
-  ticketId: int("ticketId").notNull(),
-  userId: int("userId").notNull(),
+  ticketId: int("ticketId").notNull().references(() => supportTickets.id, { onDelete: "cascade" }),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   role: varchar("role", { length: 16 }).notNull(),
   body: varchar("body", { length: 4000 }).notNull(),
   idempotencyKey: varchar("idempotencyKey", { length: 160 }),
@@ -390,7 +403,7 @@ export const supportTicketMessages = mysqlTable("pediu_support_ticket_messages",
 
 export const privacyConsents = mysqlTable("pediu_privacy_consents", {
   id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   kind: varchar("kind", { length: 40 }).notNull(),
   version: varchar("version", { length: 20 }).notNull(),
   acceptedAt: timestamp("acceptedAt").defaultNow().notNull(),
@@ -413,7 +426,7 @@ export const adminAuditLogs = mysqlTable("pediu_admin_audit_logs", {
 
 export const notifications = mysqlTable("pediu_notifications", {
   id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   title: varchar("title", { length: 160 }).notNull(),
   body: text("body").notNull(),
   type: varchar("type", { length: 40 }).default("general").notNull(),
@@ -426,7 +439,7 @@ export const notifications = mysqlTable("pediu_notifications", {
 
 export const notificationPreferences = mysqlTable("pediu_notification_preferences", {
   id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   orderUpdates: int("orderUpdates").default(1).notNull(),
   supportMessages: int("supportMessages").default(1).notNull(),
   promotions: int("promotions").default(1).notNull(),
@@ -438,6 +451,8 @@ export const notificationPreferences = mysqlTable("pediu_notification_preference
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
+export type EmailVerificationToken = typeof emailVerificationTokens.$inferSelect;
+export type InsertEmailVerificationToken = typeof emailVerificationTokens.$inferInsert;
 export type Store = typeof stores.$inferSelect;
 export type InsertStore = typeof stores.$inferInsert;
 export type Product = typeof products.$inferSelect;
