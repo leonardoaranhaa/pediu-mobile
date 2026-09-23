@@ -161,7 +161,7 @@ export default function HomeScreen() {
   const addLedgerMutation = trpc.pediu.ledger.add.useMutation();
   const registerPushMutation = trpc.pediu.notifications.register.useMutation();
   const markNotificationMutation = trpc.pediu.notifications.markRead.useMutation({ onSuccess: () => { void notificationsQuery.refetch(); } });
-  const createStoreMutation = trpc.pediu.stores.create.useMutation({ onSuccess: async () => { setShowSellerOnboarding(false); await refreshAuth(); void storeQuery.refetch(); notify("Sua loja foi criada"); } });
+  const createStoreMutation = trpc.pediu.stores.create.useMutation({ onSuccess: async () => { setShowSellerOnboarding(false); setRole("seller"); setSellerTab("home"); await refreshAuth(); void storeQuery.refetch(); notify("Sua loja foi criada"); } });
   const createProductMutation = trpc.pediu.products.create.useMutation({
     onSuccess: () => {
       setNewProductName("");
