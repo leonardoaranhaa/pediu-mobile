@@ -78,6 +78,97 @@
       "when": 1790122000000,
       "tag": "0010_secondary_operational_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1789988609530,
+      "tag": "0011_customer_experience_domains",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1789989352859,
+      "tag": "0012_order_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1790007198817,
+      "tag": "0013_order_coupon_discount",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "5",
+      "when": 1790008087302,
+      "tag": "0014_support_tickets",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "5",
+      "when": 1790008248268,
+      "tag": "0015_order_item_notes",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "5",
+      "when": 1790008306615,
+      "tag": "0016_privacy_consents",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1790069087197,
+      "tag": "0017_delivery_assignments_locations",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1790070036592,
+      "tag": "0018_communication_preferences",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1790071028794,
+      "tag": "0019_customer_payment_preferences",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "5",
+      "when": 1790071968358,
+      "tag": "0020_review_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "5",
+      "when": 1790072598670,
+      "tag": "0021_support_ticket_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1790080000000,
+      "tag": "0022_user_theme_email_verification",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1790080100000,
+      "tag": "0023_core_foreign_keys",
+      "breakpoints": true
     }
   ]
 }

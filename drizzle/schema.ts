@@ -7,14 +7,27 @@ export const users = mysqlTable("users", {
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: mysqlEnum("role", ["user", "merchant", "admin"]).default("user").notNull(),
+  themePreference: varchar("themePreference", { length: 16 }).default("classic").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
+export const emailVerificationTokens = mysqlTable("pediu_email_verification_tokens", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  email: varchar("email", { length: 320 }).notNull(),
+  tokenHash: varchar("tokenHash", { length: 128 }).notNull().unique(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  verifiedAt: timestamp("verifiedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  userIdx: index("pediu_email_verification_user_idx").on(table.userId, table.createdAt),
+}));
+
 export const stores = mysqlTable("pediu_stores", {
   id: int("id").autoincrement().primaryKey(),
-  ownerId: int("ownerId").notNull(),
+  ownerId: int("ownerId").notNull().references(() => users.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 160 }).notNull(),
   phone: varchar("phone", { length: 32 }),
   address: varchar("address", { length: 255 }),
@@ -29,7 +42,7 @@ export const stores = mysqlTable("pediu_stores", {
 
 export const products = mysqlTable("pediu_products", {
   id: int("id").autoincrement().primaryKey(),
-  storeId: int("storeId").notNull(),
+  storeId: int("storeId").notNull().references(() => stores.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 180 }).notNull(),
   category: varchar("category", { length: 80 }).notNull(),
   description: text("description"),
@@ -40,31 +53,36 @@ export const products = mysqlTable("pediu_products", {
 
 export const orders = mysqlTable("pediu_orders", {
   id: int("id").autoincrement().primaryKey(),
-  customerId: int("customerId").notNull(),
-  storeId: int("storeId").notNull(),
+  customerId: int("customerId").notNull().references(() => users.id, { onDelete: "restrict" }),
+  storeId: int("storeId").notNull().references(() => stores.id, { onDelete: "restrict" }),
   status: mysqlEnum("status", ["Pendente", "Aceito", "Preparando", "Pronto", "A caminho", "Entregue", "Cancelado"]).default("Pendente").notNull(),
   total: decimal("total", { precision: 10, scale: 2 }).notNull(),
+  couponCode: varchar("couponCode", { length: 40 }),
+  discount: decimal("discount", { precision: 10, scale: 2 }).default("0.00").notNull(),
   deliveryAddress: varchar("deliveryAddress", { length: 255 }),
+  idempotencyKey: varchar("idempotencyKey", { length: 160 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
   customerCreatedIdx: index("pediu_orders_customer_created_idx").on(table.customerId, table.createdAt),
   storeStatusCreatedIdx: index("pediu_orders_store_status_created_idx").on(table.storeId, table.status, table.createdAt),
+  idempotencyUnique: unique("pediu_orders_idempotency_unique").on(table.idempotencyKey),
 }));
 
 export const orderItems = mysqlTable("pediu_order_items", {
   id: int("id").autoincrement().primaryKey(),
-  orderId: int("orderId").notNull(),
-  productId: int("productId").notNull(),
+  orderId: int("orderId").notNull().references(() => orders.id, { onDelete: "cascade" }),
+  productId: int("productId").notNull().references(() => products.id, { onDelete: "restrict" }),
   quantity: int("quantity").default(1).notNull(),
   unitPrice: decimal("unitPrice", { precision: 10, scale: 2 }).notNull(),
+  note: varchar("note", { length: 500 }),
 }, (table) => ({
   orderIdx: index("pediu_order_items_order_idx").on(table.orderId),
 }));
 
 export const payments = mysqlTable("pediu_payments", {
   id: int("id").autoincrement().primaryKey(),
-  orderId: int("orderId").notNull(),
+  orderId: int("orderId").notNull().references(() => orders.id, { onDelete: "cascade" }),
   method: mysqlEnum("method", ["pix", "card", "cash", "fiado"]).default("pix").notNull(),
   status: mysqlEnum("status", ["pending", "paid", "failed", "cancelled"]).default("pending").notNull(),
   pixKey: varchar("pixKey", { length: 255 }),
@@ -73,6 +91,17 @@ export const payments = mysqlTable("pediu_payments", {
 }, (table) => ({
   transactionUnique: unique("pediu_payments_transaction_unique").on(table.transactionId),
   orderStatusIdx: index("pediu_payments_order_status_idx").on(table.orderId, table.status),
+}));
+
+export const customerPaymentPreferences = mysqlTable("pediu_customer_payment_preferences", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  pixEnabled: int("pixEnabled").default(1).notNull(),
+  cardEnabled: int("cardEnabled").default(0).notNull(),
+  cashEnabled: int("cashEnabled").default(1).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  userUnique: unique("pediu_customer_payment_preferences_user_unique").on(table.userId),
 }));
 
 
@@ -239,6 +268,150 @@ export const pushTokens = mysqlTable("pediu_push_tokens", {
   userIdx: index("pediu_push_tokens_user_idx").on(table.userId),
 }));
 
+export const customerAddresses = mysqlTable("pediu_customer_addresses", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  label: varchar("label", { length: 40 }).notNull(),
+  recipientName: varchar("recipientName", { length: 160 }).notNull(),
+  street: varchar("street", { length: 180 }).notNull(),
+  number: varchar("number", { length: 30 }).notNull(),
+  complement: varchar("complement", { length: 120 }),
+  neighborhood: varchar("neighborhood", { length: 100 }).notNull(),
+  city: varchar("city", { length: 100 }).notNull(),
+  state: varchar("state", { length: 2 }).notNull(),
+  postalCode: varchar("postalCode", { length: 8 }).notNull(),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  isDefault: int("isDefault").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const coupons = mysqlTable("pediu_coupons", {
+  id: int("id").autoincrement().primaryKey(),
+  code: varchar("code", { length: 40 }).notNull().unique(),
+  type: varchar("type", { length: 16 }).notNull(),
+  value: decimal("value", { precision: 10, scale: 2 }).notNull(),
+  minSubtotal: decimal("minSubtotal", { precision: 10, scale: 2 }).default("0.00").notNull(),
+  maxDiscount: decimal("maxDiscount", { precision: 10, scale: 2 }),
+  active: int("active").default(1).notNull(),
+  expiresAt: timestamp("expiresAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const orderReviews = mysqlTable("pediu_order_reviews", {
+  id: int("id").autoincrement().primaryKey(),
+  orderId: int("orderId").notNull(),
+  userId: int("userId").notNull(),
+  target: varchar("target", { length: 16 }).notNull(),
+  productId: int("productId"),
+  rating: int("rating").notNull(),
+  comment: text("comment"),
+  idempotencyKey: varchar("idempotencyKey", { length: 160 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  reviewUnique: unique("pediu_review_unique").on(table.orderId, table.userId, table.target, table.productId),
+  idempotencyUnique: unique("pediu_review_idempotency_unique").on(table.idempotencyKey),
+  orderIdx: index("pediu_review_order_idx").on(table.orderId),
+}));
+
+export const deliveryEvents = mysqlTable("pediu_delivery_events", {
+  id: int("id").autoincrement().primaryKey(),
+  orderId: int("orderId").notNull().references(() => orders.id, { onDelete: "cascade" }),
+  eventType: varchar("eventType", { length: 32 }).notNull(),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  orderCreatedIdx: index("pediu_delivery_events_order_created_idx").on(table.orderId, table.createdAt),
+}));
+
+export const deliveryAssignments = mysqlTable("pediu_delivery_assignments", {
+  id: int("id").autoincrement().primaryKey(),
+  orderId: int("orderId").notNull().references(() => orders.id, { onDelete: "cascade" }),
+  courierId: int("courierId").notNull().references(() => users.id, { onDelete: "restrict" }),
+  courierName: varchar("courierName", { length: 160 }).notNull(),
+  courierPhone: varchar("courierPhone", { length: 32 }),
+  etaMinutes: int("etaMinutes"),
+  status: mysqlEnum("status", ["assigned", "in_transit", "delivered", "cancelled"]).default("assigned").notNull(),
+  currentLatitude: decimal("currentLatitude", { precision: 10, scale: 7 }),
+  currentLongitude: decimal("currentLongitude", { precision: 10, scale: 7 }),
+  lastLocationAt: timestamp("lastLocationAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  orderUnique: unique("pediu_delivery_assignment_order_unique").on(table.orderId),
+  courierIdx: index("pediu_delivery_assignment_courier_idx").on(table.courierId, table.status),
+}));
+
+export const deliveryLocations = mysqlTable("pediu_delivery_locations", {
+  id: int("id").autoincrement().primaryKey(),
+  assignmentId: int("assignmentId").notNull().references(() => deliveryAssignments.id, { onDelete: "cascade" }),
+  orderId: int("orderId").notNull().references(() => orders.id, { onDelete: "cascade" }),
+  courierId: int("courierId").notNull().references(() => users.id, { onDelete: "restrict" }),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }).notNull(),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }).notNull(),
+  etaMinutes: int("etaMinutes"),
+  idempotencyKey: varchar("idempotencyKey", { length: 160 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  idempotencyUnique: unique("pediu_delivery_location_idempotency_unique").on(table.idempotencyKey),
+  assignmentCreatedIdx: index("pediu_delivery_location_assignment_created_idx").on(table.assignmentId, table.createdAt),
+}));
+
+export const chatMessages = mysqlTable("pediu_chat_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  orderId: int("orderId").references(() => orders.id, { onDelete: "cascade" }),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: varchar("role", { length: 16 }).notNull(),
+  body: varchar("body", { length: 2000 }).notNull(),
+  idempotencyKey: varchar("idempotencyKey", { length: 160 }),
+  readAt: timestamp("readAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  idempotencyUnique: unique("pediu_chat_message_idempotency_unique").on(table.idempotencyKey),
+  orderCreatedIdx: index("pediu_chat_order_created_idx").on(table.orderId, table.createdAt),
+}));
+
+export const supportTickets = mysqlTable("pediu_support_tickets", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  orderId: int("orderId").references(() => orders.id, { onDelete: "set null" }),
+  subject: varchar("subject", { length: 160 }).notNull(),
+  body: text("body").notNull(),
+  status: mysqlEnum("status", ["open", "in_progress", "resolved", "closed"]).default("open").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  userCreatedIdx: index("pediu_support_user_created_idx").on(table.userId, table.createdAt),
+  orderIdx: index("pediu_support_order_idx").on(table.orderId),
+}));
+
+export const supportTicketMessages = mysqlTable("pediu_support_ticket_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  ticketId: int("ticketId").notNull().references(() => supportTickets.id, { onDelete: "cascade" }),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: varchar("role", { length: 16 }).notNull(),
+  body: varchar("body", { length: 4000 }).notNull(),
+  idempotencyKey: varchar("idempotencyKey", { length: 160 }),
+  readAt: timestamp("readAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  idempotencyUnique: unique("pediu_support_message_idempotency_unique").on(table.idempotencyKey),
+  ticketCreatedIdx: index("pediu_support_message_ticket_created_idx").on(table.ticketId, table.createdAt),
+}));
+
+export const privacyConsents = mysqlTable("pediu_privacy_consents", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  kind: varchar("kind", { length: 40 }).notNull(),
+  version: varchar("version", { length: 20 }).notNull(),
+  acceptedAt: timestamp("acceptedAt").defaultNow().notNull(),
+}, (table) => ({
+  consentUnique: unique("pediu_privacy_consent_unique").on(table.userId, table.kind, table.version),
+  userIdx: index("pediu_privacy_consent_user_idx").on(table.userId),
+}));
+
 export const adminAuditLogs = mysqlTable("pediu_admin_audit_logs", {
   id: int("id").autoincrement().primaryKey(),
   actorId: int("actorId").notNull(),
@@ -253,18 +426,33 @@ export const adminAuditLogs = mysqlTable("pediu_admin_audit_logs", {
 
 export const notifications = mysqlTable("pediu_notifications", {
   id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   title: varchar("title", { length: 160 }).notNull(),
   body: text("body").notNull(),
   type: varchar("type", { length: 40 }).default("general").notNull(),
+  actionPath: varchar("actionPath", { length: 255 }),
   readAt: timestamp("readAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => ({
   userReadCreatedIdx: index("pediu_notifications_user_read_created_idx").on(table.userId, table.readAt, table.createdAt),
 }));
 
+export const notificationPreferences = mysqlTable("pediu_notification_preferences", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  orderUpdates: int("orderUpdates").default(1).notNull(),
+  supportMessages: int("supportMessages").default(1).notNull(),
+  promotions: int("promotions").default(1).notNull(),
+  pushEnabled: int("pushEnabled").default(1).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  userUnique: unique("pediu_notification_preferences_user_unique").on(table.userId),
+}));
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
+export type EmailVerificationToken = typeof emailVerificationTokens.$inferSelect;
+export type InsertEmailVerificationToken = typeof emailVerificationTokens.$inferInsert;
 export type Store = typeof stores.$inferSelect;
 export type InsertStore = typeof stores.$inferInsert;
 export type Product = typeof products.$inferSelect;
@@ -272,6 +460,8 @@ export type InsertProduct = typeof products.$inferInsert;
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = typeof orders.$inferInsert;
 export type Payment = typeof payments.$inferSelect;
+export type CustomerPaymentPreferences = typeof customerPaymentPreferences.$inferSelect;
+export type InsertCustomerPaymentPreferences = typeof customerPaymentPreferences.$inferInsert;
 export type PaymentAccount = typeof paymentAccounts.$inferSelect;
 export type PaymentTransaction = typeof paymentTransactions.$inferSelect;
 export type CommissionRule = typeof commissionRules.$inferSelect;
@@ -289,7 +479,29 @@ export type Sale = typeof sales.$inferSelect;
 export type InsertSale = typeof sales.$inferInsert;
 export type PushToken = typeof pushTokens.$inferSelect;
 export type InsertPushToken = typeof pushTokens.$inferInsert;
+export type CustomerAddress = typeof customerAddresses.$inferSelect;
+export type InsertCustomerAddress = typeof customerAddresses.$inferInsert;
+export type Coupon = typeof coupons.$inferSelect;
+export type InsertCoupon = typeof coupons.$inferInsert;
+export type OrderReview = typeof orderReviews.$inferSelect;
+export type InsertOrderReview = typeof orderReviews.$inferInsert;
+export type DeliveryEvent = typeof deliveryEvents.$inferSelect;
+export type InsertDeliveryEvent = typeof deliveryEvents.$inferInsert;
+export type ChatMessage = typeof chatMessages.$inferSelect;
+export type InsertChatMessage = typeof chatMessages.$inferInsert;
+export type DeliveryAssignment = typeof deliveryAssignments.$inferSelect;
+export type InsertDeliveryAssignment = typeof deliveryAssignments.$inferInsert;
+export type DeliveryLocation = typeof deliveryLocations.$inferSelect;
+export type InsertDeliveryLocation = typeof deliveryLocations.$inferInsert;
+export type SupportTicket = typeof supportTickets.$inferSelect;
+export type InsertSupportTicket = typeof supportTickets.$inferInsert;
+export type SupportTicketMessage = typeof supportTicketMessages.$inferSelect;
+export type InsertSupportTicketMessage = typeof supportTicketMessages.$inferInsert;
+export type PrivacyConsent = typeof privacyConsents.$inferSelect;
+export type InsertPrivacyConsent = typeof privacyConsents.$inferInsert;
 export type AdminAuditLog = typeof adminAuditLogs.$inferSelect;
 export type InsertAdminAuditLog = typeof adminAuditLogs.$inferInsert;
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = typeof notifications.$inferInsert;
+export type NotificationPreferences = typeof notificationPreferences.$inferSelect;
+export type InsertNotificationPreferences = typeof notificationPreferences.$inferInsert;

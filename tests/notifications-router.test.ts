@@ -25,7 +25,7 @@ describe("Pediu notifications contract", () => {
     const caller = appRouter.createCaller({ user } as any);
     const result = await caller.pediu.notifications.mine();
 
-    expect(db.listNotificationsForUser).toHaveBeenCalledWith(20);
+    expect(db.listNotificationsForUser).toHaveBeenCalledWith(20, 50, 0);
     expect(result[0]).toMatchObject({ userId: 20, type: "order" });
   });
 

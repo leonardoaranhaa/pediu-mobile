@@ -1,8 +1,9 @@
-import { Text } from "react-native";
+import { MaterialIcons } from "@expo/vector-icons";
+import { Text, View } from "react-native";
 import { router } from "expo-router";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
-import { Page, Card, Row, s } from "@/components/pediu-page";
+import { Page, Card, PrimaryButton, Row, PEDIU, s } from "@/components/pediu-page";
 
 export default function OrdersPage() {
   const { isAuthenticated } = useAuth();
@@ -10,8 +11,13 @@ export default function OrdersPage() {
 
   return (
     <Page title="Meus pedidos" eyebrow="HISTÓRICO">
+      <View style={{ backgroundColor: PEDIU.ink, borderRadius: 26, padding: 19, gap: 8, overflow: "hidden" }}>
+        <MaterialIcons name="local-mall" size={24} color={PEDIU.yellow} />
+        <Text style={{ color: PEDIU.white, fontSize: 21, fontWeight: "900", letterSpacing: -0.5 }}>Tudo que você pediu, em um só lugar.</Text>
+        <Text style={{ color: "#BCD0D1", fontSize: 12, lineHeight: 18 }}>Acompanhe cada etapa e volte a pedir seus favoritos quando quiser.</Text>
+      </View>
       {!isAuthenticated ? (
-        <Card><Text style={s.muted}>Entre para consultar seus pedidos sincronizados.</Text></Card>
+        <Card><Text style={s.sectionTitle}>Sincronize seu histórico</Text><Text style={s.muted}>Entre para consultar seus pedidos sincronizados em qualquer dispositivo.</Text><PrimaryButton title="Entrar com login seguro" onPress={() => router.push("/login")} /></Card>
       ) : q.isLoading ? (
         <Card><Text style={s.muted}>Carregando pedidos...</Text></Card>
       ) : q.isError ? (

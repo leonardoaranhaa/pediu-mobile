@@ -137,6 +137,7 @@ describe("Pediu Fiado contract", () => {
     } as any);
 
     const result = await caller.pediu.orders.create({
+      idempotencyKey: "test-fiado-order",
       storeId: 7,
       total: "30.00",
       paymentMethod: "fiado",
@@ -150,7 +151,10 @@ describe("Pediu Fiado contract", () => {
         customerId: 20,
         storeId: 7,
         total: "30.00",
+        couponCode: undefined,
+        discount: "0.00",
         deliveryAddress: "Rua Teste, 10",
+        idempotencyKey: "test-fiado-order",
       },
       [{ productId: 101, quantity: 1, unitPrice: "30.00" }],
       301,

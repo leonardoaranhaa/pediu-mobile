@@ -6,9 +6,10 @@ import { useAuth } from "@/hooks/use-auth";
 import { startOAuthLogin } from "@/constants/oauth";
 import { trpc } from "@/lib/trpc";
 import { Page, Card, Field, Row, PrimaryButton, OutlineButton, PEDIU, s } from "@/components/pediu-page";
-
+import { useAppPreferences } from "@/lib/app-preferences";
 export default function SellerHomePage() {
   const { user, isAuthenticated, refresh } = useAuth();
+  const { theme } = useAppPreferences();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
@@ -25,7 +26,7 @@ export default function SellerHomePage() {
   if (!isAuthenticated) {
     return <Page title="Minha loja" eyebrow="PAINEL DA LOJA">
       <Card>
-        <MaterialIcons name="lock" size={24} color={PEDIU.coral} />
+        <MaterialIcons name="lock" size={24} color={theme.primary} />
         <Text style={s.sectionTitle}>Entre para começar a vender</Text>
         <Text style={s.muted}>A criação da loja e os pedidos ficam vinculados à sua conta segura.</Text>
         <PrimaryButton title="Entrar com login seguro" onPress={() => void startOAuthLogin()} />
@@ -44,21 +45,21 @@ export default function SellerHomePage() {
         <Field label="ENDEREÇO" value={address} onChangeText={setAddress} placeholder="Rua, número e bairro" />
         <Field label="CHAVE PIX" value={pixKey} onChangeText={setPixKey} placeholder="CPF, telefone ou e-mail" />
         <PrimaryButton title={createStore.isPending ? "Salvando..." : "Criar minha loja"} disabled={createStore.isPending || name.trim().length < 2} onPress={() => createStore.mutate({ name: name.trim(), phone: phone.trim() || undefined, address: address.trim() || undefined, pixKey: pixKey.trim() || undefined, deliveryFee: "0.00" })} />
-        {createStore.error ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{createStore.error.message}</Text> : null}
+        {createStore.error ? <Text style={{ color: theme.primary, fontSize: 12 }}>{createStore.error.message}</Text> : null}
       </Card>
     </Page>;
   }
 
   return <Page title="Minha loja" eyebrow="PAINEL DA LOJA">
-    <View style={{ backgroundColor: PEDIU.ink, borderRadius: 24, padding: 20, gap: 4 }}>
-      <Text style={{ color: PEDIU.yellow, fontSize: 10, fontWeight: "900", letterSpacing: 1.2 }}>PAINEL DA LOJA</Text>
+    <View style={{ backgroundColor: theme.ink, borderRadius: 24, padding: 20, gap: 4 }}>
+      <Text style={{ color: theme.highlight, fontSize: 10, fontWeight: "900", letterSpacing: 1.2 }}>PAINEL DA LOJA</Text>
       <Text style={{ color: PEDIU.white, fontSize: 23, fontWeight: "800" }}>{store.data.name}</Text>
       <Text style={{ color: "#BCD0D1", fontSize: 12 }}>{store.data.isOpen ? "Loja aberta para receber pedidos" : "Loja fechada ou pausada"}</Text>
       <View style={{ marginTop: 12 }}><PrimaryButton title="Abrir pedidos" onPress={() => router.push("/seller/orders")} /></View>
     </View>
     <View style={{ flexDirection: "row", gap: 12 }}>
-      <Card style={{ flex: 1 }}><Text style={{ color: PEDIU.ink, fontSize: 22, fontWeight: "900" }}>{orders.data?.length ?? 0}</Text><Text style={s.muted}>Pedidos</Text></Card>
-      <Card style={{ flex: 1 }}><MaterialIcons name="storefront" size={22} color={PEDIU.coral} /><Text style={s.muted}>{store.data.isOpen ? "Recebendo" : "Pausada"}</Text></Card>
+      <Card style={{ flex: 1 }}><Text style={{ color: theme.ink, fontSize: 22, fontWeight: "900" }}>{orders.data?.length ?? 0}</Text><Text style={s.muted}>Pedidos</Text></Card>
+      <Card style={{ flex: 1 }}><MaterialIcons name="storefront" size={22} color={theme.primary} /><Text style={s.muted}>{store.data.isOpen ? "Recebendo" : "Pausada"}</Text></Card>
     </View>
     <Card>
       <Row icon="inventory-2" title="Catálogo" subtitle="Produtos, preços e disponibilidade" onPress={() => router.push("/seller/catalog")} />

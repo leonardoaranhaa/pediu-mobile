@@ -46,6 +46,7 @@ describe("Pediu order/payment consistency", () => {
 
     const caller = appRouter.createCaller({ user: customer } as any);
     const result = await caller.pediu.orders.create({
+      idempotencyKey: "test-atomic-order",
       storeId: 7,
       total: "35.00",
       paymentMethod: "pix",
@@ -58,7 +59,10 @@ describe("Pediu order/payment consistency", () => {
         customerId: 20,
         storeId: 7,
         total: "35.00",
+        couponCode: undefined,
+        discount: "0.00",
         deliveryAddress: "Rua Teste, 10",
+        idempotencyKey: "test-atomic-order",
       },
       [{ productId: 101, quantity: 1, unitPrice: "30.00" }],
       "pix",

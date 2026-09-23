@@ -16,6 +16,10 @@ export const adminRouter = router({
 
   payments: adminProcedure.input(pagination).query(({ input }) => db.listAdminPayments(input.limit, input.offset)),
 
+  support: adminProcedure.input(pagination).query(({ input }) => db.listAdminSupportTickets(input.limit, input.offset)),
+
+  supportStatus: adminProcedure.input(z.object({ ticketId: z.number().int().positive(), status: z.enum(["open", "in_progress", "resolved", "closed"]) })).mutation(async ({ ctx, input }) => { await db.updateSupportTicketStatus(input.ticketId, input.status); await db.createAdminAuditLog({ actorId: ctx.user.id, action: "support_ticket_status_updated", entityType: "support_ticket", entityId: input.ticketId, metadata: JSON.stringify({ status: input.status }) }); return { success: true as const }; }),
+
   credit: adminProcedure.input(pagination).query(({ input }) => db.listAdminCustomers(input.limit, input.offset)),
 
   ledger: adminProcedure.input(pagination).query(({ input }) => db.listAdminLedgerEntries(input.limit, input.offset)),

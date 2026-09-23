@@ -26,6 +26,9 @@ describe("Pediu admin authorization and contracts", () => {
     vi.spyOn(db, "listAdminCustomers").mockResolvedValue([{ id: 301, storeId: 7, userId: 10, balance: "5.00" }] as any);
     vi.spyOn(db, "listAdminLedgerEntries").mockResolvedValue([{ id: 401, storeId: 7, customerId: 301, type: "credit", amount: "5.00" }] as any);
     vi.spyOn(db, "listAdminAuditLogs").mockResolvedValue([{ id: 501, actorId: 1, action: "read", entityType: "user" }] as any);
+    vi.spyOn(db, "listAdminSupportTickets").mockResolvedValue([{ id: 601, userId: 10, subject: "Ajuda", body: "Preciso de ajuda", status: "open", createdAt: new Date(), updatedAt: new Date() }] as any);
+    vi.spyOn(db, "updateSupportTicketStatus").mockResolvedValue(undefined);
+    vi.spyOn(db, "createAdminAuditLog").mockResolvedValue(701);
 
     const caller = appRouter.createCaller({ user: admin } as any);
     const input = { limit: 20, offset: 0 };
@@ -37,6 +40,8 @@ describe("Pediu admin authorization and contracts", () => {
     await expect(caller.admin.credit(input)).resolves.toHaveLength(1);
     await expect(caller.admin.ledger(input)).resolves.toHaveLength(1);
     await expect(caller.admin.audit(input)).resolves.toHaveLength(1);
+    await expect(caller.admin.support(input)).resolves.toHaveLength(1);
+    await expect(caller.admin.supportStatus({ ticketId: 601, status: "in_progress" })).resolves.toEqual({ success: true });
   });
 
   it("rejects merchant access to every administrative contract", async () => {
@@ -61,5 +66,13 @@ describe("Pediu admin authorization and contracts", () => {
     await expect(caller.admin.users({ limit: 101, offset: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(caller.admin.users({ limit: 0, offset: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(caller.admin.users({ limit: 20, offset: -1 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("does not audit a status change for a missing ticket", async () => {
+    vi.spyOn(db, "updateSupportTicketStatus").mockRejectedValue(new Error("Support ticket not found"));
+    const audit = vi.spyOn(db, "createAdminAuditLog");
+    const caller = appRouter.createCaller({ user: admin } as any);
+    await expect(caller.admin.supportStatus({ ticketId: 9999, status: "closed" })).rejects.toThrow("Support ticket not found");
+    expect(audit).not.toHaveBeenCalled();
   });
 });
