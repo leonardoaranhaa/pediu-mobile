@@ -22,3 +22,24 @@ jobs:
       - run: pnpm check
       - run: pnpm test
       - run: pnpm build
+
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Install Flutter dependencies
+        working-directory: flutter_app
+        run: flutter pub get
+      - name: Analyze Flutter client
+        working-directory: flutter_app
+        run: flutter analyze
+      - name: Test Flutter client
+        working-directory: flutter_app
+        run: flutter test
+      - name: Build Flutter Web client
+        working-directory: flutter_app
+        run: flutter build web --release
