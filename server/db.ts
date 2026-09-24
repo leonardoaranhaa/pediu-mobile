@@ -413,6 +413,21 @@ export async function createStore(input: InsertStore): Promise<number> {
   });
 }
 
+export type UpdateStoreInput = Partial<Pick<InsertStore, "name" | "phone" | "address" | "pixKey" | "deliveryFee" | "isOpen">>;
+
+export async function updateStoreForOwner(ownerId: number, input: UpdateStoreInput): Promise<Store> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const current = await db.select({ id: stores.id }).from(stores).where(eq(stores.ownerId, ownerId)).limit(1);
+  if (!current[0]) throw new Error("Loja não encontrada");
+  const changes = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)) as UpdateStoreInput;
+  if (!Object.keys(changes).length) return (await getStoreForOwner(ownerId))!;
+  await db.update(stores).set(changes).where(and(eq(stores.id, current[0].id), eq(stores.ownerId, ownerId)));
+  const updated = await getStoreForOwner(ownerId);
+  if (!updated) throw new Error("Loja não encontrada após atualização");
+  return updated;
+}
+
 export type MarketplaceProduct = Product & { storeName: string; deliveryFee: string };
 
 export type MarketplaceSearchInput = {

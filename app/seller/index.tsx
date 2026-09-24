@@ -65,6 +65,7 @@ export default function SellerHomePage() {
       <Row icon="inventory-2" title="Catálogo" subtitle="Produtos, preços e disponibilidade" onPress={() => router.push("/seller/catalog")} />
       <Row icon="people" title="Clientes e fiado" subtitle="Crédito e histórico por cliente" onPress={() => router.push("/seller/clients")} />
       <Row icon="receipt-long" title="Vendas" subtitle="Histórico e formas de pagamento" onPress={() => router.push("/seller/sales")} />
+      <Row icon="two-wheeler" title="Entregas" subtitle="Atribuição, GPS, ETA e conclusão" onPress={() => router.push("/seller/delivery")} />
       <Row icon="settings" title="Configurações da loja" onPress={() => router.push("/seller/settings")} />
     </Card>
     {user?.role !== "merchant" ? <Text style={s.muted}>Atualizando permissões da conta...</Text> : null}
