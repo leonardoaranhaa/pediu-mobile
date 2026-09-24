@@ -165,9 +165,16 @@
     },
     {
       "idx": 23,
-      "version": "5",
+      "version": 5,
       "when": 1790080100000,
       "tag": "0023_core_foreign_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": 5,
+      "when": 1790246100000,
+      "tag": "0024_ai_ads",
       "breakpoints": true
     }
   ]

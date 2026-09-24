@@ -2,7 +2,7 @@
 
 Aplicativo de delivery local construído com Expo, React Native, Expo Router e um backend Express com tRPC. O projeto atende os papéis de cliente, lojista e entregador em uma experiência compartilhada. O fluxo principal cobre descoberta de produtos, carrinho, cotação server-side, checkout com PIX ou dinheiro, pedidos idempotentes, acompanhamento, chat, suporte, avaliações, fiado, notificações e personalização por tema.
 
-> **Estado atual:** o branch `feat/core-marketplace-flow` contém as correções da auditoria de delivery e está associado ao [PR #3](https://github.com/leonardoaranhaa/pediu-mobile/pull/3). O CI e a validação operacional passam no commit mais recente.
+> **Estado atual:** a base de delivery e as correções da auditoria estão integradas em `main`. Esta frente incremental usa uma branch `feat/**`, preserva a separação por pull request e passa pelo CI antes de ser incorporada.
 
 ## Stack
 
@@ -17,6 +17,8 @@ Aplicativo de delivery local construído com Expo, React Native, Expo Router e u
 O cliente pode pesquisar o marketplace, filtrar categorias, consultar produtos, montar o carrinho e enviar pedidos com chave de idempotência. O total do pedido é recalculado no servidor a partir do catálogo persistido. Endereços podem ser cadastrados com coordenadas, e a localização do dispositivo pode ser geocodificada e salva como endereço padrão.
 
 O lojista pode criar a primeira loja por meio do onboarding, publicar produtos, acompanhar pedidos, registrar vendas, consultar clientes e fiado, gerenciar entregas e alternar entre os temas do aplicativo. A criação da loja promove a conta para `merchant` na mesma transação que persiste o estabelecimento.
+
+O **Estúdio de anúncios** transforma um produto real do catálogo em um criativo revisável: a IA sugere headline, descrição, CTA e direção visual, e a infraestrutura interna gera a imagem promocional. O lojista escolhe o tom e informa apenas vantagens que realmente pretende cumprir; o anúncio só entra no marketplace depois da publicação explícita. A home do cliente prioriza criativos publicados e oferece a área **Pediu Vantagens**, com cupons ativos validados no servidor e aplicáveis ao checkout.
 
 O acompanhamento de entregas possui atribuição, localização, ETA, eventos operacionais e transições condicionais. Chat, notificações, suporte, avaliações, privacidade e exportação de dados são protegidos por autenticação e autorização no backend.
 
@@ -69,7 +71,7 @@ DATABASE_URL='mysql://usuario:senha@127.0.0.1:3306/pediu' pnpm exec drizzle-kit 
 
 O comando `pnpm db:push` executa a geração de migration e a aplicação. Use-o apenas quando uma alteração intencional de schema tiver sido revisada, pois ele pode criar novos arquivos no histórico. O CI aplica as migrations comprometidas em um banco MySQL limpo e verifica as tabelas essenciais.
 
-As migrations atuais incluem o domínio de marketplace, pedidos e pagamentos, comunicação, entregas, suporte, preferências de conta, tema por usuário, tokens de verificação de e-mail e chaves estrangeiras dos domínios centrais.
+As migrations atuais incluem o domínio de marketplace, pedidos e pagamentos, comunicação, entregas, suporte, preferências de conta, tema por usuário, tokens de verificação de e-mail, chaves estrangeiras dos domínios centrais e créditos/anúncios gerados por IA (`0024_ai_ads.sql`).
 
 ## Desenvolvimento
 
@@ -132,6 +134,7 @@ Os limites de taxa e concorrência são locais ao processo. Antes de escalar hor
 - [Matriz de implementação](docs/IMPLEMENTATION_MATRIX.md)
 - [Auditoria completa e resolução F-001–F-016](docs/RELATORIO_AUDITORIA_COMPLETA_DELIVERY_2026-09-22.md)
 - [Instrução técnica de correção](docs/INSTRUCAO_CORRECAO_15_ACHADOS_2026-09-22.md)
+- [Instrução técnica da fase cliente e anúncios com IA](docs/INSTRUCAO_FASE_CLIENTE_ANUNCIOS_IA.md)
 - [QA Android e iOS](QA_ANDROID_IOS.md)
 
 ## Contribuição

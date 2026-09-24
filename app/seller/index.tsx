@@ -63,6 +63,7 @@ export default function SellerHomePage() {
     </View>
     <Card>
       <Row icon="inventory-2" title="Catálogo" subtitle="Produtos, preços e disponibilidade" onPress={() => router.push("/seller/catalog")} />
+      <Row icon="auto-awesome" title="Anúncios com IA" subtitle="Crie imagens e copy para vender mais" onPress={() => router.push("/seller/ads")} />
       <Row icon="people" title="Clientes e fiado" subtitle="Crédito e histórico por cliente" onPress={() => router.push("/seller/clients")} />
       <Row icon="receipt-long" title="Vendas" subtitle="Histórico e formas de pagamento" onPress={() => router.push("/seller/sales")} />
       <Row icon="two-wheeler" title="Entregas" subtitle="Atribuição, GPS, ETA e conclusão" onPress={() => router.push("/seller/delivery")} />

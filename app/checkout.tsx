@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Card, Field, Page, PrimaryButton, PEDIU, s } from "@/components/pediu-page";
 import { useAuth } from "@/hooks/use-auth";
 import { useCart } from "@/providers/cart-provider";
@@ -18,6 +18,7 @@ function checkoutKey() {
 
 export default function CheckoutScreen() {
   const { isAuthenticated } = useAuth();
+  const params = useLocalSearchParams<{ coupon?: string }>();
   const { items, total: estimatedTotal, hydrated, clear } = useCart();
   const addresses = trpc.pediu.addresses.list.useQuery(undefined, { enabled: isAuthenticated });
   const [couponCode, setCouponCode] = useState("");
@@ -47,6 +48,14 @@ export default function CheckoutScreen() {
   useEffect(() => {
     if (!idempotencyKey) setIdempotencyKey(checkoutKey());
   }, [idempotencyKey]);
+
+  useEffect(() => {
+    const coupon = params.coupon?.trim().toUpperCase();
+    if (coupon && !appliedCouponCode) {
+      setCouponCode(coupon);
+      setAppliedCouponCode(coupon);
+    }
+  }, [appliedCouponCode, params.coupon]);
 
   useEffect(() => {
     const preferred = addresses.data?.find((item) => item.isDefault === 1) ?? addresses.data?.[0];

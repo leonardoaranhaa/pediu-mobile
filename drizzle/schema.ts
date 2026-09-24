@@ -449,6 +449,38 @@ export const notificationPreferences = mysqlTable("pediu_notification_preference
   userUnique: unique("pediu_notification_preferences_user_unique").on(table.userId),
 }));
 
+export const adCredits = mysqlTable("pediu_ad_credits", {
+  id: int("id").autoincrement().primaryKey(),
+  storeId: int("storeId").notNull().references(() => stores.id, { onDelete: "cascade" }),
+  balance: int("balance").default(3).notNull(),
+  lifetimeGranted: int("lifetimeGranted").default(3).notNull(),
+  lifetimeUsed: int("lifetimeUsed").default(0).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  storeUnique: unique("pediu_ad_credits_store_unique").on(table.storeId),
+}));
+
+export const generatedAds = mysqlTable("pediu_generated_ads", {
+  id: int("id").autoincrement().primaryKey(),
+  storeId: int("storeId").notNull().references(() => stores.id, { onDelete: "cascade" }),
+  productId: int("productId").references(() => products.id, { onDelete: "set null" }),
+  status: mysqlEnum("status", ["draft", "published", "archived"]).default("draft").notNull(),
+  headline: varchar("headline", { length: 120 }).notNull(),
+  description: varchar("description", { length: 500 }).notNull(),
+  cta: varchar("cta", { length: 80 }).notNull(),
+  offerLabel: varchar("offerLabel", { length: 120 }),
+  visualPrompt: text("visualPrompt").notNull(),
+  imageKey: varchar("imageKey", { length: 512 }),
+  model: varchar("model", { length: 80 }),
+  generationCost: int("generationCost").default(1).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  publishedAt: timestamp("publishedAt"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  storeStatusCreatedIdx: index("pediu_generated_ads_store_status_created_idx").on(table.storeId, table.status, table.createdAt),
+  productStatusIdx: index("pediu_generated_ads_product_status_idx").on(table.productId, table.status),
+}));
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type EmailVerificationToken = typeof emailVerificationTokens.$inferSelect;
@@ -505,3 +537,7 @@ export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = typeof notifications.$inferInsert;
 export type NotificationPreferences = typeof notificationPreferences.$inferSelect;
 export type InsertNotificationPreferences = typeof notificationPreferences.$inferInsert;
+export type AdCredit = typeof adCredits.$inferSelect;
+export type InsertAdCredit = typeof adCredits.$inferInsert;
+export type GeneratedAd = typeof generatedAds.$inferSelect;
+export type InsertGeneratedAd = typeof generatedAds.$inferInsert;
