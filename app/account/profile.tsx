@@ -7,7 +7,7 @@ import { useAppPreferences } from "@/lib/app-preferences";
 
 export default function ProfilePage() {
   const { user, isAuthenticated, logout } = useAuth();
-  const { theme } = useAppPreferences();
+  const { theme, customization } = useAppPreferences();
   return <Page title="Perfil" eyebrow="SUA CONTA">
     <View style={{ backgroundColor: theme.ink, borderRadius: 28, padding: 21, alignItems: "center", gap: 6, shadowColor: theme.ink, shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 4 }}>
       <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.highlight, alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
@@ -23,7 +23,7 @@ export default function ProfilePage() {
       <Row icon="location-on" title="Meus endereços" onPress={() => router.push("/account/addresses")} />
       <Row icon="credit-card" title="Pagamentos" onPress={() => router.push("/account/payment-methods")} />
       <Row icon="notifications" title="Notificações" onPress={() => router.push("/account/notifications")} />
-      <Row icon="settings" title="Personalizar o Pediu" subtitle={`${theme.label} · escolha seu tema`} onPress={() => router.push("/account/settings")} />
+      <Row icon="settings" title="Personalizar o Pediu" subtitle={`${theme.label} · mascote ${customization.mascotEnabled ? "ativo" : "discreto"}`} onPress={() => router.push("/account/settings")} />
     </Card>
     {user?.role === "admin" ? <OutlineButton title="Painel administrativo" onPress={() => router.push("/admin")} /> : null}
     {isAuthenticated ? <OutlineButton title="Sair da conta" onPress={() => void logout()} /> : null}

@@ -3,6 +3,14 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import * as Auth from "@/lib/_core/auth";
 
 export type AppThemeId = "classic" | "ocean" | "sunset";
+export type AppMascotStyle = "classic" | "ocean" | "sunset";
+
+export type AppCustomization = {
+  mascotStyle: AppMascotStyle;
+  mascotEnabled: boolean;
+  motionEnabled: boolean;
+  showHints: boolean;
+};
 
 export type AppTheme = {
   id: AppThemeId;
@@ -73,9 +81,32 @@ export const APP_THEMES: AppTheme[] = [
 ];
 
 const STORAGE_KEY = "pediu:app-theme:visitor";
+const CUSTOMIZATION_STORAGE_KEY = "pediu:customization:visitor";
+
+export const DEFAULT_CUSTOMIZATION: AppCustomization = {
+  mascotStyle: "classic",
+  mascotEnabled: true,
+  motionEnabled: true,
+  showHints: true,
+};
 
 function storageKeyForUser(userId?: number | null) {
   return userId ? `pediu:app-theme:user:${userId}` : STORAGE_KEY;
+}
+
+function customizationStorageKeyForUser(userId?: number | null) {
+  return userId ? `pediu:customization:user:${userId}` : CUSTOMIZATION_STORAGE_KEY;
+}
+
+function normalizeCustomization(value: unknown): AppCustomization {
+  if (!value || typeof value !== "object") return DEFAULT_CUSTOMIZATION;
+  const candidate = value as Partial<AppCustomization>;
+  return {
+    mascotStyle: candidate.mascotStyle === "classic" || candidate.mascotStyle === "ocean" || candidate.mascotStyle === "sunset" ? candidate.mascotStyle : DEFAULT_CUSTOMIZATION.mascotStyle,
+    mascotEnabled: candidate.mascotEnabled !== false,
+    motionEnabled: candidate.motionEnabled !== false,
+    showHints: candidate.showHints !== false,
+  };
 }
 
 function isAppThemeId(value: string | null | undefined): value is AppThemeId {
@@ -87,6 +118,9 @@ type AppPreferencesValue = {
   theme: AppTheme;
   setTheme: (themeId: AppThemeId) => void;
   setThemeForUser: (userId: number, themeId: AppThemeId) => void;
+  customization: AppCustomization;
+  updateCustomization: (changes: Partial<AppCustomization>) => void;
+  resetCustomization: () => void;
   ready: boolean;
 };
 
@@ -94,6 +128,7 @@ const AppPreferencesContext = createContext<AppPreferencesValue | null>(null);
 
 export function AppPreferencesProvider({ children }: { children: ReactNode }) {
   const [themeId, setThemeId] = useState<AppThemeId>("classic");
+  const [customization, setCustomization] = useState<AppCustomization>(DEFAULT_CUSTOMIZATION);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -105,6 +140,19 @@ export function AppPreferencesProvider({ children }: { children: ReactNode }) {
       .finally(() => setReady(true));
   }, []);
 
+  useEffect(() => {
+    void AsyncStorage.getItem(CUSTOMIZATION_STORAGE_KEY)
+      .then((stored) => {
+        if (!stored) return;
+        try {
+          setCustomization(normalizeCustomization(JSON.parse(stored)));
+        } catch {
+          setCustomization(DEFAULT_CUSTOMIZATION);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
+
   const setTheme = useCallback((nextTheme: AppThemeId) => {
     setThemeId(nextTheme);
     void AsyncStorage.setItem(STORAGE_KEY, nextTheme);
@@ -113,6 +161,19 @@ export function AppPreferencesProvider({ children }: { children: ReactNode }) {
   const setThemeForUser = useCallback((userId: number, nextTheme: AppThemeId) => {
     setThemeId(nextTheme);
     void AsyncStorage.setItem(storageKeyForUser(userId), nextTheme);
+  }, []);
+
+  const updateCustomization = useCallback((changes: Partial<AppCustomization>) => {
+    setCustomization((current) => {
+      const next = normalizeCustomization({ ...current, ...changes });
+      void Auth.getUserInfo().then((user) => AsyncStorage.setItem(customizationStorageKeyForUser(user?.id), JSON.stringify(next)));
+      return next;
+    });
+  }, []);
+
+  const resetCustomization = useCallback(() => {
+    setCustomization(DEFAULT_CUSTOMIZATION);
+    void Auth.getUserInfo().then((user) => AsyncStorage.setItem(customizationStorageKeyForUser(user?.id), JSON.stringify(DEFAULT_CUSTOMIZATION)));
   }, []);
 
   const applyUserTheme = useCallback((user: Auth.User | null) => {
@@ -139,13 +200,40 @@ export function AppPreferencesProvider({ children }: { children: ReactNode }) {
     return unsubscribe;
   }, [applyUserTheme]);
 
+  useEffect(() => {
+    let active = true;
+    const loadCustomization = (user: Auth.User | null) => {
+      void AsyncStorage.getItem(customizationStorageKeyForUser(user?.id)).then((stored) => {
+        if (!active) return;
+        if (!stored) {
+          setCustomization(DEFAULT_CUSTOMIZATION);
+          return;
+        }
+        try {
+          setCustomization(normalizeCustomization(JSON.parse(stored)));
+        } catch {
+          setCustomization(DEFAULT_CUSTOMIZATION);
+        }
+      });
+    };
+    void Auth.getUserInfo().then(loadCustomization);
+    const unsubscribe = Auth.subscribeUserInfo(loadCustomization);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
   const value = useMemo(() => ({
     themeId,
     theme: APP_THEMES.find((item) => item.id === themeId) ?? APP_THEMES[0],
     setTheme,
     setThemeForUser,
+    customization,
+    updateCustomization,
+    resetCustomization,
     ready,
-  }), [ready, setTheme, setThemeForUser, themeId]);
+  }), [customization, ready, resetCustomization, setTheme, setThemeForUser, themeId, updateCustomization]);
 
   return <AppPreferencesContext.Provider value={value}>{children}</AppPreferencesContext.Provider>;
 }

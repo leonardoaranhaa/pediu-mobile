@@ -18,6 +18,8 @@ O cliente pode pesquisar o marketplace, filtrar categorias, consultar produtos, 
 
 O lojista pode criar a primeira loja por meio do onboarding, publicar produtos, acompanhar pedidos, registrar vendas, consultar clientes e fiado, gerenciar entregas e alternar entre os temas do aplicativo. A criação da loja promove a conta para `merchant` na mesma transação que persiste o estabelecimento.
 
+Na aba **Personalizar o Pediu**, cliente e lojista podem ajustar a paleta, escolher a personalidade visual do mascote, ativar ou ocultar suas reações, controlar o movimento e restaurar a experiência padrão. O mascote é um protótipo nativo em React Native: acompanha a interface com movimento suave, comunica expectativa/fome e reage com alegria quando o cliente adiciona um item ao carrinho.
+
 O **Estúdio de anúncios** transforma um produto real do catálogo em um criativo revisável: a IA sugere headline, descrição, CTA e direção visual, e a infraestrutura interna gera a imagem promocional. O lojista escolhe o tom e informa apenas vantagens que realmente pretende cumprir; o anúncio só entra no marketplace depois da publicação explícita. A home do cliente prioriza criativos publicados e oferece a área **Pediu Vantagens**, com cupons ativos validados no servidor e aplicáveis ao checkout.
 
 O acompanhamento de entregas possui atribuição, localização, ETA, eventos operacionais e transições condicionais. Chat, notificações, suporte, avaliações, privacidade e exportação de dados são protegidos por autenticação e autorização no backend.
@@ -135,6 +137,7 @@ Os limites de taxa e concorrência são locais ao processo. Antes de escalar hor
 - [Auditoria completa e resolução F-001–F-016](docs/RELATORIO_AUDITORIA_COMPLETA_DELIVERY_2026-09-22.md)
 - [Instrução técnica de correção](docs/INSTRUCAO_CORRECAO_15_ACHADOS_2026-09-22.md)
 - [Instrução técnica da fase cliente e anúncios com IA](docs/INSTRUCAO_FASE_CLIENTE_ANUNCIOS_IA.md)
+- [Instrução técnica da fase de personalização e mascote](docs/INSTRUCAO_FASE_MASCOTE_CUSTOMIZACAO.md)
 - [QA Android e iOS](QA_ANDROID_IOS.md)
 
 ## Contribuição
