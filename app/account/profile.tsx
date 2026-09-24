@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
 import { Text, View } from "react-native";
 import { Page, Card, Row, OutlineButton, PEDIU, s } from "@/components/pediu-page";
+import { PediuMascot } from "@/components/pediu-mascot";
 import { useAppPreferences } from "@/lib/app-preferences";
 
 export default function ProfilePage() {
@@ -15,7 +16,8 @@ export default function ProfilePage() {
       </View>
       <Text style={{ color: PEDIU.white, fontSize: 18, fontWeight: "800" }}>{user?.name ?? "Sua conta"}</Text>
       <Text style={{ color: "#BCD0D1", fontSize: 12 }}>{user?.email ?? "Entre para sincronizar seus dados"}</Text>
-      <View style={{ flexDirection: "row", gap: 8, marginTop: 9 }}><View style={{ flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6, backgroundColor: "rgba(255,255,255,0.12)" }}><MaterialIcons name="verified-user" size={13} color={PEDIU.yellow} /><Text style={{ color: PEDIU.white, fontSize: 10, fontWeight: "800" }}>{isAuthenticated ? "Conta sincronizada" : "Modo visitante"}</Text></View><View style={{ flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6, backgroundColor: "rgba(255,255,255,0.12)" }}><MaterialIcons name="favorite" size={13} color={PEDIU.coral} /><Text style={{ color: PEDIU.white, fontSize: 10, fontWeight: "800" }}>Pediu local</Text></View></View>
+      <View style={{ flexDirection: "row", gap: 8, marginTop: 9, flexWrap: "wrap", justifyContent: "center" }}><View style={{ flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6, backgroundColor: "rgba(255,255,255,0.12)" }}><MaterialIcons name="verified-user" size={13} color={PEDIU.yellow} /><Text style={{ color: PEDIU.white, fontSize: 10, fontWeight: "800" }}>{isAuthenticated ? "Conta sincronizada" : "Modo visitante"}</Text></View><View style={{ flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6, backgroundColor: "rgba(255,255,255,0.12)" }}><MaterialIcons name="favorite" size={13} color={PEDIU.coral} /><Text style={{ color: PEDIU.white, fontSize: 10, fontWeight: "800" }}>Pediu local</Text></View></View>
+      {customization.mascotEnabled ? <View style={{ width: "100%", alignItems: "center", marginTop: 5 }}><PediuMascot theme={theme} styleId={customization.mascotStyle} reaction="avoid" motionEnabled={customization.motionEnabled} showSpeech /></View> : null}
     </View>
     <Card>
       <Text style={s.label}>ACESSOS RÁPIDOS</Text>

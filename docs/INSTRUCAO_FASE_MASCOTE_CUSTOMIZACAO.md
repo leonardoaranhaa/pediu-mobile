@@ -17,3 +17,10 @@ A aba `Personalizar o Pediu` deve abrir um modal inferior com preview vivo, tema
 ## Validação
 
 Executar `pnpm check`, `pnpm test`, `pnpm lint`, `pnpm build` e `git diff --check`. Fazer smoke visual no preview Expo, conferindo a aba de preferências, abertura do modal, troca de tema, toggles e reação após adicionar produto.
+
+
+## Extensão de consciência contextual
+
+O mascote passou a trabalhar com uma sequência programada de cenas: fome deitado, olfato com o marcador “snif”, curiosidade espiando, alongamento, cochilo com “Zzz”, dança discreta e observação. Cada cena possui duração, gesto, expressão e fala curta, com troca suave e sem depender de uma chamada de IA. Reações de produto e pedido têm prioridade sobre o roteiro: adicionar ao carrinho provoca alegria; a confirmação do pedido mostra barriga cheia e a fala “Agora sim… vou tirar um cochilo de barriga cheia.”; o perfil usa mãos sobre os olhos e a mensagem de privacidade.
+
+Os balões são discretos, limitados por número de linhas e posicionados fora do corpo para não competir com o conteúdo principal. O shell do cliente reserva espaço para o dock flutuante, enquanto produto, carrinho, checkout, cadastro de loja, registro de venda, assistente e estúdio de preferências agora possuem altura máxima e rolagem vertical para evitar cortes em aparelhos pequenos.
