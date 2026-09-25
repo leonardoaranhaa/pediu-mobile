@@ -107,6 +107,7 @@ Os testes cobrem contratos de autenticação e papel, marketplace, carrinho, che
 | Diretório | Responsabilidade |
 |---|---|
 | `app/` | Rotas Expo Router, telas de cliente, conta, lojista, entrega e suporte |
+| `flutter_app/` | Cliente Flutter nativo, plataformas Android/iOS/Web, API, sessão e fluxo de checkout |
 | `components/` | Componentes visuais, layout e controles compartilhados |
 | `providers/` | Estado global do carrinho |
 | `hooks/` | Hooks de autenticação e comportamento de interface |
@@ -144,3 +145,9 @@ Crie uma branch a partir de `main`, mantenha migrations e testes no mesmo commit
 [2]: https://docs.expo.dev/router/introduction/ "Expo Router Documentation"
 [3]: https://orm.drizzle.team/docs/overview "Drizzle ORM Documentation"
 [4]: https://trpc.io/docs "tRPC Documentation"
+
+## Cliente Flutter
+
+O repositório também contém um cliente Flutter nativo em [`flutter_app/`](flutter_app/), integrado ao mesmo backend Express/tRPC usado pelo Expo. O cliente implementa sessão OAuth mobile com armazenamento seguro, marketplace, busca, produto, carrinho persistido, cotação server-side, checkout idempotente com PIX/dinheiro e histórico de pedidos.
+
+Para executar a fundação Flutter, consulte [`flutter_app/README.md`](flutter_app/README.md) e use `--dart-define=PEDIU_API_BASE_URL=...`. A especificação técnica da integração está em [`docs/INSTRUCAO_CLIENTE_FLUTTER_BACKEND.md`](docs/INSTRUCAO_CLIENTE_FLUTTER_BACKEND.md). As plataformas Android, iOS e Web já estão geradas; o build Android ainda requer Android SDK configurado na máquina de desenvolvimento.
