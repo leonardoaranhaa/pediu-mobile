@@ -628,3 +628,22 @@ A prioridade agora é transformar o que já existe em uma operação confiável.
 **Infraestrutura → Dinheiro → Comunicação → E2E → Dispositivos → Publicação → Piloto → Escala**
 
 **Objetivo final:** colocar o Pediu no mercado com capacidade de receber pedidos reais, processar pagamentos reais, acompanhar entregas reais e detectar/falhar com segurança quando algo sair do esperado.
+
+
+---
+
+# 21. Registro de execução — 25/09/2026
+
+A execução do plano foi iniciada no head do PR #7 (`38045bfa56010f8b2a3cadd531c79ad1511d9173`). O primeiro incremento versionado é o `Go-Live Readiness Check`, disponível por `pnpm go-live:check` em `scripts/go-live-readiness.ts`.
+
+O checker valida configuração mínima de runtime, conexão de banco, migrations e tabelas críticas, health check da API e a presença não revelada de configurações de PIX, webhook, OAuth, e-mail e storage. Também mantém explicitamente como `NOT_CONFIGURED` as dependências que exigem PSP, backup/restore, push em Android/iOS, E2E crítico, dispositivos reais e observabilidade externa. Em produção, configuração mínima ausente ou wildcard em `ALLOWED_ORIGINS` resulta em `BLOCKED`.
+
+## Evidência local
+
+No ambiente E2E local, o checker respondeu `3 PASS`, `0 BLOCKED` e `10 NOT_CONFIGURED`. Foram confirmados HTTP 200 da API, 14 migrations e as 9 tabelas críticas exigidas pelo smoke operacional. Nenhum valor de segredo foi impresso.
+
+A implementação foi validada adicionalmente com `pnpm check`, `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm exec prettier --check` e `git diff --check`. A suíte atual deste head passou com 26 arquivos, 101 testes aprovados e 1 teste ignorado. O workflow operacional foi atualizado para executar o checker depois do health check da API.
+
+## Estado dos bloqueadores
+
+Este incremento **não conclui nenhum P0 externo**. PSP PIX, webhook real, OAuth de produção, e-mail, push, backup/restore, observabilidade, E2E completo e dispositivos reais permanecem pendentes até que existam credenciais, ambientes, homologação e evidências correspondentes. O status geral continua `🟡 Em preparação para Go-Live` e o Go-Live comercial permanece bloqueado conforme a regra do plano.

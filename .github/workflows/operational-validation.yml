@@ -98,6 +98,8 @@ jobs:
           echo "API health check timed out"
           cat /tmp/pediu-api.log
           exit 1
+      - name: Run Go-Live readiness baseline
+        run: pnpm go-live:check
       - name: Verify API process cleanup
         if: always()
         run: |
