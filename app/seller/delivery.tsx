@@ -1,5 +1,6 @@
 import * as Location from "expo-location";
 import { useEffect, useMemo, useState } from "react";
+import { useLocalSearchParams } from "expo-router";
 import { Text } from "react-native";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
@@ -11,9 +12,11 @@ function formatCoordinate(value: number) {
 
 export default function SellerDeliveryPage() {
   const { user } = useAuth();
+  const params = useLocalSearchParams<{ orderId?: string }>();
+  const requestedOrderId = Number(params.orderId);
   const orders = trpc.pediu.orders.storeMine.useQuery(undefined, { enabled: user?.role === "merchant", refetchInterval: 10_000 });
   const activeOrders = useMemo(() => (orders.data ?? []).filter((order) => order.status === "Pronto" || order.status === "A caminho"), [orders.data]);
-  const [selectedOrderId, setSelectedOrderId] = useState<number>();
+  const [selectedOrderId, setSelectedOrderId] = useState<number>(Number.isInteger(requestedOrderId) && requestedOrderId > 0 ? requestedOrderId : 0);
   const selectedOrder = activeOrders.find((order) => order.id === selectedOrderId) ?? activeOrders[0];
   const orderId = selectedOrder?.id ?? 0;
   const current = trpc.pediu.experience.delivery.current.useQuery({ orderId }, { enabled: orderId > 0, refetchInterval: 8_000 });

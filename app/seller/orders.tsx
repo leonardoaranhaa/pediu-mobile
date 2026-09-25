@@ -64,6 +64,7 @@ export default function SellerOrdersPage() {
               ) : null}
               {canCancel ? <OutlineButton title="Recusar pedido" onPress={() => cancel(order.id)} /> : null}
               <OutlineButton title="Ver acompanhamento" onPress={() => router.push({ pathname: "/order/track", params: { orderId: String(order.id) } })} />
+              {order.status === "Pronto" || order.status === "A caminho" ? <OutlineButton title="Operar entrega" onPress={() => router.push({ pathname: "/seller/delivery", params: { orderId: String(order.id) } } as never)} /> : null}
               {updateStatus.isError ? <Text style={s.muted}>{updateStatus.error.message}</Text> : null}
             </Card>
           );

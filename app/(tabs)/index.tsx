@@ -16,6 +16,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -52,6 +53,7 @@ type Product = {
   price: string;
   distance: string;
   category: string;
+  description?: string | null;
   emoji: string;
   available: boolean;
   deliveryFee?: string;
@@ -69,6 +71,16 @@ type SavedAddress = {
   state: string;
   postalCode: string;
   isDefault: number;
+};
+
+type SellerCustomer = {
+  id: number;
+  name: string;
+  phone: string | null;
+  notes: string | null;
+  creditLimit: string;
+  balance: string;
+  status: string;
 };
 
 function formatSavedAddress(address: SavedAddress) {
@@ -98,7 +110,8 @@ export default function HomeScreen() {
   }, [user?.role]);
 
   const [category, setCategory] = useState("Tudo");
-  const marketplaceQuery = trpc.pediu.marketplace.products.useQuery({ category }, { staleTime: 30_000 });
+  const [searchQuery, setSearchQuery] = useState("");
+  const marketplaceQuery = trpc.pediu.marketplace.search.useQuery({ category, query: searchQuery.trim() || undefined, limit: 50, offset: 0 }, { staleTime: 30_000 });
   const storeQuery = trpc.pediu.stores.mine.useQuery(undefined, { enabled: isAuthenticated && role === "seller" });
   const storeProductsQuery = trpc.pediu.products.mine.useQuery(
     { storeId: storeQuery.data?.id ?? 0 },
@@ -159,6 +172,18 @@ export default function HomeScreen() {
   const transcribeMutation = trpc.pediu.voice.transcribe.useMutation();
   const createSaleMutation = trpc.pediu.sales.create.useMutation({ onSuccess: () => { setShowSaleModal(false); setSaleTotal(""); setSaleCustomerId(""); void salesQuery.refetch(); notify("Venda registrada com sucesso"); } });
   const addLedgerMutation = trpc.pediu.ledger.add.useMutation();
+  const createClientMutation = trpc.pediu.clients.create.useMutation({
+    onSuccess: () => { void clientsQuery.refetch(); notify("Cliente salvo no relacionamento"); },
+    onError: (error) => notify(error.message),
+  });
+  const setClientLimitMutation = trpc.pediu.credit.setLimit.useMutation({
+    onSuccess: () => { void clientsQuery.refetch(); notify("Limite de fiado atualizado"); },
+    onError: (error) => notify(error.message),
+  });
+  const blockClientMutation = trpc.pediu.credit.block.useMutation({
+    onSuccess: () => { void clientsQuery.refetch(); notify("Status do cliente atualizado"); },
+    onError: (error) => notify(error.message),
+  });
   const registerPushMutation = trpc.pediu.notifications.register.useMutation();
   const markNotificationMutation = trpc.pediu.notifications.markRead.useMutation({ onSuccess: () => { void notificationsQuery.refetch(); } });
   const createStoreMutation = trpc.pediu.stores.create.useMutation({ onSuccess: async () => { setShowSellerOnboarding(false); setRole("seller"); setSellerTab("home"); await refreshAuth(); void storeQuery.refetch(); notify("Sua loja foi criada"); } });
@@ -167,6 +192,7 @@ export default function HomeScreen() {
       setNewProductName("");
       setNewProductPrice("");
       setNewProductCategory("Doces");
+      setNewProductDescription("");
       setShowAddProduct(false);
       void storeProductsQuery.refetch();
       notify("Produto salvo no catálogo");
@@ -175,6 +201,10 @@ export default function HomeScreen() {
   });
   const updateProductAvailabilityMutation = trpc.pediu.products.availability.useMutation({
     onSuccess: () => { void storeProductsQuery.refetch(); },
+    onError: (error) => notify(error.message),
+  });
+  const updateStoreMutation = trpc.pediu.stores.update.useMutation({
+    onSuccess: () => { void storeQuery.refetch(); notify("Configurações da loja atualizadas"); },
     onError: (error) => notify(error.message),
   });
   const cart = useMemo<Product[]>(() => globalCartItems.flatMap((item) => Array.from({ length: item.quantity }, () => ({
@@ -212,6 +242,7 @@ export default function HomeScreen() {
   const [newProductName, setNewProductName] = useState("");
   const [newProductPrice, setNewProductPrice] = useState("");
   const [newProductCategory, setNewProductCategory] = useState("Doces");
+  const [newProductDescription, setNewProductDescription] = useState("");
   const [notice, setNotice] = useState("");
   const [pixPaymentPending, setPixPaymentPending] = useState(false);
   const [locationLabel, setLocationLabel] = useState("Usar minha localização");
@@ -316,7 +347,7 @@ export default function HomeScreen() {
     });
   }, []);
 
-  const liveProducts = useMemo(() => (marketplaceQuery.data ?? []).map((product) => ({
+  const liveProducts = useMemo(() => (marketplaceQuery.data?.items ?? []).map((product) => ({
     id: product.id,
     storeId: product.storeId,
     name: product.name,
@@ -324,6 +355,7 @@ export default function HomeScreen() {
     price: `R$ ${Number(product.price).toFixed(2).replace(".", ",")}`,
     distance: "perto de você",
     category: product.category,
+    description: product.description,
     emoji: product.category === "Lanches" ? "🍔" : product.category === "Serviços" ? "🛠️" : "🍰",
     available: Boolean(product.available),
     deliveryFee: product.deliveryFee,
@@ -408,10 +440,30 @@ export default function HomeScreen() {
     price: `R$ ${Number(product.price).toFixed(2).replace(".", ",")}`,
     distance: "sua loja",
     category: product.category,
+    description: product.description,
     emoji: product.category === "Lanches" ? "🍔" : product.category === "Serviços" ? "🛠️" : "🍰",
     available: Boolean(product.available),
     deliveryFee: "0.00",
   })), [storeProductsQuery.data, storeQuery.data?.name]);
+
+  const shareStoreCatalog = async () => {
+    const store = storeQuery.data;
+    if (!store) {
+      notify("Cadastre sua loja antes de divulgar");
+      return;
+    }
+    const products = sellerProducts.filter((product) => product.available).slice(0, 20);
+    const lines = products.length
+      ? products.map((product) => `• ${product.name} — ${product.price}`).join("\n")
+      : "Catálogo em atualização. Fale com a loja para conhecer as opções.";
+    const message = `${store.name}\n${store.address ? `${store.address}\n` : ""}\nPeça pelo Pediu:\n${lines}`;
+    try {
+      await Share.share({ message, title: `Catálogo ${store.name}` });
+      notify("Catálogo pronto para compartilhar");
+    } catch {
+      notify("Não foi possível abrir o compartilhamento");
+    }
+  };
 
   const addProduct = () => {
     const price = newProductPrice.replace(",", ".").trim();
@@ -424,6 +476,7 @@ export default function HomeScreen() {
       storeId,
       name: newProductName.trim(),
       category: newProductCategory.trim() || "Geral",
+      description: newProductDescription.trim() || undefined,
       price,
     });
   };
@@ -464,7 +517,13 @@ export default function HomeScreen() {
       setSellerTab("catalog");
       return;
     }
-    void notifyWithHaptic("Rascunho de divulgação criado");
+    if (action === "divulgar") {
+      setRole("seller");
+      setSellerTab("home");
+      void shareStoreCatalog();
+      return;
+    }
+    void notifyWithHaptic("Ação não reconhecida", false);
   };
 
   const handleVoiceCommand = async (command: string) => {
@@ -526,6 +585,22 @@ export default function HomeScreen() {
     createStoreMutation.mutate({ name: storeName.trim(), phone: storePhone.trim() || undefined, address: storeAddress.trim() || undefined, pixKey: storePixKey.trim() || undefined, deliveryFee: "0.00" });
   };
 
+  const createClient = (input: { name: string; phone?: string; notes?: string; creditLimit: string }) => {
+    createClientMutation.mutate(input);
+  };
+
+  const updateClientLimit = (customerId: number, creditLimit: string) => {
+    setClientLimitMutation.mutate({ customerId, creditLimit });
+  };
+
+  const toggleClientBlock = (customerId: number, blocked: boolean) => {
+    blockClientMutation.mutate({ customerId, blocked });
+  };
+
+  const updateStore = (input: { name?: string; phone?: string; address?: string; pixKey?: string; deliveryFee?: string; isOpen?: boolean }) => {
+    updateStoreMutation.mutate(input);
+  };
+
   return (
     <ScreenContainer containerClassName="bg-[#FFF8F1]" edges={["top", "left", "right"]}>
       <Animated.View style={[styles.appShell, { opacity: screenOpacity, backgroundColor: theme.canvas }]}>
@@ -541,6 +616,8 @@ export default function HomeScreen() {
                   userName={user?.name}
                   category={category}
                   setCategory={setCategory}
+                  searchQuery={searchQuery}
+                  setSearchQuery={setSearchQuery}
                   onProductPress={setSelectedProduct}
                   cartCount={globalCartCount}
                   cartScale={cartScale}
@@ -567,11 +644,11 @@ export default function HomeScreen() {
         ) : (
           <>
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-              {sellerTab === "home" && <><SellerHome theme={theme} store={storeQuery.data} ownerName={user?.name} orders={storeOrdersQuery.data ?? []} productCount={sellerProducts.length} salesTotal={(salesQuery.data ?? []).reduce((sum, sale) => sum + Number(sale.total), 0)} onCatalog={() => setSellerTab("catalog")} onOrders={() => setSellerTab("orders")} onVoice={() => openVoiceAssistant("seller")} onNotice={notify} /><SellerVoiceLauncher onPress={() => openVoiceAssistant("seller")} /></>}
+              {sellerTab === "home" && <><SellerHome theme={theme} store={storeQuery.data} ownerName={user?.name} orders={storeOrdersQuery.data ?? []} productCount={sellerProducts.length} salesTotal={(salesQuery.data ?? []).reduce((sum, sale) => sum + Number(sale.total), 0)} onCatalog={() => setSellerTab("catalog")} onOrders={() => setSellerTab("orders")} onClients={() => setSellerTab("clients")} onShareCatalog={() => void shareStoreCatalog()} onVoice={() => openVoiceAssistant("seller")} /><SellerVoiceLauncher onPress={() => openVoiceAssistant("seller")} /></>}
               {sellerTab === "orders" && <SellerOrders orders={storeOrdersQuery.data ?? []} onUpdateStatus={(orderId, status) => updateOrderStatusMutation.mutate({ orderId, status })} />}
-              {sellerTab === "catalog" && <SellerCatalog products={sellerProducts} loading={storeProductsQuery.isLoading} onAdd={() => setShowAddProduct(true)} onToggle={(id, available) => updateProductAvailabilityMutation.mutate({ productId: id, available })} />}
-              {sellerTab === "clients" && <SellerClients customers={clientsQuery.data ?? []} onNotice={notify} />}
-              {sellerTab === "settings" && <SellerSettings store={storeQuery.data} salesCount={salesQuery.data?.length ?? 0} onAssistant={() => openVoiceAssistant("seller")} onCustomerMode={() => { setRole("customer"); setCustomerTab("discover"); }} />}
+              {sellerTab === "catalog" && <SellerCatalog products={sellerProducts} loading={storeProductsQuery.isLoading} onAdd={() => setShowAddProduct(true)} onToggle={(id, available) => updateProductAvailabilityMutation.mutate({ productId: id, available })} onShare={shareStoreCatalog} />}
+              {sellerTab === "clients" && <SellerClients customers={clientsQuery.data ?? []} onCreate={createClient} creating={createClientMutation.isPending} onSetLimit={updateClientLimit} onBlock={toggleClientBlock} busy={setClientLimitMutation.isPending || blockClientMutation.isPending} />}
+              {sellerTab === "settings" && <SellerSettings store={storeQuery.data} salesCount={salesQuery.data?.length ?? 0} onSave={updateStore} saving={updateStoreMutation.isPending} onAssistant={() => openVoiceAssistant("seller")} onCustomerMode={() => { setRole("customer"); setCustomerTab("discover"); }} />}
             </ScrollView>
             <SellerNav active={sellerTab} onChange={setSellerTab} theme={theme} />
           </>
@@ -602,7 +679,7 @@ export default function HomeScreen() {
 
         <Modal visible={showAddProduct} transparent animationType="slide" onRequestClose={() => setShowAddProduct(false)}>
           <View style={styles.modalBackdrop}><View style={styles.sheet}>
-            <View style={styles.sheetHandle} /><Text style={styles.sheetTitle}>Novo produto</Text><Text style={styles.fieldLabel}>NOME DO PRODUTO</Text><TextInput value={newProductName} onChangeText={setNewProductName} placeholder="Ex.: Torta de morango" placeholderTextColor={COLORS.muted} style={styles.input} /><Text style={styles.fieldLabel}>CATEGORIA</Text><TextInput value={newProductCategory} onChangeText={setNewProductCategory} placeholder="Ex.: Doces" placeholderTextColor={COLORS.muted} style={styles.input} /><Text style={styles.fieldLabel}>PREÇO</Text><TextInput value={newProductPrice} onChangeText={setNewProductPrice} placeholder="Ex.: 18,00" placeholderTextColor={COLORS.muted} style={styles.input} keyboardType="decimal-pad" /><Pressable style={[styles.primaryButton, createProductMutation.isPending && styles.disabledButton]} disabled={createProductMutation.isPending} onPress={addProduct}><Text style={styles.primaryButtonText}>{createProductMutation.isPending ? "Salvando..." : "Adicionar ao catálogo"}</Text></Pressable><Pressable style={styles.textButton} onPress={() => setShowAddProduct(false)}><Text style={styles.textButtonLabel}>Cancelar</Text></Pressable>
+            <View style={styles.sheetHandle} /><Text style={styles.sheetTitle}>Novo produto</Text><Text style={styles.fieldLabel}>NOME DO PRODUTO</Text><TextInput value={newProductName} onChangeText={setNewProductName} placeholder="Ex.: Torta de morango" placeholderTextColor={COLORS.muted} style={styles.input} /><Text style={styles.fieldLabel}>CATEGORIA</Text><TextInput value={newProductCategory} onChangeText={setNewProductCategory} placeholder="Ex.: Doces" placeholderTextColor={COLORS.muted} style={styles.input} /><Text style={styles.fieldLabel}>PREÇO</Text><TextInput value={newProductPrice} onChangeText={setNewProductPrice} placeholder="Ex.: 18,00" placeholderTextColor={COLORS.muted} style={styles.input} keyboardType="decimal-pad" /><Text style={styles.fieldLabel}>DESCRIÇÃO (OPCIONAL)</Text><TextInput value={newProductDescription} onChangeText={setNewProductDescription} placeholder="Ex.: Serve duas pessoas" placeholderTextColor={COLORS.muted} style={styles.input} multiline /><Pressable style={[styles.primaryButton, createProductMutation.isPending && styles.disabledButton]} disabled={createProductMutation.isPending} onPress={addProduct}><Text style={styles.primaryButtonText}>{createProductMutation.isPending ? "Salvando..." : "Adicionar ao catálogo"}</Text></Pressable><Pressable style={styles.textButton} onPress={() => setShowAddProduct(false)}><Text style={styles.textButtonLabel}>Cancelar</Text></Pressable>
           </View></View>
         </Modal>
 
@@ -650,7 +727,7 @@ function FloatingDecorations() {
   </View>;
 }
 
-function CustomerDiscover({ products, loading, error, userName, category, setCategory, onProductPress, cartCount, cartScale, cartPulse, onCartPress, locationLabel, locationAddress, locationLoading, onLocationPress, onAssistant, onOrders, theme }: { products: Product[]; loading: boolean; error: boolean; userName?: string | null; category: string; setCategory: (value: string) => void; onProductPress: (product: Product) => void; cartCount: number; cartScale: Animated.Value; cartPulse: boolean; onCartPress: () => void; locationLabel: string; locationAddress: string; locationLoading: boolean; onLocationPress: () => void; onAssistant: () => void; onOrders: () => void; theme: AppTheme }) {
+function CustomerDiscover({ products, loading, error, userName, category, setCategory, searchQuery, setSearchQuery, onProductPress, cartCount, cartScale, cartPulse, onCartPress, locationLabel, locationAddress, locationLoading, onLocationPress, onAssistant, onOrders, theme }: { products: Product[]; loading: boolean; error: boolean; userName?: string | null; category: string; setCategory: (value: string) => void; searchQuery: string; setSearchQuery: (value: string) => void; onProductPress: (product: Product) => void; cartCount: number; cartScale: Animated.Value; cartPulse: boolean; onCartPress: () => void; locationLabel: string; locationAddress: string; locationLoading: boolean; onLocationPress: () => void; onAssistant: () => void; onOrders: () => void; theme: AppTheme }) {
   const firstName = userName?.trim().split(/\s+/)[0];
   const avatarLetter = firstName?.[0]?.toUpperCase() ?? "?";
   return <>
@@ -659,17 +736,17 @@ function CustomerDiscover({ products, loading, error, userName, category, setCat
     <View style={[styles.heroBanner, { backgroundColor: theme.ink, shadowColor: theme.ink }]}><View style={styles.heroCopy}><Text style={[styles.heroKicker, { color: theme.highlight }]}>DESCOBERTA LOCAL</Text><Text style={styles.heroTitle}>Seu bairro, do seu jeito.</Text><Text style={styles.heroText}>Encontre sabores, serviços e pessoas que fazem parte da sua rotina.</Text><View style={styles.heroPills}><View style={styles.heroPill}><MaterialIcons name="bolt" size={13} color={theme.highlight} /><Text style={styles.heroPillText}>perto</Text></View><View style={styles.heroPill}><MaterialIcons name="favorite" size={13} color={theme.primary} /><Text style={styles.heroPillText}>feito com cuidado</Text></View></View></View><View style={[styles.heroOrb, { backgroundColor: theme.primary, shadowColor: theme.primary }]}><Text style={styles.heroOrbEmoji}>✦</Text></View></View>
     <Pressable style={({ pressed }) => [locationStyles.locationCard, { borderColor: theme.line, backgroundColor: theme.card }, pressed && styles.cardPressed]} onPress={onLocationPress}><View style={[locationStyles.locationIcon, { backgroundColor: theme.primarySoft }]}><MaterialIcons name={locationLoading ? "my-location" : "location-on"} size={19} color={theme.primary} /></View><View style={{ flex: 1 }}><View style={locationStyles.locationHeading}><Text style={[locationStyles.locationLabel, { color: theme.primary }]}>ENTREGAR EM</Text><View style={[locationStyles.liveDot, { backgroundColor: locationLoading ? theme.highlight : COLORS.green }]} /></View><Text style={[locationStyles.locationValue, { color: theme.ink }]}>{locationLoading ? "Buscando endereço..." : locationLabel}</Text>{locationAddress ? <Text numberOfLines={1} style={[locationStyles.locationAddress, { color: theme.muted }]}>{locationAddress}</Text> : null}</View><View style={[locationStyles.locationAction, { backgroundColor: theme.ink }]}><MaterialIcons name="my-location" size={16} color={theme.highlight} /></View></Pressable>
     <Pressable style={({ pressed }) => [styles.voiceCard, { backgroundColor: theme.primarySoft, borderColor: theme.line }, pressed && styles.pressed]} onPress={onAssistant}><View style={[styles.voiceIcon, { backgroundColor: theme.primary }]}><MaterialIcons name="mic" size={22} color={COLORS.white} /></View><View style={{ flex: 1 }}><Text style={[styles.voiceTitle, { color: theme.ink }]}>O que você quer pedir hoje?</Text><Text style={styles.voiceSub}>Fale ou digite. A gente encontra perto.</Text></View><MaterialIcons name="arrow-forward" size={20} color={theme.ink} /></Pressable>
-    <View style={[styles.searchBox, { backgroundColor: theme.card, borderColor: theme.line }]}><MaterialIcons name="search" size={21} color={theme.muted} /><TextInput placeholder="Buscar comida, produtos ou serviços" placeholderTextColor={theme.muted} style={[styles.searchInput, { color: theme.text }]} /></View>
+    <View style={[styles.searchBox, { backgroundColor: theme.card, borderColor: theme.line }]}><MaterialIcons name="search" size={21} color={theme.muted} /><TextInput value={searchQuery} onChangeText={setSearchQuery} placeholder="Buscar comida, produtos ou serviços" placeholderTextColor={theme.muted} style={[styles.searchInput, { color: theme.text }]} returnKeyType="search" /></View>
     <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Categorias</Text><Text style={styles.link}>Ver tudo</Text></View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>{CATEGORIES.map((item) => <Pressable key={item.label} style={[styles.categoryChip, { backgroundColor: theme.card, borderColor: theme.line }, category === item.label && { backgroundColor: theme.ink, borderColor: theme.ink }]} onPress={() => setCategory(item.label)}><Text style={styles.categoryIcon}>{item.icon}</Text><Text style={[styles.categoryLabel, { color: theme.muted }, category === item.label && styles.categoryLabelActive]}>{item.label}</Text></Pressable>)}</ScrollView>
     <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Boas opções para pedir agora</Text><Text style={styles.link}>Ver tudo</Text></View>
-    {loading ? <View style={styles.emptyState}><Text style={styles.emptyTitle}>Carregando opções...</Text><Text style={styles.emptyText}>Buscando produtos disponíveis perto de você.</Text></View> : error ? <View style={styles.emptyState}><Text style={styles.emptyTitle}>Não foi possível carregar o catálogo</Text><Text style={styles.emptyText}>Tente novamente em alguns instantes.</Text></View> : products.length ? products.map((product) => <Pressable key={product.id} style={({ pressed }) => [styles.productCard, pressed && styles.cardPressed]} onPress={() => onProductPress(product)}><View style={styles.productImage}><Text style={styles.productEmoji}>{product.emoji}</Text><View style={styles.availablePill}><View style={styles.dot} /><Text style={styles.availableText}>DISPONÍVEL</Text></View></View><View style={styles.productInfo}><View style={{ flex: 1 }}><View style={styles.ratingRow}><Text style={styles.rating}>★ 4,9</Text><Text style={styles.distance}>{product.distance}</Text></View><Text style={styles.productName}>{product.name}</Text><Text style={styles.storeName}>{product.store}</Text></View><Text style={styles.productPrice}>{product.price}</Text></View><View style={styles.productFooter}><Text style={styles.localText}>Recomendado por quem está perto de você</Text><View style={styles.arrowCircle}><MaterialIcons name="arrow-forward" size={17} color={COLORS.white} /></View></View></Pressable>) : <View style={styles.emptyState}><Text style={styles.emptyTitle}>Nenhuma opção disponível agora</Text><Text style={styles.emptyText}>Quando uma loja abrir e publicar produtos, eles aparecerão aqui.</Text></View>}
+    {loading ? <View style={styles.emptyState}><Text style={styles.emptyTitle}>Carregando opções...</Text><Text style={styles.emptyText}>Buscando produtos disponíveis perto de você.</Text></View> : error ? <View style={styles.emptyState}><Text style={styles.emptyTitle}>Não foi possível carregar o catálogo</Text><Text style={styles.emptyText}>Tente novamente em alguns instantes.</Text></View> : products.length ? products.map((product) => <Pressable key={product.id} style={({ pressed }) => [styles.productCard, pressed && styles.cardPressed]} onPress={() => onProductPress(product)}><View style={styles.productImage}><Text style={styles.productEmoji}>{product.emoji}</Text><View style={styles.availablePill}><View style={styles.dot} /><Text style={styles.availableText}>DISPONÍVEL</Text></View></View><View style={styles.productInfo}><View style={{ flex: 1 }}><View style={styles.ratingRow}><Text style={styles.rating}>Disponível agora</Text><Text style={styles.distance}>{product.distance}</Text></View><Text style={styles.productName}>{product.name}</Text><Text style={styles.storeName}>{product.store}</Text></View><Text style={styles.productPrice}>{product.price}</Text></View><View style={styles.productFooter}><Text style={styles.localText}>{product.description || "Publicado pela loja no catálogo do Pediu"}</Text><View style={styles.arrowCircle}><MaterialIcons name="arrow-forward" size={17} color={COLORS.white} /></View></View></Pressable>) : <View style={styles.emptyState}><Text style={styles.emptyTitle}>Nenhuma opção disponível agora</Text><Text style={styles.emptyText}>Quando uma loja abrir e publicar produtos, eles aparecerão aqui.</Text></View>}
     <View style={styles.promiseCard}><MaterialIcons name="favorite" size={20} color={COLORS.coral} /><View style={{ flex: 1 }}><Text style={styles.promiseTitle}>Compre de quem está perto</Text><Text style={styles.promiseText}>Apoiamos o comércio local e entregamos com cuidado.</Text></View></View>
   </>;
 }
 
 function ProductModal({ product, onClose, onAdd }: { product: Product; onClose: () => void; onAdd: () => void }) {
-  return <View style={styles.modalBackdrop}><View style={styles.sheet}><View style={styles.sheetHandle} /><View style={styles.modalProductImage}><Text style={styles.modalEmoji}>{product.emoji}</Text></View><Text style={styles.eyebrow}>{product.store.toUpperCase()}</Text><Text style={styles.sheetTitle}>{product.name}</Text><Text style={styles.muted}>A 500 m · disponível agora</Text><Text style={styles.modalDescription}>Uma opção deliciosa e feita com carinho por quem vende perto de você.</Text><View style={styles.totalRow}><Text style={styles.totalLabel}>Preço</Text><Text style={styles.totalValue}>{product.price}</Text></View><Pressable style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]} onPress={onAdd}><Text style={styles.primaryButtonText}>Adicionar ao pedido</Text><MaterialIcons name="add" size={19} color={COLORS.white} /></Pressable><Pressable style={styles.textButton} onPress={onClose}><Text style={styles.textButtonLabel}>Voltar</Text></Pressable></View></View>;
+  return <View style={styles.modalBackdrop}><View style={styles.sheet}><View style={styles.sheetHandle} /><View style={styles.modalProductImage}><Text style={styles.modalEmoji}>{product.emoji}</Text></View><Text style={styles.eyebrow}>{product.store.toUpperCase()}</Text><Text style={styles.sheetTitle}>{product.name}</Text><Text style={styles.muted}>{product.distance} · {product.available ? "disponível agora" : "indisponível"}</Text><Text style={styles.modalDescription}>{product.description || "Confira os detalhes diretamente com a loja pelo catálogo do Pediu."}</Text><View style={styles.totalRow}><Text style={styles.totalLabel}>Preço</Text><Text style={styles.totalValue}>{product.price}</Text></View><Pressable disabled={!product.available} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, !product.available && styles.disabledButton]} onPress={onAdd}><Text style={styles.primaryButtonText}>{product.available ? "Adicionar ao pedido" : "Produto indisponível"}</Text><MaterialIcons name="add" size={19} color={COLORS.white} /></Pressable><Pressable style={styles.textButton} onPress={onClose}><Text style={styles.textButtonLabel}>Voltar</Text></Pressable></View></View>;
 }
 
 function CustomerOrders({ orders, loading, isAuthenticated, onLogin, onCancel, onDiscover }: { orders: { id: number; storeId: number; status: OrderStatus; total: string; deliveryAddress: string | null; createdAt: Date | string | null }[]; loading: boolean; isAuthenticated: boolean; onLogin: () => void; onCancel: (orderId: number) => void; onDiscover: () => void }) {
@@ -691,10 +768,10 @@ function CustomerProfile({ user, isAuthenticated, notifications, onReadNotificat
   return <><View style={styles.simpleHeader}><View><Text style={styles.eyebrow}>SUA CONTA</Text><Text style={styles.pageTitle}>Perfil</Text></View><View style={styles.avatar}><Text style={styles.avatarText}>{avatarLetter}</Text></View></View><View style={styles.profileCard}><View style={styles.avatarLarge}><Text style={styles.avatarLargeText}>{avatarLetter}</Text></View><Text style={styles.profileName}>{profileName}</Text><Text style={styles.muted}>{profileEmail}</Text>{!isAuthenticated ? <Text style={styles.muted}>Você está navegando como visitante.</Text> : null}</View>{["Dados pessoais", "Meus endereços", "Pagamentos", "Notificações", "Segurança"].map((item) => <Pressable style={styles.settingsRow} key={item} onPress={() => item === "Meus endereços" ? router.push("/account/addresses") : item === "Pagamentos" ? router.push("/account/payment-methods") : item === "Notificações" ? router.push("/account/notifications") : item === "Segurança" ? router.push("/account/settings/advanced") : router.push("/account/profile")}><View style={styles.settingsIcon}><MaterialIcons name={item === "Pagamentos" ? "credit-card" : item === "Meus endereços" ? "location-on" : item === "Notificações" ? "notifications" : "person"} size={20} color={COLORS.ink} /></View><Text style={styles.cardTitle}>{item}</Text><MaterialIcons name="chevron-right" size={20} color={COLORS.muted} /></Pressable>)}<View style={notificationStyles.card}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Histórico de notificações</Text><Text style={styles.link}>{notifications.filter((item) => !item.readAt).length} novas</Text></View>{notifications.length ? notifications.slice(0, 4).map((item) => <Pressable key={item.id} style={[notificationStyles.item, !item.readAt && notificationStyles.unread]} onPress={() => onReadNotification(item.id)}><MaterialIcons name="notifications" size={18} color={COLORS.coral} /><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{item.title}</Text><Text style={styles.muted}>{item.body}</Text></View></Pressable>) : <Text style={styles.muted}>Suas confirmações de pedido e pagamento aparecerão aqui.</Text>}</View><View style={styles.sellerInvite}><Text style={styles.sellerInviteTitle}>Você também vende?</Text><Text style={styles.sellerInviteText}>Crie sua vitrine e comece a vender para sua comunidade.</Text><Pressable style={styles.outlineButton} onPress={onSellerMode}><Text style={styles.outlineButtonText}>Abrir modo vendedor</Text></Pressable></View></>;
 }
 
-function SellerHome({ theme, store, ownerName, orders, productCount, salesTotal, onCatalog, onOrders, onVoice, onNotice }: { theme: AppTheme; store?: { name?: string | null }; ownerName?: string | null; orders: { status: string }[]; productCount: number; salesTotal: number; onCatalog: () => void; onOrders: () => void; onVoice: () => void; onNotice: (message: string) => void }) {
+function SellerHome({ theme, store, ownerName, orders, productCount, salesTotal, onCatalog, onOrders, onClients, onShareCatalog, onVoice }: { theme: AppTheme; store?: { name?: string | null }; ownerName?: string | null; orders: { status: string }[]; productCount: number; salesTotal: number; onCatalog: () => void; onOrders: () => void; onClients: () => void; onShareCatalog: () => void; onVoice: () => void }) {
   const pendingOrders = orders.filter((order) => order.status === "Pendente").length;
   const firstName = ownerName?.trim().split(/\s+/)[0];
-  return <><View style={[styles.sellerHeader, { backgroundColor: theme.ink }]}><View><Text style={[styles.eyebrowLight, { color: theme.highlight }]}>PAINEL DA LOJA</Text><Text style={styles.sellerTitle}>{store?.name ?? "Sua loja"}</Text><Text style={styles.sellerSubtitle}>{firstName ? `Bom dia, ${firstName}. Tudo pronto?` : "Configure sua loja para começar."}</Text></View><BrandMark /></View><View style={styles.statGrid}><View style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.line }]}><Text style={[styles.statNumber, { color: theme.ink }]}>{pendingOrders}</Text><Text style={styles.statLabel}>pedidos pendentes</Text><MaterialIcons name="receipt-long" size={22} color={theme.primary} /></View><View style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.line }]}><Text style={[styles.statNumber, { color: theme.ink }]}>{`R$ ${salesTotal.toFixed(2).replace(".", ",")}`}</Text><Text style={styles.statLabel}>vendas registradas</Text><MaterialIcons name="trending-up" size={22} color={COLORS.green} /></View></View><View style={[styles.aiSellerCard, { backgroundColor: theme.primarySoft, borderColor: theme.line }]}><View style={[styles.aiIcon, { backgroundColor: theme.primary }]}><MaterialIcons name="mic" size={21} color={COLORS.white} /></View><View style={{ flex: 1 }}><Text style={[styles.aiTitle, { color: theme.ink }]}>Fale com o Pediu</Text><Text style={styles.aiText}>Registre vendas e consulte sua operação por voz.</Text></View><Pressable style={[styles.smallLightButton, { backgroundColor: theme.primary }]} onPress={onVoice}><Text style={styles.smallLightButtonText}>Falar</Text></Pressable></View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Atalhos</Text></View><View style={styles.shortcutGrid}><Pressable style={({ pressed }) => [styles.shortcut, { backgroundColor: theme.card, borderColor: theme.line }, pressed && styles.cardPressed]} onPress={onCatalog}><MaterialIcons name="inventory-2" size={24} color={theme.primary} /><Text style={styles.shortcutTitle}>Catálogo</Text><Text style={styles.shortcutSub}>{productCount} produto(s) ativo(s)</Text></Pressable><Pressable style={({ pressed }) => [styles.shortcut, { backgroundColor: theme.card, borderColor: theme.line }, pressed && styles.cardPressed]} onPress={onOrders}><MaterialIcons name="local-shipping" size={24} color={theme.highlight} /><Text style={styles.shortcutTitle}>Pedidos</Text><Text style={styles.shortcutSub}>{pendingOrders} aguardando ação</Text></Pressable><Pressable style={({ pressed }) => [styles.shortcut, { backgroundColor: theme.card, borderColor: theme.line }, pressed && styles.cardPressed]} onPress={() => onNotice("A divulgação será conectada ao catálogo da loja") }><MaterialIcons name="campaign" size={24} color={theme.ink} /><Text style={styles.shortcutTitle}>Divulgar</Text><Text style={styles.shortcutSub}>Compartilhe seu catálogo</Text></Pressable><Pressable style={({ pressed }) => [styles.shortcut, { backgroundColor: theme.card, borderColor: theme.line }, pressed && styles.cardPressed]} onPress={() => onNotice("Cadastre clientes para acompanhar o fiado") }><MaterialIcons name="people" size={24} color={COLORS.green} /><Text style={styles.shortcutTitle}>Clientes</Text><Text style={styles.shortcutSub}>Dados do backend</Text></Pressable></View><View style={[styles.tipCard, { backgroundColor: theme.card, borderColor: theme.line }]}><MaterialIcons name="lightbulb" size={22} color={theme.highlight} /><View style={{ flex: 1 }}><Text style={styles.tipTitle}>Dica do Pediu</Text><Text style={styles.tipText}>Uma boa foto e uma descrição curta ajudam seu produto a vender mais.</Text></View></View></>;
+  return <><View style={[styles.sellerHeader, { backgroundColor: theme.ink }]}><View><Text style={[styles.eyebrowLight, { color: theme.highlight }]}>PAINEL DA LOJA</Text><Text style={styles.sellerTitle}>{store?.name ?? "Sua loja"}</Text><Text style={styles.sellerSubtitle}>{firstName ? `Bom dia, ${firstName}. Tudo pronto?` : "Configure sua loja para começar."}</Text></View><BrandMark /></View><View style={styles.statGrid}><View style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.line }]}><Text style={[styles.statNumber, { color: theme.ink }]}>{pendingOrders}</Text><Text style={styles.statLabel}>pedidos pendentes</Text><MaterialIcons name="receipt-long" size={22} color={theme.primary} /></View><View style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.line }]}><Text style={[styles.statNumber, { color: theme.ink }]}>{`R$ ${salesTotal.toFixed(2).replace(".", ",")}`}</Text><Text style={styles.statLabel}>vendas registradas</Text><MaterialIcons name="trending-up" size={22} color={COLORS.green} /></View></View><View style={[styles.aiSellerCard, { backgroundColor: theme.primarySoft, borderColor: theme.line }]}><View style={[styles.aiIcon, { backgroundColor: theme.primary }]}><MaterialIcons name="mic" size={21} color={COLORS.white} /></View><View style={{ flex: 1 }}><Text style={[styles.aiTitle, { color: theme.ink }]}>Fale com o Pediu</Text><Text style={styles.aiText}>Registre vendas e consulte sua operação por voz.</Text></View><Pressable style={[styles.smallLightButton, { backgroundColor: theme.primary }]} onPress={onVoice}><Text style={styles.smallLightButtonText}>Falar</Text></Pressable></View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Atalhos</Text></View><View style={styles.shortcutGrid}><Pressable style={({ pressed }) => [styles.shortcut, { backgroundColor: theme.card, borderColor: theme.line }, pressed && styles.cardPressed]} onPress={onCatalog}><MaterialIcons name="inventory-2" size={24} color={theme.primary} /><Text style={styles.shortcutTitle}>Catálogo</Text><Text style={styles.shortcutSub}>{productCount} produto(s) ativo(s)</Text></Pressable><Pressable style={({ pressed }) => [styles.shortcut, { backgroundColor: theme.card, borderColor: theme.line }, pressed && styles.cardPressed]} onPress={onOrders}><MaterialIcons name="local-shipping" size={24} color={theme.highlight} /><Text style={styles.shortcutTitle}>Pedidos</Text><Text style={styles.shortcutSub}>{pendingOrders} aguardando ação</Text></Pressable><Pressable style={({ pressed }) => [styles.shortcut, { backgroundColor: theme.card, borderColor: theme.line }, pressed && styles.cardPressed]} onPress={onShareCatalog}><MaterialIcons name="campaign" size={24} color={theme.ink} /><Text style={styles.shortcutTitle}>Divulgar</Text><Text style={styles.shortcutSub}>Compartilhe dados reais</Text></Pressable><Pressable style={({ pressed }) => [styles.shortcut, { backgroundColor: theme.card, borderColor: theme.line }, pressed && styles.cardPressed]} onPress={onClients}><MaterialIcons name="people" size={24} color={COLORS.green} /><Text style={styles.shortcutTitle}>Clientes</Text><Text style={styles.shortcutSub}>Fiado e relacionamento</Text></Pressable></View><View style={[styles.tipCard, { backgroundColor: theme.card, borderColor: theme.line }]}><MaterialIcons name="lightbulb" size={22} color={theme.highlight} /><View style={{ flex: 1 }}><Text style={styles.tipTitle}>Dica do Pediu</Text><Text style={styles.tipText}>Uma boa foto e uma descrição curta ajudam seu produto a vender mais.</Text></View></View></>;
 }
 
 function SellerOrders({
@@ -786,12 +863,20 @@ function SellerOrders({
   );
 }
 
-function SellerCatalog({ products, loading, onAdd, onToggle }: { products: Product[]; loading: boolean; onAdd: () => void; onToggle: (id: number, available: boolean) => void }) {
-  return <><View style={styles.simpleHeader}><View><Text style={styles.eyebrow}>SUA VITRINE</Text><Text style={styles.pageTitle}>Catálogo</Text></View><Pressable style={styles.addCircle} onPress={onAdd}><MaterialIcons name="add" size={24} color={COLORS.white} /></Pressable></View><Text style={styles.muted}>Produtos persistidos da sua loja. Alterações ficam disponíveis para os clientes.</Text>{loading ? <View style={styles.emptyState}><Text style={styles.emptyTitle}>Carregando catálogo...</Text></View> : products.length ? products.map((product) => <View style={styles.catalogRow} key={product.id}><View style={styles.catalogEmoji}><Text>{product.emoji}</Text></View><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{product.name}</Text><Text style={styles.muted}>{product.category} · {product.price}</Text></View><Pressable style={[styles.stockSwitch, product.available && styles.stockSwitchOn]} onPress={() => onToggle(product.id, !product.available)}><View style={[styles.stockKnob, product.available && styles.stockKnobOn]} /></Pressable></View>) : <View style={styles.emptyState}><Text style={styles.emptyTitle}>Seu catálogo está vazio</Text><Text style={styles.emptyText}>Adicione o primeiro produto para começar a vender.</Text></View>}<View style={styles.publishCard}><MaterialIcons name="campaign" size={22} color={COLORS.coral} /><View style={{ flex: 1 }}><Text style={styles.tipTitle}>Divulgue seu catálogo</Text><Text style={styles.tipText}>Crie uma oferta com IA para compartilhar no WhatsApp.</Text></View><MaterialIcons name="chevron-right" size={22} color={COLORS.coral} /></View></>;
+function SellerCatalog({ products, loading, onAdd, onToggle, onShare }: { products: Product[]; loading: boolean; onAdd: () => void; onToggle: (id: number, available: boolean) => void; onShare: () => void }) {
+  return <><View style={styles.simpleHeader}><View><Text style={styles.eyebrow}>SUA VITRINE</Text><Text style={styles.pageTitle}>Catálogo</Text></View><Pressable style={styles.addCircle} onPress={onAdd}><MaterialIcons name="add" size={24} color={COLORS.white} /></Pressable></View><Text style={styles.muted}>Produtos persistidos da sua loja. Alterações ficam disponíveis para os clientes.</Text>{loading ? <View style={styles.emptyState}><Text style={styles.emptyTitle}>Carregando catálogo...</Text></View> : products.length ? products.map((product) => <View style={styles.catalogRow} key={product.id}><View style={styles.catalogEmoji}><Text>{product.emoji}</Text></View><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{product.name}</Text><Text style={styles.muted}>{product.category} · {product.price}</Text>{product.description ? <Text style={styles.muted} numberOfLines={1}>{product.description}</Text> : null}</View><Pressable accessibilityLabel={`${product.available ? "Desativar" : "Ativar"} ${product.name}`} style={[styles.stockSwitch, product.available && styles.stockSwitchOn]} onPress={() => onToggle(product.id, !product.available)}><View style={[styles.stockKnob, product.available && styles.stockKnobOn]} /></Pressable></View>) : <View style={styles.emptyState}><Text style={styles.emptyTitle}>Seu catálogo está vazio</Text><Text style={styles.emptyText}>Adicione o primeiro produto para começar a vender.</Text></View>}<Pressable style={styles.publishCard} onPress={onShare}><MaterialIcons name="campaign" size={22} color={COLORS.coral} /><View style={{ flex: 1 }}><Text style={styles.tipTitle}>Divulgue seu catálogo</Text><Text style={styles.tipText}>Compartilhe os produtos disponíveis da sua loja.</Text></View><MaterialIcons name="share" size={22} color={COLORS.coral} /></Pressable></>;
 }
 
-function SellerSettings({ store, salesCount, onAssistant, onCustomerMode }: { store?: { name: string; phone: string | null; pixKey: string | null }; salesCount: number; onAssistant: () => void; onCustomerMode: () => void }) {
-  return <><View style={styles.simpleHeader}><View><Text style={styles.eyebrow}>CONFIGURAÇÕES</Text><Text style={styles.pageTitle}>Sua loja</Text></View><Text style={styles.link}>{salesCount} vendas</Text></View><View style={styles.fieldCard}><Text style={styles.fieldLabel}>NOME DO NEGÓCIO</Text><Text style={styles.fieldValue}>{store?.name ?? "Cadastre sua loja"}</Text><Text style={styles.fieldLabel}>WHATSAPP / TELEFONE</Text><Text style={styles.fieldValue}>{store?.phone ?? "Ainda não informado"}</Text></View><View style={styles.fieldCard}><ThemePicker title="Personalize o painel da loja" description="A mesma identidade visual do Pediu fica disponível para cliente e lojista." /></View><Pressable style={styles.settingsRow} onPress={onAssistant}><View style={styles.settingsIcon}><MaterialIcons name="auto-awesome" size={20} color={COLORS.ink} /></View><View style={{ flex: 1 }}><Text style={styles.cardTitle}>Assistente do Pediu</Text><Text style={styles.muted}>Vendas, fiado, catálogo e divulgação por voz</Text></View><MaterialIcons name="chevron-right" size={20} color={COLORS.muted} /></Pressable>{["Chave PIX", "Lembretes de fiado", "Taxa de entrega", "Local de retirada", "Modo mãos livres"].map((item) => <View style={styles.settingsRow} key={item}><View style={styles.settingsIcon}><MaterialIcons name={item === "Chave PIX" ? "pix" : item === "Taxa de entrega" ? "two-wheeler" : item === "Local de retirada" ? "location-on" : item === "Modo mãos livres" ? "mic" : "notifications"} size={20} color={COLORS.ink} /></View><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{item}</Text><Text style={styles.muted}>{item === "Chave PIX" ? (store?.pixKey ?? "Configurar") : item === "Taxa de entrega" ? "R$ 0,00" : "Configurar"}</Text></View><MaterialIcons name="chevron-right" size={20} color={COLORS.muted} /></View>)}<Pressable style={styles.outlineButton} onPress={onCustomerMode}><Text style={styles.outlineButtonText}>Voltar para modo cliente</Text></Pressable></>;
+function SellerSettings({ store, salesCount, onSave, saving, onAssistant, onCustomerMode }: { store?: { id: number; name: string; phone: string | null; address: string | null; pixKey: string | null; deliveryFee: string; isOpen: number }; salesCount: number; onSave: (input: { name?: string; phone?: string; address?: string; pixKey?: string; deliveryFee?: string; isOpen?: boolean }) => void; saving: boolean; onAssistant: () => void; onCustomerMode: () => void }) {
+  const [name, setName] = useState(store?.name ?? "");
+  const [phone, setPhone] = useState(store?.phone ?? "");
+  const [address, setAddress] = useState(store?.address ?? "");
+  const [pixKey, setPixKey] = useState(store?.pixKey ?? "");
+  const [deliveryFee, setDeliveryFee] = useState(store?.deliveryFee ?? "0.00");
+  const [isOpen, setIsOpen] = useState(Boolean(store?.isOpen));
+  useEffect(() => { setName(store?.name ?? ""); setPhone(store?.phone ?? ""); setAddress(store?.address ?? ""); setPixKey(store?.pixKey ?? ""); setDeliveryFee(store?.deliveryFee ?? "0.00"); setIsOpen(Boolean(store?.isOpen)); }, [store?.id, store?.name, store?.phone, store?.address, store?.pixKey, store?.deliveryFee, store?.isOpen]);
+  const save = () => { if (name.trim().length < 2 || !/^\d+(\.\d{1,2})?$/.test(deliveryFee.replace(",", ".").trim())) return; onSave({ name: name.trim(), phone: phone.trim() || undefined, address: address.trim() || undefined, pixKey: pixKey.trim() || undefined, deliveryFee: deliveryFee.replace(",", ".").trim(), isOpen }); };
+  return <><View style={styles.simpleHeader}><View><Text style={styles.eyebrow}>CONFIGURAÇÕES</Text><Text style={styles.pageTitle}>Sua loja</Text></View><Text style={styles.link}>{salesCount} vendas</Text></View><View style={styles.fieldCard}><Text style={styles.sectionTitle}>Dados publicados</Text><TextInput value={name} onChangeText={setName} placeholder="Nome da loja" placeholderTextColor={COLORS.muted} style={styles.input} /><TextInput value={phone} onChangeText={setPhone} placeholder="WhatsApp / telefone" placeholderTextColor={COLORS.muted} style={styles.input} keyboardType="phone-pad" /><TextInput value={address} onChangeText={setAddress} placeholder="Endereço da loja" placeholderTextColor={COLORS.muted} style={styles.input} /><TextInput value={pixKey} onChangeText={setPixKey} placeholder="Chave PIX" placeholderTextColor={COLORS.muted} style={styles.input} /><TextInput value={deliveryFee} onChangeText={setDeliveryFee} placeholder="Taxa de entrega" placeholderTextColor={COLORS.muted} style={styles.input} keyboardType="decimal-pad" /><Pressable style={styles.settingsRow} onPress={() => setIsOpen((value) => !value)}><View style={styles.settingsIcon}><MaterialIcons name={isOpen ? "store" : "storefront"} size={20} color={COLORS.ink} /></View><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{isOpen ? "Loja aberta" : "Loja fechada"}</Text><Text style={styles.muted}>Controla a disponibilidade no marketplace</Text></View><View style={[styles.stockSwitch, isOpen && styles.stockSwitchOn]}><View style={[styles.stockKnob, isOpen && styles.stockKnobOn]} /></View></Pressable><Pressable style={[styles.primaryButton, saving && styles.disabledButton]} disabled={saving} onPress={save}><Text style={styles.primaryButtonText}>{saving ? "Salvando..." : "Salvar configurações"}</Text><MaterialIcons name="check" size={18} color={COLORS.white} /></Pressable></View><View style={styles.fieldCard}><ThemePicker title="Personalize o painel da loja" description="A mesma identidade visual do Pediu fica disponível para cliente e lojista." /></View><Pressable style={styles.settingsRow} onPress={onAssistant}><View style={styles.settingsIcon}><MaterialIcons name="auto-awesome" size={20} color={COLORS.ink} /></View><View style={{ flex: 1 }}><Text style={styles.cardTitle}>Assistente do Pediu</Text><Text style={styles.muted}>Vendas, fiado, catálogo e divulgação por voz</Text></View><MaterialIcons name="chevron-right" size={20} color={COLORS.muted} /></Pressable><Pressable style={styles.outlineButton} onPress={onCustomerMode}><Text style={styles.outlineButtonText}>Voltar para modo cliente</Text></Pressable></>;
 }
 
 function PulsingAssistantButton({ onPress, theme, compact = false }: { onPress: () => void; theme: AppTheme; compact?: boolean }) {
@@ -918,10 +1003,22 @@ function SellerVoiceLauncher({ onPress }: { onPress: () => void }) {
   return <Pressable style={({ pressed }) => [voiceStyles.launcher, pressed && styles.pressed]} onPress={onPress}><View style={voiceStyles.launcherIcon}><MaterialIcons name="mic" size={18} color={COLORS.white} /></View><View style={{ flex: 1 }}><Text style={voiceStyles.launcherTitle}>Fale com o Pediu</Text><Text style={voiceStyles.launcherText}>Registrar venda, consultar fiado ou divulgar</Text></View><MaterialIcons name="arrow-forward" size={18} color={COLORS.ink} /></Pressable>;
 }
 
-function SellerClients({ customers, onNotice }: { customers: { id: number; name: string; balance: string }[]; onNotice: (message: string) => void }) {
-  const visibleCustomers = customers.length ? customers.map((customer, index) => ({ name: customer.name, detail: `Fiado · R$ ${Number(customer.balance).toFixed(2).replace(".", ",")}`, emoji: customer.name.slice(0, 1).toUpperCase(), tone: [COLORS.yellow, "#BDE6D3", "#D8C8F5"][index % 3] })) : [{ name: "Nenhum cliente cadastrado", detail: "Use o assistente para registrar uma venda", emoji: "+", tone: COLORS.coralSoft }];
+function SellerClients({ customers, onCreate, creating, onSetLimit, onBlock, busy }: { customers: SellerCustomer[]; onCreate: (input: { name: string; phone?: string; notes?: string; creditLimit: string }) => void; creating: boolean; onSetLimit: (customerId: number, creditLimit: string) => void; onBlock: (customerId: number, blocked: boolean) => void; busy: boolean }) {
+  const [showForm, setShowForm] = useState(false);
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [notes, setNotes] = useState("");
+  const [creditLimit, setCreditLimit] = useState("0.00");
+  const [selectedId, setSelectedId] = useState<number>();
+  const [selectedLimit, setSelectedLimit] = useState("");
   const totalOwed = customers.reduce((sum, customer) => sum + Number(customer.balance), 0);
-  return <><View style={styles.simpleHeader}><View><Text style={styles.eyebrow}>RELACIONAMENTO</Text><Text style={styles.pageTitle}>Meus clientes</Text></View><View style={styles.avatar}><Text style={styles.avatarText}>{customers.length}</Text></View></View><View style={clientStyles.summary}><View><Text style={clientStyles.summaryNumber}>R$ {totalOwed.toFixed(2).replace(".", ",")}</Text><Text style={clientStyles.summaryLabel}>em vendas fiadas</Text></View><MaterialIcons name="account-balance-wallet" size={28} color={COLORS.orange} /></View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Clientes recentes</Text><Text style={styles.link}>Persistidos</Text></View>{visibleCustomers.map((client) => <View style={clientStyles.row} key={client.name}><View style={[clientStyles.clientAvatar, { backgroundColor: client.tone }]}><Text style={clientStyles.clientAvatarText}>{client.emoji}</Text></View><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{client.name}</Text><Text style={styles.muted}>{client.detail}</Text></View><Pressable style={clientStyles.action} onPress={() => onNotice(`${client.name}: histórico aberto`)}><MaterialIcons name="chevron-right" size={20} color={COLORS.ink} /></Pressable></View>)}<View style={clientStyles.reminder}><MaterialIcons name="notifications-active" size={21} color={COLORS.coral} /><View style={{ flex: 1 }}><Text style={styles.tipTitle}>Lembrete de fiado</Text><Text style={styles.tipText}>Envie uma cobrança amigável para quem está com pagamento pendente.</Text></View><Pressable style={clientStyles.reminderButton} onPress={() => onNotice("Lembrete de cobrança preparado")}><Text style={clientStyles.reminderButtonText}>Preparar</Text></Pressable></View></>;
+  const submit = () => {
+    const normalizedLimit = creditLimit.replace(",", ".").trim();
+    if (name.trim().length < 2 || !/^\d+(\.\d{1,2})?$/.test(normalizedLimit)) return;
+    onCreate({ name: name.trim(), phone: phone.trim() || undefined, notes: notes.trim() || undefined, creditLimit: normalizedLimit });
+    setName(""); setPhone(""); setNotes(""); setCreditLimit("0.00"); setShowForm(false);
+  };
+  return <><View style={styles.simpleHeader}><View><Text style={styles.eyebrow}>RELACIONAMENTO</Text><Text style={styles.pageTitle}>Meus clientes</Text></View><Pressable style={styles.addCircle} onPress={() => setShowForm((value) => !value)}><MaterialIcons name={showForm ? "close" : "person-add"} size={21} color={COLORS.white} /></Pressable></View><View style={clientStyles.summary}><View><Text style={clientStyles.summaryNumber}>R$ {totalOwed.toFixed(2).replace(".", ",")}</Text><Text style={clientStyles.summaryLabel}>em vendas fiadas</Text></View><MaterialIcons name="account-balance-wallet" size={28} color={COLORS.orange} /></View>{showForm ? <View style={clientStyles.form}><Text style={styles.sectionTitle}>Novo cliente</Text><TextInput value={name} onChangeText={setName} placeholder="Nome completo" placeholderTextColor={COLORS.muted} style={styles.input} /><TextInput value={phone} onChangeText={setPhone} placeholder="Telefone (opcional)" placeholderTextColor={COLORS.muted} style={styles.input} keyboardType="phone-pad" /><TextInput value={creditLimit} onChangeText={setCreditLimit} placeholder="Limite de fiado" placeholderTextColor={COLORS.muted} style={styles.input} keyboardType="decimal-pad" /><TextInput value={notes} onChangeText={setNotes} placeholder="Observações (opcional)" placeholderTextColor={COLORS.muted} style={styles.input} multiline /><Pressable style={[styles.primaryButton, creating && styles.disabledButton]} disabled={creating} onPress={submit}><Text style={styles.primaryButtonText}>{creating ? "Salvando..." : "Salvar cliente"}</Text><MaterialIcons name="check" size={18} color={COLORS.white} /></Pressable></View> : null}<View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Clientes cadastrados</Text><Text style={styles.link}>{customers.length}</Text></View>{customers.length ? customers.map((customer, index) => { const selected = selectedId === customer.id; const isBlocked = customer.status !== "active"; return <View style={clientStyles.row} key={customer.id}><View style={[clientStyles.clientAvatar, { backgroundColor: [COLORS.yellow, "#BDE6D3", "#D8C8F5"][index % 3] }]}><Text style={clientStyles.clientAvatarText}>{customer.name.slice(0, 1).toUpperCase()}</Text></View><View style={{ flex: 1, gap: 2 }}><Text style={styles.cardTitle}>{customer.name}</Text><Text style={styles.muted}>{isBlocked ? "Bloqueado" : `Fiado · R$ ${Number(customer.balance).toFixed(2).replace(".", ",")} de R$ ${Number(customer.creditLimit).toFixed(2).replace(".", ",")}`}</Text>{customer.phone ? <Text style={styles.muted}>{customer.phone}</Text> : null}{selected ? <View style={clientStyles.inlineActions}><TextInput value={selectedLimit} onChangeText={setSelectedLimit} placeholder="Novo limite" placeholderTextColor={COLORS.muted} style={[styles.input, clientStyles.limitInput]} keyboardType="decimal-pad" /><Pressable style={clientStyles.smallAction} disabled={busy} onPress={() => { const value = selectedLimit.replace(",", ".").trim(); if (/^\d+(\.\d{1,2})?$/.test(value)) onSetLimit(customer.id, value); }}><Text style={clientStyles.smallActionText}>Salvar limite</Text></Pressable><Pressable style={[clientStyles.smallAction, isBlocked && clientStyles.unblockAction]} disabled={busy} onPress={() => onBlock(customer.id, !isBlocked)}><Text style={clientStyles.smallActionText}>{isBlocked ? "Desbloquear" : "Bloquear"}</Text></Pressable></View> : null}</View><Pressable style={clientStyles.action} onPress={() => { setSelectedId(selected ? undefined : customer.id); setSelectedLimit(Number(customer.creditLimit).toFixed(2)); }}><MaterialIcons name={selected ? "expand-less" : "tune"} size={20} color={COLORS.ink} /></Pressable></View>; }) : <View style={styles.emptyState}><Text style={styles.emptyTitle}>Nenhum cliente cadastrado</Text><Text style={styles.emptyText}>Cadastre clientes para registrar vendas fiadas com limite e saldo reais.</Text></View>}</>;
 }
 
 const voiceStyles = StyleSheet.create({
@@ -955,12 +1052,18 @@ const voiceStyles = StyleSheet.create({
 
 const clientStyles = StyleSheet.create({
   summary: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#FFF0D7", borderRadius: 20, padding: 18 },
+  form: { backgroundColor: COLORS.white, borderRadius: 18, padding: 14, borderWidth: 1, borderColor: COLORS.line, gap: 10 },
   summaryNumber: { color: COLORS.ink, fontSize: 27, fontWeight: "900" },
   summaryLabel: { color: COLORS.muted, fontSize: 12, marginTop: 3 },
   row: { flexDirection: "row", alignItems: "center", gap: 11, backgroundColor: COLORS.white, borderRadius: 18, padding: 12, borderWidth: 1, borderColor: COLORS.line },
   clientAvatar: { width: 44, height: 44, borderRadius: 15, alignItems: "center", justifyContent: "center" },
   clientAvatarText: { color: COLORS.ink, fontSize: 15, fontWeight: "900" },
   action: { width: 34, height: 34, borderRadius: 11, backgroundColor: COLORS.coralSoft, alignItems: "center", justifyContent: "center" },
+  inlineActions: { flexDirection: "row", alignItems: "center", gap: 7, marginTop: 7, flexWrap: "wrap" },
+  limitInput: { flex: 1, minWidth: 100, paddingVertical: 8 },
+  smallAction: { backgroundColor: COLORS.coral, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 9 },
+  unblockAction: { backgroundColor: COLORS.green },
+  smallActionText: { color: COLORS.white, fontSize: 10, fontWeight: "900" },
   reminder: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: COLORS.coralSoft, borderRadius: 18, padding: 14 },
   reminderButton: { backgroundColor: COLORS.coral, borderRadius: 11, paddingHorizontal: 10, paddingVertical: 9 },
   reminderButtonText: { color: COLORS.white, fontSize: 11, fontWeight: "800" },
