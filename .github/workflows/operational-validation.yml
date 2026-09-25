@@ -105,6 +105,8 @@ jobs:
         run: pnpm go-live:check
       - name: Run Go-Live client E2E smoke
         run: pnpm go-live:e2e
+      - name: Run Go-Live merchant and delivery E2E smoke
+        run: pnpm go-live:operations-e2e
       - name: Run read-only API stress baseline
         run: STRESS_REQUESTS=60 STRESS_CONCURRENCY=8 pnpm go-live:stress
       - name: Build production API

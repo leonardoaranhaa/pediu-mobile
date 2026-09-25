@@ -694,3 +694,17 @@ A auditoria de implantação encontrou zero deployments GitHub para este reposit
 ## Estado operacional
 
 O baseline de código e implantação está verde. O PSP PIX continua pendente por depender da criação do CNPJ, escolha de provedor, credenciais e homologação. A existência de um baseline verde não transforma a sandbox em produção nem substitui domínio, banco, secrets, backup/restore, observabilidade, OAuth/e-mail/push e dispositivos reais; esses itens precisam ser confirmados no ambiente definitivo antes do Go-Live comercial. Nenhuma nova etapa funcional deve ser considerada concluída sem repetir estresse e smoke de implantação.
+
+---
+
+# 24. Registro de execução — E2E operacional de lojista e entrega — 25/09/2026
+
+A próxima fatia vertical foi implementada como `scripts/go-live-operations-e2e.ts` e integrada ao workflow operacional pelo comando `pnpm go-live:operations-e2e`. O smoke cria fixture isolada, usa Bearer de teste, percorre o fluxo de lojista e entrega, valida o acompanhamento pelo cliente e remove os dados ao terminar.
+
+Na primeira execução contra MariaDB real, o E2E encontrou uma regressão que os mocks unitários não capturavam: o `UPDATE` alterava corretamente o status do pedido para `A caminho`, mas a leitura direta de `affectedRows` no retorno do Drizzle não funcionava em todos os formatos do driver. Como consequência, o evento `A caminho` não era criado. Foi corrigido o helper `getAffectedRows`, aceitando tanto o cabeçalho direto quanto o cabeçalho retornado em array, e a mesma normalização foi aplicada à conclusão de entrega e ao status administrativo de suporte.
+
+Após a correção, o E2E passou em banco limpo: `Pendente → Aceito → Preparando → Pronto → A caminho → Entregue`, atribuição ao lojista, localização com ETA, consulta do tracking pelo cliente, conclusão idempotente e cleanup do fixture. Esta descoberta reforça a regra de não avançar apenas com mocks: cada fatia deve atravessar o banco e o processo de produção reais.
+
+O PSP PIX continua fora deste smoke e permanece pendente de CNPJ, provedor, credenciais e homologação.
+
+Durante a repetição do smoke público, o primeiro preflight retornou 403 porque a instância temporária tinha `ALLOWED_ORIGINS` somente com `http://localhost:8081`. O código bloqueou corretamente a origem HTTPS não declarada. A instância foi reiniciada com as origens local e pública explícitas; o smoke então passou com CORS exato e o estresse público voltou a zero erro. Essa evidência deve ser reproduzida com os domínios definitivos no staging/produção.

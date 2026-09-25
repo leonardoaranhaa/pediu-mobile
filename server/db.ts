@@ -14,6 +14,11 @@ function getInsertId(result: unknown): number {
   return insertId;
 }
 
+function getAffectedRows(result: unknown): number {
+  const header = Array.isArray(result) ? result[0] : result;
+  return Number((header as { affectedRows?: number | string } | undefined)?.affectedRows ?? 0);
+}
+
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
@@ -279,7 +284,7 @@ export async function updateSupportTicketStatus(ticketId: number, status: "open"
   if (!current[0]) throw new Error("Support ticket not found");
   if (current[0].status === status) return;
   const result = await db.update(supportTickets).set({ status, updatedAt: new Date() }).where(eq(supportTickets.id, ticketId));
-  if (Number((result as { affectedRows?: number }).affectedRows ?? 0) !== 1) throw new Error("Support ticket not found");
+  if (getAffectedRows(result) !== 1) throw new Error("Support ticket not found");
 }
 
 export async function getCouponByCode(code: string): Promise<Coupon | undefined> {
@@ -711,7 +716,7 @@ export async function recordDeliveryLocation(input: InsertDeliveryLocation): Pro
 
     await tx.update(deliveryAssignments).set({ currentLatitude: input.latitude, currentLongitude: input.longitude, etaMinutes: input.etaMinutes, lastLocationAt: input.createdAt ?? new Date(), status: "in_transit", updatedAt: new Date() }).where(eq(deliveryAssignments.id, input.assignmentId));
     const orderUpdate = await tx.update(orders).set({ status: "A caminho", updatedAt: new Date() }).where(sql`${orders.id} = ${input.orderId} AND ${orders.status} = 'Pronto'`);
-    const dispatched = Number((orderUpdate as { affectedRows?: number }).affectedRows ?? 0) === 1;
+    const dispatched = getAffectedRows(orderUpdate) === 1;
     if (dispatched) {
       await tx.insert(deliveryEvents).values({ orderId: input.orderId, eventType: "A caminho", latitude: input.latitude, longitude: input.longitude });
     }
@@ -732,7 +737,7 @@ export async function completeDelivery(orderId: number): Promise<{ changed: bool
   if (!db) throw new Error("Database not available");
   return db.transaction(async (tx) => {
     const result = await tx.update(orders).set({ status: "Entregue", updatedAt: new Date() }).where(sql`${orders.id} = ${orderId} AND ${orders.status} = 'A caminho'`);
-    const changed = Number((result as { affectedRows?: number }).affectedRows ?? 0) === 1;
+    const changed = getAffectedRows(result) === 1;
     if (changed) {
       await tx.update(deliveryAssignments).set({ status: "delivered", updatedAt: new Date() }).where(eq(deliveryAssignments.orderId, orderId));
       await tx.insert(deliveryEvents).values({ orderId, eventType: "Entregue" });

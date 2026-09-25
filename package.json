@@ -15,6 +15,7 @@
     "test": "vitest run",
     "go-live:check": "tsx scripts/go-live-readiness.ts",
     "go-live:e2e": "tsx scripts/go-live-client-e2e.ts",
+    "go-live:operations-e2e": "tsx scripts/go-live-operations-e2e.ts",
     "go-live:stress": "tsx scripts/go-live-stress.ts",
     "go-live:deployment": "tsx scripts/go-live-deployment.ts",
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
