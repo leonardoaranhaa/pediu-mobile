@@ -647,3 +647,27 @@ A implementação foi validada adicionalmente com `pnpm check`, `pnpm lint`, `pn
 ## Estado dos bloqueadores
 
 Este incremento **não conclui nenhum P0 externo**. PSP PIX, webhook real, OAuth de produção, e-mail, push, backup/restore, observabilidade, E2E completo e dispositivos reais permanecem pendentes até que existam credenciais, ambientes, homologação e evidências correspondentes. O status geral continua `🟡 Em preparação para Go-Live` e o Go-Live comercial permanece bloqueado conforme a regra do plano.
+
+
+---
+
+# 22. Registro de execução — jornada E2E vertical do cliente — 25/09/2026
+
+O segundo incremento executável foi implementado sobre o head do PR #7. Foram adicionados `scripts/go-live-client-e2e.ts`, o comando `pnpm go-live:e2e`, a etapa correspondente no workflow operacional e a instrução técnica `docs/INSTRUCAO_FASE_E2E_CLIENTE_PR7.md`.
+
+A jornada usa uma API Express real, sessão Bearer emitida pelo SDK com identidade de teste e um banco MySQL limpo. O fixture cria usuário cliente, usuário lojista, loja aberta e produto disponível com identificadores únicos; ao final, remove os registros criados.
+
+| Etapa | Evidência automatizada |
+|---|---|
+| Catálogo | Produto fixture retornado pelo marketplace com loja e categoria corretas |
+| Localização | Endereço persistido com latitude, longitude e seleção como padrão |
+| Quote | Preço, taxa de entrega e total calculados pelo servidor |
+| Checkout | Pedido criado usando endereço autorizado e total recalculado |
+| Pagamento | PIX criado e mantido em `pending`; nenhum estado `paid` é fabricado |
+| Idempotência | Repetição da mesma chave devolve o mesmo pedido/pagamento e mantém uma linha em cada tabela |
+| Operação lojista | Pedido visível para o lojista e progressão `Pendente → Aceito → Preparando → Pronto` |
+| Acompanhamento | Pedido final e eventos persistidos confirmados pelo cliente |
+
+A execução local em banco limpo aplicou as 24 migrations versionadas e passou com a mensagem `Go-Live client E2E smoke passed`. O banco de preview híbrido anterior foi deliberadamente descartado como evidência: ele tinha tabelas antigas de anúncios, mas não possuía `users.themePreference`, demonstrando por que o smoke deve sempre começar de um schema limpo.
+
+Este incremento cobre um smoke de API integrado, não substitui cadastro/login OAuth real, permissões nativas de localização, carrinho na UI, pagamento confirmado por PSP, webhook, rastreamento GPS, cancelamento, avaliação, push ou teste em Android/iOS. As caixas da jornada completa continuam pendentes até essas evidências serem produzidas.

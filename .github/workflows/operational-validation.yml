@@ -27,6 +27,8 @@ jobs:
       DATABASE_URL: mysql://root:root@127.0.0.1:3306/pediu_test
       NODE_ENV: test
       PORT: 3000
+      VITE_APP_ID: ci-e2e-app
+      JWT_SECRET: ci-e2e-jwt-secret
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -100,6 +102,8 @@ jobs:
           exit 1
       - name: Run Go-Live readiness baseline
         run: pnpm go-live:check
+      - name: Run Go-Live client E2E smoke
+        run: pnpm go-live:e2e
       - name: Verify API process cleanup
         if: always()
         run: |

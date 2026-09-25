@@ -14,6 +14,7 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "go-live:check": "tsx scripts/go-live-readiness.ts",
+    "go-live:e2e": "tsx scripts/go-live-client-e2e.ts",
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
     "android": "expo start --android",
     "ios": "expo start --ios",
