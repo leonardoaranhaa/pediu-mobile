@@ -37,6 +37,7 @@ export type GenerateImageOptions = {
 };
 
 export type GenerateImageResponse = {
+  key?: string;
   url?: string;
 };
 
@@ -88,8 +89,9 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
   const buffer = Buffer.from(base64Data, "base64");
 
   // Save to S3
-  const { url } = await storagePut(`generated/${Date.now()}.png`, buffer, result.image.mimeType);
+  const { key, url } = await storagePut(`generated/${Date.now()}.png`, buffer, result.image.mimeType);
   return {
+    key,
     url,
   };
 }

@@ -1,6 +1,8 @@
 import { Pressable, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
+import { isOAuthConfigured, startOAuthLogin } from "@/constants/oauth";
 import { Card, OutlineButton, Page, PEDIU, PrimaryButton, s } from "@/components/pediu-page";
+import { useAuth } from "@/hooks/use-auth";
 import { useCart } from "@/providers/cart-provider";
 
 function money(value: number) {
@@ -8,9 +10,11 @@ function money(value: number) {
 }
 
 export default function CartPage() {
+  const { isAuthenticated, loading } = useAuth();
   const { items, hydrated, error, subtotal, deliveryFee, total, itemCount, updateQuantity, updateNote, removeItem, clear } = useCart();
 
-  if (!hydrated) return <Page title="Seu carrinho" eyebrow="PEDIDO" back><Card><Text style={s.sectionTitle}>Restaurando carrinho...</Text><Text style={s.muted}>Carregando os itens salvos neste dispositivo.</Text></Card></Page>;
+  if (loading || !hydrated) return <Page title="Seu carrinho" eyebrow="PEDIDO" back><Card><Text style={s.sectionTitle}>Restaurando carrinho...</Text><Text style={s.muted}>Carregando sessão e itens salvos neste dispositivo.</Text></Card></Page>;
+  if (!isAuthenticated) return <Page title="Seu carrinho" eyebrow="PEDIDO" back><Card><Text style={{ fontSize: 40 }}>🔐</Text><Text style={s.sectionTitle}>Entre para acessar seu carrinho</Text><Text style={s.muted}>Seus itens ficam vinculados à sua conta para não misturar pedidos entre pessoas e dispositivos.</Text><PrimaryButton title="Entrar com login seguro" onPress={() => { if (isOAuthConfigured) void startOAuthLogin(); }} disabled={!isOAuthConfigured} /><OutlineButton title="Continuar descobrindo" onPress={() => router.replace("/(tabs)" as never)} /></Card></Page>;
 
   return <Page title="Seu carrinho" eyebrow="PEDIDO" back>
     {error ? <Card><Text style={{ color: PEDIU.coral, fontWeight: "800" }}>{error}</Text></Card> : null}
