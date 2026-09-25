@@ -23,7 +23,7 @@ export default function OrderSuccessPage() {
       <View style={{ width: 58, height: 58, borderRadius: 20, backgroundColor: PEDIU.coralSoft, alignItems: "center", justifyContent: "center", marginBottom: 12 }}><Text style={{ color: PEDIU.coral, fontSize: 30, fontWeight: "900" }}>✓</Text></View>
       <Text style={s.sectionTitle}>Recebemos seu pedido</Text>
       <Text style={s.body}>O estabelecimento recebeu a solicitação e poderá atualizar o status a qualquer momento.</Text>
-      {customization.mascotEnabled ? <View style={{ alignItems: "center", marginTop: 12, marginBottom: 2 }}><PediuMascot theme={theme} styleId={customization.mascotStyle} reaction="full" motionEnabled={customization.motionEnabled} showSpeech /></View> : null}
+      {customization.mascotEnabled ? <View style={{ alignItems: "center", marginTop: 12, marginBottom: 2 }}><PediuMascot theme={theme} styleId={customization.mascotStyle} reaction="full" motionEnabled={customization.motionEnabled} showSpeech speechSide="right" /></View> : null}
       <View style={{ borderTopWidth: 1, borderTopColor: PEDIU.line, marginTop: 16, paddingTop: 16, gap: 6 }}>
         <Text style={s.muted}>Número do pedido</Text>
         <Text style={{ color: PEDIU.ink, fontSize: 22, fontWeight: "900" }}>#{orderId}</Text>

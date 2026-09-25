@@ -405,6 +405,11 @@ const liveProducts = useMemo(() => (marketplaceQuery.data?.items ?? []).map((pro
   };
 
   const addToCart = (product: Product) => {
+    if (!isAuthenticated) {
+      notify("Entre para salvar itens no seu carrinho");
+      requestLogin();
+      return;
+    }
     const result = addGlobalItem({
       id: product.id,
       storeId: product.storeId ?? 0,
@@ -524,6 +529,10 @@ const liveProducts = useMemo(() => (marketplaceQuery.data?.items ?? []).map((pro
     if (action === "pedidos") {
       setRole("customer");
       setCustomerTab("orders");
+      return;
+    }
+    if (action === "suporte") {
+      router.push("/support");
       return;
     }
     if (action === "venda") {
@@ -683,7 +692,7 @@ const liveProducts = useMemo(() => (marketplaceQuery.data?.items ?? []).map((pro
 
         {notice ? <View style={styles.toast}><MaterialIcons name="check-circle" size={18} color={COLORS.white} /><Text style={styles.toastText}>{notice}</Text></View> : null}
 
-        {role === "customer" && customization.mascotEnabled ? <View style={styles.mascotDock}><PediuMascot theme={theme} styleId={customization.mascotStyle} reaction={mascotReaction} programmed showSpeech motionEnabled={customization.motionEnabled} compact onPress={() => notify(mascotReaction === "happy" ? "O mascote adorou essa escolha" : mascotReaction === "full" ? "Barriguinha cheia, coração tranquilo" : globalCartCount ? "Mais um pouquinho e fechamos seu pedido" : "Estou com fome de uma boa escolha")} /></View> : null}
+        {role === "customer" && customerTab !== "profile" && !showVoice && !selectedProduct && !showCart && !showCheckout && !showAddProduct && !showSaleModal && !showSellerOnboarding && customization.mascotEnabled ? <View style={styles.mascotDock}><PediuMascot theme={theme} styleId={customization.mascotStyle} reaction={mascotReaction} programmed showSpeech motionEnabled={customization.motionEnabled} compact onPress={() => notify(mascotReaction === "happy" ? "O mascote adorou essa escolha" : mascotReaction === "full" ? "Barriguinha cheia, coração tranquilo" : globalCartCount ? "Mais um pouquinho e fechamos seu pedido" : "Estou com fome de uma boa escolha")} /></View> : null}
 
         <Modal visible={!!selectedProduct} transparent animationType="slide" onRequestClose={() => setSelectedProduct(null)}>
           {selectedProduct ? <ProductModal product={selectedProduct} onClose={() => setSelectedProduct(null)} onAdd={() => addToCart(selectedProduct)} /> : null}
@@ -795,7 +804,7 @@ function CustomerProfile({ user, isAuthenticated, theme, customization, notifica
   const profileName = user?.name ?? "Visitante";
   const profileEmail = user?.email ?? "Entre para sincronizar seus pedidos";
   const avatarLetter = user?.name?.trim()?.[0]?.toUpperCase() ?? "?";
-  return <><View style={styles.simpleHeader}><View><Text style={styles.eyebrow}>SUA CONTA</Text><Text style={styles.pageTitle}>Perfil</Text></View><View style={styles.avatar}><Text style={styles.avatarText}>{avatarLetter}</Text></View></View><View style={styles.profileCard}><View style={styles.avatarLarge}><Text style={styles.avatarLargeText}>{avatarLetter}</Text></View><Text style={styles.profileName}>{profileName}</Text><Text style={styles.muted}>{profileEmail}</Text>{!isAuthenticated ? <Text style={styles.muted}>Você está navegando como visitante.</Text> : null}{customization.mascotEnabled ? <View style={{ width: "100%", alignItems: "center", marginTop: 5 }}><PediuMascot theme={theme} styleId={customization.mascotStyle} reaction="avoid" motionEnabled={customization.motionEnabled} showSpeech /></View> : null}</View>{["Dados pessoais", "Meus endereços", "Pagamentos", "Notificações", "Segurança"].map((item) => <Pressable style={styles.settingsRow} key={item} onPress={() => item === "Meus endereços" ? router.push("/account/addresses") : item === "Pagamentos" ? router.push("/account/payment-methods") : item === "Notificações" ? router.push("/account/notifications") : item === "Segurança" ? router.push("/account/settings/advanced") : router.push("/account/profile")}><View style={styles.settingsIcon}><MaterialIcons name={item === "Pagamentos" ? "credit-card" : item === "Meus endereços" ? "location-on" : item === "Notificações" ? "notifications" : "person"} size={20} color={COLORS.ink} /></View><Text style={styles.cardTitle}>{item}</Text><MaterialIcons name="chevron-right" size={20} color={COLORS.muted} /></Pressable>)}<View style={notificationStyles.card}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Histórico de notificações</Text><Text style={styles.link}>{notifications.filter((item) => !item.readAt).length} novas</Text></View>{notifications.length ? notifications.slice(0, 4).map((item) => <Pressable key={item.id} style={[notificationStyles.item, !item.readAt && notificationStyles.unread]} onPress={() => onReadNotification(item.id)}><MaterialIcons name="notifications" size={18} color={COLORS.coral} /><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{item.title}</Text><Text style={styles.muted}>{item.body}</Text></View></Pressable>) : <Text style={styles.muted}>Suas confirmações de pedido e pagamento aparecerão aqui.</Text>}</View><View style={styles.sellerInvite}><Text style={styles.sellerInviteTitle}>Você também vende?</Text><Text style={styles.sellerInviteText}>Crie sua vitrine e comece a vender para sua comunidade.</Text><Pressable style={styles.outlineButton} onPress={onSellerMode}><Text style={styles.outlineButtonText}>Abrir modo vendedor</Text></Pressable></View></>;
+  return <><View style={styles.simpleHeader}><View><Text style={styles.eyebrow}>SUA CONTA</Text><Text style={styles.pageTitle}>Perfil</Text></View><View style={styles.avatar}><Text style={styles.avatarText}>{avatarLetter}</Text></View></View><View style={styles.profileCard}><View style={styles.avatarLarge}><Text style={styles.avatarLargeText}>{avatarLetter}</Text></View><Text style={styles.profileName}>{profileName}</Text><Text style={styles.muted}>{profileEmail}</Text>{!isAuthenticated ? <Text style={styles.muted}>Você está navegando como visitante.</Text> : null}{customization.mascotEnabled ? <View style={{ width: "100%", alignItems: "center", marginTop: 5 }}><PediuMascot theme={theme} styleId={customization.mascotStyle} reaction="avoid" motionEnabled={customization.motionEnabled} showSpeech speechSide="right" /></View> : null}</View>{["Dados pessoais", "Meus endereços", "Pagamentos", "Notificações", "Segurança"].map((item) => <Pressable style={styles.settingsRow} key={item} onPress={() => item === "Meus endereços" ? router.push("/account/addresses") : item === "Pagamentos" ? router.push("/account/payment-methods") : item === "Notificações" ? router.push("/account/notifications") : item === "Segurança" ? router.push("/account/settings/advanced") : router.push("/account/profile")}><View style={styles.settingsIcon}><MaterialIcons name={item === "Pagamentos" ? "credit-card" : item === "Meus endereços" ? "location-on" : item === "Notificações" ? "notifications" : "person"} size={20} color={COLORS.ink} /></View><Text style={styles.cardTitle}>{item}</Text><MaterialIcons name="chevron-right" size={20} color={COLORS.muted} /></Pressable>)}<View style={notificationStyles.card}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Histórico de notificações</Text><Text style={styles.link}>{notifications.filter((item) => !item.readAt).length} novas</Text></View>{notifications.length ? notifications.slice(0, 4).map((item) => <Pressable key={item.id} style={[notificationStyles.item, !item.readAt && notificationStyles.unread]} onPress={() => onReadNotification(item.id)}><MaterialIcons name="notifications" size={18} color={COLORS.coral} /><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{item.title}</Text><Text style={styles.muted}>{item.body}</Text></View></Pressable>) : <Text style={styles.muted}>Suas confirmações de pedido e pagamento aparecerão aqui.</Text>}</View><View style={styles.sellerInvite}><Text style={styles.sellerInviteTitle}>Você também vende?</Text><Text style={styles.sellerInviteText}>Crie sua vitrine e comece a vender para sua comunidade.</Text><Pressable style={styles.outlineButton} onPress={onSellerMode}><Text style={styles.outlineButtonText}>Abrir modo vendedor</Text></Pressable></View></>;
 }
 
 function SellerHome({ theme, store, ownerName, orders, productCount, salesTotal, onCatalog, onOrders, onClients, onShareCatalog, onAds, onVoice }: { theme: AppTheme; store?: { name?: string | null }; ownerName?: string | null; orders: { status: string }[]; productCount: number; salesTotal: number; onCatalog: () => void; onOrders: () => void; onClients: () => void; onShareCatalog: () => void; onAds: () => void; onVoice: () => void }) {
@@ -1001,7 +1010,7 @@ function PulsingMicButton({ active, busy, onPress, theme }: { active: boolean; b
 }
 
 function VoiceAssistantModal({ mode, busy, isRecording, onRecord, reply, onClose, onAction, onCommand, theme }: { mode: VoiceMode; busy: boolean; isRecording: boolean; onRecord: () => void; reply: string; onClose: () => void; onAction: (action: string) => void; onCommand: (command: string) => void; theme: AppTheme }) {
-  const customerActions = [{ label: "Encontrar doces perto", icon: "🍰", action: "doces" }, { label: "Ver meus pedidos", icon: "🛍️", action: "pedidos" }, { label: "Conversar com uma loja", icon: "💬", action: "loja" }];
+  const customerActions = [{ label: "Encontrar doces perto", icon: "🍰", action: "doces" }, { label: "Ver meus pedidos", icon: "🛍️", action: "pedidos" }, { label: "Falar com suporte", icon: "💬", action: "suporte" }];
   const sellerActions = [{ label: "Registrar uma venda", icon: "🧾", action: "venda" }, { label: "Consultar vendas fiadas", icon: "📒", action: "fiado" }, { label: "Mostrar meu catálogo", icon: "📦", action: "catalogo" }, { label: "Criar uma divulgação", icon: "📣", action: "divulgar" }];
   const actions = mode === "customer" ? customerActions : sellerActions;
   const [command, setCommand] = useState("");
@@ -1026,7 +1035,10 @@ function VoiceAssistantModal({ mode, busy, isRecording, onRecord, reply, onClose
     recognition.start();
   };
   const voiceActive = isListening || isRecording;
-  return <View style={voiceStyles.backdrop}><View style={[voiceStyles.sheet, { backgroundColor: theme.card }]}><ScrollView style={voiceStyles.sheetScroll} contentContainerStyle={voiceStyles.sheetContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled"><View style={styles.sheetHandle} /><PulsingMicButton active={voiceActive} busy={busy} onPress={Platform.OS === "web" ? startListening : onRecord} theme={theme} /><Text style={[voiceStyles.kicker, { color: theme.primary }]}>{mode === "customer" ? "ASSISTENTE DO CLIENTE" : "ASSISTENTE DA LOJA"}</Text><Text style={[voiceStyles.title, { color: theme.ink }]}>{mode === "customer" ? "O que você quer pedir?" : "Como posso ajudar sua loja?"}</Text><Text style={voiceStyles.subtitle}>Fale, digite ou escolha um atalho. O Pediu entende e só executa ações permitidas.</Text><VoiceWaveform active={voiceActive} processing={busy} /><Text style={voiceStyles.voiceState}>{busy ? "Processando sua mensagem…" : voiceActive ? "Estou ouvindo… toque novamente para enviar" : "Toque no microfone para falar"}</Text><View style={[voiceStyles.commandRow, { backgroundColor: theme.canvas, borderColor: theme.line }]}><TextInput value={command} onChangeText={setCommand} onSubmitEditing={() => onCommand(command)} placeholder={mode === "customer" ? "Ex.: quero pedir doces" : "Ex.: quem me deve?"} placeholderTextColor={theme.muted} style={[voiceStyles.commandInput, { color: theme.ink }]} returnKeyType="done" /><Pressable style={[voiceStyles.commandButton, { backgroundColor: theme.primary }, voiceActive && { backgroundColor: theme.ink }]} disabled={busy} onPress={Platform.OS === "web" ? startListening : onRecord}><MaterialIcons name={voiceActive ? "graphic-eq" : "mic"} size={18} color={COLORS.white} /></Pressable><Pressable style={[voiceStyles.commandButton, { backgroundColor: theme.primary }]} disabled={busy} onPress={() => onCommand(command)}><MaterialIcons name={busy ? "hourglass-top" : "send"} size={18} color={COLORS.white} /></Pressable></View>{reply ? <Text style={[voiceStyles.reply, { backgroundColor: theme.primarySoft, color: theme.ink }]}>{reply}</Text> : null}<View style={voiceStyles.actions}>{actions.map((item) => <Pressable key={item.action} style={({ pressed }) => [voiceStyles.action, { backgroundColor: theme.canvas, borderColor: theme.line }, pressed && styles.pressed]} onPress={() => onAction(item.action)}><View style={[voiceStyles.actionIconBubble, { backgroundColor: theme.primarySoft }]}><Text style={voiceStyles.actionIcon}>{item.icon}</Text></View><Text style={[voiceStyles.actionText, { color: theme.ink }]}>{item.label}</Text><MaterialIcons name="arrow-forward" size={17} color={theme.primary} /></Pressable>)}</View><Pressable style={styles.textButton} onPress={onClose}><Text style={[styles.textButtonLabel, { color: theme.primary }]}>Fechar assistente</Text></Pressable></ScrollView></View></View>;
+  const modeLabel = mode === "customer" ? "ASSISTENTE DO CLIENTE" : "ASSISTENTE DA LOJA";
+  const modeTitle = mode === "customer" ? "Peça do seu jeito" : "Cuide da sua loja";
+  const statusLabel = busy ? "Organizando sua solicitação…" : voiceActive ? "Estou ouvindo você" : "Toque para falar";
+  return <View style={voiceStyles.backdrop}><View style={[voiceStyles.sheet, { backgroundColor: theme.card }]}><ScrollView style={voiceStyles.sheetScroll} contentContainerStyle={voiceStyles.sheetContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled"><View style={styles.sheetHandle} /><View style={voiceStyles.headerRow}><View style={[voiceStyles.headerIcon, { backgroundColor: theme.primarySoft }]}><MaterialIcons name={mode === "customer" ? "restaurant" : "storefront"} size={20} color={theme.primary} /></View><View style={voiceStyles.headerCopy}><Text style={[voiceStyles.kicker, { color: theme.primary }]}>{modeLabel}</Text><Text numberOfLines={1} style={[voiceStyles.headerTitle, { color: theme.ink }]}>{modeTitle}</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Fechar assistente" hitSlop={10} style={[voiceStyles.closeButton, { backgroundColor: theme.canvas }]} onPress={onClose}><MaterialIcons name="close" size={20} color={theme.ink} /></Pressable></View><View style={[voiceStyles.introCard, { backgroundColor: theme.canvas, borderColor: theme.line }]}><View style={voiceStyles.introCopy}><Text style={[voiceStyles.introTitle, { color: theme.ink }]}>{mode === "customer" ? "Encontre o que combina com você" : "A sua operação em poucos toques"}</Text><Text numberOfLines={2} style={[voiceStyles.introText, { color: theme.muted }]}>{mode === "customer" ? "Fale, digite ou use um atalho para começar." : "Registre, consulte e divulgue sem sair do Pediu."}</Text></View><PulsingMicButton active={voiceActive} busy={busy} onPress={Platform.OS === "web" ? startListening : onRecord} theme={theme} /></View><View style={[voiceStyles.statusPill, { backgroundColor: theme.primarySoft }]}><View style={[voiceStyles.statusDot, { backgroundColor: voiceActive || busy ? theme.primary : theme.muted }]} /><Text numberOfLines={1} style={[voiceStyles.voiceState, { color: theme.ink }]}>{statusLabel}</Text></View><View style={[voiceStyles.commandRow, { backgroundColor: theme.canvas, borderColor: theme.line }]}><TextInput value={command} onChangeText={setCommand} onSubmitEditing={() => onCommand(command)} placeholder={mode === "customer" ? "Ex.: quero pedir doces" : "Ex.: quem me deve?"} placeholderTextColor={theme.muted} style={[voiceStyles.commandInput, { color: theme.ink }]} returnKeyType="done" /><Pressable accessibilityLabel="Ativar microfone" style={[voiceStyles.commandButton, { backgroundColor: voiceActive ? theme.ink : theme.primary }]} disabled={busy} onPress={Platform.OS === "web" ? startListening : onRecord}><MaterialIcons name={voiceActive ? "graphic-eq" : "mic"} size={18} color={COLORS.white} /></Pressable><Pressable accessibilityLabel="Enviar comando" style={[voiceStyles.commandButton, { backgroundColor: theme.primary }]} disabled={busy || !command.trim()} onPress={() => onCommand(command)}><MaterialIcons name={busy ? "hourglass-top" : "send"} size={18} color={COLORS.white} /></Pressable></View>{voiceActive || busy ? <VoiceWaveform active={voiceActive} processing={busy} /> : null}{reply ? <Text numberOfLines={4} style={[voiceStyles.reply, { backgroundColor: theme.primarySoft, color: theme.ink }]}>{reply}</Text> : null}<Text style={[voiceStyles.sectionLabel, { color: theme.muted }]}>ATALHOS RÁPIDOS</Text><View style={voiceStyles.actions}>{actions.map((item) => <Pressable key={item.action} style={({ pressed }) => [voiceStyles.action, { backgroundColor: theme.canvas, borderColor: theme.line }, pressed && styles.pressed]} onPress={() => onAction(item.action)}><View style={[voiceStyles.actionIconBubble, { backgroundColor: theme.primarySoft }]}><Text style={voiceStyles.actionIcon}>{item.icon}</Text></View><View style={voiceStyles.actionCopy}><Text numberOfLines={1} style={[voiceStyles.actionText, { color: theme.ink }]}>{item.label}</Text><Text numberOfLines={1} style={[voiceStyles.actionHint, { color: theme.muted }]}>{mode === "customer" ? "Abrir agora" : "Gerenciar no painel"}</Text></View><MaterialIcons name="arrow-forward-ios" size={15} color={theme.primary} /></Pressable>)}</View><Pressable style={voiceStyles.closeLink} onPress={onClose}><Text style={[styles.textButtonLabel, { color: theme.primary }]}>Fechar assistente</Text></Pressable></ScrollView></View></View>;
 }
 
 function SellerVoiceLauncher({ onPress }: { onPress: () => void }) {
@@ -1053,33 +1065,48 @@ function SellerClients({ customers, onCreate, creating, onSetLimit, onBlock, bus
 
 const voiceStyles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: "rgba(18, 38, 44, 0.42)", justifyContent: "flex-end" },
-  sheet: { backgroundColor: COLORS.white, borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 22, paddingBottom: 28, gap: 12, maxHeight: "92%", width: "100%", overflow: "hidden" },
+  sheet: { backgroundColor: COLORS.white, borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 18, gap: 10, maxHeight: "88%", width: "100%", overflow: "hidden" },
   sheetScroll: { flexShrink: 1 },
   sheetContent: { paddingBottom: 8 },
-  micPulseRing: { width: 86, height: 86, borderRadius: 43, borderWidth: 1.5, alignItems: "center", justifyContent: "center", alignSelf: "center", marginTop: 2 },
-  orb: { width: 68, height: 68, borderRadius: 34, backgroundColor: COLORS.coral, alignItems: "center", justifyContent: "center" },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 2 },
+  headerIcon: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  headerCopy: { flex: 1, minWidth: 0, gap: 2 },
+  headerTitle: { fontSize: 18, fontWeight: "900", letterSpacing: -0.2 },
+  closeButton: { width: 38, height: 38, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  introCard: { minHeight: 88, borderRadius: 20, borderWidth: 1, padding: 12, flexDirection: "row", alignItems: "center", gap: 10 },
+  introCopy: { flex: 1, minWidth: 0, gap: 4 },
+  introTitle: { fontSize: 15, lineHeight: 19, fontWeight: "900" },
+  introText: { fontSize: 11, lineHeight: 15 },
+  micPulseRing: { width: 70, height: 70, borderRadius: 35, borderWidth: 1.5, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  orb: { width: 54, height: 54, borderRadius: 27, backgroundColor: COLORS.coral, alignItems: "center", justifyContent: "center" },
   orbActive: { backgroundColor: COLORS.ink },
   kicker: { color: COLORS.coral, fontSize: 10, fontWeight: "900", letterSpacing: 1.2, textAlign: "center", marginTop: 3 },
-  title: { color: COLORS.ink, fontSize: 24, fontWeight: "900", textAlign: "center", flexShrink: 1 },
-  subtitle: { color: COLORS.muted, fontSize: 12, lineHeight: 18, textAlign: "center", paddingHorizontal: 8 },
-  waveform: { height: 42, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, marginTop: 2 },
+  title: { color: COLORS.ink, fontSize: 20, fontWeight: "900", textAlign: "center", flexShrink: 1 },
+  subtitle: { color: COLORS.muted, fontSize: 11, lineHeight: 16, textAlign: "center", paddingHorizontal: 8 },
+  statusPill: { alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  waveform: { height: 27, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 3, marginTop: -2 },
   waveformIdle: { opacity: 0.42 },
-  waveBar: { width: 4, height: 36, borderRadius: 4, backgroundColor: COLORS.coral },
-  voiceState: { color: COLORS.muted, fontSize: 11, fontWeight: "700", textAlign: "center", marginTop: -5 },
-  actions: { gap: 9, marginTop: 4 },
-  action: { flexDirection: "row", alignItems: "center", gap: 11, backgroundColor: COLORS.canvas, borderRadius: 15, padding: 13, borderWidth: 1, borderColor: COLORS.line },
-  actionIconBubble: { width: 38, height: 38, borderRadius: 13, alignItems: "center", justifyContent: "center" },
-  actionIcon: { fontSize: 20 },
-  actionText: { flex: 1, color: COLORS.ink, fontSize: 13, fontWeight: "800" },
+  waveBar: { width: 3, height: 23, borderRadius: 4, backgroundColor: COLORS.coral },
+  voiceState: { color: COLORS.muted, fontSize: 10, fontWeight: "800" },
+  sectionLabel: { fontSize: 9, fontWeight: "900", letterSpacing: 1.1, marginTop: 2 },
+  actions: { gap: 8, marginTop: 0 },
+  action: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 16, paddingHorizontal: 11, paddingVertical: 9, borderWidth: 1 },
+  actionIconBubble: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  actionIcon: { fontSize: 18 },
+  actionCopy: { flex: 1, minWidth: 0, gap: 2 },
+  actionText: { fontSize: 12, fontWeight: "900" },
+  actionHint: { fontSize: 10, fontWeight: "600" },
   launcher: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: COLORS.coralSoft, borderRadius: 18, padding: 13, borderWidth: 1, borderColor: "#FFD8CE" },
   launcherIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: COLORS.coral, alignItems: "center", justifyContent: "center" },
   launcherTitle: { color: COLORS.ink, fontSize: 13, fontWeight: "900" },
   launcherText: { color: COLORS.muted, fontSize: 11, marginTop: 2 },
   commandRow: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.canvas, borderRadius: 15, borderWidth: 1, borderColor: COLORS.line, padding: 6 },
-  commandInput: { flex: 1, color: COLORS.ink, fontSize: 13, paddingHorizontal: 8, height: 40 },
-  commandButton: { width: 40, height: 40, borderRadius: 12, backgroundColor: COLORS.coral, alignItems: "center", justifyContent: "center" },
+  commandInput: { flex: 1, minWidth: 0, color: COLORS.ink, fontSize: 12, paddingHorizontal: 7, height: 38 },
+  commandButton: { width: 38, height: 38, borderRadius: 12, backgroundColor: COLORS.coral, alignItems: "center", justifyContent: "center" },
   listeningButton: { backgroundColor: COLORS.ink },
-  reply: { color: COLORS.ink, fontSize: 12, lineHeight: 17, backgroundColor: COLORS.coralSoft, borderRadius: 12, padding: 10 },
+  reply: { color: COLORS.ink, fontSize: 11, lineHeight: 16, borderRadius: 12, padding: 10 },
+  closeLink: { alignSelf: "center", paddingHorizontal: 12, paddingVertical: 5 },
 });
 
 const clientStyles = StyleSheet.create({
