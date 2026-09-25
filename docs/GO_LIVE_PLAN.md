@@ -76,23 +76,23 @@ Os pontos abaixo continuam dependentes de configuração, homologação ou valid
 
 # 3. Bloqueadores P0 — obrigatórios antes de produção
 
-| ID | Item | Critério de aceite | Status |
-|---|---|---|---|
-| P0-01 | Ambiente de staging | Ambiente isolado de produção, com variáveis próprias e banco próprio | ⬜ |
-| P0-02 | Ambiente de produção | API/app/backend publicados com HTTPS e configuração segura | ⬜ |
-| P0-03 | Banco de produção | Banco provisionado, migrations executadas e acesso restrito | ⬜ |
-| P0-04 | Backup | Backup automático configurado e restore testado | ⬜ |
-| P0-05 | Domínio/HTTPS | Domínio definitivo e certificados válidos | ⬜ |
-| P0-06 | Secrets | Segredos fora do código e separados por ambiente | ⬜ |
-| P0-07 | OAuth | Client IDs, redirect URIs, state/PKCE e domínio homologados | ⬜ |
-| P0-08 | CORS | `ALLOWED_ORIGINS` configurado para os domínios reais | ⬜ |
-| P0-09 | PIX | PSP escolhido, credenciais de produção e criação de cobrança homologadas | ⬜ |
-| P0-10 | Webhook PIX | Assinatura, idempotência, atualização de pagamento e eventos de erro validados | ⬜ |
-| P0-11 | E-mail | Provedor configurado e verificação de e-mail testada em produção controlada | ⬜ |
-| P0-12 | Push | Push real validado em Android e iOS | ⬜ |
-| P0-13 | Observabilidade | Logs, erros, latência e disponibilidade monitorados com alertas | ⬜ |
-| P0-14 | E2E crítico | Jornada principal automatizada e verde | ⬜ |
-| P0-15 | Dispositivos reais | Android/iOS testados com rede normal, ruim, permissões e background | ⬜ |
+| ID    | Item                 | Critério de aceite                                                             | Status |
+| ----- | -------------------- | ------------------------------------------------------------------------------ | ------ |
+| P0-01 | Ambiente de staging  | Ambiente isolado de produção, com variáveis próprias e banco próprio           | ⬜     |
+| P0-02 | Ambiente de produção | API/app/backend publicados com HTTPS e configuração segura                     | ⬜     |
+| P0-03 | Banco de produção    | Banco provisionado, migrations executadas e acesso restrito                    | ⬜     |
+| P0-04 | Backup               | Backup automático configurado e restore testado                                | ⬜     |
+| P0-05 | Domínio/HTTPS        | Domínio definitivo e certificados válidos                                      | ⬜     |
+| P0-06 | Secrets              | Segredos fora do código e separados por ambiente                               | ⬜     |
+| P0-07 | OAuth                | Client IDs, redirect URIs, state/PKCE e domínio homologados                    | ⬜     |
+| P0-08 | CORS                 | `ALLOWED_ORIGINS` configurado para os domínios reais                           | ⬜     |
+| P0-09 | PIX                  | PSP escolhido, credenciais de produção e criação de cobrança homologadas       | ⬜     |
+| P0-10 | Webhook PIX          | Assinatura, idempotência, atualização de pagamento e eventos de erro validados | ⬜     |
+| P0-11 | E-mail               | Provedor configurado e verificação de e-mail testada em produção controlada    | ⬜     |
+| P0-12 | Push                 | Push real validado em Android e iOS                                            | ⬜     |
+| P0-13 | Observabilidade      | Logs, erros, latência e disponibilidade monitorados com alertas                | ⬜     |
+| P0-14 | E2E crítico          | Jornada principal automatizada e verde                                         | ⬜     |
+| P0-15 | Dispositivos reais   | Android/iOS testados com rede normal, ruim, permissões e background            | ⬜     |
 
 **Regra:** qualquer item P0 pendente mantém o Go-Live bloqueado.
 
@@ -480,20 +480,20 @@ Objetivo: operação comercial.
 
 # 15. Matriz de Go/No-Go
 
-| Área | Go quando | No-Go quando |
-|---|---|---|
-| Segurança | P0 de segurança validado | Existe falha crítica aberta |
-| Banco | Backup + restore testados | Não existe recuperação confiável |
-| Pagamento | PSP homologado | Pagamento depende de operação manual não controlada |
-| Webhook | Assinado + idempotente + testado | Eventos podem duplicar pedido/pagamento |
-| OAuth | Fluxo real validado | Callback ou sessão não homologados |
-| E-mail | Entrega real validada | Verificação/recuperação não funcionam |
-| Push | Android/iOS validados | Notificações críticas falham |
-| E2E | Jornada principal verde | Fluxo principal só foi testado manualmente |
-| Dispositivos | Android/iOS reais aprovados | Só preview/web foi validado |
-| Observabilidade | Alertas operacionais ativos | Falhas não são detectadas |
-| Rollback | Procedimento testado | Não existe caminho de recuperação |
-| Piloto | Sem incidentes críticos | Existem bloqueios operacionais |
+| Área            | Go quando                        | No-Go quando                                        |
+| --------------- | -------------------------------- | --------------------------------------------------- |
+| Segurança       | P0 de segurança validado         | Existe falha crítica aberta                         |
+| Banco           | Backup + restore testados        | Não existe recuperação confiável                    |
+| Pagamento       | PSP homologado                   | Pagamento depende de operação manual não controlada |
+| Webhook         | Assinado + idempotente + testado | Eventos podem duplicar pedido/pagamento             |
+| OAuth           | Fluxo real validado              | Callback ou sessão não homologados                  |
+| E-mail          | Entrega real validada            | Verificação/recuperação não funcionam               |
+| Push            | Android/iOS validados            | Notificações críticas falham                        |
+| E2E             | Jornada principal verde          | Fluxo principal só foi testado manualmente          |
+| Dispositivos    | Android/iOS reais aprovados      | Só preview/web foi validado                         |
+| Observabilidade | Alertas operacionais ativos      | Falhas não são detectadas                           |
+| Rollback        | Procedimento testado             | Não existe caminho de recuperação                   |
+| Piloto          | Sem incidentes críticos          | Existem bloqueios operacionais                      |
 
 ---
 
@@ -629,7 +629,6 @@ A prioridade agora é transformar o que já existe em uma operação confiável.
 
 **Objetivo final:** colocar o Pediu no mercado com capacidade de receber pedidos reais, processar pagamentos reais, acompanhar entregas reais e detectar/falhar com segurança quando algo sair do esperado.
 
-
 ---
 
 # 21. Registro de execução — 25/09/2026
@@ -648,7 +647,6 @@ A implementação foi validada adicionalmente com `pnpm check`, `pnpm lint`, `pn
 
 Este incremento **não conclui nenhum P0 externo**. PSP PIX, webhook real, OAuth de produção, e-mail, push, backup/restore, observabilidade, E2E completo e dispositivos reais permanecem pendentes até que existam credenciais, ambientes, homologação e evidências correspondentes. O status geral continua `🟡 Em preparação para Go-Live` e o Go-Live comercial permanece bloqueado conforme a regra do plano.
 
-
 ---
 
 # 22. Registro de execução — jornada E2E vertical do cliente — 25/09/2026
@@ -657,17 +655,42 @@ O segundo incremento executável foi implementado sobre o head do PR #7. Foram a
 
 A jornada usa uma API Express real, sessão Bearer emitida pelo SDK com identidade de teste e um banco MySQL limpo. O fixture cria usuário cliente, usuário lojista, loja aberta e produto disponível com identificadores únicos; ao final, remove os registros criados.
 
-| Etapa | Evidência automatizada |
-|---|---|
-| Catálogo | Produto fixture retornado pelo marketplace com loja e categoria corretas |
-| Localização | Endereço persistido com latitude, longitude e seleção como padrão |
-| Quote | Preço, taxa de entrega e total calculados pelo servidor |
-| Checkout | Pedido criado usando endereço autorizado e total recalculado |
-| Pagamento | PIX criado e mantido em `pending`; nenhum estado `paid` é fabricado |
-| Idempotência | Repetição da mesma chave devolve o mesmo pedido/pagamento e mantém uma linha em cada tabela |
-| Operação lojista | Pedido visível para o lojista e progressão `Pendente → Aceito → Preparando → Pronto` |
-| Acompanhamento | Pedido final e eventos persistidos confirmados pelo cliente |
+| Etapa            | Evidência automatizada                                                                      |
+| ---------------- | ------------------------------------------------------------------------------------------- |
+| Catálogo         | Produto fixture retornado pelo marketplace com loja e categoria corretas                    |
+| Localização      | Endereço persistido com latitude, longitude e seleção como padrão                           |
+| Quote            | Preço, taxa de entrega e total calculados pelo servidor                                     |
+| Checkout         | Pedido criado usando endereço autorizado e total recalculado                                |
+| Pagamento        | PIX criado e mantido em `pending`; nenhum estado `paid` é fabricado                         |
+| Idempotência     | Repetição da mesma chave devolve o mesmo pedido/pagamento e mantém uma linha em cada tabela |
+| Operação lojista | Pedido visível para o lojista e progressão `Pendente → Aceito → Preparando → Pronto`        |
+| Acompanhamento   | Pedido final e eventos persistidos confirmados pelo cliente                                 |
 
 A execução local em banco limpo aplicou as 24 migrations versionadas e passou com a mensagem `Go-Live client E2E smoke passed`. O banco de preview híbrido anterior foi deliberadamente descartado como evidência: ele tinha tabelas antigas de anúncios, mas não possuía `users.themePreference`, demonstrando por que o smoke deve sempre começar de um schema limpo.
 
 Este incremento cobre um smoke de API integrado, não substitui cadastro/login OAuth real, permissões nativas de localização, carrinho na UI, pagamento confirmado por PSP, webhook, rastreamento GPS, cancelamento, avaliação, push ou teste em Android/iOS. As caixas da jornada completa continuam pendentes até essas evidências serem produzidas.
+
+---
+
+# 23. Registro de execução — estresse e verificação de implantação — 25/09/2026
+
+A terceira etapa executável foi adicionada antes de qualquer nova fatia funcional. Foram criados `scripts/go-live-stress.ts`, `scripts/go-live-deployment.ts`, os comandos `pnpm go-live:stress` e `pnpm go-live:deployment`, além dos workflows `Pediu Operational Validation` e `Pediu Deployment Smoke`.
+
+O teste de estresse é deliberadamente somente leitura: alterna entre `GET /api/health` e `pediu.marketplace.search`, possui timeout, limite de requisições, limite de concorrência, orçamento de p95 e bloqueio explícito para hosts remotos sem `STRESS_ALLOW_REMOTE=1`. Assim, ele não cria pedidos, pagamentos ou dados de negócio.
+
+## Evidências executadas
+
+| Ambiente                                                   |                             Carga | Resultado                                            |
+| ---------------------------------------------------------- | --------------------------------: | ---------------------------------------------------- |
+| API iniciada com bundle de produção e banco limpo          |      120 requisições / 12 workers | 0% erro; p50 20,1 ms; p95 64,4 ms; máximo 76,8 ms    |
+| Processo `NODE_ENV=production` na porta 3001 (passo do CI) |        60 requisições / 8 workers | 0% erro; p50 14,6 ms; p95 40,1 ms; máximo 62,4 ms    |
+| URL HTTPS pública temporária da sandbox                    |        40 requisições / 4 workers | 0% erro; p50 11,1 ms; p95 53,7 ms; máximo 144,8 ms   |
+| Smoke do bundle de produção local                          | health + marketplace + CORS exato | aprovado; health 200, marketplace 200, preflight 204 |
+
+A URL pública temporária utilizada foi `https://3000-iue696glzt2dfr1suc5xk-6d6ba285.us1.manus.computer`. Ela comprova o caminho HTTP implantado na sandbox, mas não é staging ou produção permanente.
+
+A auditoria de implantação encontrou zero deployments GitHub para este repositório e nenhum projeto Vercel associado ao Pediu. Por isso, o repositório agora contém um workflow manual `Pediu Deployment Smoke`: quando houver uma URL de staging/produção, ele exige a URL, valida health/marketplace/CORS e executa carga read-only antes do aceite operacional.
+
+## Estado operacional
+
+O baseline de código e implantação está verde. O PSP PIX continua pendente por depender da criação do CNPJ, escolha de provedor, credenciais e homologação. A existência de um baseline verde não transforma a sandbox em produção nem substitui domínio, banco, secrets, backup/restore, observabilidade, OAuth/e-mail/push e dispositivos reais; esses itens precisam ser confirmados no ambiente definitivo antes do Go-Live comercial. Nenhuma nova etapa funcional deve ser considerada concluída sem repetir estresse e smoke de implantação.
