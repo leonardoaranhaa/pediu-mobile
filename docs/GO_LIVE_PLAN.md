@@ -799,4 +799,6 @@ A próxima fatia da Fase 6 foi implementada sobre o PR #7 com atualização cond
 
 O primeiro run remoto do Operational Validation encontrou um timing que as execuções locais anteriores não haviam capturado: a segunda chamada podia ler `Aceito` já persistido e falhava ao validar a transição impossível `Aceito → Aceito`. A rota passou a tratar o status já persistido como retry idempotente, sem gravar evento/notificação, e foi adicionada regressão unitária. A reprodução local posterior passou três vezes consecutivas e os gates finais permaneceram verdes.
 
+O commit de correção `0a083e1` passou no CI (`36238830915`) e no `Pediu Operational Validation` (`36238830911`), incluindo o E2E de lojista/entrega com o timing anteriormente falho, o smoke de checkout/webhook concorrente, deployment smoke e stress. A fase está concluída neste escopo; os bloqueadores externos do Go-Live comercial permanecem os mesmos do plano.
+
 O workflow operacional já contém o E2E de lojista/entrega e passará a executar este cenário concorrente por meio do script atualizado. Esta entrega cobre status idêntico/stale e `complete` concorrente; fiado, OAuth, CORS, storage, voz e limites de payload continuam pendentes. PSP/PIX, webhook real, CNPJ, credenciais, refund, reconciliação e infraestrutura externa permanecem bloqueadores do Go-Live comercial.
