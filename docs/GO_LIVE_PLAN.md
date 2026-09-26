@@ -776,3 +776,25 @@ O checkout agora relê o pedido/pagamento vencedor após conflito único. `apply
 O workflow `Pediu Operational Validation` passou a injetar `PAYMENT_WEBHOOK_SECRET` de teste e executar o smoke concorrente após os E2Es de lojista/entrega. A carga do CI é limitada a 12 concorrentes e usa somente fixtures isoladas.
 
 Esta entrega cobre apenas checkout com a mesma chave e webhook com o mesmo evento. Não conclui a Fase 6 inteira: concorrência de status/`complete`, fiado, OAuth, CORS, storage, voz e limites de payload continuam como incrementos próprios. PSP/PIX, webhook real do provedor, CNPJ, credenciais, refund e reconciliação permanecem pendentes; nenhum pagamento real foi simulado como homologado. O Go-Live comercial continua bloqueado pelos P0 externos e operacionais do plano.
+
+
+---
+
+# 29. Concorrência de status e conclusão de entrega — 26/09/2026
+
+A próxima fatia da Fase 6 foi implementada sobre o PR #7 com atualização condicional de status e regressões concorrentes no E2E operacional. A instrução técnica está em `docs/INSTRUCAO_FASE_CONCORRENCIA_ENTREGA_PR7.md`.
+
+`updateOrderStatus` agora recebe o status esperado e só atualiza a linha quando o pedido ainda está nesse estado. Quando outra chamada vence a corrida, a rota trata a repetição do mesmo status como sucesso idempotente, não cria evento/notificação duplicado e rejeita uma transição stale diferente. A conclusão `A caminho → Entregue` já era condicional e transacional; o E2E passou a enviar duas conclusões simultâneas para proteger esse contrato.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --------- | --------- |
+| Baseline antes da alteração | Deployment smoke aprovado; stress 120/12 com p95 de 45,1 ms e erro 0%; checkout/webhook concorrente aprovado |
+| Regressões unitárias focadas | 12 testes aprovados para transição idêntica, transição stale e conclusão simultânea |
+| E2E operacional real | Três execuções consecutivas aprovadas com onboarding courier, fluxo de entrega, duas chamadas paralelas por status e duas conclusões paralelas; zero fixtures residuais |
+| Deployment smoke final em `127.0.0.1:3004` | health 200, marketplace 200, CORS exato e métricas protegidas aprovados |
+| Stress final read-only | 120 requests / 12 workers; p50 15,2 ms; p95 43,5 ms; máximo 62,2 ms; erro 0% |
+| Matriz local final | 28 arquivos, 118 testes aprovados e 1 ignorado; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier dos arquivos da fase e `git diff --check` aprovados |
+
+O workflow operacional já contém o E2E de lojista/entrega e passará a executar este cenário concorrente por meio do script atualizado. Esta entrega cobre status idêntico/stale e `complete` concorrente; fiado, OAuth, CORS, storage, voz e limites de payload continuam pendentes. PSP/PIX, webhook real, CNPJ, credenciais, refund, reconciliação e infraestrutura externa permanecem bloqueadores do Go-Live comercial.

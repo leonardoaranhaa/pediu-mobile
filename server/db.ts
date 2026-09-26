@@ -1522,10 +1522,28 @@ export async function listOrdersForCustomer(
 export async function updateOrderStatus(
   orderId: number,
   status: Order["status"],
-): Promise<void> {
+  expectedStatus?: Order["status"],
+): Promise<{ changed: boolean; status: Order["status"] }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(orders).set({ status }).where(eq(orders.id, orderId));
+  const result = await db
+    .update(orders)
+    .set({ status, updatedAt: new Date() })
+    .where(
+      expectedStatus
+        ? sql`${orders.id} = ${orderId} AND ${orders.status} = ${expectedStatus}`
+        : eq(orders.id, orderId),
+    );
+  if (getAffectedRows(result) === 1) return { changed: true, status };
+  const current = await db
+    .select({ status: orders.status })
+    .from(orders)
+    .where(eq(orders.id, orderId))
+    .limit(1);
+  return {
+    changed: false,
+    status: current[0]?.status ?? status,
+  };
 }
 
 export async function createDeliveryEvent(

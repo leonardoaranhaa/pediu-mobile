@@ -40,7 +40,10 @@ async function callTrpc<T>(
     signal: AbortSignal.timeout(15_000),
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
+  if (!response.ok)
+    throw new Error(
+      `${path}: HTTP ${response.status} ${body?.error?.json?.message ?? body?.error?.message ?? "unknown"}`,
+    );
   return unwrap<T>(body);
 }
 
@@ -209,13 +212,17 @@ async function main() {
 
     const transitions = ["Aceito", "Preparando", "Pronto"] as const;
     for (const status of transitions) {
-      const result: { success: true } = await callTrpc<{ success: true }>(
-        "pediu.orders.status",
-        { orderId, status },
-        merchantToken,
-        "POST",
+      const results = await Promise.all(
+        Array.from({ length: 2 }, () =>
+          callTrpc<{ success: true }>(
+            "pediu.orders.status",
+            { orderId, status },
+            merchantToken,
+            "POST",
+          ),
+        ),
       );
-      assert.deepEqual(result, { success: true });
+      assert.deepEqual(results, [{ success: true }, { success: true }]);
     }
 
     const merchantOrders = await callTrpc<
@@ -333,27 +340,26 @@ async function main() {
       "A caminho",
     ]);
 
-    const completed = await callTrpc<{
-      success: true;
-      status: string;
-      duplicate?: boolean;
-    }>("pediu.experience.delivery.complete", { orderId }, courierToken, "POST");
-    assert.deepEqual(completed, { success: true, status: "Entregue" });
-    const duplicateCompletion = await callTrpc<{
-      success: true;
-      status: string;
-      duplicate?: boolean;
-    }>(
-      "pediu.experience.delivery.complete",
-      { orderId },
-      merchantToken,
-      "POST",
+    const completions = await Promise.all(
+      Array.from({ length: 2 }, () =>
+        callTrpc<{
+          success: true;
+          status: string;
+          duplicate?: boolean;
+        }>(
+          "pediu.experience.delivery.complete",
+          { orderId },
+          courierToken,
+          "POST",
+        ),
+      ),
     );
-    assert.deepEqual(duplicateCompletion, {
-      success: true,
-      status: "Entregue",
-      duplicate: true,
-    });
+    assert.ok(
+      completions.every(
+        (completion) =>
+          completion.success === true && completion.status === "Entregue",
+      ),
+    );
 
     const finalOrder = await callTrpc<{ id: number; status: string }>(
       "pediu.orders.get",

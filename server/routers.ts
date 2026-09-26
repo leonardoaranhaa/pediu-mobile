@@ -739,17 +739,25 @@ export const appRouter = router({
               throw new Error(
                 "O cliente só pode cancelar pedidos ainda não preparados",
               );
-            await db.updateOrderStatus(input.orderId, input.status);
-            try {
-              await db.createDeliveryEvent({
-                orderId: input.orderId,
-                eventType: input.status,
-              });
-            } catch (error) {
-              console.warn(
-                "[Orders] Failed to persist cancellation event:",
-                error,
-              );
+            const updated = await db.updateOrderStatus(
+              input.orderId,
+              input.status,
+              order.status,
+            );
+            if (!updated.changed && updated.status !== input.status)
+              throw new Error("O pedido mudou durante o cancelamento");
+            if (updated.changed) {
+              try {
+                await db.createDeliveryEvent({
+                  orderId: input.orderId,
+                  eventType: input.status,
+                });
+              } catch (error) {
+                console.warn(
+                  "[Orders] Failed to persist cancellation event:",
+                  error,
+                );
+              }
             }
             await db.cancelPendingPaymentForOrder(input.orderId);
             const store = await db.getStoreById(order.storeId);
@@ -774,7 +782,16 @@ export const appRouter = router({
             throw new Error(
               `Transição de pedido inválida: ${order.status} → ${input.status}`,
             );
-          await db.updateOrderStatus(input.orderId, input.status);
+          const updated = await db.updateOrderStatus(
+            input.orderId,
+            input.status,
+            order.status,
+          );
+          if (!updated.changed) {
+            if (updated.status !== input.status)
+              throw new Error("O pedido mudou durante a atualização");
+            return { success: true as const };
+          }
           try {
             await db.createDeliveryEvent({
               orderId: input.orderId,
