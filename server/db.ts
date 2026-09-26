@@ -1444,7 +1444,7 @@ export async function createOrderWithFiado(
   }>,
   creditCustomerId: number,
   storeId: number,
-): Promise<number> {
+): Promise<{ orderId: number; created: boolean }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   if (items.length === 0) throw new Error("Pedido sem itens");
@@ -1459,10 +1459,21 @@ export async function createOrderWithFiado(
       .where(
         sql`${customers.id} = ${creditCustomerId} AND ${customers.storeId} = ${storeId}`,
       )
-      .limit(1);
+      .limit(1)
+      .for("update");
     const customer = customerRows[0];
     if (!customer) throw new Error("Cliente não cadastrado para esta loja");
     if (customer.status !== "active") throw new Error("Cliente bloqueado");
+
+    const existingOrders = await tx
+      .select({ id: orders.id })
+      .from(orders)
+      .where(
+        sql`${orders.customerId} = ${input.customerId} AND ${orders.storeId} = ${storeId} AND ${orders.idempotencyKey} = ${input.idempotencyKey}`,
+      )
+      .limit(1);
+    if (existingOrders[0])
+      return { orderId: existingOrders[0].id, created: false };
 
     const limit = Number(customer.creditLimit);
     const balance = Number(customer.balance);
@@ -1499,7 +1510,7 @@ export async function createOrderWithFiado(
     await tx
       .insert(payments)
       .values({ orderId, method: "fiado", status: "paid" });
-    return orderId;
+    return { orderId, created: true };
   });
 }
 

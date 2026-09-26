@@ -802,3 +802,29 @@ O primeiro run remoto do Operational Validation encontrou um timing que as execu
 O commit de correção `0a083e1` passou no CI (`36238830915`) e no `Pediu Operational Validation` (`36238830911`), incluindo o E2E de lojista/entrega com o timing anteriormente falho, o smoke de checkout/webhook concorrente, deployment smoke e stress. A fase está concluída neste escopo; os bloqueadores externos do Go-Live comercial permanecem os mesmos do plano.
 
 O workflow operacional já contém o E2E de lojista/entrega e passará a executar este cenário concorrente por meio do script atualizado. Esta entrega cobre status idêntico/stale e `complete` concorrente; fiado, OAuth, CORS, storage, voz e limites de payload continuam pendentes. PSP/PIX, webhook real, CNPJ, credenciais, refund, reconciliação e infraestrutura externa permanecem bloqueadores do Go-Live comercial.
+
+
+---
+
+# 30. Concorrência de fiado e proteção do limite de crédito — 26/09/2026
+
+A próxima fatia da Fase 6 foi implementada sobre o PR #7 com lock pessimista do cliente, retry fiado idempotente e smoke de oversubscription. A instrução técnica está em `docs/INSTRUCAO_FASE_CONCORRENCIA_FIADO_PR7.md`.
+
+`createOrderWithFiado` agora bloqueia o registro de `pediu_customers` com `SELECT ... FOR UPDATE` dentro da transação. Depois de obter o lock, a operação relê a chave de idempotência; somente uma transação cria pedido/itens, atualiza saldo, lança ledger e cria pagamento fiado. A segunda chamada com a mesma chave retorna o pedido já persistido sem repetir efeitos. Chaves diferentes são serializadas e uma segunda compra que excede o limite é rejeitada sem sobrescrever o saldo.
+
+A rota preserva `paymentId: null` para fiado em todos os caminhos de retry. Durante a validação real, o smoke descobriu primeiro que a recuperação genérica expunha o ID do pagamento fiado e, depois, que o pré-check inicial também retornava esse ID. Ambos os caminhos foram separados e cobertos por regressão unitária; nenhum pagamento externo foi usado.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --------- | --------- |
+| Baseline antes da alteração | Deployment smoke aprovado; stress 120/12 com p50 13,5 ms, p95 27,5 ms, máximo 60,8 ms e erro 0%; checkout/webhook concorrente aprovado |
+| Regressões unitárias focadas | 6 testes de fiado aprovados, incluindo retry encontrado no pré-check |
+| Smoke fiado real ampliado | Três execuções finais aprovadas; mesma chave convergiu para um crédito e chaves diferentes produziram uma aprovação e uma rejeição por limite, sem saldo perdido |
+| E2E operacional e checkout/webhook concorrente | Ambos aprovados no bundle final |
+| Deployment smoke final em `127.0.0.1:3004` | health 200, marketplace 200, CORS exato e métricas protegidas aprovados |
+| Stress final read-only | 120 requests / 12 workers; p50 17,0 ms; p95 47,8 ms; máximo 62,7 ms; erro 0% |
+| Cleanup SQL | Zero usuários, pedidos, clientes e fixtures concorrentes residuais |
+| Matriz local final | 28 arquivos, 120 testes aprovados e 1 ignorado; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier dos arquivos da fase e `git diff --check` aprovados |
+
+O workflow operacional recebeu `pnpm go-live:fiado-concurrency` após o E2E de lojista/entrega. Esta entrega fecha apenas a concorrência do crédito interno; PSP/PIX real, CNPJ, webhook real de provedor, credenciais externas, cobrança/reconciliação, OAuth, CORS, storage, voz e demais dependências do plano continuam sem evidência de produção e impedem declarar Go-Live comercial READY.

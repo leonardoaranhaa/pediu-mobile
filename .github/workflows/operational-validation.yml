@@ -114,6 +114,8 @@ jobs:
         run: pnpm go-live:e2e
       - name: Run Go-Live merchant and delivery E2E smoke
         run: pnpm go-live:operations-e2e
+      - name: Run Go-Live fiado concurrency smoke
+        run: pnpm go-live:fiado-concurrency
       - name: Run Go-Live concurrency smoke
         run: CONCURRENCY_REQUESTS=12 pnpm go-live:concurrency
       - name: Run read-only API stress baseline

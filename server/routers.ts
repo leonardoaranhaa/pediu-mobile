@@ -532,6 +532,12 @@ export const appRouter = router({
             idempotencyKey,
           );
           if (existing) {
+            if (input.paymentMethod === "fiado")
+              return {
+                orderId: existing.id,
+                paymentId: null,
+                status: existing.status,
+              };
             const payment = await db.getPaymentForOrder(
               existing.id,
               ctx.user.id,
@@ -609,6 +615,18 @@ export const appRouter = router({
               status: racedOrder.status,
             };
           };
+          const recoverConcurrentFiadoOrder = async () => {
+            const racedOrder = await db.getOrderByIdempotencyKey(
+              ctx.user.id,
+              idempotencyKey,
+            );
+            if (!racedOrder) return undefined;
+            return {
+              orderId: racedOrder.id,
+              paymentId: null,
+              status: racedOrder.status,
+            };
+          };
           if (input.paymentMethod === "fiado") {
             const customer = await db.getCustomerCreditByUser(
               input.storeId,
@@ -616,9 +634,9 @@ export const appRouter = router({
             );
             if (!customer)
               throw new Error("Cliente não habilitado para fiado nesta loja");
-            let orderId: number;
+            let fiadoOrder: { orderId: number; created: boolean };
             try {
-              orderId = await db.createOrderWithFiado(
+              fiadoOrder = await db.createOrderWithFiado(
                 {
                   customerId: ctx.user.id,
                   storeId: input.storeId,
@@ -639,9 +657,13 @@ export const appRouter = router({
               );
             } catch (error) {
               if (!isUniqueConstraintError(error)) throw error;
-              const raced = await recoverConcurrentOrder();
+              const raced = await recoverConcurrentFiadoOrder();
               if (raced) return raced;
               throw error;
+            }
+            const { orderId } = fiadoOrder;
+            if (!fiadoOrder.created) {
+              return { orderId, paymentId: null, status: "Pendente" as const };
             }
             try {
               await db.createDeliveryEvent({ orderId, eventType: "Pendente" });

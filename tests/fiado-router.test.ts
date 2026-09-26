@@ -32,7 +32,9 @@ describe("Pediu Fiado contract", () => {
 
   it("merchant creates a customer through its own store", async () => {
     vi.spyOn(db, "getStoreForOwner").mockResolvedValue(store as any);
-    const createCustomer = vi.spyOn(db, "createCustomer").mockResolvedValue(301);
+    const createCustomer = vi
+      .spyOn(db, "createCustomer")
+      .mockResolvedValue(301);
 
     const caller = appRouter.createCaller({ user: merchant } as any);
     const result = await caller.pediu.clients.create({
@@ -50,12 +52,19 @@ describe("Pediu Fiado contract", () => {
 
   it("merchant can set a credit limit and block a customer only in its own store", async () => {
     vi.spyOn(db, "getStoreForOwner").mockResolvedValue(store as any);
-    const setLimit = vi.spyOn(db, "setCustomerCreditLimit").mockResolvedValue(undefined as any);
-    const block = vi.spyOn(db, "blockCustomer").mockResolvedValue(undefined as any);
+    const setLimit = vi
+      .spyOn(db, "setCustomerCreditLimit")
+      .mockResolvedValue(undefined as any);
+    const block = vi
+      .spyOn(db, "blockCustomer")
+      .mockResolvedValue(undefined as any);
 
     const caller = appRouter.createCaller({ user: merchant } as any);
 
-    await caller.pediu.credit.setLimit({ customerId: 301, creditLimit: "300.00" });
+    await caller.pediu.credit.setLimit({
+      customerId: 301,
+      creditLimit: "300.00",
+    });
     await caller.pediu.credit.block({ customerId: 301, blocked: true });
 
     expect(setLimit).toHaveBeenCalledWith(7, 301, "300.00");
@@ -130,7 +139,9 @@ describe("Pediu Fiado contract", () => {
       available: 1,
     } as any);
     vi.spyOn(db, "getCustomerCreditByUser").mockResolvedValue(customer as any);
-    const createFiado = vi.spyOn(db, "createOrderWithFiado").mockResolvedValue(501);
+    const createFiado = vi
+      .spyOn(db, "createOrderWithFiado")
+      .mockResolvedValue({ orderId: 501, created: true });
 
     const caller = appRouter.createCaller({
       user: { ...merchant, id: 20, role: "user" },
@@ -145,7 +156,11 @@ describe("Pediu Fiado contract", () => {
       items: [{ productId: 101, quantity: 1, unitPrice: "999.99" }],
     });
 
-    expect(result).toMatchObject({ orderId: 501, paymentId: null, status: "Pendente" });
+    expect(result).toMatchObject({
+      orderId: 501,
+      paymentId: null,
+      status: "Pendente",
+    });
     expect(createFiado).toHaveBeenCalledWith(
       {
         customerId: 20,
@@ -160,5 +175,35 @@ describe("Pediu Fiado contract", () => {
       301,
       7,
     );
+  });
+
+  it("keeps paymentId null when a fiado retry finds the existing order first", async () => {
+    const existing = { id: 501, status: "Pendente" } as any;
+    const findOrder = vi
+      .spyOn(db, "getOrderByIdempotencyKey")
+      .mockResolvedValue(existing);
+    const findPayment = vi
+      .spyOn(db, "getPaymentForOrder")
+      .mockResolvedValue({ id: 25 } as any);
+
+    const caller = appRouter.createCaller({
+      user: { ...merchant, id: 20, role: "user" },
+    } as any);
+    const result = await caller.pediu.orders.create({
+      idempotencyKey: "existing-fiado-order",
+      storeId: 7,
+      total: "30.00",
+      paymentMethod: "fiado",
+      deliveryAddress: "Rua Teste, 10",
+      items: [{ productId: 101, quantity: 1, unitPrice: "30.00" }],
+    });
+
+    expect(result).toEqual({
+      orderId: 501,
+      paymentId: null,
+      status: "Pendente",
+    });
+    expect(findOrder).toHaveBeenCalledWith(20, "existing-fiado-order");
+    expect(findPayment).not.toHaveBeenCalled();
   });
 });
