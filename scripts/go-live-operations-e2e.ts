@@ -59,9 +59,13 @@ async function main() {
   const runId = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
   const customerOpenId = `ci-ops-customer-${runId}`;
   const merchantOpenId = `ci-ops-merchant-${runId}`;
+  const courierOpenId = `ci-ops-courier-${runId}`;
+  const adminOpenId = `ci-ops-admin-${runId}`;
   const orderKey = `ci-ops-order-${runId}`;
   let customerId: number | undefined;
   let merchantId: number | undefined;
+  let courierId: number | undefined;
+  let adminId: number | undefined;
   let storeId: number | undefined;
   let productId: number | undefined;
   let addressId: number | undefined;
@@ -90,6 +94,28 @@ async function main() {
       ],
     );
     merchantId = insertId(merchantResult);
+    const [courierResult] = await connection.execute(
+      "INSERT INTO users (openId, name, email, loginMethod, role) VALUES (?, ?, ?, ?, ?)",
+      [
+        courierOpenId,
+        "Courier Operações E2E",
+        `${courierOpenId}@example.test`,
+        "e2e",
+        "user",
+      ],
+    );
+    courierId = insertId(courierResult);
+    const [adminResult] = await connection.execute(
+      "INSERT INTO users (openId, name, email, loginMethod, role) VALUES (?, ?, ?, ?, ?)",
+      [
+        adminOpenId,
+        "Admin Operações E2E",
+        `${adminOpenId}@example.test`,
+        "e2e",
+        "admin",
+      ],
+    );
+    adminId = insertId(adminResult);
     const [storeResult] = await connection.execute(
       "INSERT INTO pediu_stores (ownerId, name, phone, address, pixKey, deliveryFee, isOpen) VALUES (?, ?, ?, ?, ?, ?, ?)",
       [
@@ -123,6 +149,14 @@ async function main() {
     });
     const merchantToken = await sdk.createSessionToken(merchantOpenId, {
       name: "Lojista Operações E2E",
+      expiresInMs: 15 * 60_000,
+    });
+    const courierToken = await sdk.createSessionToken(courierOpenId, {
+      name: "Courier Operações E2E",
+      expiresInMs: 15 * 60_000,
+    });
+    const adminToken = await sdk.createSessionToken(adminOpenId, {
+      name: "Admin Operações E2E",
       expiresInMs: 15 * 60_000,
     });
 
@@ -193,18 +227,64 @@ async function main() {
       ),
     );
 
-    const assignment = await callTrpc<{ id: number; status: string }>(
-      "pediu.experience.delivery.assign",
+    const profile = await callTrpc<{ id: number; status: string }>(
+      "pediu.courier.profile.register",
+      { vehicleType: "moto", vehiclePlate: "ABC1D23", phone: "11988887777" },
+      courierToken,
+      "POST",
+    );
+    assert.equal(profile.status, "pending");
+    const reviewed = await callTrpc<{ status: string }>(
+      "admin.courierReview",
+      { profileId: profile.id, status: "approved" },
+      adminToken,
+      "POST",
+    );
+    assert.equal(reviewed.status, "approved");
+    const linked = await callTrpc<{ status: string }>(
+      "pediu.stores.linkCourier",
+      { courierUserId: courierId },
+      merchantToken,
+      "POST",
+    );
+    assert.equal(linked.status, "active");
+    await callTrpc(
+      "pediu.courier.profile.availability",
+      { value: "available" },
+      courierToken,
+      "POST",
+    );
+    const offer = await callTrpc<{ id: number; status: string }>(
+      "pediu.experience.delivery.offer",
       {
         orderId,
-        courierName: "Entregador Operações E2E",
-        courierPhone: "11988887777",
+        courierUserId: courierId,
         etaMinutes: 25,
+        message: "Oferta E2E",
+        idempotencyKey: `ci-ops-offer-${runId}`,
+        expiresInMinutes: 10,
       },
       merchantToken,
       "POST",
     );
-    assert.equal(assignment.status, "assigned");
+    assert.equal(offer.status, "pending");
+    const accepted = await callTrpc<{
+      offer: { status: string };
+      assignment: { status: string };
+    }>(
+      "pediu.courier.acceptOffer",
+      { offerId: offer.id },
+      courierToken,
+      "POST",
+    );
+    assert.equal(accepted.offer.status, "accepted");
+    assert.equal(accepted.assignment.status, "assigned");
+    await callTrpc(
+      "pediu.courier.profile.locationConsent",
+      { accepted: true },
+      courierToken,
+      "POST",
+    );
 
     const location = await callTrpc<{
       locationId: number;
@@ -219,7 +299,7 @@ async function main() {
         etaMinutes: 18,
         idempotencyKey: `ci-ops-location-${runId}`,
       },
-      merchantToken,
+      courierToken,
       "POST",
     );
     assert.ok(location.locationId > 0);
@@ -236,7 +316,7 @@ async function main() {
       };
     }>("pediu.experience.delivery.current", { orderId }, customerToken);
     assert.equal(current.status, "A caminho");
-    assert.equal(current.assignment.courierName, "Entregador Operações E2E");
+    assert.equal(current.assignment.courierName, "Courier Operações E2E");
     assert.equal(current.assignment.status, "in_transit");
     assert.equal(current.latestLocation.etaMinutes, 18);
 
@@ -257,12 +337,7 @@ async function main() {
       success: true;
       status: string;
       duplicate?: boolean;
-    }>(
-      "pediu.experience.delivery.complete",
-      { orderId },
-      merchantToken,
-      "POST",
-    );
+    }>("pediu.experience.delivery.complete", { orderId }, courierToken, "POST");
     assert.deepEqual(completed, { success: true, status: "Entregue" });
     const duplicateCompletion = await callTrpc<{
       success: true;
@@ -301,7 +376,7 @@ async function main() {
     );
 
     console.log(
-      "Go-Live operations E2E passed: merchant status flow, assignment, location, customer tracking and idempotent completion.",
+      "Go-Live operations E2E passed: courier onboarding, approval, store link, offer, acceptance, GPS, customer tracking and idempotent completion.",
     );
   } finally {
     if (orderId)
@@ -321,8 +396,13 @@ async function main() {
       await connection.execute("DELETE FROM pediu_stores WHERE id = ?", [
         storeId,
       ]);
-    const ids = [customerId, merchantId].filter((id): id is number =>
-      Boolean(id),
+    if (adminId)
+      await connection.execute(
+        "DELETE FROM pediu_admin_audit_logs WHERE actorId = ?",
+        [adminId],
+      );
+    const ids = [customerId, merchantId, courierId, adminId].filter(
+      (id): id is number => Boolean(id),
     );
     if (ids.length)
       await connection.query(

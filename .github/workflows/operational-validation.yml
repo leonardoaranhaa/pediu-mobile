@@ -69,7 +69,10 @@ jobs:
               'pediu_push_tokens',
               'pediu_payment_transactions',
               'pediu_financial_ledger',
-              'pediu_webhook_events'
+              'pediu_webhook_events',
+              'pediu_courier_profiles',
+              'pediu_store_couriers',
+              'pediu_delivery_offers'
             ];
             const missing = required.filter(name => !names.includes(name));
             if (missing.length) throw new Error(`Missing migrated tables: ${missing.join(', ')}`);

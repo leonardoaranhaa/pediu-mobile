@@ -708,3 +708,19 @@ Após a correção, o E2E passou em banco limpo: `Pendente → Aceito → Prepar
 O PSP PIX continua fora deste smoke e permanece pendente de CNPJ, provedor, credenciais e homologação.
 
 Durante a repetição do smoke público, o primeiro preflight retornou 403 porque a instância temporária tinha `ALLOWED_ORIGINS` somente com `http://localhost:8081`. O código bloqueou corretamente a origem HTTPS não declarada. A instância foi reiniciada com as origens local e pública explícitas; o smoke então passou com CORS exato e o estresse público voltou a zero erro. Essa evidência deve ser reproduzida com os domínios definitivos no staging/produção.
+
+
+---
+
+# 25. Revalidação do ambiente próprio do entregador — 26/09/2026
+
+A fatia courier foi reaplicada sobre o head do PR #7 e revalidada antes de qualquer avanço:
+
+- MariaDB limpo: 25 migrations, 37 tabelas, 56 FKs e `users.role` com `courier`.
+- E2E contra bundle de produção em `127.0.0.1:3002`: cadastro do courier, aprovação administrativa, vínculo com a loja, disponibilidade, oferta, aceite transacional, consentimento de localização, GPS, tracking do cliente e conclusão idempotente.
+- Cleanup confirmado: zero usuários `ci-ops-*` e zero auditorias residuais após o smoke.
+- Deployment smoke: health, marketplace e CORS exato aprovados.
+- Estresse read-only: 120 requests, concorrência 12, p95 de 49,2 ms, erro 0%.
+- Matriz local: `pnpm check`, `pnpm test` (105 passed, 1 skipped), `pnpm build`, `pnpm lint` e `git diff --check` aprovados.
+
+O PSP e repasse financeiro do entregador continuam pendentes exclusivamente por CNPJ, provedor, credenciais e homologação; nenhum pagamento foi simulado como concluído.

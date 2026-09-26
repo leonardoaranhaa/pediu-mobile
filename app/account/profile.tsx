@@ -24,6 +24,7 @@ export default function ProfilePage() {
       <Row icon="credit-card" title="Pagamentos" onPress={() => router.push("/account/payment-methods")} />
       <Row icon="notifications" title="Notificações" onPress={() => router.push("/account/notifications")} />
       <Row icon="settings" title="Personalizar o Pediu" subtitle={`${theme.label} · escolha seu tema`} onPress={() => router.push("/account/settings")} />
+      <Row icon="two-wheeler" title="Central do entregador" subtitle="Cadastre-se, receba ofertas e acompanhe rotas" onPress={() => router.push("/courier")} />
     </Card>
     {user?.role === "admin" ? <OutlineButton title="Painel administrativo" onPress={() => router.push("/admin")} /> : null}
     {isAuthenticated ? <OutlineButton title="Sair da conta" onPress={() => void logout()} /> : null}

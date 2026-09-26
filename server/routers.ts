@@ -133,6 +133,20 @@ export const appRouter = router({
       mine: protectedProcedure.query(({ ctx }) => db.getStoreForOwner(ctx.user.id)),
       create: protectedProcedure.input(z.object({ name: z.string().trim().min(2).max(160), phone: z.string().trim().max(32).optional(), address: z.string().trim().max(255).optional(), pixKey: z.string().trim().max(255).optional(), deliveryFee: z.string().regex(/^\d+(\.\d{1,2})?$/).default("0.00") })).mutation(async ({ ctx, input }) => { if (await db.getStoreForOwner(ctx.user.id)) throw new Error("Este usuário já possui uma loja"); return db.createStore({ ...input, ownerId: ctx.user.id }); }),
       update: protectedProcedure.input(z.object({ name: z.string().trim().min(2).max(160).optional(), phone: z.string().trim().max(32).optional(), address: z.string().trim().max(255).optional(), pixKey: z.string().trim().max(255).optional(), deliveryFee: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(), isOpen: z.boolean().optional() }).refine((input) => Object.values(input).some((value) => value !== undefined), "Informe ao menos uma alteração")).mutation(({ ctx, input }) => { const { isOpen, ...changes } = input; return db.updateStoreForOwner(ctx.user.id, { ...changes, ...(isOpen === undefined ? {} : { isOpen: isOpen ? 1 : 0 }) }); }),
+      couriers: protectedProcedure.query(({ ctx }) => db.listCouriersForStore(ctx.user.id)),
+      linkCourier: protectedProcedure.input(z.object({ courierUserId: z.number().int().positive() })).mutation(({ ctx, input }) => db.linkCourierToStore(ctx.user.id, input.courierUserId)),
+    }),
+    courier: router({
+      profile: router({
+        mine: protectedProcedure.query(({ ctx }) => db.getCourierProfileByUser(ctx.user.id)),
+        register: protectedProcedure.input(z.object({ vehicleType: z.enum(["bike", "moto", "car"]), vehiclePlate: z.string().trim().max(16).optional(), phone: z.string().trim().max(32).optional() })).mutation(({ ctx, input }) => db.upsertCourierProfile({ ...input, userId: ctx.user.id })),
+        locationConsent: protectedProcedure.input(z.object({ accepted: z.boolean() })).mutation(({ ctx, input }) => db.setCourierLocationConsent(ctx.user.id, input.accepted)),
+        availability: protectedProcedure.input(z.object({ value: z.enum(["offline", "available", "busy"]) })).mutation(({ ctx, input }) => db.setCourierAvailability(ctx.user.id, input.value)),
+      }),
+      offers: protectedProcedure.query(({ ctx }) => db.listPendingDeliveryOffers(ctx.user.id)),
+      acceptOffer: protectedProcedure.input(z.object({ offerId: z.number().int().positive() })).mutation(({ ctx, input }) => db.respondToDeliveryOffer({ offerId: input.offerId, courierUserId: ctx.user.id, accept: true })),
+      rejectOffer: protectedProcedure.input(z.object({ offerId: z.number().int().positive() })).mutation(({ ctx, input }) => db.respondToDeliveryOffer({ offerId: input.offerId, courierUserId: ctx.user.id, accept: false })),
+      active: protectedProcedure.query(({ ctx }) => db.listActiveDeliveriesForCourier(ctx.user.id)),
     }),
     products: router({
       mine: protectedProcedure.input(z.object({ storeId: z.number().int().positive() })).query(async ({ ctx, input }) => { const store = await db.getStoreForOwner(ctx.user.id); return store?.id === input.storeId ? db.listProductsForStore(input.storeId) : []; }),

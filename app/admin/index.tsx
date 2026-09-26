@@ -55,6 +55,7 @@ export default function AdminDashboard() {
         ) : null}
       </Card>
       <Row icon="support-agent" title="Suporte" subtitle="Chamados e respostas de clientes" onPress={() => router.push("/admin/support")} />
+      <Row icon="two-wheeler" title="Entregadores" subtitle="Aprovar, rejeitar e suspender cadastros" onPress={() => router.push("/admin/couriers")} />
       <Row icon="security" title="Auditoria" subtitle="Consultar registros administrativos" onPress={() => router.push("/admin/audit")} />
     </Page>
   );

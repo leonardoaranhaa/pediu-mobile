@@ -6,7 +6,7 @@ export const users = mysqlTable("users", {
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "merchant", "admin"]).default("user").notNull(),
+  role: mysqlEnum("role", ["user", "merchant", "courier", "admin"]).default("user").notNull(),
   themePreference: varchar("themePreference", { length: 16 }).default("classic").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -344,6 +344,55 @@ export const deliveryAssignments = mysqlTable("pediu_delivery_assignments", {
   courierIdx: index("pediu_delivery_assignment_courier_idx").on(table.courierId, table.status),
 }));
 
+export const courierProfiles = mysqlTable("pediu_courier_profiles", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  status: mysqlEnum("status", ["pending", "approved", "rejected", "suspended"]).default("pending").notNull(),
+  vehicleType: mysqlEnum("vehicleType", ["bike", "moto", "car"]).notNull(),
+  vehiclePlate: varchar("vehiclePlate", { length: 16 }),
+  phone: varchar("phone", { length: 32 }),
+  availability: mysqlEnum("availability", ["offline", "available", "busy"]).default("offline").notNull(),
+  locationConsentAt: timestamp("locationConsentAt"),
+  approvedAt: timestamp("approvedAt"),
+  statusReason: varchar("statusReason", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  userUnique: unique("pediu_courier_profile_user_unique").on(table.userId),
+  statusAvailabilityIdx: index("pediu_courier_status_availability_idx").on(table.status, table.availability),
+}));
+
+export const storeCouriers = mysqlTable("pediu_store_couriers", {
+  id: int("id").autoincrement().primaryKey(),
+  storeId: int("storeId").notNull().references(() => stores.id, { onDelete: "cascade" }),
+  courierUserId: int("courierUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  status: mysqlEnum("status", ["pending", "active", "revoked"]).default("pending").notNull(),
+  invitedBy: int("invitedBy").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  storeCourierUnique: unique("pediu_store_courier_unique").on(table.storeId, table.courierUserId),
+  courierStatusIdx: index("pediu_store_courier_status_idx").on(table.courierUserId, table.status),
+}));
+
+export const deliveryOffers = mysqlTable("pediu_delivery_offers", {
+  id: int("id").autoincrement().primaryKey(),
+  orderId: int("orderId").notNull().references(() => orders.id, { onDelete: "cascade" }),
+  storeId: int("storeId").notNull().references(() => stores.id, { onDelete: "cascade" }),
+  courierUserId: int("courierUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  status: mysqlEnum("status", ["pending", "accepted", "rejected", "expired", "cancelled"]).default("pending").notNull(),
+  etaMinutes: int("etaMinutes"),
+  message: varchar("message", { length: 255 }),
+  idempotencyKey: varchar("idempotencyKey", { length: 160 }).notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  respondedAt: timestamp("respondedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  idempotencyUnique: unique("pediu_delivery_offer_idempotency_unique").on(table.idempotencyKey),
+  courierStatusIdx: index("pediu_delivery_offer_courier_status_idx").on(table.courierUserId, table.status, table.expiresAt),
+  orderStatusIdx: index("pediu_delivery_offer_order_status_idx").on(table.orderId, table.status),
+}));
+
 export const deliveryLocations = mysqlTable("pediu_delivery_locations", {
   id: int("id").autoincrement().primaryKey(),
   assignmentId: int("assignmentId").notNull().references(() => deliveryAssignments.id, { onDelete: "cascade" }),
@@ -491,6 +540,12 @@ export type ChatMessage = typeof chatMessages.$inferSelect;
 export type InsertChatMessage = typeof chatMessages.$inferInsert;
 export type DeliveryAssignment = typeof deliveryAssignments.$inferSelect;
 export type InsertDeliveryAssignment = typeof deliveryAssignments.$inferInsert;
+export type CourierProfile = typeof courierProfiles.$inferSelect;
+export type InsertCourierProfile = typeof courierProfiles.$inferInsert;
+export type StoreCourier = typeof storeCouriers.$inferSelect;
+export type InsertStoreCourier = typeof storeCouriers.$inferInsert;
+export type DeliveryOffer = typeof deliveryOffers.$inferSelect;
+export type InsertDeliveryOffer = typeof deliveryOffers.$inferInsert;
 export type DeliveryLocation = typeof deliveryLocations.$inferSelect;
 export type InsertDeliveryLocation = typeof deliveryLocations.$inferInsert;
 export type SupportTicket = typeof supportTickets.$inferSelect;

@@ -1,6 +1,6 @@
-import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { AdminAuditLog, ChatMessage, Coupon, Customer, CustomerAddress, CustomerPaymentPreferences, DeliveryAssignment, DeliveryLocation, InsertAdminAuditLog, InsertChatMessage, InsertCustomer, InsertCustomerAddress, InsertDeliveryAssignment, InsertDeliveryEvent, InsertDeliveryLocation, InsertLedgerEntry, InsertNotification, InsertOrder, InsertOrderReview, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertSupportTicketMessage, InsertUser, LedgerEntry, Notification, NotificationPreferences, Order, OrderReview, Payment, Product, PushToken, Sale, Store, SupportTicket, SupportTicketMessage, User, adminAuditLogs, chatMessages, coupons, customerAddresses, customerPaymentPreferences, customers, deliveryAssignments, deliveryEvents, deliveryLocations, emailVerificationTokens, ledgerEntries, notificationPreferences, notifications, orderItems, orderReviews, orders, payments, privacyConsents, products, pushTokens, sales, stores, supportTicketMessages, supportTickets, users, webhookEvents } from "../drizzle/schema";
+import { AdminAuditLog, ChatMessage, CourierProfile, Coupon, Customer, CustomerAddress, CustomerPaymentPreferences, DeliveryAssignment, DeliveryLocation, DeliveryOffer, InsertAdminAuditLog, InsertCourierProfile, InsertChatMessage, InsertCustomer, InsertCustomerAddress, InsertDeliveryAssignment, InsertDeliveryEvent, InsertDeliveryLocation, InsertLedgerEntry, InsertNotification, InsertOrder, InsertOrderReview, InsertProduct, InsertPushToken, InsertSale, InsertStore, InsertSupportTicketMessage, InsertUser, LedgerEntry, Notification, NotificationPreferences, Order, OrderReview, Payment, Product, PushToken, Sale, Store, StoreCourier, SupportTicket, SupportTicketMessage, User, adminAuditLogs, chatMessages, coupons, courierProfiles, customerAddresses, customerPaymentPreferences, customers, deliveryAssignments, deliveryEvents, deliveryLocations, deliveryOffers, emailVerificationTokens, ledgerEntries, notificationPreferences, notifications, orderItems, orderReviews, orders, payments, privacyConsents, products, pushTokens, sales, storeCouriers, stores, supportTicketMessages, supportTickets, users, webhookEvents } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -328,6 +328,76 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
+export async function getCourierProfileByUser(userId: number): Promise<CourierProfile | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(courierProfiles).where(eq(courierProfiles.userId, userId)).limit(1);
+  return result[0];
+}
+
+export async function upsertCourierProfile(input: Omit<InsertCourierProfile, "id" | "createdAt" | "updatedAt" | "status" | "approvedAt" | "statusReason" | "availability"> & { userId: number }): Promise<CourierProfile> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const existing = await tx.select().from(courierProfiles).where(eq(courierProfiles.userId, input.userId)).limit(1);
+    if (existing[0]) {
+      const status = existing[0].status === "approved" && existing[0].vehicleType === input.vehicleType && existing[0].vehiclePlate === (input.vehiclePlate ?? null) ? "approved" : "pending";
+      await tx.update(courierProfiles).set({ ...input, status, updatedAt: new Date(), ...(status === "pending" ? { approvedAt: null, statusReason: null } : {}) }).where(eq(courierProfiles.id, existing[0].id));
+      const updated = await tx.select().from(courierProfiles).where(eq(courierProfiles.id, existing[0].id)).limit(1);
+      if (!updated[0]) throw new Error("Perfil de entregador não encontrado após atualização");
+      return updated[0];
+    }
+    const result = await tx.insert(courierProfiles).values({ ...input, status: "pending", availability: "offline" });
+    const profileId = getInsertId(result);
+    const created = await tx.select().from(courierProfiles).where(eq(courierProfiles.id, profileId)).limit(1);
+    if (!created[0]) throw new Error("Perfil de entregador não encontrado após criação");
+    return created[0];
+  });
+}
+
+export async function setCourierLocationConsent(userId: number, accepted: boolean): Promise<CourierProfile> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const profile = await getCourierProfileByUser(userId);
+  if (!profile) throw new Error("Cadastre o perfil de entregador antes de habilitar a localização");
+  await db.update(courierProfiles).set({ locationConsentAt: accepted ? new Date() : null, updatedAt: new Date() }).where(eq(courierProfiles.id, profile.id));
+  const updated = await getCourierProfileByUser(userId);
+  if (!updated) throw new Error("Perfil de entregador não encontrado após atualização");
+  return updated;
+}
+
+export async function setCourierAvailability(userId: number, availability: CourierProfile["availability"]): Promise<CourierProfile> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const profile = await getCourierProfileByUser(userId);
+  if (!profile) throw new Error("Perfil de entregador não encontrado");
+  if (availability === "available" && profile.status !== "approved") throw new Error("O perfil precisa ser aprovado antes de ficar disponível");
+  await db.update(courierProfiles).set({ availability, updatedAt: new Date() }).where(eq(courierProfiles.id, profile.id));
+  const updated = await getCourierProfileByUser(userId);
+  if (!updated) throw new Error("Perfil de entregador não encontrado após atualização");
+  return updated;
+}
+
+export async function listAdminCourierProfiles(limit = 50, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ profile: courierProfiles, user: { id: users.id, name: users.name, email: users.email, role: users.role } }).from(courierProfiles).innerJoin(users, eq(users.id, courierProfiles.userId)).orderBy(desc(courierProfiles.createdAt)).limit(Math.min(limit, 100)).offset(Math.max(offset, 0));
+}
+
+export async function reviewCourierProfile(profileId: number, status: CourierProfile["status"], reason?: string): Promise<CourierProfile> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const current = await tx.select().from(courierProfiles).where(eq(courierProfiles.id, profileId)).limit(1);
+    if (!current[0]) throw new Error("Perfil de entregador não encontrado");
+    await tx.update(courierProfiles).set({ status, statusReason: reason || null, approvedAt: status === "approved" ? new Date() : null, availability: status === "approved" ? current[0].availability : "offline", updatedAt: new Date() }).where(eq(courierProfiles.id, profileId));
+    if (status === "approved") await tx.update(users).set({ role: "courier", updatedAt: new Date() }).where(and(eq(users.id, current[0].userId), eq(users.role, "user")));
+    const updated = await tx.select().from(courierProfiles).where(eq(courierProfiles.id, profileId)).limit(1);
+    if (!updated[0]) throw new Error("Perfil de entregador não encontrado após revisão");
+    return updated[0];
+  });
+}
+
 type CustomerAddressWrite = Omit<InsertCustomerAddress, "id" | "userId" | "isDefault" | "createdAt" | "updatedAt"> & { isDefault?: boolean };
 
 export async function listCustomerAddresses(userId: number): Promise<CustomerAddress[]> {
@@ -433,6 +503,35 @@ export async function updateStoreForOwner(ownerId: number, input: UpdateStoreInp
   return updated;
 }
 
+export async function linkCourierToStore(ownerId: number, courierUserId: number): Promise<StoreCourier> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const store = await getStoreForOwner(ownerId);
+  if (!store) throw new Error("Loja não encontrada");
+  const profile = await getCourierProfileByUser(courierUserId);
+  if (!profile || profile.status !== "approved") throw new Error("O entregador precisa estar aprovado antes do vínculo");
+  const existing = await db.select().from(storeCouriers).where(sql`${storeCouriers.storeId} = ${store.id} AND ${storeCouriers.courierUserId} = ${courierUserId}`).limit(1);
+  if (existing[0]) {
+    await db.update(storeCouriers).set({ status: "active", invitedBy: ownerId, updatedAt: new Date() }).where(eq(storeCouriers.id, existing[0].id));
+    const updated = await db.select().from(storeCouriers).where(eq(storeCouriers.id, existing[0].id)).limit(1);
+    if (!updated[0]) throw new Error("Vínculo não encontrado após atualização");
+    return updated[0];
+  }
+  const result = await db.insert(storeCouriers).values({ storeId: store.id, courierUserId, status: "active", invitedBy: ownerId });
+  const id = getInsertId(result);
+  const created = await db.select().from(storeCouriers).where(eq(storeCouriers.id, id)).limit(1);
+  if (!created[0]) throw new Error("Vínculo não encontrado após criação");
+  return created[0];
+}
+
+export async function listCouriersForStore(ownerId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const store = await getStoreForOwner(ownerId);
+  if (!store) return [];
+  return db.select({ id: storeCouriers.id, courierUserId: storeCouriers.courierUserId, linkStatus: storeCouriers.status, profileStatus: courierProfiles.status, availability: courierProfiles.availability, vehicleType: courierProfiles.vehicleType, name: users.name, email: users.email, phone: courierProfiles.phone }).from(storeCouriers).innerJoin(courierProfiles, eq(courierProfiles.userId, storeCouriers.courierUserId)).innerJoin(users, eq(users.id, storeCouriers.courierUserId)).where(eq(storeCouriers.storeId, store.id)).orderBy(desc(storeCouriers.updatedAt)).limit(100);
+}
+
 export type MarketplaceProduct = Product & { storeName: string; deliveryFee: string };
 
 export type MarketplaceSearchInput = {
@@ -535,7 +634,7 @@ export async function getOrderByIdempotencyKey(userId: number, idempotencyKey: s
 export async function getOrderForUser(orderId: number, userId: number) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(orders).where(sql`${orders.id} = ${orderId} AND (${orders.customerId} = ${userId} OR ${orders.storeId} IN (SELECT id FROM pediu_stores WHERE ownerId = ${userId}))`).limit(1);
+  const result = await db.select().from(orders).where(sql`${orders.id} = ${orderId} AND (${orders.customerId} = ${userId} OR ${orders.storeId} IN (SELECT id FROM pediu_stores WHERE ownerId = ${userId}) OR ${orders.id} IN (SELECT orderId FROM pediu_delivery_assignments WHERE courierId = ${userId}))`).limit(1);
   return result[0];
 }
 
@@ -747,6 +846,79 @@ export async function completeDelivery(orderId: number): Promise<{ changed: bool
     if (current[0]?.status === "Entregue") return { changed: false, status: "Entregue" as const };
     throw new Error("A entrega não está pronta para ser encerrada");
   });
+}
+
+export async function createDeliveryOffer(input: { ownerId: number; orderId: number; courierUserId: number; etaMinutes?: number; message?: string; idempotencyKey: string; expiresAt: Date }): Promise<DeliveryOffer> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const store = (await tx.select().from(stores).where(eq(stores.ownerId, input.ownerId)).limit(1))[0];
+    if (!store) throw new Error("Loja não encontrada");
+    const order = (await tx.select().from(orders).where(sql`${orders.id} = ${input.orderId} AND ${orders.storeId} = ${store.id}`).limit(1))[0];
+    if (!order || order.status !== "Pronto") throw new Error("O pedido precisa estar pronto para receber uma oferta");
+    const profile = (await tx.select().from(courierProfiles).where(and(eq(courierProfiles.userId, input.courierUserId), eq(courierProfiles.status, "approved"))).limit(1))[0];
+    if (!profile || profile.availability !== "available") throw new Error("Entregador indisponível ou não aprovado");
+    const link = (await tx.select().from(storeCouriers).where(sql`${storeCouriers.storeId} = ${store.id} AND ${storeCouriers.courierUserId} = ${input.courierUserId} AND ${storeCouriers.status} = 'active'`).limit(1))[0];
+    if (!link) throw new Error("Entregador não vinculado a esta loja");
+    const existing = (await tx.select().from(deliveryOffers).where(eq(deliveryOffers.idempotencyKey, input.idempotencyKey)).limit(1))[0];
+    if (existing) return existing;
+    const assignment = (await tx.select({ id: deliveryAssignments.id }).from(deliveryAssignments).where(eq(deliveryAssignments.orderId, input.orderId)).limit(1))[0];
+    if (assignment) throw new Error("O pedido já possui uma atribuição de entrega");
+    const result = await tx.insert(deliveryOffers).values({ orderId: input.orderId, storeId: store.id, courierUserId: input.courierUserId, etaMinutes: input.etaMinutes, message: input.message, idempotencyKey: input.idempotencyKey, expiresAt: input.expiresAt, status: "pending" });
+    const id = getInsertId(result);
+    const created = await tx.select().from(deliveryOffers).where(eq(deliveryOffers.id, id)).limit(1);
+    if (!created[0]) throw new Error("Oferta não encontrada após criação");
+    return created[0];
+  });
+}
+
+export async function listPendingDeliveryOffers(courierUserId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  await db.update(deliveryOffers).set({ status: "expired", respondedAt: new Date() }).where(sql`${deliveryOffers.courierUserId} = ${courierUserId} AND ${deliveryOffers.status} = 'pending' AND ${deliveryOffers.expiresAt} < ${new Date()}`);
+  return db.select({ id: deliveryOffers.id, orderId: deliveryOffers.orderId, storeId: deliveryOffers.storeId, status: deliveryOffers.status, etaMinutes: deliveryOffers.etaMinutes, message: deliveryOffers.message, expiresAt: deliveryOffers.expiresAt, createdAt: deliveryOffers.createdAt, storeName: stores.name, deliveryAddress: orders.deliveryAddress, total: orders.total }).from(deliveryOffers).innerJoin(stores, eq(stores.id, deliveryOffers.storeId)).innerJoin(orders, eq(orders.id, deliveryOffers.orderId)).where(and(eq(deliveryOffers.courierUserId, courierUserId), eq(deliveryOffers.status, "pending"))).orderBy(desc(deliveryOffers.createdAt)).limit(50);
+}
+
+export async function respondToDeliveryOffer(input: { offerId: number; courierUserId: number; accept: boolean }): Promise<{ offer: DeliveryOffer; assignment?: DeliveryAssignment }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const offer = (await tx.select().from(deliveryOffers).where(sql`${deliveryOffers.id} = ${input.offerId} AND ${deliveryOffers.courierUserId} = ${input.courierUserId}`).limit(1))[0];
+    if (!offer) throw new Error("Oferta não encontrada ou não autorizada");
+    if (offer.status !== "pending") {
+      const assignment = (await tx.select().from(deliveryAssignments).where(sql`${deliveryAssignments.orderId} = ${offer.orderId} AND ${deliveryAssignments.courierId} = ${input.courierUserId}`).limit(1))[0];
+      return { offer, assignment };
+    }
+    if (!input.accept) {
+      await tx.update(deliveryOffers).set({ status: "rejected", respondedAt: new Date() }).where(eq(deliveryOffers.id, offer.id));
+      const rejected = (await tx.select().from(deliveryOffers).where(eq(deliveryOffers.id, offer.id)).limit(1))[0];
+      if (!rejected) throw new Error("Oferta não encontrada após recusa");
+      return { offer: rejected };
+    }
+    if (offer.expiresAt <= new Date()) throw new Error("Esta oferta expirou");
+    const profile = (await tx.select().from(courierProfiles).where(and(eq(courierProfiles.userId, input.courierUserId), eq(courierProfiles.status, "approved"))).limit(1))[0];
+    if (!profile || profile.availability !== "available") throw new Error("O entregador está indisponível");
+    const order = (await tx.select().from(orders).where(eq(orders.id, offer.orderId)).limit(1))[0];
+    if (!order || order.status !== "Pronto") throw new Error("O pedido não está mais disponível");
+    const existingAssignment = (await tx.select().from(deliveryAssignments).where(eq(deliveryAssignments.orderId, offer.orderId)).limit(1))[0];
+    if (existingAssignment) throw new Error("O pedido já foi aceito por outro entregador");
+    const user = (await tx.select({ name: users.name }).from(users).where(eq(users.id, input.courierUserId)).limit(1))[0];
+    const assignmentResult = await tx.insert(deliveryAssignments).values({ orderId: offer.orderId, courierId: input.courierUserId, courierName: user?.name?.trim() || "Entregador Pediu", courierPhone: profile.phone, etaMinutes: offer.etaMinutes, status: "assigned" });
+    const assignmentId = getInsertId(assignmentResult);
+    await tx.update(deliveryOffers).set({ status: "accepted", respondedAt: new Date() }).where(eq(deliveryOffers.id, offer.id));
+    await tx.update(deliveryOffers).set({ status: "cancelled", respondedAt: new Date() }).where(and(eq(deliveryOffers.orderId, offer.orderId), eq(deliveryOffers.status, "pending")));
+    await tx.update(courierProfiles).set({ availability: "busy", updatedAt: new Date() }).where(eq(courierProfiles.userId, input.courierUserId));
+    const accepted = (await tx.select().from(deliveryOffers).where(eq(deliveryOffers.id, offer.id)).limit(1))[0];
+    const assignment = (await tx.select().from(deliveryAssignments).where(eq(deliveryAssignments.id, assignmentId)).limit(1))[0];
+    if (!accepted || !assignment) throw new Error("Oferta aceita sem atribuição persistida");
+    return { offer: accepted, assignment };
+  });
+}
+
+export async function listActiveDeliveriesForCourier(courierUserId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ assignment: deliveryAssignments, order: orders, store: { id: stores.id, name: stores.name, phone: stores.phone, address: stores.address } }).from(deliveryAssignments).innerJoin(orders, eq(orders.id, deliveryAssignments.orderId)).innerJoin(stores, eq(stores.id, orders.storeId)).where(and(eq(deliveryAssignments.courierId, courierUserId), inArray(deliveryAssignments.status, ["assigned", "in_transit"]))).orderBy(desc(deliveryAssignments.updatedAt)).limit(20);
 }
 
 export async function listChatMessages(orderId: number, limit = 100, offset = 0): Promise<ChatMessage[]> {
