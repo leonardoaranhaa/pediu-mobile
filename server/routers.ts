@@ -731,6 +731,7 @@ export const appRouter = router({
             (await db.getStoreForOwner(ctx.user.id))?.id === order.storeId;
           if (!isOwner && order.customerId !== ctx.user.id)
             throw new Error("Pedido não autorizado");
+          if (order.status === input.status) return { success: true as const };
           if (!isOwner) {
             if (
               input.status !== "Cancelado" ||

@@ -111,6 +111,26 @@ describe("Pediu order operational contract", () => {
     expect(event).toHaveBeenCalledTimes(1);
   });
 
+  it("accepts a retry that reads the already-applied status", async () => {
+    vi.spyOn(db, "getOrderForUser").mockResolvedValue({
+      ...order,
+      status: "Aceito",
+    } as any);
+    vi.spyOn(db, "getStoreForOwner").mockResolvedValue({
+      id: 7,
+      ownerId: 10,
+    } as any);
+    const update = vi.spyOn(db, "updateOrderStatus");
+    const event = vi.spyOn(db, "createDeliveryEvent");
+
+    const caller = appRouter.createCaller({ user } as any);
+    await expect(
+      caller.pediu.orders.status({ orderId: 101, status: "Aceito" }),
+    ).resolves.toEqual({ success: true });
+    expect(update).not.toHaveBeenCalled();
+    expect(event).not.toHaveBeenCalled();
+  });
+
   it("rejects a stale transition when another status already won the race", async () => {
     vi.spyOn(db, "getOrderForUser").mockResolvedValue(order as any);
     vi.spyOn(db, "getStoreForOwner").mockResolvedValue({

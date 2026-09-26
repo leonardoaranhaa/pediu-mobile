@@ -791,10 +791,12 @@ A próxima fatia da Fase 6 foi implementada sobre o PR #7 com atualização cond
 | Validação | Resultado |
 | --------- | --------- |
 | Baseline antes da alteração | Deployment smoke aprovado; stress 120/12 com p95 de 45,1 ms e erro 0%; checkout/webhook concorrente aprovado |
-| Regressões unitárias focadas | 12 testes aprovados para transição idêntica, transição stale e conclusão simultânea |
+| Regressões unitárias focadas | 13 testes aprovados para transição idêntica, retry já aplicado, transição stale e conclusão simultânea |
 | E2E operacional real | Três execuções consecutivas aprovadas com onboarding courier, fluxo de entrega, duas chamadas paralelas por status e duas conclusões paralelas; zero fixtures residuais |
 | Deployment smoke final em `127.0.0.1:3004` | health 200, marketplace 200, CORS exato e métricas protegidas aprovados |
-| Stress final read-only | 120 requests / 12 workers; p50 15,2 ms; p95 43,5 ms; máximo 62,2 ms; erro 0% |
-| Matriz local final | 28 arquivos, 118 testes aprovados e 1 ignorado; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier dos arquivos da fase e `git diff --check` aprovados |
+| Stress final read-only | 120 requests / 12 workers; p50 14,0 ms; p95 34,8 ms; máximo 62,5 ms; erro 0% |
+| Matriz local final | 28 arquivos, 119 testes aprovados e 1 ignorado; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier dos arquivos da fase e `git diff --check` aprovados |
+
+O primeiro run remoto do Operational Validation encontrou um timing que as execuções locais anteriores não haviam capturado: a segunda chamada podia ler `Aceito` já persistido e falhava ao validar a transição impossível `Aceito → Aceito`. A rota passou a tratar o status já persistido como retry idempotente, sem gravar evento/notificação, e foi adicionada regressão unitária. A reprodução local posterior passou três vezes consecutivas e os gates finais permaneceram verdes.
 
 O workflow operacional já contém o E2E de lojista/entrega e passará a executar este cenário concorrente por meio do script atualizado. Esta entrega cobre status idêntico/stale e `complete` concorrente; fiado, OAuth, CORS, storage, voz e limites de payload continuam pendentes. PSP/PIX, webhook real, CNPJ, credenciais, refund, reconciliação e infraestrutura externa permanecem bloqueadores do Go-Live comercial.
