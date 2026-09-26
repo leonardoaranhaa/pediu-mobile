@@ -29,6 +29,7 @@ jobs:
       PORT: 3000
       VITE_APP_ID: ci-e2e-app
       JWT_SECRET: ci-e2e-jwt-secret
+      PAYMENT_WEBHOOK_SECRET: ci-payment-webhook-secret
       OBSERVABILITY_TOKEN: ci-observability-token
       ALLOWED_ORIGINS: http://localhost:8081
     steps:
@@ -113,6 +114,8 @@ jobs:
         run: pnpm go-live:e2e
       - name: Run Go-Live merchant and delivery E2E smoke
         run: pnpm go-live:operations-e2e
+      - name: Run Go-Live concurrency smoke
+        run: CONCURRENCY_REQUESTS=12 pnpm go-live:concurrency
       - name: Run read-only API stress baseline
         run: STRESS_REQUESTS=60 STRESS_CONCURRENCY=8 pnpm go-live:stress
       - name: Build production API

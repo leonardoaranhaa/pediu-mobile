@@ -748,3 +748,31 @@ Foi implementado um endpoint protegido `GET /api/metrics`, com token Bearer em `
 O runtime de produção agora bloqueia o boot quando `OBSERVABILITY_TOKEN` não está configurado. O deployment smoke passou validando health 200, marketplace 200, CORS exato e `metrics=protected`; sem token, a chamada recebeu 401. O stress read-only passou com 120 requests, concorrência 12, p95 de 55,8 ms, máximo de 70,2 ms e taxa de erro 0%.
 
 A matriz local passou com `pnpm check`, `pnpm test` (107 passed, 1 skipped), `pnpm build`, `pnpm lint`, testes específicos de observabilidade e `git diff --check`. O token protege o endpoint, mas envio para um SaaS externo, dashboards, alertas e retenção centralizada continuam dependentes da infraestrutura definitiva e não são considerados concluídos por este incremento.
+
+
+---
+
+# 28. Concorrência e idempotência de checkout/webhook — 26/09/2026
+
+A fase de concorrência foi implementada sobre o head do PR #7 com `scripts/go-live-concurrency.ts`, o comando `pnpm go-live:concurrency`, o helper `isUniqueConstraintError` e recuperação transacional nos caminhos de checkout e webhook. A instrução técnica está em `docs/INSTRUCAO_FASE_CONCORRENCIA_PR7.md`.
+
+Na primeira execução contra MariaDB real, o smoke encontrou duas corridas que mocks não capturavam:
+
+- 12 checkouts com a mesma chave retornavam HTTP 500 ao perder a unique key de `pediu_orders_idempotency_unique`;
+- depois da correção do checkout, 12 webhooks HMAC idênticos retornavam uma resposta 200 e onze 422 por colisão em `(provider, providerEventId)` de `pediu_webhook_events`.
+
+O checkout agora relê o pedido/pagamento vencedor após conflito único. `applyPaymentWebhook` mantém a transação como autoridade e, quando perde a inserção concorrente do evento, relê o evento e o pagamento persistidos; erros não relacionados continuam sendo propagados. O detector percorre envelopes `cause`, `originalError` e `driverError`, com regressão unitária para códigos, errno, mensagens encapsuladas e erro irrelevante.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --------- | --------- |
+| Smoke de concorrência em bundle `NODE_ENV=production`, MariaDB real, 12 concorrentes | 12 checkouts convergiram para 1 pedido/pagamento; 12 webhooks convergiram para 1 evento; todas as respostas foram aceitas e o cleanup da fixture passou |
+| Repetição ampliada no mesmo bundle, 24 concorrentes | 24 checkouts convergiram para 1 pedido/pagamento; 24 webhooks convergiram para 1 evento |
+| Deployment smoke em `127.0.0.1:3004` | health 200, marketplace 200, CORS exato e métricas protegidas aprovados |
+| Stress read-only no bundle de produção | 120 requests / 12 workers; p50 20,9 ms; p95 34,1 ms; máximo 73,7 ms; erro 0% |
+| Suíte e qualidade local | 28 arquivos passaram, 115 testes passaram e 1 foi ignorado; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier dos arquivos de código/configuração da fase e `git diff --check` passaram |
+
+O workflow `Pediu Operational Validation` passou a injetar `PAYMENT_WEBHOOK_SECRET` de teste e executar o smoke concorrente após os E2Es de lojista/entrega. A carga do CI é limitada a 12 concorrentes e usa somente fixtures isoladas.
+
+Esta entrega cobre apenas checkout com a mesma chave e webhook com o mesmo evento. Não conclui a Fase 6 inteira: concorrência de status/`complete`, fiado, OAuth, CORS, storage, voz e limites de payload continuam como incrementos próprios. PSP/PIX, webhook real do provedor, CNPJ, credenciais, refund e reconciliação permanecem pendentes; nenhum pagamento real foi simulado como homologado. O Go-Live comercial continua bloqueado pelos P0 externos e operacionais do plano.
