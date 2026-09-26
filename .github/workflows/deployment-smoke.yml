@@ -1,0 +1,54 @@
+name: Pediu Deployment Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      deployment_url:
+        description: "HTTPS URL base do staging/produção, sem barra final"
+        required: true
+        type: string
+      deployment_origin:
+        description: "Origem web esperada para validar CORS; opcional"
+        required: false
+        type: string
+        default: ""
+      stress_requests:
+        description: "Quantidade de requisições somente leitura"
+        required: false
+        type: number
+        default: 60
+      stress_concurrency:
+        description: "Concorrência máxima do baseline"
+        required: false
+        type: number
+        default: 6
+
+jobs:
+  deployment-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Verify deployed health and public marketplace
+        env:
+          DEPLOYMENT_URL: ${{ inputs.deployment_url }}
+          DEPLOYMENT_ORIGIN: ${{ inputs.deployment_origin }}
+          DEPLOYMENT_REQUIRED: "1"
+        run: pnpm go-live:deployment
+      - name: Stress deployed read-only endpoints
+        env:
+          STRESS_BASE_URL: ${{ inputs.deployment_url }}
+          STRESS_ALLOW_REMOTE: "1"
+          STRESS_REQUESTS: ${{ inputs.stress_requests }}
+          STRESS_CONCURRENCY: ${{ inputs.stress_concurrency }}
+          STRESS_TIMEOUT_MS: "10000"
+          STRESS_MAX_ERROR_RATE: "0"
+          STRESS_MAX_P95_MS: "2500"
+        run: pnpm go-live:stress

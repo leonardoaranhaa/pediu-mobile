@@ -27,6 +27,11 @@ jobs:
       DATABASE_URL: mysql://root:root@127.0.0.1:3306/pediu_test
       NODE_ENV: test
       PORT: 3000
+      VITE_APP_ID: ci-e2e-app
+      JWT_SECRET: ci-e2e-jwt-secret
+      PAYMENT_WEBHOOK_SECRET: ci-payment-webhook-secret
+      OBSERVABILITY_TOKEN: ci-observability-token
+      ALLOWED_ORIGINS: http://localhost:8081
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -66,7 +71,10 @@ jobs:
               'pediu_push_tokens',
               'pediu_payment_transactions',
               'pediu_financial_ledger',
-              'pediu_webhook_events'
+              'pediu_webhook_events',
+              'pediu_courier_profiles',
+              'pediu_store_couriers',
+              'pediu_delivery_offers'
             ];
             const missing = required.filter(name => !names.includes(name));
             if (missing.length) throw new Error(`Missing migrated tables: ${missing.join(', ')}`);
@@ -76,6 +84,8 @@ jobs:
             await c.end();
           })().catch(error => { console.error(error); process.exit(1); });
           NODE
+      - name: Run Go-Live backup and restore smoke
+        run: BACKUP_RESTORE_REQUIRED=1 pnpm go-live:backup-restore
       - name: Validate database connectivity
         run: |
           node -e "const mysql=require('mysql2/promise'); mysql.createConnection(process.env.DATABASE_URL).then(async c=>{const [r]=await c.query('SELECT 1 AS ok'); if(r[0].ok!==1) process.exit(1); await c.end(); console.log('MySQL operational')}).catch(e=>{console.error(e); process.exit(1)})"
@@ -98,9 +108,46 @@ jobs:
           echo "API health check timed out"
           cat /tmp/pediu-api.log
           exit 1
+      - name: Run Go-Live readiness baseline
+        run: pnpm go-live:check
+      - name: Run Go-Live client E2E smoke
+        run: pnpm go-live:e2e
+      - name: Run Go-Live merchant and delivery E2E smoke
+        run: pnpm go-live:operations-e2e
+      - name: Run Go-Live fiado concurrency smoke
+        run: pnpm go-live:fiado-concurrency
+      - name: Run Go-Live concurrency smoke
+        run: CONCURRENCY_REQUESTS=12 pnpm go-live:concurrency
+      - name: Run read-only API stress baseline
+        run: STRESS_REQUESTS=60 STRESS_CONCURRENCY=8 pnpm go-live:stress
+      - name: Build production API
+        run: pnpm build
+      - name: Start production API
+        run: |
+          NODE_ENV=production PORT=3001 node dist/index.js > /tmp/pediu-prod-api.log 2>&1 &
+          echo $! > /tmp/pediu-prod-api.pid
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3001/api/health; then
+              exit 0
+            fi
+            if ! kill -0 $(cat /tmp/pediu-prod-api.pid) 2>/dev/null; then
+              cat /tmp/pediu-prod-api.log
+              exit 1
+            fi
+            sleep 1
+          done
+          cat /tmp/pediu-prod-api.log
+          exit 1
+      - name: Verify production deployment smoke
+        run: DEPLOYMENT_URL=http://127.0.0.1:3001 DEPLOYMENT_ORIGIN=http://localhost:8081 DEPLOYMENT_METRICS_TOKEN="$OBSERVABILITY_TOKEN" DEPLOYMENT_REQUIRED=1 pnpm go-live:deployment
+      - name: Stress production API baseline
+        run: STRESS_BASE_URL=http://127.0.0.1:3001 STRESS_REQUESTS=60 STRESS_CONCURRENCY=8 pnpm go-live:stress
       - name: Verify API process cleanup
         if: always()
         run: |
           if [ -f /tmp/pediu-api.pid ]; then
             kill $(cat /tmp/pediu-api.pid) 2>/dev/null || true
+          fi
+          if [ -f /tmp/pediu-prod-api.pid ]; then
+            kill $(cat /tmp/pediu-prod-api.pid) 2>/dev/null || true
           fi

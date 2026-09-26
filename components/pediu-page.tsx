@@ -68,20 +68,20 @@ export function Field({ label, ...props }: TextInputProps & { label: string }) {
   );
 }
 
-export function PrimaryButton({ title, onPress, disabled }: { title: string; onPress?: () => void; disabled?: boolean }) {
+export function PrimaryButton({ title, onPress, disabled, style }: { title: string; onPress?: () => void; disabled?: boolean; style?: object }) {
   const { theme } = useAppPreferences();
   return (
-    <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [s.primary, { backgroundColor: theme.primary, shadowColor: theme.primary }, pressed && s.pressed, disabled && s.disabled]}>
+    <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [s.primary, { backgroundColor: theme.primary, shadowColor: theme.primary }, style, pressed && s.pressed, disabled && s.disabled]}>
       <Text style={s.primaryText}>{title}</Text>
       <MaterialIcons name="arrow-forward" size={18} color={PEDIU.white} />
     </Pressable>
   );
 }
 
-export function OutlineButton({ title, onPress, disabled }: { title: string; onPress?: () => void; disabled?: boolean }) {
+export function OutlineButton({ title, onPress, disabled, style }: { title: string; onPress?: () => void; disabled?: boolean; style?: object }) {
   const { theme } = useAppPreferences();
   return (
-    <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [s.outline, { borderColor: theme.primary }, pressed && s.pressed, disabled && s.disabled]}>
+    <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [s.outline, { borderColor: theme.primary }, style, pressed && s.pressed, disabled && s.disabled]}>
       <Text style={[s.outlineText, { color: theme.primary }]}>{title}</Text>
     </Pressable>
   );

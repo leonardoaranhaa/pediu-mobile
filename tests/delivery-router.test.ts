@@ -13,12 +13,46 @@ const merchant = {
   lastSignedIn: new Date(),
 };
 
-const customer = { ...merchant, id: 20, openId: "customer-20", role: "user" as const };
+const customer = {
+  ...merchant,
+  id: 20,
+  openId: "customer-20",
+  role: "user" as const,
+};
 const store = { id: 7, ownerId: 10 } as any;
-const pronto = { id: 101, customerId: 20, storeId: 7, status: "Pronto" as const, total: "35.00" } as any;
+const pronto = {
+  id: 101,
+  customerId: 20,
+  storeId: 7,
+  status: "Pronto" as const,
+  total: "35.00",
+} as any;
 const emRota = { ...pronto, status: "A caminho" as const };
-const assignment = { id: 501, orderId: 101, courierId: 10, courierName: "Operador Loja", courierPhone: null, etaMinutes: 20, status: "assigned", currentLatitude: null, currentLongitude: null, lastLocationAt: null, createdAt: new Date(), updatedAt: new Date() } as any;
-const location = { id: 601, assignmentId: 501, orderId: 101, courierId: 10, latitude: "-23.5505200", longitude: "-46.6333080", etaMinutes: 18, idempotencyKey: "location-key-101", createdAt: new Date() } as any;
+const assignment = {
+  id: 501,
+  orderId: 101,
+  courierId: 10,
+  courierName: "Operador Loja",
+  courierPhone: null,
+  etaMinutes: 20,
+  status: "assigned",
+  currentLatitude: null,
+  currentLongitude: null,
+  lastLocationAt: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+} as any;
+const location = {
+  id: 601,
+  assignmentId: 501,
+  orderId: 101,
+  courierId: 10,
+  latitude: "-23.5505200",
+  longitude: "-46.6333080",
+  etaMinutes: 18,
+  idempotencyKey: "location-key-101",
+  createdAt: new Date(),
+} as any;
 
 describe("Pediu delivery operational contract", () => {
   afterEach(() => vi.restoreAllMocks());
@@ -26,12 +60,24 @@ describe("Pediu delivery operational contract", () => {
   it("assigns a ready order only through its store owner", async () => {
     vi.spyOn(db, "getOrderForUser").mockResolvedValue(pronto);
     vi.spyOn(db, "getStoreForOwner").mockResolvedValue(store);
-    const save = vi.spyOn(db, "upsertDeliveryAssignment").mockResolvedValue(assignment);
+    const save = vi
+      .spyOn(db, "upsertDeliveryAssignment")
+      .mockResolvedValue(assignment);
 
     const caller = appRouter.createCaller({ user: merchant } as any);
-    const result = await caller.pediu.experience.delivery.assign({ orderId: 101, etaMinutes: 20 });
+    const result = await caller.pediu.experience.delivery.assign({
+      orderId: 101,
+      etaMinutes: 20,
+    });
 
-    expect(save).toHaveBeenCalledWith(expect.objectContaining({ orderId: 101, courierId: 10, etaMinutes: 20, status: "assigned" }));
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderId: 101,
+        courierId: 10,
+        etaMinutes: 20,
+        status: "assigned",
+      }),
+    );
     expect(result.id).toBe(501);
   });
 
@@ -40,20 +86,42 @@ describe("Pediu delivery operational contract", () => {
     vi.spyOn(db, "getStoreForOwner").mockResolvedValue(undefined);
 
     const caller = appRouter.createCaller({ user: customer } as any);
-    await expect(caller.pediu.experience.delivery.assign({ orderId: 101 })).rejects.toThrow("loja não autorizada");
+    await expect(
+      caller.pediu.experience.delivery.assign({ orderId: 101 }),
+    ).rejects.toThrow("loja não autorizada");
   });
 
   it("records one location and starts the route without duplicating a retry event", async () => {
     vi.spyOn(db, "getOrderForUser").mockResolvedValue(pronto);
     vi.spyOn(db, "getStoreForOwner").mockResolvedValue(store);
     vi.spyOn(db, "getDeliveryAssignmentByOrder").mockResolvedValue(assignment);
-    const record = vi.spyOn(db, "recordDeliveryLocation").mockResolvedValue({ location, assignment: { ...assignment, status: "in_transit" }, created: true, dispatched: true });
-    const notify = vi.spyOn(push, "sendPushToUser").mockResolvedValue({ sent: 1 });
+    const record = vi.spyOn(db, "recordDeliveryLocation").mockResolvedValue({
+      location,
+      assignment: { ...assignment, status: "in_transit" },
+      created: true,
+      dispatched: true,
+    });
+    const notify = vi
+      .spyOn(push, "sendPushToUser")
+      .mockResolvedValue({ sent: 1 });
 
     const caller = appRouter.createCaller({ user: merchant } as any);
-    const result = await caller.pediu.experience.delivery.location({ orderId: 101, latitude: -23.55052, longitude: -46.633308, etaMinutes: 18, idempotencyKey: "location-key-101" });
+    const result = await caller.pediu.experience.delivery.location({
+      orderId: 101,
+      latitude: -23.55052,
+      longitude: -46.633308,
+      etaMinutes: 18,
+      idempotencyKey: "location-key-101",
+    });
 
-    expect(record).toHaveBeenCalledWith(expect.objectContaining({ assignmentId: 501, orderId: 101, courierId: 10, idempotencyKey: "location-key-101" }));
+    expect(record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assignmentId: 501,
+        orderId: 101,
+        courierId: 10,
+        idempotencyKey: "location-key-101",
+      }),
+    );
     expect(notify).toHaveBeenCalled();
     expect(result.status).toBe("A caminho");
   });
@@ -61,14 +129,48 @@ describe("Pediu delivery operational contract", () => {
   it("completes only an in-route order assigned to the store operator", async () => {
     vi.spyOn(db, "getOrderForUser").mockResolvedValue(emRota);
     vi.spyOn(db, "getStoreForOwner").mockResolvedValue(store);
-    vi.spyOn(db, "getDeliveryAssignmentByOrder").mockResolvedValue({ ...assignment, status: "in_transit" });
-    vi.spyOn(db, "completeDelivery").mockResolvedValue({ changed: true, status: "Entregue" });
+    vi.spyOn(db, "getDeliveryAssignmentByOrder").mockResolvedValue({
+      ...assignment,
+      status: "in_transit",
+    });
+    vi.spyOn(db, "completeDelivery").mockResolvedValue({
+      changed: true,
+      status: "Entregue",
+    });
     vi.spyOn(push, "sendPushToUser").mockResolvedValue({ sent: 1 });
 
     const caller = appRouter.createCaller({ user: merchant } as any);
-    const result = await caller.pediu.experience.delivery.complete({ orderId: 101 });
+    const result = await caller.pediu.experience.delivery.complete({
+      orderId: 101,
+    });
 
     expect(result.status).toBe("Entregue");
+  });
+
+  it("returns success for two concurrent completions without duplicating the transition", async () => {
+    vi.spyOn(db, "getOrderForUser").mockResolvedValue(emRota);
+    vi.spyOn(db, "getDeliveryAssignmentByOrder").mockResolvedValue({
+      ...assignment,
+      status: "in_transit",
+    });
+    vi.spyOn(db, "getStoreForOwner").mockResolvedValue(store);
+    const complete = vi
+      .spyOn(db, "completeDelivery")
+      .mockResolvedValueOnce({ changed: true, status: "Entregue" })
+      .mockResolvedValueOnce({ changed: false, status: "Entregue" });
+    vi.spyOn(push, "sendPushToUser").mockResolvedValue({ sent: 1 });
+
+    const caller = appRouter.createCaller({ user: merchant } as any);
+    const results = await Promise.all([
+      caller.pediu.experience.delivery.complete({ orderId: 101 }),
+      caller.pediu.experience.delivery.complete({ orderId: 101 }),
+    ]);
+
+    expect(results).toEqual([
+      { success: true, status: "Entregue" },
+      { success: true, status: "Entregue" },
+    ]);
+    expect(complete).toHaveBeenCalledTimes(2);
   });
 
   it("returns the current delivery only for an authorized customer order", async () => {
@@ -77,7 +179,9 @@ describe("Pediu delivery operational contract", () => {
     vi.spyOn(db, "getLatestDeliveryLocation").mockResolvedValue(location);
 
     const caller = appRouter.createCaller({ user: customer } as any);
-    const result = await caller.pediu.experience.delivery.current({ orderId: 101 });
+    const result = await caller.pediu.experience.delivery.current({
+      orderId: 101,
+    });
 
     expect(result.assignment?.courierName).toBe("Operador Loja");
     expect(result.latestLocation?.idempotencyKey).toBe("location-key-101");

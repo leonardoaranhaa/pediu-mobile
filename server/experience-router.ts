@@ -25,7 +25,7 @@ async function participantOrder(orderId: number, userId: number) {
   return { order, role: store?.id === order.storeId ? "merchant" as const : "customer" as const };
 }
 
-async function supportParticipant(ticketId: number, user: { id: number; role: "user" | "merchant" | "admin" }) {
+async function supportParticipant(ticketId: number, user: { id: number; role: "user" | "merchant" | "courier" | "admin" }) {
   const ticket = await data.getSupportTicket(ticketId);
   if (!ticket) return undefined;
   if (ticket.userId === user.id) return { ticket, role: "customer" as const };
@@ -62,25 +62,40 @@ export const experienceRouter = router({
       if (!["Pronto", "A caminho"].includes(order.status)) throw new Error("A entrega só pode ser atribuída quando o pedido estiver pronto");
       return data.upsertDeliveryAssignment({ orderId: input.orderId, courierId: ctx.user.id, courierName: input.courierName ?? ctx.user.name?.trim() ?? "Entregador da loja", courierPhone: input.courierPhone, etaMinutes: input.etaMinutes, status: order.status === "A caminho" ? "in_transit" : "assigned" });
     }),
-    location: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180), etaMinutes: z.number().int().min(0).max(240).optional(), idempotencyKey: z.string().trim().min(8).max(160) })).mutation(async ({ ctx, input }) => {
+    offer: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), courierUserId: z.number().int().positive(), etaMinutes: z.number().int().min(1).max(240).optional(), message: z.string().trim().max(255).optional(), idempotencyKey: z.string().trim().min(8).max(160), expiresInMinutes: z.number().int().min(1).max(120).default(10) })).mutation(async ({ ctx, input }) => {
       const order = await storeOwnedOrder(input.orderId, ctx.user.id);
-      if (!order) throw new Error("Pedido não encontrado ou loja não autorizada");
+      if (!order || order.status !== "Pronto") throw new Error("O pedido precisa estar pronto e pertencer à sua loja");
+      return data.createDeliveryOffer({ ...input, ownerId: ctx.user.id, expiresAt: new Date(Date.now() + input.expiresInMinutes * 60_000) });
+    }),
+    location: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180), etaMinutes: z.number().int().min(0).max(240).optional(), idempotencyKey: z.string().trim().min(8).max(160) })).mutation(async ({ ctx, input }) => {
+      const order = await data.getOrderForUser(input.orderId, ctx.user.id);
+      if (!order) throw new Error("Pedido não encontrado ou não autorizado");
       if (!["Pronto", "A caminho"].includes(order.status)) throw new Error("A posição só pode ser atualizada durante a entrega");
       const assignment = await data.getDeliveryAssignmentByOrder(input.orderId);
-      if (!assignment || assignment.courierId !== ctx.user.id) throw new Error("A entrega ainda não foi atribuída a este operador");
+      const store = await data.getStoreForOwner(ctx.user.id);
+      const isStoreOwner = store?.id === order.storeId;
+      const isAssignedCourier = assignment?.courierId === ctx.user.id;
+      if (!assignment || (!isStoreOwner && !isAssignedCourier)) throw new Error("A entrega ainda não foi atribuída a este operador");
+      if (isAssignedCourier && !isStoreOwner) {
+        const profile = await data.getCourierProfileByUser(ctx.user.id);
+        if (!profile || profile.status !== "approved" || !profile.locationConsentAt) throw new Error("O perfil de entregador precisa estar aprovado e com localização autorizada");
+      }
       const result = await data.recordDeliveryLocation({ assignmentId: assignment.id, orderId: input.orderId, courierId: ctx.user.id, latitude: input.latitude.toFixed(7), longitude: input.longitude.toFixed(7), etaMinutes: input.etaMinutes, idempotencyKey: input.idempotencyKey });
       if (result.dispatched) { try { await sendPushToUser(order.customerId, "Entrega a caminho", `O pedido #${order.id} saiu para entrega.`, { type: "delivery", orderId: order.id, status: "A caminho" }); } catch (error) { console.warn("[Delivery] Failed to notify customer about dispatch:", error); } }
       return { locationId: result.location.id, assignment: result.assignment, status: "A caminho" as const };
     }),
     complete: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
-      const order = await storeOwnedOrder(input.orderId, ctx.user.id);
-      if (!order) throw new Error("Pedido não encontrado ou loja não autorizada");
+      const order = await data.getOrderForUser(input.orderId, ctx.user.id);
+      if (!order) throw new Error("Pedido não encontrado ou não autorizado");
       if (order.status === "Entregue") return { success: true as const, status: "Entregue" as const, duplicate: true as const };
       if (order.status !== "A caminho") throw new Error("A entrega só pode ser encerrada quando estiver a caminho");
       const assignment = await data.getDeliveryAssignmentByOrder(input.orderId);
-      if (!assignment || assignment.courierId !== ctx.user.id) throw new Error("A entrega ainda não foi atribuída a este operador");
+      const store = await data.getStoreForOwner(ctx.user.id);
+      if (!assignment || (assignment.courierId !== ctx.user.id && store?.id !== order.storeId)) throw new Error("A entrega ainda não foi atribuída a este operador");
       const completed = await data.completeDelivery(input.orderId);
       if (completed.changed) {
+        const profile = await data.getCourierProfileByUser(ctx.user.id);
+        if (profile) await data.setCourierAvailability(ctx.user.id, "available");
         try { await sendPushToUser(order.customerId, "Pedido entregue", `O pedido #${order.id} foi marcado como entregue.`, { type: "delivery", orderId: order.id, status: "Entregue" }); } catch (error) { console.warn("[Delivery] Failed to notify customer about completion:", error); }
       }
       return { success: true as const, status: "Entregue" as const };
