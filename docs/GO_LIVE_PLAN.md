@@ -724,3 +724,16 @@ A fatia courier foi reaplicada sobre o head do PR #7 e revalidada antes de qualq
 - Matriz local: `pnpm check`, `pnpm test` (105 passed, 1 skipped), `pnpm build`, `pnpm lint` e `git diff --check` aprovados.
 
 O PSP e repasse financeiro do entregador continuam pendentes exclusivamente por CNPJ, provedor, credenciais e homologação; nenhum pagamento foi simulado como concluído.
+
+
+---
+
+# 26. Backup e restauração — 26/09/2026
+
+A próxima etapa executável adicionou `scripts/go-live-backup-restore.ts`, o comando `pnpm go-live:backup-restore` e um gate obrigatório no workflow operacional. O smoke faz dump lógico com transação consistente, restaura em banco temporário isolado, compara a estrutura, o journal de migrations e as contagens de linhas críticas, e remove o banco temporário e o arquivo de dump mesmo quando ocorre falha.
+
+Na validação local contra MariaDB real, o backup/restore passou com 37 tabelas, 25 migrations e 7 verificações de contagem de linhas. O cleanup confirmou zero banco temporário e zero arquivo de dump residual. O mesmo gate usa a credencial administrativa do MySQL de CI e não altera a base de origem.
+
+Após a restauração, o bundle `NODE_ENV=production` foi iniciado em `127.0.0.1:3003`. O deployment smoke passou com health 200, marketplace 200 e CORS exato. O stress read-only passou com 120 requests, concorrência 12, p95 de 73,4 ms, máximo de 85,7 ms e taxa de erro 0%.
+
+Esta etapa valida recuperação lógica em ambiente controlado; backup agendado, retenção, armazenamento externo, criptografia, alertas de falha e restore de produção continuam dependentes da infraestrutura definitiva e permanecem P0.

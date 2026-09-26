@@ -82,6 +82,8 @@ jobs:
             await c.end();
           })().catch(error => { console.error(error); process.exit(1); });
           NODE
+      - name: Run Go-Live backup and restore smoke
+        run: BACKUP_RESTORE_REQUIRED=1 pnpm go-live:backup-restore
       - name: Validate database connectivity
         run: |
           node -e "const mysql=require('mysql2/promise'); mysql.createConnection(process.env.DATABASE_URL).then(async c=>{const [r]=await c.query('SELECT 1 AS ok'); if(r[0].ok!==1) process.exit(1); await c.end(); console.log('MySQL operational')}).catch(e=>{console.error(e); process.exit(1)})"
