@@ -6,6 +6,7 @@ const deploymentUrl = (process.env.DEPLOYMENT_URL ?? "")
   .replace(/\/$/, "");
 const required = process.env.DEPLOYMENT_REQUIRED === "1";
 const expectedOrigin = (process.env.DEPLOYMENT_ORIGIN ?? "").trim();
+const metricsToken = (process.env.DEPLOYMENT_METRICS_TOKEN ?? "").trim();
 const timeoutMs = Number(process.env.DEPLOYMENT_TIMEOUT_MS ?? 10_000);
 
 function fail(message: string): never {
@@ -62,6 +63,32 @@ async function main() {
     "marketplace endpoint returned no tRPC result",
   );
 
+  if (metricsToken) {
+    const unauthorizedMetrics = await fetch(`${deploymentUrl}/api/metrics`, {
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { Accept: "application/json" },
+    });
+    assert.equal(
+      unauthorizedMetrics.status,
+      401,
+      `metrics endpoint without token returned HTTP ${unauthorizedMetrics.status}`,
+    );
+    const metricsResponse = await fetch(`${deploymentUrl}/api/metrics`, {
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${metricsToken}`,
+      },
+    });
+    assert.equal(
+      metricsResponse.status,
+      200,
+      `metrics endpoint returned HTTP ${metricsResponse.status}`,
+    );
+    const metrics = await metricsResponse.json();
+    assert.equal(metrics?.service, "pediu-api", "metrics service is invalid");
+  }
+
   if (expectedOrigin) {
     const optionsResponse = await fetch(healthUrl, {
       method: "OPTIONS",
@@ -89,7 +116,7 @@ async function main() {
   }
 
   console.log(
-    `Deployment smoke passed: ${parsed.origin} health=200 marketplace=200${expectedOrigin ? " cors=exact" : ""}`,
+    `Deployment smoke passed: ${parsed.origin} health=200 marketplace=200${expectedOrigin ? " cors=exact" : ""}${metricsToken ? " metrics=protected" : ""}`,
   );
 }
 

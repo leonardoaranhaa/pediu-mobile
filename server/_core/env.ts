@@ -18,6 +18,7 @@ export function assertRuntimeConfig() {
     !ENV.cookieSecret && "JWT_SECRET",
     !ENV.databaseUrl && "DATABASE_URL",
     !process.env.ALLOWED_ORIGINS?.trim() && "ALLOWED_ORIGINS",
+    !process.env.OBSERVABILITY_TOKEN?.trim() && "OBSERVABILITY_TOKEN",
   ].filter((value): value is string => Boolean(value));
   if (missing.length > 0) throw new Error(`Missing production configuration: ${missing.join(", ")}`);
 }

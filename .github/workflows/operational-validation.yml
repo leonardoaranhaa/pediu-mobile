@@ -29,6 +29,7 @@ jobs:
       PORT: 3000
       VITE_APP_ID: ci-e2e-app
       JWT_SECRET: ci-e2e-jwt-secret
+      OBSERVABILITY_TOKEN: ci-observability-token
       ALLOWED_ORIGINS: http://localhost:8081
     steps:
       - uses: actions/checkout@v4
@@ -133,7 +134,7 @@ jobs:
           cat /tmp/pediu-prod-api.log
           exit 1
       - name: Verify production deployment smoke
-        run: DEPLOYMENT_URL=http://127.0.0.1:3001 DEPLOYMENT_ORIGIN=http://localhost:8081 DEPLOYMENT_REQUIRED=1 pnpm go-live:deployment
+        run: DEPLOYMENT_URL=http://127.0.0.1:3001 DEPLOYMENT_ORIGIN=http://localhost:8081 DEPLOYMENT_METRICS_TOKEN="$OBSERVABILITY_TOKEN" DEPLOYMENT_REQUIRED=1 pnpm go-live:deployment
       - name: Stress production API baseline
         run: STRESS_BASE_URL=http://127.0.0.1:3001 STRESS_REQUESTS=60 STRESS_CONCURRENCY=8 pnpm go-live:stress
       - name: Verify API process cleanup

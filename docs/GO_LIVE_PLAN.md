@@ -737,3 +737,14 @@ Na validação local contra MariaDB real, o backup/restore passou com 37 tabelas
 Após a restauração, o bundle `NODE_ENV=production` foi iniciado em `127.0.0.1:3003`. O deployment smoke passou com health 200, marketplace 200 e CORS exato. O stress read-only passou com 120 requests, concorrência 12, p95 de 73,4 ms, máximo de 85,7 ms e taxa de erro 0%.
 
 Esta etapa valida recuperação lógica em ambiente controlado; backup agendado, retenção, armazenamento externo, criptografia, alertas de falha e restore de produção continuam dependentes da infraestrutura definitiva e permanecem P0.
+
+
+---
+
+# 27. Observabilidade operacional mínima — 26/09/2026
+
+Foi implementado um endpoint protegido `GET /api/metrics`, com token Bearer em `OBSERVABILITY_TOKEN`, comparação em tempo constante, `Cache-Control: no-store` e ausência de exposição de payloads de usuário. O coletor mantém contagem, erros, taxa de erro, média, p95 aproximado por buckets, máximo e uptime; a cardinalidade de procedimentos é limitada a 256 entradas para evitar crescimento sem teto em processo.
+
+O runtime de produção agora bloqueia o boot quando `OBSERVABILITY_TOKEN` não está configurado. O deployment smoke passou validando health 200, marketplace 200, CORS exato e `metrics=protected`; sem token, a chamada recebeu 401. O stress read-only passou com 120 requests, concorrência 12, p95 de 55,8 ms, máximo de 70,2 ms e taxa de erro 0%.
+
+A matriz local passou com `pnpm check`, `pnpm test` (107 passed, 1 skipped), `pnpm build`, `pnpm lint`, testes específicos de observabilidade e `git diff --check`. O token protege o endpoint, mas envio para um SaaS externo, dashboards, alertas e retenção centralizada continuam dependentes da infraestrutura definitiva e não são considerados concluídos por este incremento.
