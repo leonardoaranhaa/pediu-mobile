@@ -846,3 +846,5 @@ O SDK agora rejeita state vazio, não canônico ou malformado e aceita somente r
 | Regressões operacionais                    | E2E courier, checkout/webhook concorrente e fiado ampliado aprovados após a recompilação                                                         |
 
 Esta entrega endurece a fronteira local, mas não homologa OAuth real. Provedor, credenciais, redirect URIs definitivas, execução em web/domínio real, deep-link em Android/iOS e homologação do fluxo continuam dependências externas. PSP/PIX, CNPJ, webhook real, cobrança/reconciliação, e-mail, push, storage, observabilidade externa e demais itens do plano continuam sem evidência de produção; o Go-Live comercial permanece bloqueado.
+
+O commit `0a3fc50` passou no CI (`36316685469`) e no `Pediu Operational Validation` (`36316685457`), incluindo migrations limpas, E2Es operacionais, deployment smoke e stress. A fase está concluída neste escopo; OAuth real continua pendente até existir provedor, credenciais, redirect URIs definitivas e homologação real.

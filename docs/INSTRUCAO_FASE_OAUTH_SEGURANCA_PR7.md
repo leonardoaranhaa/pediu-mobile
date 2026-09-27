@@ -33,10 +33,12 @@ O callback terá uma guarda de replay processual, com TTL curto e chave derivada
 - [x] Falha transitória libera a guarda para uma nova tentativa controlada.
 - [x] Web e deep-link permanecem compatíveis no contrato de redirect.
 - [x] Matriz local completa, deployment smoke e stress aprovados após a alteração.
-- [ ] CI e Operational Validation verdes no head publicado.
+- [x] CI e Operational Validation verdes no head publicado.
 
 ## Evidência
 
 A matriz local passou com 29 arquivos, 126 testes aprovados e 1 ignorado; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` ficaram verdes. O bundle recompilado passou no callback inválido HTTP (`400`, sem chamada ao provedor), deployment smoke com health 200/marketplace 200/CORS exato/métricas protegidas e stress read-only de 120 requests/12 workers com p50 de 19,1 ms, p95 de 42,5 ms, máximo de 65,6 ms e erro 0%. Os E2Es operacionais, checkout/webhook concorrente e fiado permaneceram aprovados.
 
-Os testes focados cobrem state inválido, redirects inseguros, replay bloqueado e retry após falha transitória. OAuth de produção seguirá explicitamente como dependência externa até haver provedor, credenciais, redirect URIs definitivas, dispositivo e homologação real. O CI e o Operational Validation ainda precisam passar no head desta fase.
+Os testes focados cobrem state inválido, redirects inseguros, replay bloqueado e retry após falha transitória. OAuth de produção seguirá explicitamente como dependência externa até haver provedor, credenciais, redirect URIs definitivas, dispositivo e homologação real. O CI e o Operational Validation passaram no commit da implementação.
+
+O commit `0a3fc50` passou no CI (`36316685469`) e no `Pediu Operational Validation` (`36316685457`), incluindo migrations limpas, E2Es operacionais, deployment smoke e stress. A fase está concluída neste escopo, sem marcar OAuth real como homologado.
