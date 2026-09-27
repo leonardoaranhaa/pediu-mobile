@@ -18,10 +18,12 @@ Todas as alterações pertencem à branch `docs/go-live-plan`, head do PR #7, e 
 - [x] Acesso anônimo é 401 e acesso a namespace de outro usuário é 403.
 - [x] Namespace próprio não vaza erro/URL e falha fechado como 503 sem backend configurado.
 - [x] Matriz local completa, deployment smoke e stress após a alteração.
-- [ ] CI e Operational Validation verdes no head publicado.
+- [x] CI e Operational Validation verdes no head publicado.
 
 ## Evidência
 
 Nenhuma URL assinada, chave de storage ou asset real será fabricado. O smoke passou contra o bundle real usando usuários temporários no MariaDB de validação, sessão Bearer assinada pelo runtime de teste e cleanup no `finally`: traversal retornou 400, acesso anônimo 401, namespace cruzado 403 e namespace próprio 503 por backend externo ausente. A matriz local passou com 30 arquivos e 128 testes aprovados; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` ficaram verdes. O deployment smoke passou com health 200, marketplace 200, CORS exato e métricas protegidas; stress 120/12 passou com p50 de 19,8 ms, p95 de 37,1 ms, máximo de 68,9 ms e erro 0%. Os smokes CORS, courier, checkout/webhook concorrente e fiado também permaneceram verdes.
 
 O backend de storage externo continua não configurado; portanto o resultado 503 do namespace próprio é uma falha segura e não uma homologação de upload, presign ou entrega de asset.
+
+O commit `911c910` passou no CI (`36317506563`) e no `Pediu Operational Validation` (`36317506600`), incluindo o novo smoke de storage, migrations limpas, E2Es operacionais, deployment smoke e stress. A fase está concluída neste escopo, sem marcar storage externo como disponível.

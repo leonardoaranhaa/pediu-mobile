@@ -893,3 +893,5 @@ O smoke criou dois usuários temporários e comprovou que path traversal falha c
 | Regressões operacionais                    | CORS, E2E courier, checkout/webhook concorrente e fiado ampliado aprovados após a execução final                                                             |
 
 A fase prova autorização e falha segura, não homologa storage real. Backend externo, bucket, presign, assets gerados, domínio/HTTPS definitivos, OAuth, PSP/PIX, CNPJ, webhook de provedor, cobrança/reconciliação, e-mail, push, observabilidade externa e dispositivos físicos continuam dependências externas; o Go-Live comercial permanece bloqueado.
+
+O commit `911c910` passou no CI (`36317506563`) e no `Pediu Operational Validation` (`36317506600`), que executou também o novo `go-live:storage-security`. A fase está concluída neste escopo; storage externo continua pendente até configuração e homologação reais.
