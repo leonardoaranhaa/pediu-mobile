@@ -61,10 +61,12 @@ O smoke cria fixture isolada e valida contra API em bundle real:
 - [x] Duas chaves diferentes não ultrapassam o limite nem perdem saldo.
 - [x] Smoke real passou após o bundle de produção ser recompilado.
 - [x] Matriz local completa, deployment smoke e stress após o estado final.
-- [ ] CI e Operational Validation verdes no commit publicado.
+- [x] CI e Operational Validation verdes no commit publicado.
 
 ## Evidência inicial
 
 Antes desta fase, o baseline do bundle final passou com deployment smoke, stress read-only de 120 requisições/12 workers e checkout/webhook concorrente. Durante a implementação, o smoke descobriu primeiro que o retry fiado expunha o `paymentId` interno; depois descobriu que o pré-check genérico também precisava respeitar o contrato fiado. Após as duas correções, o smoke combinado passou e confirmou zero fixtures residuais. Os gates finais e a publicação ainda precisam ser executados sobre o estado completo desta fase.
 
-A matriz final passou com 28 arquivos, 120 testes aprovados e 1 ignorado; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier dos arquivos da fase e `git diff --check` ficaram verdes. O deployment smoke passou com health 200, marketplace 200, CORS exato e métricas protegidas. O stress read-only passou com 120 requests, concorrência 12, p50 de 17,0 ms, p95 de 47,8 ms, máximo de 62,7 ms e erro 0%. O smoke fiado ampliado passou três vezes e o cleanup confirmou zero fixtures. O CI e o Operational Validation ainda precisam passar no commit desta fase.
+A matriz final passou com 28 arquivos, 120 testes aprovados e 1 ignorado; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier dos arquivos da fase e `git diff --check` ficaram verdes. O deployment smoke passou com health 200, marketplace 200, CORS exato e métricas protegidas. O stress read-only passou com 120 requests, concorrência 12, p50 de 17,0 ms, p95 de 47,8 ms, máximo de 62,7 ms e erro 0%. O smoke fiado ampliado passou três vezes e o cleanup confirmou zero fixtures. O CI e o Operational Validation passaram no commit da implementação.
+
+O commit `7fdda14` passou no CI (`36239443014`) e no `Pediu Operational Validation` (`36239443036`), incluindo o novo gate `go-live:fiado-concurrency`.

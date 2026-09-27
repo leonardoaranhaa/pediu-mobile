@@ -709,7 +709,6 @@ O PSP PIX continua fora deste smoke e permanece pendente de CNPJ, provedor, cred
 
 Durante a repetição do smoke público, o primeiro preflight retornou 403 porque a instância temporária tinha `ALLOWED_ORIGINS` somente com `http://localhost:8081`. O código bloqueou corretamente a origem HTTPS não declarada. A instância foi reiniciada com as origens local e pública explícitas; o smoke então passou com CORS exato e o estresse público voltou a zero erro. Essa evidência deve ser reproduzida com os domínios definitivos no staging/produção.
 
-
 ---
 
 # 25. Revalidação do ambiente próprio do entregador — 26/09/2026
@@ -725,7 +724,6 @@ A fatia courier foi reaplicada sobre o head do PR #7 e revalidada antes de qualq
 
 O PSP e repasse financeiro do entregador continuam pendentes exclusivamente por CNPJ, provedor, credenciais e homologação; nenhum pagamento foi simulado como concluído.
 
-
 ---
 
 # 26. Backup e restauração — 26/09/2026
@@ -738,7 +736,6 @@ Após a restauração, o bundle `NODE_ENV=production` foi iniciado em `127.0.0.1
 
 Esta etapa valida recuperação lógica em ambiente controlado; backup agendado, retenção, armazenamento externo, criptografia, alertas de falha e restore de produção continuam dependentes da infraestrutura definitiva e permanecem P0.
 
-
 ---
 
 # 27. Observabilidade operacional mínima — 26/09/2026
@@ -748,7 +745,6 @@ Foi implementado um endpoint protegido `GET /api/metrics`, com token Bearer em `
 O runtime de produção agora bloqueia o boot quando `OBSERVABILITY_TOKEN` não está configurado. O deployment smoke passou validando health 200, marketplace 200, CORS exato e `metrics=protected`; sem token, a chamada recebeu 401. O stress read-only passou com 120 requests, concorrência 12, p95 de 55,8 ms, máximo de 70,2 ms e taxa de erro 0%.
 
 A matriz local passou com `pnpm check`, `pnpm test` (107 passed, 1 skipped), `pnpm build`, `pnpm lint`, testes específicos de observabilidade e `git diff --check`. O token protege o endpoint, mas envio para um SaaS externo, dashboards, alertas e retenção centralizada continuam dependentes da infraestrutura definitiva e não são considerados concluídos por este incremento.
-
 
 ---
 
@@ -765,18 +761,17 @@ O checkout agora relê o pedido/pagamento vencedor após conflito único. `apply
 
 ## Evidências executadas
 
-| Validação | Resultado |
-| --------- | --------- |
-| Smoke de concorrência em bundle `NODE_ENV=production`, MariaDB real, 12 concorrentes | 12 checkouts convergiram para 1 pedido/pagamento; 12 webhooks convergiram para 1 evento; todas as respostas foram aceitas e o cleanup da fixture passou |
-| Repetição ampliada no mesmo bundle, 24 concorrentes | 24 checkouts convergiram para 1 pedido/pagamento; 24 webhooks convergiram para 1 evento |
-| Deployment smoke em `127.0.0.1:3004` | health 200, marketplace 200, CORS exato e métricas protegidas aprovados |
-| Stress read-only no bundle de produção | 120 requests / 12 workers; p50 20,9 ms; p95 34,1 ms; máximo 73,7 ms; erro 0% |
-| Suíte e qualidade local | 28 arquivos passaram, 115 testes passaram e 1 foi ignorado; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier dos arquivos de código/configuração da fase e `git diff --check` passaram |
+| Validação                                                                            | Resultado                                                                                                                                                                               |
+| ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Smoke de concorrência em bundle `NODE_ENV=production`, MariaDB real, 12 concorrentes | 12 checkouts convergiram para 1 pedido/pagamento; 12 webhooks convergiram para 1 evento; todas as respostas foram aceitas e o cleanup da fixture passou                                 |
+| Repetição ampliada no mesmo bundle, 24 concorrentes                                  | 24 checkouts convergiram para 1 pedido/pagamento; 24 webhooks convergiram para 1 evento                                                                                                 |
+| Deployment smoke em `127.0.0.1:3004`                                                 | health 200, marketplace 200, CORS exato e métricas protegidas aprovados                                                                                                                 |
+| Stress read-only no bundle de produção                                               | 120 requests / 12 workers; p50 20,9 ms; p95 34,1 ms; máximo 73,7 ms; erro 0%                                                                                                            |
+| Suíte e qualidade local                                                              | 28 arquivos passaram, 115 testes passaram e 1 foi ignorado; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier dos arquivos de código/configuração da fase e `git diff --check` passaram |
 
 O workflow `Pediu Operational Validation` passou a injetar `PAYMENT_WEBHOOK_SECRET` de teste e executar o smoke concorrente após os E2Es de lojista/entrega. A carga do CI é limitada a 12 concorrentes e usa somente fixtures isoladas.
 
 Esta entrega cobre apenas checkout com a mesma chave e webhook com o mesmo evento. Não conclui a Fase 6 inteira: concorrência de status/`complete`, fiado, OAuth, CORS, storage, voz e limites de payload continuam como incrementos próprios. PSP/PIX, webhook real do provedor, CNPJ, credenciais, refund e reconciliação permanecem pendentes; nenhum pagamento real foi simulado como homologado. O Go-Live comercial continua bloqueado pelos P0 externos e operacionais do plano.
-
 
 ---
 
@@ -788,21 +783,20 @@ A próxima fatia da Fase 6 foi implementada sobre o PR #7 com atualização cond
 
 ## Evidências executadas
 
-| Validação | Resultado |
-| --------- | --------- |
-| Baseline antes da alteração | Deployment smoke aprovado; stress 120/12 com p95 de 45,1 ms e erro 0%; checkout/webhook concorrente aprovado |
-| Regressões unitárias focadas | 13 testes aprovados para transição idêntica, retry já aplicado, transição stale e conclusão simultânea |
-| E2E operacional real | Três execuções consecutivas aprovadas com onboarding courier, fluxo de entrega, duas chamadas paralelas por status e duas conclusões paralelas; zero fixtures residuais |
-| Deployment smoke final em `127.0.0.1:3004` | health 200, marketplace 200, CORS exato e métricas protegidas aprovados |
-| Stress final read-only | 120 requests / 12 workers; p50 14,0 ms; p95 34,8 ms; máximo 62,5 ms; erro 0% |
-| Matriz local final | 28 arquivos, 119 testes aprovados e 1 ignorado; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier dos arquivos da fase e `git diff --check` aprovados |
+| Validação                                  | Resultado                                                                                                                                                               |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Baseline antes da alteração                | Deployment smoke aprovado; stress 120/12 com p95 de 45,1 ms e erro 0%; checkout/webhook concorrente aprovado                                                            |
+| Regressões unitárias focadas               | 13 testes aprovados para transição idêntica, retry já aplicado, transição stale e conclusão simultânea                                                                  |
+| E2E operacional real                       | Três execuções consecutivas aprovadas com onboarding courier, fluxo de entrega, duas chamadas paralelas por status e duas conclusões paralelas; zero fixtures residuais |
+| Deployment smoke final em `127.0.0.1:3004` | health 200, marketplace 200, CORS exato e métricas protegidas aprovados                                                                                                 |
+| Stress final read-only                     | 120 requests / 12 workers; p50 14,0 ms; p95 34,8 ms; máximo 62,5 ms; erro 0%                                                                                            |
+| Matriz local final                         | 28 arquivos, 119 testes aprovados e 1 ignorado; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier dos arquivos da fase e `git diff --check` aprovados                   |
 
 O primeiro run remoto do Operational Validation encontrou um timing que as execuções locais anteriores não haviam capturado: a segunda chamada podia ler `Aceito` já persistido e falhava ao validar a transição impossível `Aceito → Aceito`. A rota passou a tratar o status já persistido como retry idempotente, sem gravar evento/notificação, e foi adicionada regressão unitária. A reprodução local posterior passou três vezes consecutivas e os gates finais permaneceram verdes.
 
 O commit de correção `0a083e1` passou no CI (`36238830915`) e no `Pediu Operational Validation` (`36238830911`), incluindo o E2E de lojista/entrega com o timing anteriormente falho, o smoke de checkout/webhook concorrente, deployment smoke e stress. A fase está concluída neste escopo; os bloqueadores externos do Go-Live comercial permanecem os mesmos do plano.
 
 O workflow operacional já contém o E2E de lojista/entrega e passará a executar este cenário concorrente por meio do script atualizado. Esta entrega cobre status idêntico/stale e `complete` concorrente; fiado, OAuth, CORS, storage, voz e limites de payload continuam pendentes. PSP/PIX, webhook real, CNPJ, credenciais, refund, reconciliação e infraestrutura externa permanecem bloqueadores do Go-Live comercial.
-
 
 ---
 
@@ -816,15 +810,17 @@ A rota preserva `paymentId: null` para fiado em todos os caminhos de retry. Dura
 
 ## Evidências executadas
 
-| Validação | Resultado |
-| --------- | --------- |
-| Baseline antes da alteração | Deployment smoke aprovado; stress 120/12 com p50 13,5 ms, p95 27,5 ms, máximo 60,8 ms e erro 0%; checkout/webhook concorrente aprovado |
-| Regressões unitárias focadas | 6 testes de fiado aprovados, incluindo retry encontrado no pré-check |
-| Smoke fiado real ampliado | Três execuções finais aprovadas; mesma chave convergiu para um crédito e chaves diferentes produziram uma aprovação e uma rejeição por limite, sem saldo perdido |
-| E2E operacional e checkout/webhook concorrente | Ambos aprovados no bundle final |
-| Deployment smoke final em `127.0.0.1:3004` | health 200, marketplace 200, CORS exato e métricas protegidas aprovados |
-| Stress final read-only | 120 requests / 12 workers; p50 17,0 ms; p95 47,8 ms; máximo 62,7 ms; erro 0% |
-| Cleanup SQL | Zero usuários, pedidos, clientes e fixtures concorrentes residuais |
-| Matriz local final | 28 arquivos, 120 testes aprovados e 1 ignorado; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier dos arquivos da fase e `git diff --check` aprovados |
+| Validação                                      | Resultado                                                                                                                                                        |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Baseline antes da alteração                    | Deployment smoke aprovado; stress 120/12 com p50 13,5 ms, p95 27,5 ms, máximo 60,8 ms e erro 0%; checkout/webhook concorrente aprovado                           |
+| Regressões unitárias focadas                   | 6 testes de fiado aprovados, incluindo retry encontrado no pré-check                                                                                             |
+| Smoke fiado real ampliado                      | Três execuções finais aprovadas; mesma chave convergiu para um crédito e chaves diferentes produziram uma aprovação e uma rejeição por limite, sem saldo perdido |
+| E2E operacional e checkout/webhook concorrente | Ambos aprovados no bundle final                                                                                                                                  |
+| Deployment smoke final em `127.0.0.1:3004`     | health 200, marketplace 200, CORS exato e métricas protegidas aprovados                                                                                          |
+| Stress final read-only                         | 120 requests / 12 workers; p50 17,0 ms; p95 47,8 ms; máximo 62,7 ms; erro 0%                                                                                     |
+| Cleanup SQL                                    | Zero usuários, pedidos, clientes e fixtures concorrentes residuais                                                                                               |
+| Matriz local final                             | 28 arquivos, 120 testes aprovados e 1 ignorado; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier dos arquivos da fase e `git diff --check` aprovados            |
 
 O workflow operacional recebeu `pnpm go-live:fiado-concurrency` após o E2E de lojista/entrega. Esta entrega fecha apenas a concorrência do crédito interno; PSP/PIX real, CNPJ, webhook real de provedor, credenciais externas, cobrança/reconciliação, OAuth, CORS, storage, voz e demais dependências do plano continuam sem evidência de produção e impedem declarar Go-Live comercial READY.
+
+O commit `7fdda14` passou no CI (`36239443014`) e no `Pediu Operational Validation` (`36239443036`), incluindo migrações limpas, E2Es de cliente/lojista/entrega, o smoke de fiado, checkout/webhook concorrente, deployment smoke e stress. A fase está concluída neste escopo; o Go-Live comercial continua bloqueado pelas dependências externas e operacionais registradas no plano.
