@@ -872,3 +872,24 @@ O smoke prova que preflight e mutation de origem permitida funcionam sem wildcar
 Esta fase cobre o guardrail do servidor, não configura os domínios definitivos. Origens reais de staging/produção, HTTPS público, domínio de cookie, OAuth real, PSP/PIX, CNPJ, webhook de provedor, cobrança/reconciliação, e-mail, push, storage, observabilidade externa e dispositivos físicos continuam dependências externas; o Go-Live comercial permanece bloqueado.
 
 O commit `c40a4cf` passou no CI (`36317097963`) e no `Pediu Operational Validation` (`36317097959`), que executou também o novo `go-live:cors-security`. A fase está concluída neste escopo; as origens e domínios externos definitivos continuam pendentes.
+
+---
+
+# 33. Autorização de storage e isolamento de namespace — 27/09/2026
+
+A fatia de storage da Fase 6 foi implementada como um smoke HTTP real sobre o proxy existente, sem fabricar backend, URL assinada ou asset. O comando `pnpm go-live:storage-security` foi versionado e incluído no `Pediu Operational Validation`. A instrução técnica está em `docs/INSTRUCAO_FASE_STORAGE_SEGURANCA_PR7.md`.
+
+O smoke criou dois usuários temporários e comprovou que path traversal falha com 400 antes de autenticação, acesso anônimo retorna 401, tentativa de ler `voice/{outroUsuario}` retorna 403 e o namespace do próprio usuário não revela URL nem erro do backend: retorna 503 porque o storage externo não está configurado. O cleanup das fixtures ocorre em `finally` e foi concluído sem deixar dependências funcionais.
+
+## Evidências executadas
+
+| Validação                                  | Resultado                                                                                                                                                    |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Baseline antes da fase                     | Deployment smoke, stress 120/12, CORS, checkout/webhook concorrente e fiado concorrente aprovados; stress p50 19,5 ms, p95 36,2 ms, máximo 70,9 ms e erro 0% |
+| Smoke de storage no bundle real            | Traversal 400, anônimo 401, namespace cruzado 403 e namespace próprio 503 sem backend externo; cleanup isolado aprovado                                      |
+| Matriz local final                         | 30 arquivos, 128 testes aprovados; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados                                          |
+| Deployment smoke final em `127.0.0.1:3004` | health 200, marketplace 200, CORS exato e métricas protegidas aprovados                                                                                      |
+| Stress final read-only                     | 120 requests / 12 workers; p50 19,8 ms; p95 37,1 ms; máximo 68,9 ms; erro 0%                                                                                 |
+| Regressões operacionais                    | CORS, E2E courier, checkout/webhook concorrente e fiado ampliado aprovados após a execução final                                                             |
+
+A fase prova autorização e falha segura, não homologa storage real. Backend externo, bucket, presign, assets gerados, domínio/HTTPS definitivos, OAuth, PSP/PIX, CNPJ, webhook de provedor, cobrança/reconciliação, e-mail, push, observabilidade externa e dispositivos físicos continuam dependências externas; o Go-Live comercial permanece bloqueado.
