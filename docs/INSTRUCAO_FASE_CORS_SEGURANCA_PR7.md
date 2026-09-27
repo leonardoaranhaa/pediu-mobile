@@ -29,7 +29,7 @@ O teste deve distinguir CORS de autorização: uma origem proibida é bloqueada 
 - [x] Smoke HTTP de CORS e mutation versionado.
 - [x] Regressões unitárias de origem e cookie aprovadas.
 - [x] Matriz local completa, deployment smoke e stress após a alteração.
-- [ ] CI e Operational Validation verdes no head publicado.
+- [x] CI e Operational Validation verdes no head publicado.
 - [ ] Dependências de domínio/origens definitivas continuam documentadas como externas.
 
 ## Evidência
@@ -37,3 +37,5 @@ O teste deve distinguir CORS de autorização: uma origem proibida é bloqueada 
 O smoke HTTP passou contra o bundle recompilado: preflight permitido e mutation com origem permitida responderam corretamente; preflight e mutation de origem proibida retornaram 403 sem ecoar ACAO; mutation com Bearer atravessou a barreira; e o logout devolveu cookie protegido. A matriz local passou com 30 arquivos e 128 testes aprovados; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` ficaram verdes. O deployment smoke passou com health 200, marketplace 200, CORS exato e métricas protegidas; stress 120/12 passou com p50 de 17,2 ms, p95 de 44,1 ms, máximo de 63,2 ms e erro 0%. Os E2Es operacionais, checkout/webhook concorrente e fiado permaneceram verdes.
 
 Durante a regressão de logout foi corrigido o fallback para hostname ausente em `getSessionCookieOptions`; a correção foi coberta por teste e compilada no bundle. A existência do guardrail não será tratada como configuração dos domínios reais de staging/produção.
+
+O commit `c40a4cf` passou no CI (`36317097963`) e no `Pediu Operational Validation` (`36317097959`), incluindo o novo smoke de CORS, migrations limpas, E2Es operacionais, deployment smoke e stress. A fase está concluída neste escopo, sem declarar os domínios externos como configurados.

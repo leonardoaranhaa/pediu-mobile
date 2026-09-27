@@ -870,3 +870,5 @@ O smoke prova que preflight e mutation de origem permitida funcionam sem wildcar
 | Regressões operacionais                    | E2E courier, checkout/webhook concorrente e fiado ampliado aprovados após a recompilação                                                    |
 
 Esta fase cobre o guardrail do servidor, não configura os domínios definitivos. Origens reais de staging/produção, HTTPS público, domínio de cookie, OAuth real, PSP/PIX, CNPJ, webhook de provedor, cobrança/reconciliação, e-mail, push, storage, observabilidade externa e dispositivos físicos continuam dependências externas; o Go-Live comercial permanece bloqueado.
+
+O commit `c40a4cf` passou no CI (`36317097963`) e no `Pediu Operational Validation` (`36317097959`), que executou também o novo `go-live:cors-security`. A fase está concluída neste escopo; as origens e domínios externos definitivos continuam pendentes.
