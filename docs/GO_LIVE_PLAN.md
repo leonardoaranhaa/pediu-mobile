@@ -824,3 +824,25 @@ A rota preserva `paymentId: null` para fiado em todos os caminhos de retry. Dura
 O workflow operacional recebeu `pnpm go-live:fiado-concurrency` após o E2E de lojista/entrega. Esta entrega fecha apenas a concorrência do crédito interno; PSP/PIX real, CNPJ, webhook real de provedor, credenciais externas, cobrança/reconciliação, OAuth, CORS, storage, voz e demais dependências do plano continuam sem evidência de produção e impedem declarar Go-Live comercial READY.
 
 O commit `7fdda14` passou no CI (`36239443014`) e no `Pediu Operational Validation` (`36239443036`), incluindo migrações limpas, E2Es de cliente/lojista/entrega, o smoke de fiado, checkout/webhook concorrente, deployment smoke e stress. A fase está concluída neste escopo; o Go-Live comercial continua bloqueado pelas dependências externas e operacionais registradas no plano.
+
+---
+
+# 31. Segurança do callback OAuth — 27/09/2026
+
+A próxima fatia da Fase 6 foi implementada sobre o PR #7 com validação estrita de `state`, bloqueio de replay do authorization code e regressões HTTP do callback. A instrução técnica está em `docs/INSTRUCAO_FASE_OAUTH_SEGURANCA_PR7.md`.
+
+O SDK agora rejeita state vazio, não canônico ou malformado e aceita somente redirect URIs com `http`, `https` ou o esquema nativo `pediupediu`, sem credenciais ou fragmentos. Os callbacks web e mobile falham com HTTP 400 antes de contactar o provedor quando o state é inválido. Uma guarda processual de TTL curto, com cardinalidade limitada e chave hash do código, bloqueia replay antes da troca de token e libera a tentativa quando há falha transitória. Nenhum código, token ou state é registrado em logs.
+
+## Evidências executadas
+
+| Validação                                  | Resultado                                                                                                                                        |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Baseline antes da alteração                | Deployment smoke aprovado; stress 120/12 com p50 13,7 ms, p95 29,8 ms, máximo 65,8 ms e erro 0%; checkout/webhook e fiado concorrentes aprovados |
+| Regressões OAuth focadas                   | 6 testes aprovados para state inválido, protocolo/credenciais/fragmento inseguros, replay e retry após falha                                     |
+| Matriz local final                         | 29 arquivos, 126 testes aprovados e 1 ignorado; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados                 |
+| Callback inválido no bundle compilado      | HTTP 400 com `invalid OAuth state`, sem chamada ao provedor                                                                                      |
+| Deployment smoke final em `127.0.0.1:3004` | health 200, marketplace 200, CORS exato e métricas protegidas aprovados                                                                          |
+| Stress final read-only                     | 120 requests / 12 workers; p50 19,1 ms; p95 42,5 ms; máximo 65,6 ms; erro 0%                                                                     |
+| Regressões operacionais                    | E2E courier, checkout/webhook concorrente e fiado ampliado aprovados após a recompilação                                                         |
+
+Esta entrega endurece a fronteira local, mas não homologa OAuth real. Provedor, credenciais, redirect URIs definitivas, execução em web/domínio real, deep-link em Android/iOS e homologação do fluxo continuam dependências externas. PSP/PIX, CNPJ, webhook real, cobrança/reconciliação, e-mail, push, storage, observabilidade externa e demais itens do plano continuam sem evidência de produção; o Go-Live comercial permanece bloqueado.
