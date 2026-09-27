@@ -917,3 +917,5 @@ O smoke HTTP contra o bundle real enviou payload JSON sintético acima de 16 MB 
 | Regressões operacionais                    | CORS, storage, checkout/webhook concorrente e fiado ampliado aprovados após a execução final                                                                          |
 
 Esta fase endurece limites locais, mas não homologa transcrição real, LLM, storage externo, captura de áudio de usuário, provedor de voz ou payloads de produção. OAuth, PSP/PIX, CNPJ, webhook de provedor, cobrança/reconciliação, e-mail, push, observabilidade externa e dispositivos físicos continuam dependências externas; o Go-Live comercial permanece bloqueado.
+
+O commit `978d09a` passou no CI (`36317926354`) e no `Pediu Operational Validation` (`36317926344`), que executou também o novo `go-live:limits-security`. A fase está concluída neste escopo; integrações externas de voz e domínios de produção continuam pendentes.

@@ -17,10 +17,12 @@ Todas as alterações pertencem à branch `docs/go-live-plan`, head do PR #7, e 
 - [x] Limite de comando de voz e entrada base64 cobertos por regressão.
 - [x] MIME e assinatura de áudio incompatíveis falham antes de storage/transcrição.
 - [x] Matriz local completa, deployment smoke e stress após a alteração.
-- [ ] CI e Operational Validation verdes no head publicado.
+- [x] CI e Operational Validation verdes no head publicado.
 
 ## Evidência
 
 Os smokes usaram somente payloads sintéticos, sem credenciais ou conteúdo de usuário. Contra o bundle real, o limite global falhou com HTTP 413 e o comando acima de 500 caracteres com HTTP 400. As 5 regressões focadas cobriram comando acima do limite, base64 acima do limite, base64 inválido, áudio abaixo de 1 KB e assinatura incompatível. A matriz local passou com 31 arquivos e 133 testes aprovados; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` ficaram verdes. Deployment smoke, CORS, storage, checkout/webhook e fiado permaneceram verdes; stress 120/12 passou com p50 de 15,3 ms, p95 de 29,9 ms, máximo de 68,5 ms e erro 0%.
 
 Os limites validam a fronteira e impedem execução externa indevida; transcrição real, storage externo, áudio de usuário e provedor de voz continuam dependências sem homologação.
+
+O commit `978d09a` passou no CI (`36317926354`) e no `Pediu Operational Validation` (`36317926344`), incluindo o novo smoke de limites, migrations limpas, E2Es operacionais, deployment smoke e stress. A fase está concluída neste escopo, sem marcar voz ou transcrição real como homologadas.
