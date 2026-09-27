@@ -848,3 +848,25 @@ O SDK agora rejeita state vazio, não canônico ou malformado e aceita somente r
 Esta entrega endurece a fronteira local, mas não homologa OAuth real. Provedor, credenciais, redirect URIs definitivas, execução em web/domínio real, deep-link em Android/iOS e homologação do fluxo continuam dependências externas. PSP/PIX, CNPJ, webhook real, cobrança/reconciliação, e-mail, push, storage, observabilidade externa e demais itens do plano continuam sem evidência de produção; o Go-Live comercial permanece bloqueado.
 
 O commit `0a3fc50` passou no CI (`36316685469`) e no `Pediu Operational Validation` (`36316685457`), incluindo migrations limpas, E2Es operacionais, deployment smoke e stress. A fase está concluída neste escopo; OAuth real continua pendente até existir provedor, credenciais, redirect URIs definitivas e homologação real.
+
+---
+
+# 32. CORS, origem e cookie mutation — 27/09/2026
+
+A próxima fatia da Fase 6 transformou os controles de origem já existentes em um smoke HTTP real e adicionou regressões explícitas para cookie de sessão. O comando `pnpm go-live:cors-security` foi versionado e incluído no `Pediu Operational Validation`. Durante a ativação do teste foi encontrada e corrigida uma falha de robustez: `getSessionCookieOptions` podia quebrar se um request de teste não tivesse `hostname`; agora há fallback seguro para `localhost`.
+
+O smoke prova que preflight e mutation de origem permitida funcionam sem wildcard, que preflight e mutation de origem proibida retornam 403 sem ecoar `Access-Control-Allow-Origin`, que um cliente nativo com Bearer atravessa a barreira de cookie e que o logout mantém cookie `HttpOnly`, `Path=/` e `SameSite=Lax`. A regra existente de CORS continua permitindo apenas origens configuradas e a configuração de produção continua proibindo wildcard.
+
+## Evidências executadas
+
+| Validação                                  | Resultado                                                                                                                                   |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Baseline antes da fase                     | Deployment smoke, stress 120/12, checkout/webhook concorrente e fiado concorrente aprovados                                                 |
+| Regressões focadas                         | Logout ativado e 5 testes de segurança aprovados; cookie HTTPS e HTTP cobertos com `Secure` coerente, `HttpOnly`, `SameSite=Lax` e `Path=/` |
+| Matriz local final                         | 30 arquivos, 128 testes aprovados; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados                         |
+| Smoke CORS no bundle recompilado           | Preflight/mutation permitidos aprovados; preflight/mutation proibidos bloqueados; Bearer nativo aprovado; cookie protegido aprovado         |
+| Deployment smoke final em `127.0.0.1:3004` | health 200, marketplace 200, CORS exato e métricas protegidas aprovados                                                                     |
+| Stress final read-only                     | 120 requests / 12 workers; p50 17,2 ms; p95 44,1 ms; máximo 63,2 ms; erro 0%                                                                |
+| Regressões operacionais                    | E2E courier, checkout/webhook concorrente e fiado ampliado aprovados após a recompilação                                                    |
+
+Esta fase cobre o guardrail do servidor, não configura os domínios definitivos. Origens reais de staging/produção, HTTPS público, domínio de cookie, OAuth real, PSP/PIX, CNPJ, webhook de provedor, cobrança/reconciliação, e-mail, push, storage, observabilidade externa e dispositivos físicos continuam dependências externas; o Go-Live comercial permanece bloqueado.

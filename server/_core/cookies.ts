@@ -14,7 +14,9 @@ function isSecureRequest(req: Request) {
   const forwardedProto = req.headers["x-forwarded-proto"];
   if (!forwardedProto) return false;
 
-  const protoList = Array.isArray(forwardedProto) ? forwardedProto : forwardedProto.split(",");
+  const protoList = Array.isArray(forwardedProto)
+    ? forwardedProto
+    : forwardedProto.split(",");
 
   return protoList.some((proto) => proto.trim().toLowerCase() === "https");
 }
@@ -47,9 +49,13 @@ function getParentDomain(hostname: string): string | undefined {
 export function getSessionCookieOptions(
   req: Request,
 ): Pick<CookieOptions, "domain" | "httpOnly" | "path" | "sameSite" | "secure"> {
-  const hostname = req.hostname;
+  const hostname = req.hostname || "localhost";
   const configuredDomain = process.env.COOKIE_DOMAIN?.trim();
-  const domain = configuredDomain || (process.env.NODE_ENV === "production" ? undefined : getParentDomain(hostname));
+  const domain =
+    configuredDomain ||
+    (process.env.NODE_ENV === "production"
+      ? undefined
+      : getParentDomain(hostname));
   const secure = isSecureRequest(req);
 
   return {

@@ -18,6 +18,7 @@
     "go-live:operations-e2e": "tsx scripts/go-live-operations-e2e.ts",
     "go-live:concurrency": "tsx scripts/go-live-concurrency.ts",
     "go-live:fiado-concurrency": "tsx scripts/go-live-fiado-concurrency.ts",
+    "go-live:cors-security": "tsx scripts/go-live-cors-security.ts",
     "go-live:backup-restore": "tsx scripts/go-live-backup-restore.ts",
     "go-live:stress": "tsx scripts/go-live-stress.ts",
     "go-live:deployment": "tsx scripts/go-live-deployment.ts",
