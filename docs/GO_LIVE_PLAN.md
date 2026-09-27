@@ -895,3 +895,25 @@ O smoke criou dois usuários temporários e comprovou que path traversal falha c
 A fase prova autorização e falha segura, não homologa storage real. Backend externo, bucket, presign, assets gerados, domínio/HTTPS definitivos, OAuth, PSP/PIX, CNPJ, webhook de provedor, cobrança/reconciliação, e-mail, push, observabilidade externa e dispositivos físicos continuam dependências externas; o Go-Live comercial permanece bloqueado.
 
 O commit `911c910` passou no CI (`36317506563`) e no `Pediu Operational Validation` (`36317506600`), que executou também o novo `go-live:storage-security`. A fase está concluída neste escopo; storage externo continua pendente até configuração e homologação reais.
+
+---
+
+# 34. Limites de voz e payload — 27/09/2026
+
+A última fatia da Fase 6 adicionou regressões e smoke operacional para os limites de entrada já definidos no servidor. O comando `pnpm go-live:limits-security` foi versionado e incluído no `Pediu Operational Validation`; a instrução técnica está em `docs/INSTRUCAO_FASE_LIMITES_VOZ_PAYLOAD_PR7.md`.
+
+O smoke HTTP contra o bundle real enviou payload JSON sintético acima de 16 MB e obteve HTTP 413 antes do router. Também enviou comando de voz acima de 500 caracteres e obteve HTTP 400 antes de executar interpretação. As regressões unitárias cobrem entrada base64 acima do limite codificado, base64 malformado, áudio decodificado abaixo de 1 KB e assinatura incompatível com o MIME, impedindo chegar a storage ou transcrição.
+
+## Evidências executadas
+
+| Validação                                  | Resultado                                                                                                                                                             |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Baseline antes da fase                     | Deployment smoke, stress 120/12, CORS, storage, checkout/webhook concorrente e fiado concorrente aprovados; stress p50 15,0 ms, p95 29,9 ms, máximo 69,1 ms e erro 0% |
+| Regressões focadas                         | 5 testes de limites de voz e payload aprovados                                                                                                                        |
+| Smoke no bundle real                       | Payload JSON acima de 16 MB retornou 413; comando de voz com 501 caracteres retornou 400                                                                              |
+| Matriz local final                         | 31 arquivos, 133 testes aprovados; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados                                                   |
+| Deployment smoke final em `127.0.0.1:3004` | health 200, marketplace 200, CORS exato e métricas protegidas aprovados                                                                                               |
+| Stress final read-only                     | 120 requests / 12 workers; p50 15,3 ms; p95 29,9 ms; máximo 68,5 ms; erro 0%                                                                                          |
+| Regressões operacionais                    | CORS, storage, checkout/webhook concorrente e fiado ampliado aprovados após a execução final                                                                          |
+
+Esta fase endurece limites locais, mas não homologa transcrição real, LLM, storage externo, captura de áudio de usuário, provedor de voz ou payloads de produção. OAuth, PSP/PIX, CNPJ, webhook de provedor, cobrança/reconciliação, e-mail, push, observabilidade externa e dispositivos físicos continuam dependências externas; o Go-Live comercial permanece bloqueado.
