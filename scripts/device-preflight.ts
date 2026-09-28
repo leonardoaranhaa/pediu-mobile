@@ -1,3 +1,5 @@
+import { isPublicDeviceUrl } from "./production-build-config.js";
+
 export type DevicePreflightStatus = "PASS" | "BLOCKED" | "NOT_CONFIGURED";
 
 export type DevicePreflightCheck = {
@@ -56,20 +58,6 @@ function pluginName(plugin: string | unknown[]): string {
     : typeof plugin[0] === "string"
       ? plugin[0]
       : "";
-}
-
-function isPublicDeviceUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    if (url.protocol !== "https:") return false;
-    const hostname = url.hostname.toLowerCase();
-    return (
-      !["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(hostname) &&
-      !hostname.startsWith("169.254.")
-    );
-  } catch {
-    return false;
-  }
 }
 
 function configured(value: string | undefined): boolean {

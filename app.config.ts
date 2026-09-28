@@ -1,6 +1,9 @@
 // Load environment variables with proper priority (system > .env)
 import "./scripts/load-env.js";
 import type { ExpoConfig } from "expo/config";
+import { assertProductionApiBaseUrl } from "./scripts/production-build-config.js";
+
+assertProductionApiBaseUrl(process.env);
 
 // Expo evaluates app.config.ts through a CommonJS loader that cannot resolve
 // extensionless imports of TypeScript files. Keep this build-time value local;

@@ -799,14 +799,6 @@ export const appRouter = router({
               return { orderId, paymentId: null, status: "Pendente" as const };
             }
             try {
-              await db.createDeliveryEvent({ orderId, eventType: "Pendente" });
-            } catch (error) {
-              console.warn(
-                "[Orders] Failed to persist initial delivery event:",
-                error,
-              );
-            }
-            try {
               await sendPushToUser(
                 store.ownerId,
                 "Novo pedido",
@@ -849,14 +841,6 @@ export const appRouter = router({
           }
           const { orderId, paymentId } = orderAndPayment;
           try {
-            await db.createDeliveryEvent({ orderId, eventType: "Pendente" });
-          } catch (error) {
-            console.warn(
-              "[Orders] Failed to persist initial delivery event:",
-              error,
-            );
-          }
-          try {
             await sendPushToUser(
               store.ownerId,
               "Novo pedido",
@@ -895,26 +879,13 @@ export const appRouter = router({
               throw new Error(
                 "O cliente só pode cancelar pedidos ainda não preparados",
               );
-            const updated = await db.updateOrderStatus(
+            const updated = await db.transitionOrderStatus(
               input.orderId,
               input.status,
               order.status,
             );
             if (!updated.changed && updated.status !== input.status)
               throw new Error("O pedido mudou durante o cancelamento");
-            if (updated.changed) {
-              try {
-                await db.createDeliveryEvent({
-                  orderId: input.orderId,
-                  eventType: input.status,
-                });
-              } catch (error) {
-                console.warn(
-                  "[Orders] Failed to persist cancellation event:",
-                  error,
-                );
-              }
-            }
             await db.cancelPendingPaymentForOrder(input.orderId);
             const store = await db.getStoreById(order.storeId);
             if (store) {
@@ -938,7 +909,7 @@ export const appRouter = router({
             throw new Error(
               `Transição de pedido inválida: ${order.status} → ${input.status}`,
             );
-          const updated = await db.updateOrderStatus(
+          const updated = await db.transitionOrderStatus(
             input.orderId,
             input.status,
             order.status,
@@ -947,14 +918,6 @@ export const appRouter = router({
             if (updated.status !== input.status)
               throw new Error("O pedido mudou durante a atualização");
             return { success: true as const };
-          }
-          try {
-            await db.createDeliveryEvent({
-              orderId: input.orderId,
-              eventType: input.status,
-            });
-          } catch (error) {
-            console.warn("[Orders] Failed to persist delivery event:", error);
           }
           try {
             await sendPushToUser(

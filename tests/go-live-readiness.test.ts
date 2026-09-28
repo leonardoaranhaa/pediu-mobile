@@ -10,6 +10,7 @@ const baseEnv = {
   JWT_SECRET: "secret-value",
   DATABASE_URL: "mysql://user:password@localhost:3306/pediu_test",
   ALLOWED_ORIGINS: "http://localhost:8081",
+  PIX_PROVIDER: "test-provider",
   PIX_API_URL: "https://pix.example.test",
   PIX_API_KEY: "pix-secret",
   PAYMENT_WEBHOOK_SECRET: "payment-secret",
@@ -89,6 +90,19 @@ describe("go-live readiness", () => {
     expect(checks.find((check) => check.id === "e2e-devices")?.status).toBe(
       "NOT_CONFIGURED",
     );
+  });
+
+  it("bloqueia produção quando PIX não tem PSP configurado ou usa modo manual", () => {
+    for (const provider of [undefined, "manual"]) {
+      const checks = evaluateReadiness(
+        { ...baseEnv, NODE_ENV: "production", PIX_PROVIDER: provider },
+        { healthStatus: 200 },
+      );
+
+      expect(checks.find((check) => check.id === "pix")?.status).toBe(
+        "BLOCKED",
+      );
+    }
   });
 
   it("rejeita wildcard de origem em produção mesmo com as outras variáveis", () => {

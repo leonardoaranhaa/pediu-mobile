@@ -115,11 +115,18 @@ export function evaluateReadiness(
         : `Health check não confirmou HTTP 200${input.healthStatus ? ` (HTTP ${input.healthStatus})` : "."}`,
   });
 
-  const integrationChecks = [
+  const integrationChecks: Array<{
+    id: string;
+    title: string;
+    keys: readonly string[];
+    guidance: string;
+    requiredForProduction?: boolean;
+  }> = [
     {
       id: "pix",
       title: "PSP PIX configurado",
       keys: ["PIX_API_URL", "PIX_API_KEY"],
+      requiredForProduction: true,
       guidance:
         "Configure PIX_API_URL e PIX_API_KEY após escolher e homologar o PSP.",
     },
@@ -127,6 +134,7 @@ export function evaluateReadiness(
       id: "payment-webhook",
       title: "Webhook de pagamento configurado",
       keys: ["PAYMENT_WEBHOOK_SECRET"],
+      requiredForProduction: true,
       guidance:
         "Configure PAYMENT_WEBHOOK_SECRET e valide assinatura, duplicidade, falha e reconciliação.",
     },
@@ -157,13 +165,23 @@ export function evaluateReadiness(
   ];
 
   for (const integration of integrationChecks) {
+    const isPixConfigured =
+      integration.id !== "pix" ||
+      Boolean(env.PIX_PROVIDER?.trim() && env.PIX_PROVIDER.trim() !== "manual");
+    const isConfigured = configured(env, integration.keys) && isPixConfigured;
     checks.push({
       id: integration.id,
       title: integration.title,
-      status: configured(env, integration.keys) ? "PASS" : "NOT_CONFIGURED",
-      detail: configured(env, integration.keys)
+      status: isConfigured
+        ? "PASS"
+        : production && integration.requiredForProduction
+          ? "BLOCKED"
+          : "NOT_CONFIGURED",
+      detail: isConfigured
         ? "Variáveis necessárias presentes; valores permanecem ocultos."
-        : integration.guidance,
+        : !isPixConfigured && production
+          ? "Produção bloqueada: PIX_PROVIDER=manual ou ausente não cria cobranças em um PSP. Configure um provedor homologado."
+          : integration.guidance,
     });
   }
 

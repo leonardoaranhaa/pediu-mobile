@@ -1595,13 +1595,16 @@ export async function createOrder(
 ): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(orders).values(input);
-  const orderId = getInsertId(result);
-  if (items.length > 0)
-    await db
-      .insert(orderItems)
-      .values(items.map((item) => ({ ...item, orderId })));
-  return orderId;
+  return db.transaction(async (tx) => {
+    const result = await tx.insert(orders).values(input);
+    const orderId = getInsertId(result);
+    if (items.length > 0)
+      await tx
+        .insert(orderItems)
+        .values(items.map((item) => ({ ...item, orderId })));
+    await tx.insert(deliveryEvents).values({ orderId, eventType: "Pendente" });
+    return orderId;
+  });
 }
 
 export async function createOrderWithPayment(
@@ -1627,6 +1630,7 @@ export async function createOrderWithPayment(
       .insert(payments)
       .values({ orderId, method: paymentMethod, status: "pending" });
     const paymentId = getInsertId(paymentResult);
+    await tx.insert(deliveryEvents).values({ orderId, eventType: "Pendente" });
     return { orderId, paymentId };
   });
 }
@@ -1707,6 +1711,7 @@ export async function createOrderWithFiado(
     await tx
       .insert(payments)
       .values({ orderId, method: "fiado", status: "paid" });
+    await tx.insert(deliveryEvents).values({ orderId, eventType: "Pendente" });
     return { orderId, created: true };
   });
 }
@@ -1727,31 +1732,34 @@ export async function listOrdersForCustomer(
     .offset(Math.max(offset, 0));
 }
 
-export async function updateOrderStatus(
+export async function transitionOrderStatus(
   orderId: number,
   status: Order["status"],
-  expectedStatus?: Order["status"],
+  expectedStatus: Order["status"],
 ): Promise<{ changed: boolean; status: Order["status"] }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db
-    .update(orders)
-    .set({ status, updatedAt: new Date() })
-    .where(
-      expectedStatus
-        ? sql`${orders.id} = ${orderId} AND ${orders.status} = ${expectedStatus}`
-        : eq(orders.id, orderId),
-    );
-  if (getAffectedRows(result) === 1) return { changed: true, status };
-  const current = await db
-    .select({ status: orders.status })
-    .from(orders)
-    .where(eq(orders.id, orderId))
-    .limit(1);
-  return {
-    changed: false,
-    status: current[0]?.status ?? status,
-  };
+  return db.transaction(async (tx) => {
+    const result = await tx
+      .update(orders)
+      .set({ status, updatedAt: new Date() })
+      .where(
+        sql`${orders.id} = ${orderId} AND ${orders.status} = ${expectedStatus}`,
+      );
+    if (getAffectedRows(result) === 1) {
+      await tx.insert(deliveryEvents).values({ orderId, eventType: status });
+      return { changed: true, status };
+    }
+    const current = await tx
+      .select({ status: orders.status })
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1);
+    return {
+      changed: false,
+      status: current[0]?.status ?? status,
+    };
+  });
 }
 
 export async function createDeliveryEvent(
@@ -2625,7 +2633,8 @@ export async function createLedgerEntry(
       .where(
         sql`${customers.id} = ${input.customerId} AND ${customers.storeId} = ${input.storeId}`,
       )
-      .limit(1);
+      .limit(1)
+      .for("update");
     const customer = rows[0];
     if (!customer) throw new Error("Cliente não pertence a esta loja");
     if (customer.status !== "active" && input.type !== "payment")

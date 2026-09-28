@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { assertProductionApiBaseUrl } from "../scripts/production-build-config.js";
 import {
   buildDevicePreflightReport,
   summarizeDevicePreflight,
@@ -59,6 +60,28 @@ const baseInput = {
 };
 
 describe("go-live device preflight", () => {
+  it("blocks EAS production builds without a public HTTPS API endpoint", () => {
+    expect(() =>
+      assertProductionApiBaseUrl({ EAS_BUILD_PROFILE: "production" }),
+    ).toThrow("EXPO_PUBLIC_API_BASE_URL must be configured");
+    expect(() =>
+      assertProductionApiBaseUrl({
+        EAS_BUILD_PROFILE: "production",
+        EXPO_PUBLIC_API_BASE_URL: "http://localhost:3000",
+      }),
+    ).toThrow("EXPO_PUBLIC_API_BASE_URL must be configured");
+  });
+
+  it("allows a configured public HTTPS endpoint and leaves non-production builds alone", () => {
+    expect(() =>
+      assertProductionApiBaseUrl({
+        EAS_BUILD_PROFILE: "production",
+        EXPO_PUBLIC_API_BASE_URL: "https://api.example.com",
+      }),
+    ).not.toThrow();
+    expect(() => assertProductionApiBaseUrl({})).not.toThrow();
+  });
+
   it("passes native identity, dependencies, EAS profiles and public API", () => {
     const checks = buildDevicePreflightReport(baseInput);
 

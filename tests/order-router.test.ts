@@ -43,11 +43,11 @@ describe("Pediu order operational contract", () => {
     } as any);
     vi.spyOn(db, "listOrdersForStore").mockResolvedValue([order] as any);
     vi.spyOn(db, "getOrderForUser").mockResolvedValue(order as any);
-    vi.spyOn(db, "updateOrderStatus").mockResolvedValue({
+    vi.spyOn(db, "transitionOrderStatus").mockResolvedValue({
       changed: true,
       status: "Aceito",
     });
-    const event = vi.spyOn(db, "createDeliveryEvent").mockResolvedValue(1);
+    const event = vi.spyOn(db, "createDeliveryEvent");
     const notify = vi
       .spyOn(push, "sendPushToUser")
       .mockResolvedValue({ sent: 0 });
@@ -59,12 +59,12 @@ describe("Pediu order operational contract", () => {
 
     await caller.pediu.orders.status({ orderId: 101, status: "Aceito" });
 
-    expect(db.updateOrderStatus).toHaveBeenCalledWith(
+    expect(db.transitionOrderStatus).toHaveBeenCalledWith(
       101,
       "Aceito",
       "Pendente",
     );
-    expect(event).toHaveBeenCalledWith({ orderId: 101, eventType: "Aceito" });
+    expect(event).not.toHaveBeenCalled();
     expect(notify).toHaveBeenCalledWith(
       20,
       "Atualização do pedido",
@@ -94,10 +94,10 @@ describe("Pediu order operational contract", () => {
       ownerId: 10,
     } as any);
     const update = vi
-      .spyOn(db, "updateOrderStatus")
+      .spyOn(db, "transitionOrderStatus")
       .mockResolvedValueOnce({ changed: true, status: "Aceito" })
       .mockResolvedValueOnce({ changed: false, status: "Aceito" });
-    const event = vi.spyOn(db, "createDeliveryEvent").mockResolvedValue(1);
+    const event = vi.spyOn(db, "createDeliveryEvent");
     vi.spyOn(push, "sendPushToUser").mockResolvedValue({ sent: 0 });
 
     const caller = appRouter.createCaller({ user } as any);
@@ -108,7 +108,7 @@ describe("Pediu order operational contract", () => {
 
     expect(results).toEqual([{ success: true }, { success: true }]);
     expect(update).toHaveBeenCalledTimes(2);
-    expect(event).toHaveBeenCalledTimes(1);
+    expect(event).not.toHaveBeenCalled();
   });
 
   it("accepts a retry that reads the already-applied status", async () => {
@@ -120,7 +120,7 @@ describe("Pediu order operational contract", () => {
       id: 7,
       ownerId: 10,
     } as any);
-    const update = vi.spyOn(db, "updateOrderStatus");
+    const update = vi.spyOn(db, "transitionOrderStatus");
     const event = vi.spyOn(db, "createDeliveryEvent");
 
     const caller = appRouter.createCaller({ user } as any);
@@ -137,7 +137,7 @@ describe("Pediu order operational contract", () => {
       id: 7,
       ownerId: 10,
     } as any);
-    vi.spyOn(db, "updateOrderStatus").mockResolvedValue({
+    vi.spyOn(db, "transitionOrderStatus").mockResolvedValue({
       changed: false,
       status: "Aceito",
     });
@@ -159,7 +159,7 @@ describe("Pediu order operational contract", () => {
     };
     vi.spyOn(db, "getOrderForUser").mockResolvedValue(order as any);
     vi.spyOn(db, "getStoreForOwner").mockResolvedValue(undefined as any);
-    vi.spyOn(db, "updateOrderStatus").mockResolvedValue({
+    vi.spyOn(db, "transitionOrderStatus").mockResolvedValue({
       changed: true,
       status: "Cancelado",
     });
@@ -171,7 +171,7 @@ describe("Pediu order operational contract", () => {
     const caller = appRouter.createCaller({ user: customer } as any);
     await caller.pediu.orders.status({ orderId: 101, status: "Cancelado" });
 
-    expect(db.updateOrderStatus).toHaveBeenCalledWith(
+    expect(db.transitionOrderStatus).toHaveBeenCalledWith(
       101,
       "Cancelado",
       "Pendente",

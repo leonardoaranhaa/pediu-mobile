@@ -151,6 +151,10 @@ async function main() {
       name: "Cliente Concorrência E2E",
       expiresInMs: 15 * 60_000,
     });
+    const merchantToken = await sdk.createSessionToken(merchantOpenId, {
+      name: "Lojista Concorrência E2E",
+      expiresInMs: 15 * 60_000,
+    });
     addressId = await postTrpc<number>(
       "pediu.addresses.create",
       {
@@ -216,6 +220,33 @@ async function main() {
       [orderId],
     );
     assert.equal((paymentRows as Array<unknown>).length, 1);
+    const [initialTimelineRows] = await connection.execute(
+      "SELECT eventType FROM pediu_delivery_events WHERE orderId = ? ORDER BY id",
+      [orderId],
+    );
+    assert.deepEqual(initialTimelineRows, [{ eventType: "Pendente" }]);
+
+    const statusResponses = await Promise.all([
+      postTrpc(
+        "pediu.orders.status",
+        { orderId, status: "Aceito" },
+        merchantToken,
+      ),
+      postTrpc(
+        "pediu.orders.status",
+        { orderId, status: "Aceito" },
+        merchantToken,
+      ),
+    ]);
+    assert.deepEqual(statusResponses, [{ success: true }, { success: true }]);
+    const [statusTimelineRows] = await connection.execute(
+      "SELECT eventType FROM pediu_delivery_events WHERE orderId = ? ORDER BY id",
+      [orderId],
+    );
+    assert.deepEqual(statusTimelineRows, [
+      { eventType: "Pendente" },
+      { eventType: "Aceito" },
+    ]);
 
     const webhookBody = JSON.stringify({
       provider: "ci-concurrency",
@@ -253,7 +284,7 @@ async function main() {
     assert.equal((paidRows as Array<{ status: string }>)[0]?.status, "paid");
 
     console.log(
-      `Go-Live concurrency smoke passed: ${concurrency} concurrent checkout retries collapsed to one order/payment and ${concurrency} duplicate webhooks collapsed to one event.`,
+      `Go-Live concurrency smoke passed: ${concurrency} concurrent checkout retries collapsed to one order/payment, status transitions persisted one atomic timeline event, and ${concurrency} duplicate webhooks collapsed to one event.`,
     );
   } finally {
     try {

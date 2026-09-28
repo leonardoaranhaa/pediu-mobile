@@ -147,6 +147,10 @@ async function main() {
       name: "Cliente Fiado Concorrente",
       expiresInMs: 15 * 60_000,
     });
+    const merchantToken = await sdk.createSessionToken(merchantOpenId, {
+      name: "Lojista Fiado Concorrente",
+      expiresInMs: 15 * 60_000,
+    });
     const input = {
       idempotencyKey: orderKey,
       storeId,
@@ -221,6 +225,54 @@ async function main() {
       [customerId],
     );
 
+    const ledgerAttempts = await Promise.all(
+      ["a", "b"].map((suffix) =>
+        attemptTrpc<number>(
+          "pediu.ledger.add",
+          {
+            customerId,
+            type: "credit",
+            amount: "30.00",
+            note: `Concurrent manual credit ${suffix}`,
+          },
+          merchantToken,
+        ),
+      ),
+    );
+    const successfulLedgerAttempts = ledgerAttempts.filter(
+      (result): result is { ok: true; value: number } => result.ok,
+    );
+    const rejectedLedgerAttempts = ledgerAttempts.filter(
+      (result): result is { ok: false; message: string } => !result.ok,
+    );
+    assert.equal(successfulLedgerAttempts.length, 1);
+    assert.equal(rejectedLedgerAttempts.length, 1);
+    assert.match(
+      rejectedLedgerAttempts[0].message,
+      /Lançamento excede o limite de crédito/,
+    );
+    const [manualLedgerBalanceRows] = await connection.execute(
+      "SELECT balance FROM pediu_customers WHERE id = ?",
+      [customerId],
+    );
+    assert.equal(
+      (manualLedgerBalanceRows as Array<{ balance: string }>)[0]?.balance,
+      "30.00",
+    );
+    const [manualLedgerRows] = await connection.execute(
+      "SELECT id FROM pediu_ledger_entries WHERE customerId = ?",
+      [customerId],
+    );
+    assert.equal((manualLedgerRows as Array<unknown>).length, 1);
+    await connection.execute(
+      "DELETE FROM pediu_ledger_entries WHERE customerId = ?",
+      [customerId],
+    );
+    await connection.execute(
+      "UPDATE pediu_customers SET balance = '0.00' WHERE id = ?",
+      [customerId],
+    );
+
     const differentKeyResults = await Promise.all(
       ["a", "b"].map((suffix) =>
         attemptTrpc<{
@@ -284,6 +336,11 @@ async function main() {
       await connection.execute("DELETE FROM pediu_orders WHERE id = ?", [
         orderId,
       ]);
+    if (customerId)
+      await connection.execute(
+        "DELETE FROM pediu_ledger_entries WHERE customerId = ?",
+        [customerId],
+      );
     if (customerId)
       await connection.execute("DELETE FROM pediu_customers WHERE id = ?", [
         customerId,
