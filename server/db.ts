@@ -1,6 +1,7 @@
-import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
+  AdCredit,
   AdminAuditLog,
   ChatMessage,
   CourierProfile,
@@ -11,8 +12,10 @@ import {
   DeliveryAssignment,
   DeliveryLocation,
   DeliveryOffer,
+  GeneratedAd,
   InsertAdminAuditLog,
   InsertCourierProfile,
+  InsertGeneratedAd,
   InsertChatMessage,
   InsertCustomer,
   InsertCustomerAddress,
@@ -43,6 +46,7 @@ import {
   SupportTicket,
   SupportTicketMessage,
   User,
+  adCredits,
   adminAuditLogs,
   chatMessages,
   coupons,
@@ -55,6 +59,7 @@ import {
   deliveryLocations,
   deliveryOffers,
   emailVerificationTokens,
+  generatedAds,
   ledgerEntries,
   notificationPreferences,
   notifications,
@@ -1132,9 +1137,173 @@ export async function listCouriersForStore(ownerId: number) {
     .limit(100);
 }
 
+export async function getAdCreditsForStore(storeId: number): Promise<AdCredit> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const current = await db
+    .select()
+    .from(adCredits)
+    .where(eq(adCredits.storeId, storeId))
+    .limit(1);
+  if (current[0]) return current[0];
+  await db.insert(adCredits).values({ storeId });
+  const created = await db
+    .select()
+    .from(adCredits)
+    .where(eq(adCredits.storeId, storeId))
+    .limit(1);
+  if (!created[0]) throw new Error("Ad credits not found after creation");
+  return created[0];
+}
+
+export async function listGeneratedAdsForStore(
+  storeId: number,
+): Promise<GeneratedAd[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(generatedAds)
+    .where(eq(generatedAds.storeId, storeId))
+    .orderBy(desc(generatedAds.updatedAt), desc(generatedAds.id))
+    .limit(100);
+}
+
+export async function getGeneratedAdForStore(
+  storeId: number,
+  adId: number,
+): Promise<GeneratedAd | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select()
+    .from(generatedAds)
+    .where(
+      sql`${generatedAds.id} = ${adId} AND ${generatedAds.storeId} = ${storeId}`,
+    )
+    .limit(1);
+  return rows[0];
+}
+
+export async function createGeneratedAdWithCredit(
+  input: InsertGeneratedAd,
+  creditCost = 1,
+): Promise<GeneratedAd> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const creditRows = await tx
+      .select()
+      .from(adCredits)
+      .where(eq(adCredits.storeId, input.storeId))
+      .limit(1);
+    if (!creditRows[0]) {
+      await tx.insert(adCredits).values({ storeId: input.storeId });
+    }
+    const updatedCredit = await tx
+      .update(adCredits)
+      .set({
+        balance: sql`${adCredits.balance} - ${creditCost}`,
+        lifetimeUsed: sql`${adCredits.lifetimeUsed} + ${creditCost}`,
+      })
+      .where(
+        sql`${adCredits.storeId} = ${input.storeId} AND ${adCredits.balance} >= ${creditCost}`,
+      );
+    const affectedRows = Number(
+      (updatedCredit as { affectedRows?: number }).affectedRows ?? 0,
+    );
+    if (affectedRows !== 1)
+      throw new Error("Você ficou sem créditos de criação de anúncio");
+    const result = await tx
+      .insert(generatedAds)
+      .values({ ...input, generationCost: creditCost });
+    const adId = getInsertId(result);
+    const rows = await tx
+      .select()
+      .from(generatedAds)
+      .where(eq(generatedAds.id, adId))
+      .limit(1);
+    if (!rows[0]) throw new Error("Anúncio não encontrado após criação");
+    return rows[0];
+  });
+}
+
+export async function publishGeneratedAd(
+  storeId: number,
+  adId: number,
+): Promise<GeneratedAd> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const current = await tx
+      .select()
+      .from(generatedAds)
+      .where(
+        sql`${generatedAds.id} = ${adId} AND ${generatedAds.storeId} = ${storeId}`,
+      )
+      .limit(1);
+    if (!current[0]) throw new Error("Anúncio não encontrado");
+    if (!current[0].productId)
+      throw new Error("O anúncio precisa estar ligado a um produto");
+    const product = await tx
+      .select({ id: products.id, available: products.available })
+      .from(products)
+      .where(eq(products.id, current[0].productId))
+      .limit(1);
+    if (!product[0] || !product[0].available)
+      throw new Error("Publique somente anúncios de produtos disponíveis");
+    await tx
+      .update(generatedAds)
+      .set({ status: "archived", updatedAt: new Date() })
+      .where(
+        sql`${generatedAds.storeId} = ${storeId} AND ${generatedAds.productId} = ${current[0].productId} AND ${generatedAds.status} = 'published'`,
+      );
+    await tx
+      .update(generatedAds)
+      .set({
+        status: "published",
+        publishedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        sql`${generatedAds.id} = ${adId} AND ${generatedAds.storeId} = ${storeId}`,
+      );
+    const updated = await tx
+      .select()
+      .from(generatedAds)
+      .where(eq(generatedAds.id, adId))
+      .limit(1);
+    if (!updated[0]) throw new Error("Anúncio não encontrado após publicação");
+    return updated[0];
+  });
+}
+
+export async function archiveGeneratedAd(
+  storeId: number,
+  adId: number,
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db
+    .update(generatedAds)
+    .set({ status: "archived", updatedAt: new Date() })
+    .where(
+      sql`${generatedAds.id} = ${adId} AND ${generatedAds.storeId} = ${storeId}`,
+    );
+  const affectedRows = Number(
+    (result as { affectedRows?: number }).affectedRows ?? 0,
+  );
+  if (affectedRows !== 1) throw new Error("Anúncio não encontrado");
+}
+
 export type MarketplaceProduct = Product & {
   storeName: string;
   deliveryFee: string;
+  adId: number | null;
+  adHeadline: string | null;
+  adDescription: string | null;
+  adOfferLabel: string | null;
+  adImageKey: string | null;
 };
 
 export type MarketplaceSearchInput = {
@@ -1179,11 +1348,23 @@ export async function searchAvailableProducts(
       createdAt: products.createdAt,
       storeName: stores.name,
       deliveryFee: stores.deliveryFee,
+      adId: generatedAds.id,
+      adHeadline: generatedAds.headline,
+      adDescription: generatedAds.description,
+      adOfferLabel: generatedAds.offerLabel,
+      adImageKey: generatedAds.imageKey,
     })
     .from(products)
     .innerJoin(stores, eq(products.storeId, stores.id))
+    .leftJoin(
+      generatedAds,
+      and(
+        eq(generatedAds.productId, products.id),
+        eq(generatedAds.status, "published"),
+      ),
+    )
     .where(and(...filters))
-    .orderBy(products.createdAt, products.id)
+    .orderBy(desc(generatedAds.id), desc(products.createdAt), desc(products.id))
     .limit(limit + 1)
     .offset(offset);
 
@@ -1194,6 +1375,22 @@ export async function listAvailableProducts(
   category?: string,
 ): Promise<MarketplaceProduct[]> {
   return (await searchAvailableProducts({ category, limit: 50 })).items;
+}
+
+export async function listActiveCoupons(limit = 30): Promise<Coupon[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(coupons)
+    .where(
+      and(
+        eq(coupons.active, 1),
+        or(isNull(coupons.expiresAt), gt(coupons.expiresAt, new Date())),
+      ),
+    )
+    .orderBy(desc(coupons.createdAt))
+    .limit(Math.min(Math.max(limit, 1), 50));
 }
 
 export async function createProduct(input: InsertProduct): Promise<number> {

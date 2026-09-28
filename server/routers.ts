@@ -25,6 +25,7 @@ import {
 } from "./_core/security";
 import crypto from "node:crypto";
 import { hashEmailToken, sendEmailVerification } from "./email-verification";
+import { generateAdCreative } from "./ad-generation";
 
 const orderStatusSchema = z.enum([
   "Pendente",
@@ -208,7 +209,17 @@ export const appRouter = router({
     marketplace: router({
       products: publicProcedure
         .input(z.object({ category: z.string().optional() }).optional())
-        .query(({ input }) => db.listAvailableProducts(input?.category)),
+        .query(async ({ input }) => {
+          const products = await db.listAvailableProducts(input?.category);
+          return Promise.all(
+            products.map(async (item) => ({
+              ...item,
+              adImageUrl: item.adImageKey
+                ? await storageGetSignedUrl(item.adImageKey).catch(() => null)
+                : null,
+            })),
+          );
+        }),
       search: publicProcedure
         .input(
           z.object({
@@ -220,7 +231,18 @@ export const appRouter = router({
             offset: z.number().int().min(0).default(0),
           }),
         )
-        .query(({ input }) => db.searchAvailableProducts(input)),
+        .query(async ({ input }) => {
+          const result = await db.searchAvailableProducts(input);
+          const items = await Promise.all(
+            result.items.map(async (item) => ({
+              ...item,
+              adImageUrl: item.adImageKey
+                ? await storageGetSignedUrl(item.adImageKey).catch(() => null)
+                : null,
+            })),
+          );
+          return { ...result, items };
+        }),
     }),
     checkout: router({
       quote: protectedProcedure
@@ -292,6 +314,9 @@ export const appRouter = router({
             total: (subtotal + deliveryFee - Number(discount)).toFixed(2),
           };
         }),
+    }),
+    coupons: router({
+      available: publicProcedure.query(() => db.listActiveCoupons()),
     }),
     stores: router({
       mine: protectedProcedure.query(({ ctx }) =>
@@ -402,6 +427,114 @@ export const appRouter = router({
       active: protectedProcedure.query(({ ctx }) =>
         db.listActiveDeliveriesForCourier(ctx.user.id),
       ),
+    }),
+    ads: router({
+      credits: protectedProcedure.query(async ({ ctx }) => {
+        const store = await db.getStoreForOwner(ctx.user.id);
+        if (!store)
+          throw new Error("Cadastre sua loja antes de criar anúncios");
+        return db.getAdCreditsForStore(store.id);
+      }),
+      mine: protectedProcedure.query(async ({ ctx }) => {
+        const store = await db.getStoreForOwner(ctx.user.id);
+        if (!store) return [];
+        const ads = await db.listGeneratedAdsForStore(store.id);
+        return Promise.all(
+          ads.map(async (ad) => ({
+            ...ad,
+            imageUrl: ad.imageKey
+              ? await storageGetSignedUrl(ad.imageKey).catch(() => null)
+              : null,
+          })),
+        );
+      }),
+      generate: protectedProcedure
+        .input(
+          z.object({
+            productId: z.number().int().positive(),
+            offerLabel: z.string().trim().max(120).optional(),
+            audience: z.string().trim().max(120).optional(),
+            tone: z
+              .enum(["irresistivel", "caseiro", "premium", "divertido"])
+              .default("irresistivel"),
+          }),
+        )
+        .mutation(async ({ ctx, input }) => {
+          if (
+            !consumeRateLimit(
+              rateLimitKey(ctx.req, "ads:generate", ctx.user.id),
+              5,
+              10 * 60_000,
+            )
+          )
+            throw new Error(
+              "Limite de criações atingido. Tente novamente mais tarde.",
+            );
+          const store = await db.getStoreForOwner(ctx.user.id);
+          if (!store)
+            throw new Error("Cadastre sua loja antes de criar anúncios");
+          const product = await db.getProductForStore(
+            input.productId,
+            store.id,
+          );
+          if (!product) throw new Error("Produto não pertence à sua loja");
+          const creative = await withConcurrencyLimit("ads:generate", 2, () =>
+            withTimeout(
+              generateAdCreative({
+                storeName: store.name,
+                productName: product.name,
+                category: product.category,
+                productDescription: product.description,
+                price: product.price,
+                offerLabel: input.offerLabel,
+                audience: input.audience,
+                tone: input.tone,
+              }),
+              90_000,
+              "A criação do anúncio demorou para responder. Tente novamente.",
+            ),
+          );
+          const ad = await db.createGeneratedAdWithCredit({
+            storeId: store.id,
+            productId: product.id,
+            status: "draft",
+            headline: creative.headline,
+            description: creative.description,
+            cta: creative.cta,
+            offerLabel: creative.offerLabel,
+            visualPrompt: creative.visualPrompt,
+            imageKey: creative.imageKey,
+            model: creative.model,
+            generationCost: 1,
+          });
+          return {
+            ...ad,
+            imageUrl: ad.imageKey
+              ? await storageGetSignedUrl(ad.imageKey).catch(() => null)
+              : null,
+          };
+        }),
+      publish: protectedProcedure
+        .input(z.object({ adId: z.number().int().positive() }))
+        .mutation(async ({ ctx, input }) => {
+          const store = await db.getStoreForOwner(ctx.user.id);
+          if (!store) throw new Error("Loja não encontrada");
+          const ad = await db.publishGeneratedAd(store.id, input.adId);
+          return {
+            ...ad,
+            imageUrl: ad.imageKey
+              ? await storageGetSignedUrl(ad.imageKey).catch(() => null)
+              : null,
+          };
+        }),
+      archive: protectedProcedure
+        .input(z.object({ adId: z.number().int().positive() }))
+        .mutation(async ({ ctx, input }) => {
+          const store = await db.getStoreForOwner(ctx.user.id);
+          if (!store) throw new Error("Loja não encontrada");
+          await db.archiveGeneratedAd(store.id, input.adId);
+          return { success: true as const };
+        }),
     }),
     products: router({
       mine: protectedProcedure

@@ -960,3 +960,28 @@ A correção adicionou `expo-asset` na lista de dependências, declarou os plugi
 | Stress final read-only    | 120 requests / 12 workers; p50 20,9 ms; p95 76,6 ms; máximo 153,9 ms; erro 0%                                       |
 
 A etapa nativa estrutural está pronta para um build EAS, mas a sandbox não possui EAS CLI autenticado, Android SDK, `adb` ou dispositivos físicos. A Fase 7 continua aberta: não há evidência de instalação, permissões, localização, notificações, background, deep links ou checkout em Android/iOS reais. OAuth, push, storage externo, PSP/PIX, CNPJ, staging/produção definitivos e publicação nas lojas continuam pendentes; o Go-Live comercial permanece bloqueado.
+
+
+---
+
+# 37. Unificação UX/UI com o PR #7 — 28/09/2026
+
+A branch `docs/go-live-plan` foi unificada com `feat/customer-ai-ads` por merge de três vias. O merge recuperou o mascote Pediu, a personalização persistida de tema e movimento, o carrinho e a confirmação de pedido atualizados, a central de benefícios/cupons e o estúdio de anúncios IA do lojista. As resoluções preservaram o fluxo de entregador, a Central do entregador no perfil, as proteções de idempotência, concorrência, OAuth, CORS, storage, limites e observabilidade já entregues no PR #7.
+
+A migração `0024_ai_ads` foi aplicada no MariaDB real de validação antes dos gates. As tabelas `pediu_ad_credits` e `pediu_generated_ads` foram verificadas, e o journal passou a registrar 26 migrations incluindo `0024_ai_ads` e `0025_courier_flow`.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| Matriz local | 34 arquivos, 142 testes aprovados; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados |
+| Deployment smoke | health 200, marketplace 200, CORS exato e métricas protegidas |
+| Stress read-only | 120 requests / 12 workers; erro 0%; p50 21,4 ms; p95 59,8 ms; máximo 72,6 ms |
+| E2E cliente e operações | Fluxos cliente, checkout, courier, GPS, tracking e conclusão idempotente aprovados |
+| Concorrência | 24 retries de checkout/webhook colapsados em um pedido/pagamento/evento; fiado same-key e oversubscription aprovados |
+| Segurança operacional | CORS/cookies, storage namespace/traversal e limites de payload/voz aprovados |
+| Preflight Expo público | 6 PASS, 0 BLOCKED e 5 `NOT_CONFIGURED`; API HTTPS pública e app ID alinhado |
+
+O preflight permanece honesto: OAuth real, push externo, storage externo, PSP/PIX e evidência física Android/iOS continuam `NOT_CONFIGURED`. O PSP/PIX segue pendente por CNPJ; a unificação UX/UI não altera essa pendência nem autoriza declarar o Go-Live comercial READY.
+
+A instrução técnica desta etapa está em `docs/INSTRUCAO_FASE_UNIFICACAO_UX_UI_PR7.md`.
