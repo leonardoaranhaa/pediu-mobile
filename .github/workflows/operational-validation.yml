@@ -29,7 +29,12 @@ jobs:
       PORT: 3000
       VITE_APP_ID: ci-e2e-app
       JWT_SECRET: ci-e2e-jwt-secret
-      PAYMENT_WEBHOOK_SECRET: ci-payment-webhook-secret
+      PIX_PROVIDER: mercado_pago
+      MERCADO_PAGO_ACCESS_TOKEN: ci-mp-access-token
+      MERCADO_PAGO_WEBHOOK_SECRET: ci-payment-webhook-secret
+      # Reserved .invalid URL; the local CI mock never sends a notification to it.
+      MERCADO_PAGO_NOTIFICATION_URL: https://pediu-test.invalid/api/webhooks/payments
+      MERCADO_PAGO_API_BASE_URL: http://127.0.0.1:3100
       OBSERVABILITY_TOKEN: ci-observability-token
       ALLOWED_ORIGINS: http://localhost:8081
     steps:
@@ -78,6 +83,11 @@ jobs:
             ];
             const missing = required.filter(name => !names.includes(name));
             if (missing.length) throw new Error(`Missing migrated tables: ${missing.join(', ')}`);
+            const [paymentColumns] = await c.query('SHOW COLUMNS FROM pediu_payment_transactions');
+            const paymentColumnNames = paymentColumns.map(row => row.Field);
+            const requiredPaymentColumns = ['externalReference', 'qrCode', 'qrCodeBase64', 'ticketUrl'];
+            const missingPaymentColumns = requiredPaymentColumns.filter(name => !paymentColumnNames.includes(name));
+            if (missingPaymentColumns.length) throw new Error(`Missing payment columns: ${missingPaymentColumns.join(', ')}`);
             const [journal] = await c.query('SELECT COUNT(*) AS count FROM __drizzle_migrations');
             if (Number(journal[0].count) < 1) throw new Error('Drizzle migration journal is empty');
             console.log(`Migration smoke test OK: ${journal[0].count} migration(s), ${names.length} Pediu table(s)`);
@@ -89,6 +99,18 @@ jobs:
       - name: Validate database connectivity
         run: |
           node -e "const mysql=require('mysql2/promise'); mysql.createConnection(process.env.DATABASE_URL).then(async c=>{const [r]=await c.query('SELECT 1 AS ok'); if(r[0].ok!==1) process.exit(1); await c.end(); console.log('MySQL operational')}).catch(e=>{console.error(e); process.exit(1)})"
+      - name: Start Mercado Pago test API
+        run: |
+          pnpm exec tsx scripts/mercado-pago-api-mock.ts > /tmp/mercado-pago-mock.log 2>&1 &
+          echo $! > /tmp/mercado-pago-mock.pid
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3100/health; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/mercado-pago-mock.log
+          exit 1
       - name: Start API
         run: |
           pnpm dev:server > /tmp/pediu-api.log 2>&1 &

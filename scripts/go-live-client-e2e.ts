@@ -288,7 +288,25 @@ async function main() {
       {
         paymentId: created.paymentId,
         status: "pending",
-        provider: "persisted",
+        provider: "mercado_pago",
+      },
+    );
+
+    const pixRetried = await callTrpc<{
+      paymentId: number;
+      status: string;
+      provider: string;
+    }>("pediu.payments.createPix", { orderId }, customerToken, "POST");
+    assert.deepEqual(
+      {
+        paymentId: pixRetried.paymentId,
+        status: pixRetried.status,
+        provider: pixRetried.provider,
+      },
+      {
+        paymentId: pix.paymentId,
+        status: pix.status,
+        provider: pix.provider,
       },
     );
 
@@ -343,6 +361,28 @@ async function main() {
     );
     assert.equal((paymentRows as Array<any>)[0].status, "pending");
 
+    const [transactionRows] = await connection.execute(
+      "SELECT provider, providerTransactionId, status, amount, currency, idempotencyKey, externalReference, qrCode, qrCodeBase64, ticketUrl FROM pediu_payment_transactions WHERE paymentId = ?",
+      [created.paymentId],
+    );
+    assert.equal(
+      (transactionRows as Array<any>).length,
+      1,
+      "PIX retries must keep a single provider transaction",
+    );
+    assert.deepEqual((transactionRows as Array<any>)[0], {
+      provider: "mercado_pago",
+      providerTransactionId: String(orderId),
+      status: "pending",
+      amount: "17.00",
+      currency: "BRL",
+      idempotencyKey: `pix-order-${orderId}`,
+      externalReference: `pediu-order-${orderId}`,
+      qrCode: `000201-MOCK-PIX-${orderId}`,
+      qrCodeBase64: "ZmFrZS1waXgtcXI=",
+      ticketUrl: `https://pediu-test.invalid/pix/${orderId}`,
+    });
+
     const storeOrders = await callTrpc<
       Array<{ id: number; status: string; total: string }>
     >("pediu.orders.storeMine", { limit: 20, offset: 0 }, merchantToken);
@@ -389,10 +429,14 @@ async function main() {
     );
 
     console.log(
-      "Go-Live client E2E smoke passed: catalog, address, quote, pending PIX, idempotent order retry and merchant status flow.",
+      "Go-Live client E2E smoke passed: catalog, address, quote, pending Mercado Pago mock PIX, idempotent PIX/order retries and merchant status flow.",
     );
   } finally {
     if (orderId) {
+      await connection.execute(
+        "DELETE FROM pediu_payment_transactions WHERE paymentId IN (SELECT id FROM pediu_payments WHERE orderId = ?)",
+        [orderId],
+      );
       await connection.execute("DELETE FROM pediu_orders WHERE id = ?", [
         orderId,
       ]);

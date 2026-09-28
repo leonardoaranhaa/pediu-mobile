@@ -183,6 +183,13 @@
       "when": 1790080200000,
       "tag": "0025_courier_flow",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "5",
+      "when": 1790638202256,
+      "tag": "0026_mercado_pago_pix_details",
+      "breakpoints": true
     }
   ]
 }

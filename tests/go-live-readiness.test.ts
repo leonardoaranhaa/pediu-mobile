@@ -10,10 +10,11 @@ const baseEnv = {
   JWT_SECRET: "secret-value",
   DATABASE_URL: "mysql://user:password@localhost:3306/pediu_test",
   ALLOWED_ORIGINS: "http://localhost:8081",
-  PIX_PROVIDER: "test-provider",
-  PIX_API_URL: "https://pix.example.test",
-  PIX_API_KEY: "pix-secret",
-  PAYMENT_WEBHOOK_SECRET: "payment-secret",
+  PIX_PROVIDER: "mercado_pago",
+  MERCADO_PAGO_ACCESS_TOKEN: "mp-access-secret",
+  MERCADO_PAGO_NOTIFICATION_URL:
+    "https://pediu.example.test/api/webhooks/payments",
+  MERCADO_PAGO_WEBHOOK_SECRET: "payment-secret",
   OAUTH_SERVER_URL: "https://oauth.example.test",
   EMAIL_WEBHOOK_URL: "https://email.example.test/webhook",
   EMAIL_VERIFICATION_BASE_URL: "https://pediu.example.test/verify-email",
@@ -39,7 +40,7 @@ describe("go-live readiness", () => {
     const checks = evaluateReadiness(baseEnv, {
       healthStatus: 200,
       tableNames: [...REQUIRED_TABLES],
-      migrationCount: 25,
+      migrationCount: 26,
     });
 
     expect(
@@ -63,18 +64,18 @@ describe("go-live readiness", () => {
       checks.every(
         (check) =>
           !check.detail.includes("secret-value") &&
-          !check.detail.includes("pix-secret"),
+          !check.detail.includes("mp-access-secret"),
       ),
     ).toBe(true);
   });
 
   it("mantém dependências externas não homologadas como NOT_CONFIGURED", () => {
     const checks = evaluateReadiness(
-      { ...baseEnv, PIX_API_KEY: undefined, NODE_ENV: "test" },
+      { ...baseEnv, MERCADO_PAGO_ACCESS_TOKEN: undefined, NODE_ENV: "test" },
       {
         healthStatus: 200,
         tableNames: [...REQUIRED_TABLES],
-        migrationCount: 25,
+        migrationCount: 26,
       },
     );
 
@@ -93,7 +94,7 @@ describe("go-live readiness", () => {
   });
 
   it("bloqueia produção quando PIX não tem PSP configurado ou usa modo manual", () => {
-    for (const provider of [undefined, "manual"]) {
+    for (const provider of [undefined, "manual", "other"]) {
       const checks = evaluateReadiness(
         { ...baseEnv, NODE_ENV: "production", PIX_PROVIDER: provider },
         { healthStatus: 200 },

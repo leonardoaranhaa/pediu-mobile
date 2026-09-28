@@ -67,6 +67,7 @@ import {
   orderReviews,
   orders,
   payments,
+  paymentTransactions,
   privacyConsents,
   products,
   pushTokens,
@@ -2379,6 +2380,153 @@ export async function createPendingPixPayment(
   return getInsertId(result);
 }
 
+export async function getPixTransactionForPayment(paymentId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db
+    .select()
+    .from(paymentTransactions)
+    .where(
+      and(
+        eq(paymentTransactions.paymentId, paymentId),
+        eq(paymentTransactions.provider, "mercado_pago"),
+      ),
+    )
+    .orderBy(desc(paymentTransactions.id))
+    .limit(1);
+  return result[0];
+}
+
+export async function createMercadoPagoPaymentTransaction(input: {
+  paymentId: number;
+  providerTransactionId: string;
+  amount: string;
+  currency: "BRL";
+  idempotencyKey: string;
+  externalReference: string;
+  status: "pending" | "failed";
+  qrCode?: string;
+  qrCodeBase64?: string;
+  ticketUrl?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const verifyExisting = (
+    existing: Awaited<ReturnType<typeof getPixTransactionForPayment>>,
+  ) => {
+    if (
+      !existing ||
+      existing.paymentId !== input.paymentId ||
+      existing.provider !== "mercado_pago" ||
+      existing.providerTransactionId !== input.providerTransactionId ||
+      existing.amount !== input.amount ||
+      existing.currency !== input.currency ||
+      existing.externalReference !== input.externalReference ||
+      existing.idempotencyKey !== input.idempotencyKey
+    ) {
+      throw new Error(
+        "Mercado Pago idempotency record does not match the local payment",
+      );
+    }
+    return existing;
+  };
+
+  try {
+    return await db.transaction(async (tx) => {
+      const existingRows = await tx
+        .select()
+        .from(paymentTransactions)
+        .where(
+          and(
+            eq(paymentTransactions.provider, "mercado_pago"),
+            eq(paymentTransactions.idempotencyKey, input.idempotencyKey),
+          ),
+        )
+        .limit(1);
+      if (existingRows[0]) return verifyExisting(existingRows[0]);
+
+      const localPayments = await tx
+        .select()
+        .from(payments)
+        .where(eq(payments.id, input.paymentId))
+        .limit(1);
+      const payment = localPayments[0];
+      if (
+        !payment ||
+        payment.method !== "pix" ||
+        payment.status !== "pending"
+      ) {
+        throw new Error("Local payment is not pending PIX");
+      }
+
+      const result = await tx.insert(paymentTransactions).values({
+        paymentId: input.paymentId,
+        provider: "mercado_pago",
+        providerTransactionId: input.providerTransactionId,
+        amount: input.amount,
+        currency: input.currency,
+        idempotencyKey: input.idempotencyKey,
+        externalReference: input.externalReference,
+        status: input.status,
+        qrCode: input.qrCode,
+        qrCodeBase64: input.qrCodeBase64,
+        ticketUrl: input.ticketUrl,
+      });
+      const transactionId = getInsertId(result);
+      await tx
+        .update(payments)
+        .set({
+          transactionId: input.providerTransactionId,
+          ...(input.status === "failed" ? { status: "failed" as const } : {}),
+        })
+        .where(eq(payments.id, input.paymentId));
+      const savedRows = await tx
+        .select()
+        .from(paymentTransactions)
+        .where(eq(paymentTransactions.id, transactionId))
+        .limit(1);
+      if (!savedRows[0])
+        throw new Error("Mercado Pago transaction was not persisted");
+      return savedRows[0];
+    });
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) throw error;
+    const existing = await getPixTransactionForPayment(input.paymentId);
+    return verifyExisting(existing);
+  }
+}
+
+export async function getMercadoPagoPaymentContext(
+  providerTransactionId: string,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db
+    .select({
+      paymentId: payments.id,
+      paymentMethod: payments.method,
+      orderId: orders.id,
+      orderTotal: orders.total,
+      provider: paymentTransactions.provider,
+      providerTransactionId: paymentTransactions.providerTransactionId,
+      transactionAmount: paymentTransactions.amount,
+      currency: paymentTransactions.currency,
+      externalReference: paymentTransactions.externalReference,
+    })
+    .from(paymentTransactions)
+    .innerJoin(payments, eq(paymentTransactions.paymentId, payments.id))
+    .innerJoin(orders, eq(payments.orderId, orders.id))
+    .where(
+      and(
+        eq(paymentTransactions.provider, "mercado_pago"),
+        eq(paymentTransactions.providerTransactionId, providerTransactionId),
+      ),
+    )
+    .limit(1);
+  return result[0];
+}
+
 export async function createOrderPayment(
   orderId: number,
   method: "pix" | "card" | "cash",
@@ -2394,7 +2542,14 @@ export async function createOrderPayment(
 export async function getPaymentForUser(
   paymentId: number,
   userId: number,
-): Promise<Payment | undefined> {
+): Promise<
+  | (Payment & {
+      pixQrCode: string | null;
+      pixQrCodeBase64: string | null;
+      pixTicketUrl: string | null;
+    })
+  | undefined
+> {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db
@@ -2405,7 +2560,29 @@ export async function getPaymentForUser(
       sql`${payments.id} = ${paymentId} AND (${orders.customerId} = ${userId} OR ${orders.storeId} IN (SELECT id FROM pediu_stores WHERE ownerId = ${userId}))`,
     )
     .limit(1);
-  return result[0]?.payment;
+  const payment = result[0]?.payment;
+  if (!payment) return undefined;
+  const transactions = await db
+    .select({
+      qrCode: paymentTransactions.qrCode,
+      qrCodeBase64: paymentTransactions.qrCodeBase64,
+      ticketUrl: paymentTransactions.ticketUrl,
+    })
+    .from(paymentTransactions)
+    .where(
+      and(
+        eq(paymentTransactions.paymentId, payment.id),
+        eq(paymentTransactions.provider, "mercado_pago"),
+      ),
+    )
+    .orderBy(desc(paymentTransactions.id))
+    .limit(1);
+  return {
+    ...payment,
+    pixQrCode: transactions[0]?.qrCode ?? null,
+    pixQrCodeBase64: transactions[0]?.qrCodeBase64 ?? null,
+    pixTicketUrl: transactions[0]?.ticketUrl ?? null,
+  };
 }
 
 export async function getPaymentForOrder(
@@ -2540,6 +2717,21 @@ export async function applyPaymentWebhook(input: {
           transactionId: input.transactionId ?? payment.transactionId,
         })
         .where(eq(payments.id, payment.id));
+      if (input.provider === "mercado_pago") {
+        await tx
+          .update(paymentTransactions)
+          .set({
+            status: input.status,
+            providerTransactionId: input.transactionId ?? payment.transactionId,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(paymentTransactions.paymentId, payment.id),
+              eq(paymentTransactions.provider, "mercado_pago"),
+            ),
+          );
+      }
       await tx
         .update(webhookEvents)
         .set({ status: "processed", processedAt: new Date() })

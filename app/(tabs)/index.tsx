@@ -232,21 +232,29 @@ export default function HomeScreen() {
               showMascotMoment("full", 7600);
               setShowCheckout(false);
               setShowCart(false);
-              setPixPaymentPending(true);
+              setPixPaymentPending(charge.status === "pending");
               changeCustomerTab("orders");
               void customerOrdersQuery.refetch();
               void notifyWithHaptic(
-                "Pedido enviado. PIX aguardando confirmação",
+                charge.status === "pending"
+                  ? "Pedido enviado. PIX aguardando confirmação"
+                  : charge.status === "paid"
+                    ? "Pedido enviado. PIX confirmado"
+                    : charge.status === "cancelled"
+                      ? "Cobrança PIX cancelada"
+                      : "Cobrança PIX recusada",
               );
               void scheduleOrderNotification(
-                "Seu pedido foi enviado e o PIX está aguardando confirmação.",
+                charge.status === "pending"
+                  ? "Seu pedido foi enviado e o PIX está aguardando confirmação."
+                  : "Seu pedido foi enviado. Consulte o status do pagamento.",
               );
               router.push({
                 pathname: "/order/track",
                 params: {
                   orderId: String(result.orderId),
                   paymentId: String(charge.paymentId),
-                  pixUrl: charge.checkoutUrl ?? "",
+                  pixUrl: charge.ticketUrl ?? "",
                 },
               });
             },

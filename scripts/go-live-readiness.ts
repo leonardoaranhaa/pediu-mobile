@@ -124,19 +124,23 @@ export function evaluateReadiness(
   }> = [
     {
       id: "pix",
-      title: "PSP PIX configurado",
-      keys: ["PIX_API_URL", "PIX_API_KEY"],
+      title: "Mercado Pago PIX configurado",
+      keys: [
+        "PIX_PROVIDER",
+        "MERCADO_PAGO_ACCESS_TOKEN",
+        "MERCADO_PAGO_NOTIFICATION_URL",
+      ],
       requiredForProduction: true,
       guidance:
-        "Configure PIX_API_URL e PIX_API_KEY após escolher e homologar o PSP.",
+        "Configure PIX_PROVIDER=mercado_pago, o Access Token e a URL HTTPS do webhook no ambiente do servidor.",
     },
     {
       id: "payment-webhook",
-      title: "Webhook de pagamento configurado",
-      keys: ["PAYMENT_WEBHOOK_SECRET"],
+      title: "Webhook Mercado Pago configurado",
+      keys: ["MERCADO_PAGO_WEBHOOK_SECRET"],
       requiredForProduction: true,
       guidance:
-        "Configure PAYMENT_WEBHOOK_SECRET e valide assinatura, duplicidade, falha e reconciliação.",
+        "Configure o segredo de assinatura Mercado Pago e registre a URL de notificação no painel da aplicação.",
     },
     {
       id: "oauth",
@@ -166,8 +170,7 @@ export function evaluateReadiness(
 
   for (const integration of integrationChecks) {
     const isPixConfigured =
-      integration.id !== "pix" ||
-      Boolean(env.PIX_PROVIDER?.trim() && env.PIX_PROVIDER.trim() !== "manual");
+      integration.id !== "pix" || env.PIX_PROVIDER?.trim() === "mercado_pago";
     const isConfigured = configured(env, integration.keys) && isPixConfigured;
     checks.push({
       id: integration.id,
@@ -180,7 +183,7 @@ export function evaluateReadiness(
       detail: isConfigured
         ? "Variáveis necessárias presentes; valores permanecem ocultos."
         : !isPixConfigured && production
-          ? "Produção bloqueada: PIX_PROVIDER=manual ou ausente não cria cobranças em um PSP. Configure um provedor homologado."
+          ? "Produção bloqueada: PIX_PROVIDER precisa ser mercado_pago para criar cobranças reais."
           : integration.guidance,
     });
   }

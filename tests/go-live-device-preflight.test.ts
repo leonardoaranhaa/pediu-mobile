@@ -53,9 +53,11 @@ const baseInput = {
     OAUTH_SERVER_URL: "https://oauth.example.com",
     BUILT_IN_FORGE_API_URL: "https://forge.example.com",
     BUILT_IN_FORGE_API_KEY: "forge-key",
-    PIX_API_URL: "https://pix.example.com",
-    PIX_API_KEY: "pix-key",
-    PAYMENT_WEBHOOK_SECRET: "webhook-secret",
+    PIX_PROVIDER: "mercado_pago",
+    MERCADO_PAGO_ACCESS_TOKEN: "mp-access-secret",
+    MERCADO_PAGO_NOTIFICATION_URL:
+      "https://api.example.com/api/webhooks/payments",
+    MERCADO_PAGO_WEBHOOK_SECRET: "webhook-secret",
   },
 };
 
@@ -97,6 +99,17 @@ describe("go-live device preflight", () => {
     expect(checks.find((check) => check.id === "device-api-url")?.status).toBe(
       "PASS",
     );
+  });
+
+  it("does not mark PIX ready for a provider other than Mercado Pago", () => {
+    const checks = buildDevicePreflightReport({
+      ...baseInput,
+      env: { ...baseInput.env, PIX_PROVIDER: "other-provider" },
+    });
+
+    expect(checks.find((check) => check.id === "pix")).toMatchObject({
+      status: "NOT_CONFIGURED",
+    });
   });
 
   it("blocks a localhost API because physical devices cannot reach it", () => {

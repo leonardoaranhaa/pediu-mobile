@@ -80,6 +80,23 @@ function externalCheck(
       };
 }
 
+function mercadoPagoPixCheck(
+  env: Record<string, string | undefined>,
+): DevicePreflightCheck {
+  if (env.PIX_PROVIDER?.trim() !== "mercado_pago") {
+    return {
+      id: "pix",
+      status: "NOT_CONFIGURED",
+      message: "Configure PIX_PROVIDER=mercado_pago para habilitar PIX",
+    };
+  }
+  return externalCheck("pix", "Mercado Pago PIX", env, [
+    "MERCADO_PAGO_ACCESS_TOKEN",
+    "MERCADO_PAGO_NOTIFICATION_URL",
+    "MERCADO_PAGO_WEBHOOK_SECRET",
+  ]);
+}
+
 export function buildDevicePreflightReport(
   input: DevicePreflightInput,
 ): DevicePreflightCheck[] {
@@ -185,11 +202,7 @@ export function buildDevicePreflightReport(
       "BUILT_IN_FORGE_API_URL",
       "BUILT_IN_FORGE_API_KEY",
     ]),
-    externalCheck("pix", "PSP/PIX", env, [
-      "PIX_API_URL",
-      "PIX_API_KEY",
-      "PAYMENT_WEBHOOK_SECRET",
-    ]),
+    mercadoPagoPixCheck(env),
   );
 
   checks.push({

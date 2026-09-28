@@ -38,10 +38,14 @@ API_BASE_URL=http://127.0.0.1:3004 \
 DATABASE_URL=<mariadb-de-validacao> \
 JWT_SECRET=<segredo-de-teste> \
 VITE_APP_ID=pr7-concurrency-app \
-PAYMENT_WEBHOOK_SECRET=<segredo-de-teste> \
+MERCADO_PAGO_ACCESS_TOKEN=<token-falso-do-mock> \
+MERCADO_PAGO_WEBHOOK_SECRET=<segredo-de-teste> \
+MERCADO_PAGO_API_BASE_URL=http://127.0.0.1:3100 \
 CONCURRENCY_REQUESTS=12 \
 pnpm go-live:concurrency
 ```
+
+Inicie `pnpm exec tsx scripts/mercado-pago-api-mock.ts` antes da API no smoke. O override local de `MERCADO_PAGO_API_BASE_URL` só é respeitado fora de produção; com `NODE_ENV=production`, as chamadas usam sempre o host oficial do Mercado Pago.
 
 O script:
 

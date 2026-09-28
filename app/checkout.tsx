@@ -50,14 +50,27 @@ export default function CheckoutScreen() {
     retry: false,
     refetchOnWindowFocus: false,
   });
+  const createPix = trpc.pediu.payments.createPix.useMutation();
   const createOrder = trpc.pediu.orders.create.useMutation({
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
+      let paymentId = result.paymentId;
+      if (paymentMethod === "pix" && result.paymentId) {
+        try {
+          const pixCharge = await createPix.mutateAsync({
+            orderId: result.orderId,
+          });
+          paymentId = pixCharge.paymentId;
+        } catch {
+          // The idempotent order key lets the customer safely retry PIX setup.
+          return;
+        }
+      }
       clear();
       router.replace({
         pathname: "/order/success",
         params: {
           orderId: String(result.orderId),
-          paymentId: result.paymentId ? String(result.paymentId) : "",
+          paymentId: paymentId ? String(paymentId) : "",
           total: quote.data?.total ?? "",
         },
       });
@@ -385,13 +398,25 @@ export default function CheckoutScreen() {
             {createOrder.error.message}
           </Text>
         ) : null}
+        {createPix.error ? (
+          <Text style={{ color: PEDIU.coral, fontSize: 12 }}>
+            Não foi possível gerar o PIX: {createPix.error.message}. O pedido já
+            foi salvo; tente confirmar novamente para repetir a operação com
+            segurança.
+          </Text>
+        ) : null}
         <PrimaryButton
           title={
-            createOrder.isPending ? "Criando pedido..." : "Confirmar pedido"
+            createOrder.isPending
+              ? "Criando pedido..."
+              : createPix.isPending
+                ? "Gerando PIX..."
+                : "Confirmar pedido"
           }
           onPress={submit}
           disabled={
             createOrder.isPending ||
+            createPix.isPending ||
             quote.isFetching ||
             !quote.data ||
             !address.trim()

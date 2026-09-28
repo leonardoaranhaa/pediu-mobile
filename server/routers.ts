@@ -958,53 +958,75 @@ export const appRouter = router({
             throw new Error("Pedido não encontrado ou não autorizado");
           if (order.status === "Cancelado")
             throw new Error("Não é possível pagar um pedido cancelado");
-          const store = await db.getStoreById(order.storeId);
-          if (!store?.pixKey)
-            throw new Error("A loja ainda não configurou uma chave PIX");
-          const existingPayment = await db.getPendingPixPaymentForOrder(
-            order.id,
+          const payment = await db.getPaymentForOrder(order.id, ctx.user.id);
+          if (!payment || payment.method !== "pix")
+            throw new Error("Pedido não configurado para pagamento via PIX");
+
+          const existingTransaction = await db.getPixTransactionForPayment(
+            payment.id,
           );
-          if (existingPayment)
+          if (existingTransaction) {
+            if (
+              existingTransaction.amount !== order.total ||
+              existingTransaction.currency !== "BRL" ||
+              existingTransaction.externalReference !==
+                `pediu-order-${order.id}` ||
+              !existingTransaction.providerTransactionId
+            ) {
+              throw new Error(
+                "A cobrança PIX existente não corresponde ao pedido local",
+              );
+            }
             return {
-              paymentId: existingPayment.id,
+              paymentId: payment.id,
               amount: order.total,
-              providerChargeId: existingPayment.transactionId,
-              status: existingPayment.status,
-              checkoutUrl: null,
-              provider: "persisted",
+              provider: "mercado_pago",
+              providerChargeId: existingTransaction.providerTransactionId,
+              externalReference: existingTransaction.externalReference,
+              qrCode: existingTransaction.qrCode,
+              qrCodeBase64: existingTransaction.qrCodeBase64,
+              ticketUrl: existingTransaction.ticketUrl,
+              status: payment.status,
               message: "Cobrança PIX já existente.",
             };
+          }
+          if (payment.status !== "pending")
+            throw new Error("Este pagamento PIX não está pendente");
+
+          const idempotencyKey = `pix-order-${order.id}`;
           const charge = await createPixCharge({
             orderId: order.id,
             amount: order.total,
-            pixKey: store.pixKey,
-            idempotencyKey: `pix-order-${order.id}`,
+            payerEmail: ctx.user.email ?? "",
+            idempotencyKey,
           });
-          let paymentId: number;
-          try {
-            paymentId = await db.createPendingPixPayment(
-              order.id,
-              store.pixKey,
-              charge.providerChargeId,
-            );
-          } catch (error) {
-            if (!charge.providerChargeId) throw error;
-            const existingByTransaction = await db.getPaymentByTransactionId(
-              charge.providerChargeId,
-            );
-            if (!existingByTransaction) throw error;
-            paymentId = existingByTransaction.id;
+          if (charge.provider === "mercado_pago" && charge.providerChargeId) {
+            await db.createMercadoPagoPaymentTransaction({
+              paymentId: payment.id,
+              providerTransactionId: charge.providerChargeId,
+              amount: order.total,
+              currency: "BRL",
+              idempotencyKey,
+              externalReference:
+                charge.externalReference ?? `pediu-order-${order.id}`,
+              status: charge.status,
+              qrCode: charge.qrCode,
+              qrCodeBase64: charge.qrCodeBase64,
+              ticketUrl: charge.ticketUrl,
+            });
           }
           try {
             await sendPushToUser(
               ctx.user.id,
-              "PIX gerado",
-              `A cobrança PIX do pedido #${order.id} está pronta para pagamento.`,
+              charge.status === "failed" ? "PIX recusado" : "PIX gerado",
+              charge.status === "failed"
+                ? `A cobrança PIX do pedido #${order.id} foi recusada.`
+                : `A cobrança PIX do pedido #${order.id} está pronta para pagamento.`,
               {
                 type: "payment",
                 orderId: order.id,
-                paymentId,
-                status: "pending",
+                paymentId: payment.id,
+                status: charge.status,
               },
             );
           } catch (error) {
@@ -1013,7 +1035,7 @@ export const appRouter = router({
               error,
             );
           }
-          return { paymentId, amount: order.total, ...charge };
+          return { paymentId: payment.id, amount: order.total, ...charge };
         }),
     }),
     clients: router({

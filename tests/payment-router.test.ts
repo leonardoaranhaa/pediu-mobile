@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "../server/routers";
 import * as db from "../server/db";
 import * as payments from "../server/payments";
@@ -24,47 +24,84 @@ const merchant = {
   lastSignedIn: new Date(),
 };
 
-describe("Pediu payment operational contract", () => {
+const order = {
+  id: 501,
+  customerId: 20,
+  storeId: 7,
+  total: "42.50",
+  status: "Pendente",
+};
+const payment = {
+  id: 701,
+  orderId: 501,
+  method: "pix",
+  status: "pending",
+  pixKey: null,
+  transactionId: null,
+  createdAt: new Date(),
+};
+const savedTransaction = {
+  id: 91,
+  paymentId: 701,
+  provider: "mercado_pago",
+  providerTransactionId: "charge-501",
+  status: "pending",
+  amount: "42.50",
+  currency: "BRL",
+  idempotencyKey: "pix-order-501",
+  externalReference: "pediu-order-501",
+  qrCode: "copy-paste-code",
+  qrCodeBase64: "cXItY29kZQ==",
+  ticketUrl: "https://www.mercadopago.com.br/pay/charge-501",
+};
+
+describe("Pediu Mercado Pago payment contract", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
   it("does not expose a client-controlled payment confirmation mutation", () => {
-    const procedureNames = Object.keys((appRouter as any)._def.procedures ?? {});
+    const procedureNames = Object.keys(
+      (appRouter as any)._def.procedures ?? {},
+    );
     expect(procedureNames).not.toContain("pediu.payments.confirm");
   });
 
-  it("returns payment status only to an authorized customer", async () => {
+  it("returns payment status and persisted PIX data only to an authorized customer", async () => {
     vi.spyOn(db, "getPaymentForUser").mockResolvedValue({
-      id: 701, orderId: 501, method: "pix", status: "pending",
-      pixKey: "store-pix@test.local", transactionId: "charge-501", createdAt: new Date(),
+      ...payment,
+      pixQrCode: "copy-paste-code",
+      pixQrCodeBase64: "cXItY29kZQ==",
+      pixTicketUrl: savedTransaction.ticketUrl,
     } as any);
 
     const caller = appRouter.createCaller({ user: customer } as any);
     const result = await caller.pediu.payments.get({ paymentId: 701 });
 
-    expect(result).toMatchObject({ id: 701, orderId: 501, status: "pending" });
+    expect(result).toMatchObject({
+      id: 701,
+      orderId: 501,
+      status: "pending",
+      pixQrCode: "copy-paste-code",
+      pixQrCodeBase64: "cXItY29kZQ==",
+    });
   });
 
   it("rejects payment status lookup when the user is not authorized", async () => {
     vi.spyOn(db, "getPaymentForUser").mockResolvedValue(undefined);
     const caller = appRouter.createCaller({ user: merchant } as any);
 
-    await expect(caller.pediu.payments.get({ paymentId: 701 }))
-      .rejects.toThrow("Pagamento não encontrado ou não autorizado");
+    await expect(caller.pediu.payments.get({ paymentId: 701 })).rejects.toThrow(
+      "Pagamento não encontrado ou não autorizado",
+    );
   });
 
-  it("reuses an existing pending PIX payment instead of creating a duplicate charge", async () => {
-    vi.spyOn(db, "getOrderForCustomer").mockResolvedValue({
-      id: 501, customerId: 20, storeId: 7, total: "42.50", status: "Pendente",
-    } as any);
-    vi.spyOn(db, "getStoreById").mockResolvedValue({
-      id: 7, pixKey: "store-pix@test.local",
-    } as any);
-    vi.spyOn(db, "getPendingPixPaymentForOrder").mockResolvedValue({
-      id: 701, orderId: 501, method: "pix", status: "pending",
-      pixKey: "store-pix@test.local", transactionId: "charge-existing", createdAt: new Date(),
-    } as any);
+  it("reuses an existing Mercado Pago transaction instead of creating a duplicate charge", async () => {
+    vi.spyOn(db, "getOrderForCustomer").mockResolvedValue(order as any);
+    vi.spyOn(db, "getPaymentForOrder").mockResolvedValue(payment as any);
+    vi.spyOn(db, "getPixTransactionForPayment").mockResolvedValue(
+      savedTransaction as any,
+    );
     const charge = vi.spyOn(payments, "createPixCharge");
 
     const caller = appRouter.createCaller({ user: customer } as any);
@@ -74,27 +111,33 @@ describe("Pediu payment operational contract", () => {
     expect(result).toMatchObject({
       paymentId: 701,
       amount: "42.50",
-      providerChargeId: "charge-existing",
+      providerChargeId: "charge-501",
+      externalReference: "pediu-order-501",
+      qrCode: "copy-paste-code",
       status: "pending",
     });
   });
 
-  it("creates PIX using the persisted order total and store PIX key", async () => {
-    vi.spyOn(db, "getOrderForCustomer").mockResolvedValue({
-      id: 501, customerId: 20, storeId: 7, total: "42.50", status: "Pendente",
-    } as any);
-    vi.spyOn(db, "getStoreById").mockResolvedValue({
-      id: 7, pixKey: "store-pix@test.local",
-    } as any);
+  it("creates a Mercado Pago charge using the persisted order total and stores QR/idempotency details", async () => {
+    vi.spyOn(db, "getOrderForCustomer").mockResolvedValue(order as any);
+    vi.spyOn(db, "getPaymentForOrder").mockResolvedValue(payment as any);
+    vi.spyOn(db, "getPixTransactionForPayment").mockResolvedValue(undefined);
     const charge = vi.spyOn(payments, "createPixCharge").mockResolvedValue({
-      provider: "test",
+      provider: "mercado_pago",
       providerChargeId: "charge-501",
-      checkoutUrl: "https://pix.test/charge-501",
+      externalReference: "pediu-order-501",
+      qrCode: "copy-paste-code",
+      qrCodeBase64: "cXItY29kZQ==",
+      ticketUrl: savedTransaction.ticketUrl,
       status: "pending",
       message: "pending",
     });
-    const createPayment = vi.spyOn(db, "createPendingPixPayment").mockResolvedValue(701);
-    const notify = vi.spyOn(push, "sendPushToUser").mockResolvedValue({ sent: 0 });
+    const persist = vi
+      .spyOn(db, "createMercadoPagoPaymentTransaction")
+      .mockResolvedValue(savedTransaction as any);
+    const notify = vi
+      .spyOn(push, "sendPushToUser")
+      .mockResolvedValue({ sent: 0 });
 
     const caller = appRouter.createCaller({ user: customer } as any);
     const result = await caller.pediu.payments.createPix({ orderId: 501 });
@@ -102,47 +145,60 @@ describe("Pediu payment operational contract", () => {
     expect(charge).toHaveBeenCalledWith({
       orderId: 501,
       amount: "42.50",
-      pixKey: "store-pix@test.local",
+      payerEmail: "cliente@test.local",
       idempotencyKey: "pix-order-501",
     });
-    expect(createPayment).toHaveBeenCalledWith(501, "store-pix@test.local", "charge-501");
-    expect(notify).toHaveBeenCalledWith(20, "PIX gerado", "A cobrança PIX do pedido #501 está pronta para pagamento.", { type: "payment", orderId: 501, paymentId: 701, status: "pending" });
-    expect(result).toMatchObject({ paymentId: 701, amount: "42.50", providerChargeId: "charge-501" });
+    expect(persist).toHaveBeenCalledWith({
+      paymentId: 701,
+      providerTransactionId: "charge-501",
+      amount: "42.50",
+      currency: "BRL",
+      idempotencyKey: "pix-order-501",
+      externalReference: "pediu-order-501",
+      status: "pending",
+      qrCode: "copy-paste-code",
+      qrCodeBase64: "cXItY29kZQ==",
+      ticketUrl: savedTransaction.ticketUrl,
+    });
+    expect(notify).toHaveBeenCalledWith(
+      20,
+      "PIX gerado",
+      "A cobrança PIX do pedido #501 está pronta para pagamento.",
+      {
+        type: "payment",
+        orderId: 501,
+        paymentId: 701,
+        status: "pending",
+      },
+    );
+    expect(result).toMatchObject({
+      paymentId: 701,
+      amount: "42.50",
+      providerChargeId: "charge-501",
+    });
   });
 
-  it("reuses the persisted payment when the provider transaction was created by a concurrent retry", async () => {
-    vi.spyOn(db, "getOrderForCustomer").mockResolvedValue({
-      id: 501, customerId: 20, storeId: 7, total: "42.50", status: "Pendente",
+  it("does not create PIX for a payment belonging to another method", async () => {
+    vi.spyOn(db, "getOrderForCustomer").mockResolvedValue(order as any);
+    vi.spyOn(db, "getPaymentForOrder").mockResolvedValue({
+      ...payment,
+      method: "cash",
     } as any);
-    vi.spyOn(db, "getStoreById").mockResolvedValue({
-      id: 7, pixKey: "store-pix@test.local",
-    } as any);
-    vi.spyOn(db, "getPendingPixPaymentForOrder").mockResolvedValue(undefined);
-    vi.spyOn(payments, "createPixCharge").mockResolvedValue({
-      provider: "test",
-      providerChargeId: "charge-concurrent",
-      checkoutUrl: "https://pix.test/charge-concurrent",
-      status: "pending",
-      message: "pending",
-    });
-    vi.spyOn(db, "createPendingPixPayment").mockRejectedValue(new Error("duplicate transaction"));
-    vi.spyOn(db, "getPaymentByTransactionId").mockResolvedValue({
-      id: 702, orderId: 501, method: "pix", status: "pending",
-      pixKey: "store-pix@test.local", transactionId: "charge-concurrent", createdAt: new Date(),
-    } as any);
-    vi.spyOn(push, "sendPushToUser").mockResolvedValue({ sent: 0 });
-
+    const charge = vi.spyOn(payments, "createPixCharge");
     const caller = appRouter.createCaller({ user: customer } as any);
-    const result = await caller.pediu.payments.createPix({ orderId: 501 });
 
-    expect(result).toMatchObject({ paymentId: 702, providerChargeId: "charge-concurrent" });
+    await expect(
+      caller.pediu.payments.createPix({ orderId: 501 }),
+    ).rejects.toThrow("Pedido não configurado para pagamento via PIX");
+    expect(charge).not.toHaveBeenCalled();
   });
 
   it("rejects PIX creation for an order that is not owned by the customer", async () => {
     vi.spyOn(db, "getOrderForCustomer").mockResolvedValue(undefined);
     const caller = appRouter.createCaller({ user: customer } as any);
 
-    await expect(caller.pediu.payments.createPix({ orderId: 999 }))
-      .rejects.toThrow("Pedido não encontrado ou não autorizado");
+    await expect(
+      caller.pediu.payments.createPix({ orderId: 999 }),
+    ).rejects.toThrow("Pedido não encontrado ou não autorizado");
   });
 });

@@ -8,7 +8,7 @@ const apiBaseUrl = (
   process.env.API_BASE_URL ?? `http://127.0.0.1:${process.env.PORT ?? "3000"}`
 ).replace(/\/$/, "");
 const databaseUrl = process.env.DATABASE_URL?.trim() ?? "";
-const webhookSecret = process.env.PAYMENT_WEBHOOK_SECRET?.trim() ?? "";
+const webhookSecret = process.env.MERCADO_PAGO_WEBHOOK_SECRET?.trim() ?? "";
 const concurrency = Math.min(
   Math.max(Number(process.env.CONCURRENCY_REQUESTS ?? 12), 2),
   32,
@@ -21,7 +21,9 @@ if (!process.env.VITE_APP_ID?.trim())
 if (!process.env.JWT_SECRET?.trim())
   throw new Error("JWT_SECRET is required for concurrency smoke.");
 if (!webhookSecret)
-  throw new Error("PAYMENT_WEBHOOK_SECRET is required for concurrency smoke.");
+  throw new Error(
+    "MERCADO_PAGO_WEBHOOK_SECRET is required for concurrency smoke.",
+  );
 
 function insertId(result: any): number {
   const id = Number(result.insertId);
@@ -64,20 +66,26 @@ async function postTrpc<T>(
   return unwrap<T>(body);
 }
 
-async function postWebhook(body: string, eventId: string) {
+async function postWebhook(body: string, eventId: string, paymentId: string) {
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const manifest = `id:${paymentId.toLowerCase()};request-id:${eventId};ts:${timestamp};`;
   const signature = crypto
     .createHmac("sha256", webhookSecret)
-    .update(body)
+    .update(manifest, "utf8")
     .digest("hex");
-  const response = await fetch(`${apiBaseUrl}/api/webhooks/payments`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-pediu-signature": signature,
+  const response = await fetch(
+    `${apiBaseUrl}/api/webhooks/payments?data.id=${encodeURIComponent(paymentId)}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-request-id": eventId,
+        "x-signature": `ts=${timestamp},v1=${signature}`,
+      },
+      body,
+      signal: AbortSignal.timeout(15_000),
     },
-    body,
-    signal: AbortSignal.timeout(15_000),
-  });
+  );
   const payload = await response.json().catch(() => ({}));
   return { status: response.status, payload, eventId };
 }
@@ -209,6 +217,24 @@ async function main() {
     );
     orderId = orderResponses[0]!.orderId;
     paymentId = orderResponses[0]!.paymentId;
+    const providerPaymentId = String(orderId);
+    await connection.execute(
+      "INSERT INTO pediu_payment_transactions (paymentId, provider, providerTransactionId, status, amount, currency, idempotencyKey, externalReference) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [
+        paymentId,
+        "mercado_pago",
+        providerPaymentId,
+        "pending",
+        "17.00",
+        "BRL",
+        `pix-order-${orderId}`,
+        `pediu-order-${orderId}`,
+      ],
+    );
+    await connection.execute(
+      "UPDATE pediu_payments SET transactionId = ? WHERE id = ?",
+      [providerPaymentId, paymentId],
+    );
 
     const [orderRows] = await connection.execute(
       "SELECT id FROM pediu_orders WHERE idempotencyKey = ?",
@@ -249,15 +275,13 @@ async function main() {
     ]);
 
     const webhookBody = JSON.stringify({
-      provider: "ci-concurrency",
-      eventId,
-      eventType: "payment.paid",
-      paymentId,
-      status: "paid",
+      action: "payment.updated",
+      type: "payment",
+      data: { id: providerPaymentId },
     });
     const webhookResponses = await Promise.all(
       Array.from({ length: concurrency }, () =>
-        postWebhook(webhookBody, eventId),
+        postWebhook(webhookBody, eventId, providerPaymentId),
       ),
     );
     assert.ok(
@@ -274,7 +298,7 @@ async function main() {
     );
     const [eventRows] = await connection.execute(
       "SELECT id FROM pediu_webhook_events WHERE provider = ? AND providerEventId = ?",
-      ["ci-concurrency", eventId],
+      ["mercado_pago", eventId],
     );
     assert.equal((eventRows as Array<unknown>).length, 1);
     const [paidRows] = await connection.execute(
@@ -299,6 +323,10 @@ async function main() {
         [idempotencyKey],
       );
       await connection.execute(
+        "DELETE FROM pediu_payment_transactions WHERE paymentId IN (SELECT id FROM pediu_payments WHERE orderId IN (SELECT id FROM pediu_orders WHERE idempotencyKey = ?))",
+        [idempotencyKey],
+      );
+      await connection.execute(
         "DELETE FROM pediu_payments WHERE orderId IN (SELECT id FROM pediu_orders WHERE idempotencyKey = ?)",
         [idempotencyKey],
       );
@@ -308,7 +336,7 @@ async function main() {
       );
       await connection.execute(
         "DELETE FROM pediu_webhook_events WHERE provider = ? AND providerEventId = ?",
-        ["ci-concurrency", eventId],
+        ["mercado_pago", eventId],
       );
       if (addressId) {
         await connection.execute(

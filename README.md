@@ -56,12 +56,12 @@ Para habilitar autenticação e integrações, configure também, conforme o rec
 - `OAUTH_SERVER_URL`, `EXPO_PUBLIC_OAUTH_PORTAL_URL`, `EXPO_PUBLIC_OAUTH_SERVER_URL`, `EXPO_PUBLIC_APP_ID` e, quando necessário, `EXPO_PUBLIC_API_BASE_URL`.
 - `OWNER_OPEN_ID` para o usuário proprietário do ambiente.
 - `BUILT_IN_FORGE_API_URL` e `BUILT_IN_FORGE_API_KEY` para os recursos de dados, LLM, storage, transcrição e notificações oferecidos pelo ambiente.
-- `PIX_PROVIDER`, `PIX_API_URL` e `PIX_API_KEY` para um provedor PIX real.
-- `PAYMENT_WEBHOOK_SECRET` para validar o HMAC do endpoint `POST /api/webhooks/payments`.
+- `PIX_PROVIDER=mercado_pago`, `MERCADO_PAGO_ACCESS_TOKEN` e `MERCADO_PAGO_NOTIFICATION_URL` para criar cobranças PIX no Mercado Pago. A URL deve ser o endpoint HTTPS público real `POST /api/webhooks/payments` do ambiente implantado; não a exponha ao cliente.
+- `MERCADO_PAGO_WEBHOOK_SECRET` para validar `x-signature` no endpoint `POST /api/webhooks/payments`. Configure a mesma URL e o segredo correspondente no painel de Webhooks da aplicação Mercado Pago.
 - `EMAIL_WEBHOOK_URL`, `EMAIL_WEBHOOK_SECRET` e `EMAIL_VERIFICATION_BASE_URL` para o envio de links de verificação de e-mail.
 - `COOKIE_DOMAIN` quando o cookie web precisar de um domínio explícito.
 
-Variáveis com prefixo `EXPO_PUBLIC_` são incorporadas ao cliente. Não coloque segredos, tokens privados ou chaves de gateway nessas variáveis.
+Variáveis com prefixo `EXPO_PUBLIC_` são incorporadas ao cliente. Não coloque segredos, tokens privados ou chaves de gateway nessas variáveis. O Access Token e o segredo de webhook do Mercado Pago devem existir apenas no ambiente do servidor.
 
 ## Banco de dados e migrations
 
