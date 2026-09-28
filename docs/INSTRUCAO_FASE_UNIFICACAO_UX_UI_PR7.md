@@ -47,3 +47,12 @@ Foi usado merge de três vias entre o head do PR #7 e `feat/customer-ai-ads`. Os
 ## Limites de aceite
 
 Esta instrução não fecha o Go-Live comercial. O PSP/PIX continua pendente por CNPJ, e as demais dependências externas acima continuam explicitamente não configuradas até haver credenciais, ambiente definitivo ou evidência física correspondente.
+
+## Evidência remota do PR #7
+
+No commit `3264093fb6cff4aec1e20a69bac8a7df4f1aabad`, os dois workflows obrigatórios passaram:
+
+- `Pediu CI` — run `36404203450`;
+- `Pediu Operational Validation` — run `36404203461`.
+
+O PR #7 permaneceu `OPEN`, `MERGEABLE` e `CLEAN`, com os dois checks obrigatórios verdes.
