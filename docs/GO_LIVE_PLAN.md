@@ -1012,3 +1012,40 @@ A correção extraiu as cenas e o mapeamento de rotas para `lib/mascot-scenes.ts
 A instrução técnica desta etapa está em `docs/INSTRUCAO_FASE_CORRECAO_UX_MASCOTE_PR7.md`. O preview temporário desta sandbox está disponível em [Expo Web](https://8081-iue696glzt2dfr1suc5xk-6d6ba285.us1.manus.computer), com API pública em `https://3000-iue696glzt2dfr1suc5xk-6d6ba285.us1.manus.computer`.
 
 Esta etapa não fecha a Fase 7 de dispositivos físicos. OAuth real, push externo, storage externo, PSP/PIX, CNPJ, evidência Android/iOS, staging/produção definitivos e publicação nas lojas continuam pendentes; o Go-Live comercial permanece bloqueado e não deve ser marcado como READY.
+
+
+---
+
+# 39. Reanálise de mercado e lacunas para Go-Live — 28/09/2026
+
+Foi realizada uma reanálise do Pediu no head `df7ad15188d6dce73de16ddaf741edc611f696b8` do PR #7, combinando auditoria direta do código com comparação atualizada de iFood, Rappi, 99Food, aiqfome e Zé Delivery. O relatório completo está em `docs/REANALISE_MERCADO_E_LACUNAS_GO_LIVE_PR7_2026-09-28.md`.
+
+## Conclusão operacional
+
+A fundação do Pediu está acima de um protótipo: cliente, lojista, courier, marketplace, checkout server-side, idempotência, concorrência, segurança HTTP, suporte, UX, mascote, personalização e anúncios IA estão implementados estruturalmente e cobertos por testes. Isso não equivale a READY comercial.
+
+A comparação confirmou que o baseline de delivery é: elegibilidade por endereço, checkout com preço/taxas/ETA claros, fulfillment híbrido, console operacional de lojista, despacho com fallback, status/prova de entrega, suporte por incidente e política de cancelamento/crédito/estorno.
+
+## Bloqueadores técnicos priorizados
+
+- **P0:** PSP/PIX, refund, chargeback, reconciliação, comissão e payout ainda não fecham o ciclo financeiro.
+- **P0:** cancelamento não reverte pagamento liquidado nem saldo/ledger de fiado.
+- **P0:** não existe estoque quantitativo nem reserva atômica contra overselling.
+- **P0:** mutation genérica de status ainda pode bypassar assignment/localização/prova de entrega.
+- **P0:** health/readiness pode ficar verde com banco indisponível ou listagens mascarando falha como vazio.
+- **P0:** avaliações precisam restringir autor ao cliente e validar produto/courier alvo.
+- **P0:** despacho precisa de reoferta/fallback e suporte a ausência de entregador.
+- **P1:** push/outbox/receipts, tracking de mapa/background, expiração de offers, LGPD completa, serviceability/pickup, offline/reconexão, rate limit distribuído, cursor pagination e presign em lote.
+
+## Próxima ordem vertical
+
+1. Pagamento comercial e reconciliação.
+2. Estoque, serviceability e pickup.
+3. Máquina de estados e prova de entrega.
+4. Incidentes, suporte e comunicação confiável.
+5. Tracking e validação em dispositivos reais.
+6. Autorização e privacidade completas.
+7. Escala, readiness, dashboards e piloto.
+8. Homologações externas e canary final.
+
+Após cada fatia continuam obrigatórios deployment smoke e stress; falha interrompe o avanço. O PSP/PIX segue pendente por CNPJ, e também permanecem pendentes OAuth real, push/dispositivos físicos, storage externo, backup operacional contínuo, observabilidade externa, staging/produção definitivos, domínio e publicação nas lojas. O Go-Live comercial permanece bloqueado e o PR #7 não deve ser marcado como READY.
