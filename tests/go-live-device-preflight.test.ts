@@ -16,8 +16,15 @@ const baseInput = {
     },
     plugins: [
       "expo-router",
+      "expo-asset",
+      ["expo-audio", {}] as [string, unknown],
       ["expo-location", {}] as [string, unknown],
       ["expo-notifications", {}] as [string, unknown],
+      "expo-font",
+      ["expo-video", {}] as [string, unknown],
+      "expo-web-browser",
+      ["expo-splash-screen", {}] as [string, unknown],
+      ["expo-build-properties", {}] as [string, unknown],
     ],
   },
   packageJson: {
@@ -26,6 +33,11 @@ const baseInput = {
       "expo-location": "1",
       "expo-notifications": "1",
       "expo-secure-store": "1",
+      "expo-asset": "1",
+      "expo-audio": "1",
+      "expo-font": "1",
+      "expo-video": "1",
+      "expo-web-browser": "1",
     },
   },
   easConfig: {
@@ -88,6 +100,22 @@ describe("go-live device preflight", () => {
     expect(
       checks.find((check) => check.id === "app-id-alignment")?.status,
     ).toBe("BLOCKED");
+  });
+
+  it("blocks a native bundle without expo-asset required by expo-audio", () => {
+    const dependencies = Object.fromEntries(
+      Object.entries(baseInput.packageJson.dependencies).filter(
+        ([name]) => name !== "expo-asset",
+      ),
+    );
+    const checks = buildDevicePreflightReport({
+      ...baseInput,
+      packageJson: { dependencies },
+    });
+
+    expect(checks.find((check) => check.id === "native-packages")?.status).toBe(
+      "BLOCKED",
+    );
   });
 
   it("keeps physical evidence external and does not fake a device pass", () => {

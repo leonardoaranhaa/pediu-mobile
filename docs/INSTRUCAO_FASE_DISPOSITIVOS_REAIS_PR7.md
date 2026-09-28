@@ -17,8 +17,8 @@ O preflight valida, sem imprimir valores de secrets:
 
 - identidade nativa `Pediu`, versão e scheme `pediupediu`;
 - bundle ID iOS e package Android;
-- dependências Expo para linking, localização, notificações e sessão segura;
-- plugins Expo de router, localização e notificações;
+- dependências Expo para linking, localização, notificações, áudio, vídeo, fonte, assets, browser e sessão segura;
+- plugins Expo de router, assets, áudio, localização, notificações, fonte, vídeo, browser, splash screen e build properties;
 - `EXPO_PUBLIC_API_BASE_URL` apontando para HTTPS público alcançável pelo aparelho;
 - alinhamento entre `EXPO_PUBLIC_APP_ID` e `VITE_APP_ID`;
 - perfis EAS `preview` e `production`;
@@ -82,6 +82,7 @@ pnpm check
 pnpm test
 pnpm build
 pnpm lint
+pnpm dlx expo-doctor@latest
 pnpm exec prettier --check scripts/device-preflight.ts scripts/go-live-device-preflight.ts tests/go-live-device-preflight.test.ts docs/INSTRUCAO_FASE_DISPOSITIVOS_REAIS_PR7.md
 pnpm go-live:device-preflight
 DEPLOYMENT_URL='https://staging.example.com' DEPLOYMENT_REQUIRED=1 pnpm go-live:deployment
@@ -105,6 +106,8 @@ Nenhum pagamento, push, localização ou notificação será simulado como evid�
 ## Evidência do preflight nesta fase
 
 O preflight versionado foi executado com a API pública temporária e o app ID alinhado ao backend. O resultado foi `PASS=6`, `BLOCKED=0` e `NOT_CONFIGURED=5`. Passaram identidade nativa, dependências, plugins Expo, URL HTTPS pública, alinhamento de app ID e perfis EAS.
+
+O diagnóstico oficial `pnpm dlx expo-doctor@latest` passou em `18/18 checks`. Antes disso, o diagnóstico encontrou a peer dependency ausente `expo-asset` exigida por `expo-audio`, além de versões patch do SDK 54 desatualizadas. A dependência foi adicionada, o plugin `expo-asset` foi declarado no `app.config.ts`, os pacotes do SDK foram alinhados e os plugins `expo-font` e `expo-web-browser` indicados pelo instalador foram declarados. O preflight passou a exigir esses módulos e plugins, e a regressão focada passou com 5 testes.
 
 Permaneceram `NOT_CONFIGURED` OAuth real, Forge para push/storage, PSP/PIX e a evidência física Android/iOS. Esses estados são deliberados: o script não inventa credenciais nem transforma preview web/Expo Go em aprovação de aparelho real.
 

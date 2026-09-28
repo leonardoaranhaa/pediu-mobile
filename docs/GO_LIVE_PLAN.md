@@ -938,3 +938,25 @@ A próxima etapa executável da Fase 7 foi iniciada com `scripts/device-prefligh
 | Operational Validation                                            | O workflow recebeu o passo `pnpm go-live:device-preflight`, sem transformar ausência de dispositivos em falso verde |
 
 O preflight deixou explicitamente como `NOT_CONFIGURED` OAuth real, Forge para push/storage, PSP/PIX e evidência física Android/iOS. A Fase 7 não está concluída: ainda faltam aparelhos Android e iOS reais, permissões, background, rede instável, GPS, notificações, deep links, recuperação de sessão e checkout observados em dispositivos físicos. Preview web e Expo Go comprovam o bundle de desenvolvimento, mas não substituem a matriz real. PSP/PIX, CNPJ, OAuth, push, storage externo, e-mail, observabilidade externa, staging/produção definitivos e publicação nas lojas continuam bloqueadores comerciais do Go-Live.
+
+---
+
+# 36. Compatibilidade nativa Expo SDK 54 — 28/09/2026
+
+A pré-validação de dispositivos revelou um bloqueador nativo real: `expo-audio` exigia a peer dependency `expo-asset`, que não estava declarada diretamente. A etapa também encontrou versões patch desatualizadas do SDK 54 e os config plugins ausentes de `expo-font` e `expo-web-browser` no app config dinâmico.
+
+A correção adicionou `expo-asset` na lista de dependências, declarou os plugins nativos necessários no `app.config.ts`, alinhou as versões compatíveis do Expo SDK 54 e normalizou os ranges esperados do React Navigation. O lockfile foi regenerado e validado com `pnpm install --frozen-lockfile --offline`.
+
+## Evidências executadas
+
+| Validação                 | Resultado                                                                                                           |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Expo Doctor               | `18/18 checks passed; No issues detected`                                                                           |
+| Configuração pública Expo | `Pediu`, versão `1.0.0`, scheme `pediupediu`, bundle/package `space.manus.pediu.mobile`, 10 plugins nativos         |
+| Regressões focadas        | 5 testes do preflight aprovados, incluindo bloqueio de `expo-asset` ausente                                         |
+| Matriz local final        | 32 arquivos, 138 testes aprovados; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados |
+| Export web de produção    | Export concluído com 91 arquivos e 50 rotas estáticas                                                               |
+| Deployment smoke final    | health 200, marketplace 200, CORS exato e métricas protegidas aprovados                                             |
+| Stress final read-only    | 120 requests / 12 workers; p50 20,9 ms; p95 76,6 ms; máximo 153,9 ms; erro 0%                                       |
+
+A etapa nativa estrutural está pronta para um build EAS, mas a sandbox não possui EAS CLI autenticado, Android SDK, `adb` ou dispositivos físicos. A Fase 7 continua aberta: não há evidência de instalação, permissões, localização, notificações, background, deep links ou checkout em Android/iOS reais. OAuth, push, storage externo, PSP/PIX, CNPJ, staging/produção definitivos e publicação nas lojas continuam pendentes; o Go-Live comercial permanece bloqueado.

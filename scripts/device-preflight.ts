@@ -30,9 +30,25 @@ const requiredNativePackages = [
   "expo-location",
   "expo-notifications",
   "expo-secure-store",
+  "expo-asset",
+  "expo-audio",
+  "expo-font",
+  "expo-video",
+  "expo-web-browser",
 ];
 
-const requiredPlugins = ["expo-router", "expo-location", "expo-notifications"];
+const requiredPlugins = [
+  "expo-router",
+  "expo-asset",
+  "expo-audio",
+  "expo-location",
+  "expo-notifications",
+  "expo-font",
+  "expo-video",
+  "expo-web-browser",
+  "expo-splash-screen",
+  "expo-build-properties",
+];
 
 function pluginName(plugin: string | unknown[]): string {
   return typeof plugin === "string"
