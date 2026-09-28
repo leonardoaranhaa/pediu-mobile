@@ -21,6 +21,7 @@
     "go-live:cors-security": "tsx scripts/go-live-cors-security.ts",
     "go-live:storage-security": "tsx scripts/go-live-storage-security.ts",
     "go-live:limits-security": "tsx scripts/go-live-limits-security.ts",
+    "go-live:device-preflight": "tsx scripts/go-live-device-preflight.ts",
     "go-live:backup-restore": "tsx scripts/go-live-backup-restore.ts",
     "go-live:stress": "tsx scripts/go-live-stress.ts",
     "go-live:deployment": "tsx scripts/go-live-deployment.ts",

@@ -919,3 +919,22 @@ O smoke HTTP contra o bundle real enviou payload JSON sintético acima de 16 MB 
 Esta fase endurece limites locais, mas não homologa transcrição real, LLM, storage externo, captura de áudio de usuário, provedor de voz ou payloads de produção. OAuth, PSP/PIX, CNPJ, webhook de provedor, cobrança/reconciliação, e-mail, push, observabilidade externa e dispositivos físicos continuam dependências externas; o Go-Live comercial permanece bloqueado.
 
 O commit `978d09a` passou no CI (`36317926354`) e no `Pediu Operational Validation` (`36317926344`), que executou também o novo `go-live:limits-security`. A fase está concluída neste escopo; integrações externas de voz e domínios de produção continuam pendentes.
+
+---
+
+# 35. Pré-validação de dispositivos Expo — 28/09/2026
+
+A próxima etapa executável da Fase 7 foi iniciada com `scripts/device-preflight.ts`, `scripts/go-live-device-preflight.ts`, o comando `pnpm go-live:device-preflight`, regressões unitárias e a instrução `docs/INSTRUCAO_FASE_DISPOSITIVOS_REAIS_PR7.md`. O preflight valida a identidade nativa `Pediu`, scheme `pediupediu`, bundle ID iOS, package Android, dependências e plugins Expo, perfis EAS, URL HTTPS pública do backend e alinhamento entre `EXPO_PUBLIC_APP_ID` e `VITE_APP_ID`.
+
+## Evidências executadas
+
+| Validação                                                         | Resultado                                                                                                           |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Preflight estrutural com API pública temporária e app ID alinhado | `PASS=6`, `BLOCKED=0`, `NOT_CONFIGURED=5`                                                                           |
+| Regressões focadas                                                | 4 testes aprovados para identidade, URL local inválida, app ID divergente e ausência de evidência física            |
+| Matriz local final                                                | 32 arquivos, 137 testes aprovados; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados |
+| Deployment smoke após a alteração                                 | health 200, marketplace 200, CORS exato e métricas protegidas aprovados                                             |
+| Stress final após a alteração                                     | 120 requests / 12 workers; p50 24,2 ms; p95 88,4 ms; máximo 145,2 ms; erro 0%                                       |
+| Operational Validation                                            | O workflow recebeu o passo `pnpm go-live:device-preflight`, sem transformar ausência de dispositivos em falso verde |
+
+O preflight deixou explicitamente como `NOT_CONFIGURED` OAuth real, Forge para push/storage, PSP/PIX e evidência física Android/iOS. A Fase 7 não está concluída: ainda faltam aparelhos Android e iOS reais, permissões, background, rede instável, GPS, notificações, deep links, recuperação de sessão e checkout observados em dispositivos físicos. Preview web e Expo Go comprovam o bundle de desenvolvimento, mas não substituem a matriz real. PSP/PIX, CNPJ, OAuth, push, storage externo, e-mail, observabilidade externa, staging/produção definitivos e publicação nas lojas continuam bloqueadores comerciais do Go-Live.

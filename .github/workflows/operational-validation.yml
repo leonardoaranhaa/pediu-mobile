@@ -110,6 +110,8 @@ jobs:
           exit 1
       - name: Run Go-Live readiness baseline
         run: pnpm go-live:check
+      - name: Run Go-Live device preflight
+        run: pnpm go-live:device-preflight
       - name: Run Go-Live client E2E smoke
         run: pnpm go-live:e2e
       - name: Run Go-Live merchant and delivery E2E smoke
