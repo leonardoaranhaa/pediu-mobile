@@ -6,8 +6,10 @@ import {
   Modal,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
 
 import { PediuMascot } from "@/components/pediu-mascot";
@@ -48,6 +50,8 @@ function ThemeOption({
     >
       <Animated.View
         style={{
+          width: "100%",
+          minWidth: 0,
           borderRadius: 20,
           padding: 14,
           borderWidth: 1.5,
@@ -64,7 +68,15 @@ function ThemeOption({
           ],
         }}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <View
+          style={{
+            width: "100%",
+            minWidth: 0,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
           <View
             style={{
               width: 48,
@@ -96,11 +108,19 @@ function ThemeOption({
               </Text>
             </View>
           </View>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={{ color: theme.ink, fontSize: 14, fontWeight: "900" }}>
+          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+            <Text
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={{ color: theme.ink, fontSize: 14, fontWeight: "900" }}
+            >
               {theme.label}
             </Text>
-            <Text style={{ color: theme.muted, fontSize: 11 }}>
+            <Text
+              numberOfLines={2}
+              ellipsizeMode="tail"
+              style={{ color: theme.muted, fontSize: 11 }}
+            >
               {theme.tagline}
             </Text>
           </View>
@@ -127,7 +147,7 @@ function ThemeOption({
             ) : null}
           </View>
         </View>
-        <View style={{ flexDirection: "row", gap: 7 }}>
+        <View style={{ width: "100%", flexDirection: "row", gap: 7 }}>
           <View
             style={{
               flex: 1,
@@ -198,8 +218,10 @@ function MascotStyleOption({
     <Pressable
       onPress={onPress}
       style={{
-        flex: 1,
-        minWidth: "30%",
+        width: "31%",
+        flexGrow: 0,
+        flexShrink: 1,
+        minWidth: 0,
         borderWidth: 1.5,
         borderColor: selected ? theme.primary : theme.line,
         backgroundColor: selected ? theme.primarySoft : theme.card,
@@ -213,10 +235,18 @@ function MascotStyleOption({
         size={18}
         color={selected ? theme.primary : theme.muted}
       />
-      <Text style={{ color: theme.ink, fontSize: 11, fontWeight: "900" }}>
+      <Text
+        numberOfLines={2}
+        ellipsizeMode="tail"
+        style={{ color: theme.ink, fontSize: 11, fontWeight: "900" }}
+      >
         {option.title}
       </Text>
-      <Text style={{ color: theme.muted, fontSize: 10, lineHeight: 14 }}>
+      <Text
+        numberOfLines={2}
+        ellipsizeMode="tail"
+        style={{ color: theme.muted, fontSize: 10, lineHeight: 14 }}
+      >
         {option.subtitle}
       </Text>
     </Pressable>
@@ -243,6 +273,9 @@ function PreferenceToggle({
       onPress={() => onChange(!value)}
       style={({ pressed }) => [
         {
+          width: "100%",
+          maxWidth: "100%",
+          minWidth: 0,
           flexDirection: "row",
           alignItems: "center",
           gap: 11,
@@ -267,7 +300,7 @@ function PreferenceToggle({
           color={value ? theme.primary : theme.muted}
         />
       </View>
-      <View style={{ flex: 1, gap: 2 }}>
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
         <Text style={{ color: theme.ink, fontSize: 13, fontWeight: "900" }}>
           {title}
         </Text>
@@ -323,6 +356,10 @@ export function ThemePicker({
   const updateTheme = trpc.pediu.account.profile.theme.update.useMutation();
   const [visible, setVisible] = useState(false);
   const modalProgress = useRef(new Animated.Value(0)).current;
+  const { width: windowWidth } = useWindowDimensions();
+  const modalHorizontalPadding = windowWidth
+    ? Math.min(20, Math.max(14, windowWidth * 0.05))
+    : 20;
 
   useEffect(() => {
     const remoteTheme = profileQuery.data?.themePreference;
@@ -347,10 +384,10 @@ export function ThemePicker({
     }).start();
   }, [modalProgress, visible]);
 
-  const chooseTheme = (next: AppTheme["id"]) => {
-    if (user?.id) setThemeForUser(user.id, next);
-    else setTheme(next);
-    if (isAuthenticated) updateTheme.mutate({ themeId: next });
+  const chooseTheme = (nextTheme: AppTheme["id"]) => {
+    if (user?.id) setThemeForUser(user.id, nextTheme);
+    else setTheme(nextTheme);
+    if (isAuthenticated) updateTheme.mutate({ themeId: nextTheme });
   };
 
   const close = () => {
@@ -363,7 +400,7 @@ export function ThemePicker({
   };
 
   return (
-    <View style={{ gap: 11 }}>
+    <View style={styles.root}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 11 }}>
         <View
           style={{
@@ -377,7 +414,7 @@ export function ThemePicker({
         >
           <MaterialIcons name="tune" size={22} color={theme.primary} />
         </View>
-        <View style={{ flex: 1, gap: 2 }}>
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
           <Text style={s.sectionTitle}>{title}</Text>
           <Text style={s.muted}>{description}</Text>
         </View>
@@ -392,6 +429,8 @@ export function ThemePicker({
       </View>
       <View
         style={{
+          width: "100%",
+          minWidth: 0,
           flexDirection: "row",
           alignItems: "center",
           gap: 10,
@@ -406,11 +445,11 @@ export function ThemePicker({
           motionEnabled={customization.motionEnabled}
           compact
         />
-        <View style={{ flex: 1, gap: 3 }}>
+        <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
           <Text style={{ color: theme.ink, fontSize: 13, fontWeight: "900" }}>
             {theme.label}
           </Text>
-          <Text style={s.muted}>
+          <Text style={s.muted} numberOfLines={2} ellipsizeMode="tail">
             {customization.mascotEnabled ? "Mascote ativo" : "Mascote discreto"}{" "}
             · toque para ajustar
           </Text>
@@ -451,7 +490,7 @@ export function ThemePicker({
               backgroundColor: theme.card,
               borderTopLeftRadius: 30,
               borderTopRightRadius: 30,
-              paddingHorizontal: 20,
+              paddingHorizontal: modalHorizontalPadding,
               paddingTop: 11,
               paddingBottom: 24,
               transform: [
@@ -476,13 +515,15 @@ export function ThemePicker({
             </View>
             <View
               style={{
+                width: "100%",
+                minWidth: 0,
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
                 marginBottom: 4,
               }}
             >
-              <View>
+              <View style={{ flex: 1, minWidth: 0 }}>
                 <Text
                   style={{
                     color: theme.primary,
@@ -519,10 +560,12 @@ export function ThemePicker({
               </Pressable>
             </View>
             <ScrollView
-              style={{ flexShrink: 1 }}
+              style={{ width: "100%", minWidth: 0, flexShrink: 1 }}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{
+                width: "100%",
+                alignItems: "stretch",
                 gap: 15,
                 paddingTop: 10,
                 paddingBottom: 8,
@@ -530,6 +573,8 @@ export function ThemePicker({
             >
               <View
                 style={{
+                  width: "100%",
+                  minWidth: 0,
                   flexDirection: "row",
                   alignItems: "center",
                   backgroundColor: theme.ink,
@@ -537,7 +582,7 @@ export function ThemePicker({
                   padding: 13,
                   gap: 10,
                   minHeight: 136,
-                  overflow: "visible",
+                  overflow: "hidden",
                 }}
               >
                 <PediuMascot
@@ -545,7 +590,6 @@ export function ThemePicker({
                   styleId={customization.mascotStyle}
                   reaction={customization.mascotEnabled ? "happy" : "idle"}
                   motionEnabled={customization.motionEnabled}
-                  showSpeech
                   speechText={
                     customization.mascotEnabled
                       ? "Obaaa! Escolha sua vibe."
@@ -587,7 +631,7 @@ export function ThemePicker({
                   </Text>
                 </View>
               </View>
-              <View style={{ gap: 9 }}>
+              <View style={{ width: "100%", gap: 9 }}>
                 <Text style={s.sectionTitle}>Paleta do aplicativo</Text>
                 {APP_THEMES.map((item) => (
                   <ThemeOption
@@ -598,10 +642,15 @@ export function ThemePicker({
                   />
                 ))}
               </View>
-              <View style={{ gap: 9 }}>
+              <View style={{ width: "100%", gap: 9 }}>
                 <Text style={s.sectionTitle}>Personalidade do mascote</Text>
                 <View
-                  style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}
+                  style={{
+                    width: "100%",
+                    flexDirection: "row",
+                    flexWrap: "wrap",
+                    gap: 8,
+                  }}
                 >
                   {(["classic", "ocean", "sunset"] as AppMascotStyle[]).map(
                     (id) => (
@@ -618,6 +667,7 @@ export function ThemePicker({
               </View>
               <View
                 style={{
+                  width: "100%",
                   borderTopWidth: 1,
                   borderTopColor: theme.line,
                   paddingTop: 5,
@@ -657,6 +707,7 @@ export function ThemePicker({
               <Pressable
                 onPress={resetCustomization}
                 style={{
+                  width: "100%",
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
@@ -686,3 +737,12 @@ export function ThemePicker({
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    width: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
+    gap: 11,
+  },
+});

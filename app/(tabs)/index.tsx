@@ -126,7 +126,8 @@ const CATEGORIES = [
 
 export default function HomeScreen() {
   const { user, isAuthenticated, logout, refresh: refreshAuth } = useAuth();
-  const { theme, customization } = useAppPreferences();
+  const { theme, customization, mascotMoment, setMascotMoment } =
+    useAppPreferences();
   const params = useLocalSearchParams<{ assistant?: string }>();
   const {
     items: globalCartItems,
@@ -178,11 +179,28 @@ export default function HomeScreen() {
   });
   const showMascotMoment = (nextReaction: MascotReaction, duration = 4600) => {
     setMascotReaction(nextReaction);
+    setMascotMoment(nextReaction);
     if (mascotResetTimer.current) clearTimeout(mascotResetTimer.current);
     mascotResetTimer.current = setTimeout(
       () => setMascotReaction("hungry"),
       duration,
     );
+  };
+  const changeCustomerTab = (nextTab: "discover" | "orders" | "profile") => {
+    setCustomerTab(nextTab);
+    setMascotMoment(
+      nextTab === "profile"
+        ? "avoid"
+        : nextTab === "orders"
+          ? "curious"
+          : "hungry",
+    );
+  };
+  const changeSellerTab = (
+    nextTab: "home" | "orders" | "catalog" | "clients" | "settings",
+  ) => {
+    setSellerTab(nextTab);
+    setMascotMoment(nextTab === "settings" ? "avoid" : "curious");
   };
   const updateOrderStatusMutation = trpc.pediu.orders.status.useMutation({
     onSuccess: () => {
@@ -215,7 +233,7 @@ export default function HomeScreen() {
               setShowCheckout(false);
               setShowCart(false);
               setPixPaymentPending(true);
-              setCustomerTab("orders");
+              changeCustomerTab("orders");
               void customerOrdersQuery.refetch();
               void notifyWithHaptic(
                 "Pedido enviado. PIX aguardando confirmação",
@@ -242,7 +260,7 @@ export default function HomeScreen() {
       setShowCheckout(false);
       setShowCart(false);
       setPixPaymentPending(false);
-      setCustomerTab("orders");
+      changeCustomerTab("orders");
       void customerOrdersQuery.refetch();
       void notifyWithHaptic("Pedido enviado para a loja");
       void scheduleOrderNotification(
@@ -299,7 +317,7 @@ export default function HomeScreen() {
     onSuccess: async () => {
       setShowSellerOnboarding(false);
       setRole("seller");
-      setSellerTab("home");
+      changeSellerTab("home");
       await refreshAuth();
       void storeQuery.refetch();
       notify("Sua loja foi criada");
@@ -423,7 +441,7 @@ export default function HomeScreen() {
       return;
     }
     setRole("seller");
-    setSellerTab("home");
+    changeSellerTab("home");
     if (!storeQuery.data) setShowSellerOnboarding(true);
   };
 
@@ -722,14 +740,14 @@ export default function HomeScreen() {
     setShowVoice(false);
     if (action === "doces") {
       setRole("customer");
-      setCustomerTab("discover");
+      changeCustomerTab("discover");
       setCategory("Doces");
       void notifyWithHaptic("Encontrei doces perto de você");
       return;
     }
     if (action === "pedidos") {
       setRole("customer");
-      setCustomerTab("orders");
+      changeCustomerTab("orders");
       return;
     }
     if (action === "suporte") {
@@ -738,24 +756,24 @@ export default function HomeScreen() {
     }
     if (action === "venda") {
       setRole("seller");
-      setSellerTab("home");
+      changeSellerTab("home");
       setShowSaleModal(true);
       return;
     }
     if (action === "fiado") {
       setRole("seller");
-      setSellerTab("clients");
+      changeSellerTab("clients");
       void notifyWithHaptic("Abrindo clientes e vendas fiadas");
       return;
     }
     if (action === "catalogo") {
       setRole("seller");
-      setSellerTab("catalog");
+      changeSellerTab("catalog");
       return;
     }
     if (action === "divulgar") {
       setRole("seller");
-      setSellerTab("home");
+      changeSellerTab("home");
       void shareStoreCatalog();
       return;
     }
@@ -920,7 +938,7 @@ export default function HomeScreen() {
                   theme={theme}
                   onLocationPress={requestLocation}
                   onAssistant={() => openVoiceAssistant("customer")}
-                  onOrders={() => setCustomerTab("orders")}
+                  onOrders={() => changeCustomerTab("orders")}
                   onBenefits={() => router.push("/coupons")}
                 />
               )}
@@ -936,7 +954,7 @@ export default function HomeScreen() {
                       status: "Cancelado",
                     })
                   }
-                  onDiscover={() => setCustomerTab("discover")}
+                  onDiscover={() => changeCustomerTab("discover")}
                 />
               )}
               {customerTab === "profile" && (
@@ -965,7 +983,7 @@ export default function HomeScreen() {
             </ScrollView>
             <CustomerNav
               active={customerTab}
-              onChange={setCustomerTab}
+              onChange={changeCustomerTab}
               onAssistant={() => openVoiceAssistant("customer")}
               theme={theme}
             />
@@ -988,9 +1006,9 @@ export default function HomeScreen() {
                       (sum, sale) => sum + Number(sale.total),
                       0,
                     )}
-                    onCatalog={() => setSellerTab("catalog")}
-                    onOrders={() => setSellerTab("orders")}
-                    onClients={() => setSellerTab("clients")}
+                    onCatalog={() => changeSellerTab("catalog")}
+                    onOrders={() => changeSellerTab("orders")}
+                    onClients={() => changeSellerTab("clients")}
                     onShareCatalog={() => void shareStoreCatalog()}
                     onAds={() => router.push("/seller/ads")}
                     onVoice={() => openVoiceAssistant("seller")}
@@ -1044,14 +1062,14 @@ export default function HomeScreen() {
                   onAssistant={() => openVoiceAssistant("seller")}
                   onCustomerMode={() => {
                     setRole("customer");
-                    setCustomerTab("discover");
+                    changeCustomerTab("discover");
                   }}
                 />
               )}
             </ScrollView>
             <SellerNav
               active={sellerTab}
-              onChange={setSellerTab}
+              onChange={changeSellerTab}
               theme={theme}
             />
           </>
@@ -1078,16 +1096,16 @@ export default function HomeScreen() {
             <PediuMascot
               theme={theme}
               styleId={customization.mascotStyle}
-              reaction={mascotReaction}
+              reaction={mascotMoment?.reaction ?? mascotReaction}
               programmed
               showSpeech
               motionEnabled={customization.motionEnabled}
               compact
               onPress={() =>
                 notify(
-                  mascotReaction === "happy"
+                  (mascotMoment?.reaction ?? mascotReaction) === "happy"
                     ? "O mascote adorou essa escolha"
-                    : mascotReaction === "full"
+                    : (mascotMoment?.reaction ?? mascotReaction) === "full"
                       ? "Barriguinha cheia, coração tranquilo"
                       : globalCartCount
                         ? "Mais um pouquinho e fechamos seu pedido"

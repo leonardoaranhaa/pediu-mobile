@@ -9,9 +9,24 @@ import {
   type ReactNode,
 } from "react";
 import * as Auth from "@/lib/_core/auth";
+export { mascotReactionForPath } from "@/lib/mascot-scenes";
 
 export type AppThemeId = "classic" | "ocean" | "sunset";
 export type AppMascotStyle = "classic" | "ocean" | "sunset";
+export type MascotMomentReaction =
+  | "idle"
+  | "hungry"
+  | "happy"
+  | "full"
+  | "sleepy"
+  | "avoid"
+  | "curious"
+  | "celebrate";
+
+export type MascotMoment = {
+  reaction: MascotMomentReaction;
+  key: number;
+};
 
 export type AppCustomization = {
   mascotStyle: AppMascotStyle;
@@ -136,6 +151,8 @@ type AppPreferencesValue = {
   customization: AppCustomization;
   updateCustomization: (changes: Partial<AppCustomization>) => void;
   resetCustomization: () => void;
+  mascotMoment: MascotMoment | null;
+  setMascotMoment: (reaction: MascotMomentReaction) => void;
   ready: boolean;
 };
 
@@ -145,6 +162,9 @@ export function AppPreferencesProvider({ children }: { children: ReactNode }) {
   const [themeId, setThemeId] = useState<AppThemeId>("classic");
   const [customization, setCustomization] = useState<AppCustomization>(
     DEFAULT_CUSTOMIZATION,
+  );
+  const [mascotMoment, setMascotMomentState] = useState<MascotMoment | null>(
+    null,
   );
   const [ready, setReady] = useState(false);
 
@@ -210,6 +230,10 @@ export function AppPreferencesProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const setMascotMoment = useCallback((reaction: MascotMomentReaction) => {
+    setMascotMomentState({ reaction, key: Date.now() });
+  }, []);
+
   const applyUserTheme = useCallback(
     (user: Auth.User | null) => {
       if (!user?.id) {
@@ -272,12 +296,16 @@ export function AppPreferencesProvider({ children }: { children: ReactNode }) {
       customization,
       updateCustomization,
       resetCustomization,
+      mascotMoment,
+      setMascotMoment,
       ready,
     }),
     [
       customization,
+      mascotMoment,
       ready,
       resetCustomization,
+      setMascotMoment,
       setTheme,
       setThemeForUser,
       themeId,

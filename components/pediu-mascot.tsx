@@ -1,4 +1,5 @@
 import { MaterialIcons } from "@expo/vector-icons";
+import { usePathname } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -9,132 +10,26 @@ import {
   View,
 } from "react-native";
 
-import type { AppMascotStyle, AppTheme } from "@/lib/app-preferences";
+import {
+  mascotReactionForPath,
+  useAppPreferences,
+  type AppMascotStyle,
+  type AppTheme,
+} from "@/lib/app-preferences";
 
-export type MascotReaction =
-  | "idle"
-  | "hungry"
-  | "happy"
-  | "full"
-  | "sleepy"
-  | "avoid"
-  | "curious"
-  | "celebrate";
-type MascotGesture =
-  | "stand"
-  | "lie"
-  | "coverEyes"
-  | "sleep"
-  | "peek"
-  | "wave"
-  | "belly"
-  | "sniff"
-  | "dance";
-type MascotScene = {
-  id: string;
-  reaction: MascotReaction;
-  gesture: MascotGesture;
-  line: string;
-  duration: number;
-};
+import {
+  AMBIENT_SCENES,
+  sceneForReaction,
+  type MascotReaction,
+  type MascotScene,
+} from "@/lib/mascot-scenes";
 
-const AMBIENT_SCENES: MascotScene[] = [
-  {
-    id: "hungry",
-    reaction: "hungry",
-    gesture: "lie",
-    line: "Aí que fomeee… pede alguma coisinha pra gente comer. Snif, snif!",
-    duration: 10_000,
-  },
-  {
-    id: "sniff",
-    reaction: "hungry",
-    gesture: "sniff",
-    line: "Snif, snif… senti um cheirinho de coisa gostosa por aqui.",
-    duration: 8_500,
-  },
-  {
-    id: "curious",
-    reaction: "curious",
-    gesture: "peek",
-    line: "Será que vem um mimo por aí? Eu senti um cheirinho de coisa boa.",
-    duration: 11_500,
-  },
-  {
-    id: "stretch",
-    reaction: "idle",
-    gesture: "stand",
-    line: "Estiquei as perninhas. Pronto para descobrir seu próximo pedido!",
-    duration: 10_000,
-  },
-  {
-    id: "sleepy",
-    reaction: "sleepy",
-    gesture: "sleep",
-    line: "Só um cochilinho… me chama quando escolher o que vamos pedir.",
-    duration: 12_000,
-  },
-  {
-    id: "dance",
-    reaction: "celebrate",
-    gesture: "dance",
-    line: "Estou dançando baixinho porque hoje tem coisa boa no ar!",
-    duration: 9_000,
-  },
-  {
-    id: "watching",
-    reaction: "idle",
-    gesture: "stand",
-    line: "Estou de olho em tudo com carinho. Escolha no seu tempo.",
-    duration: 13_000,
-  },
-];
-
-function sceneById(id: string) {
-  return AMBIENT_SCENES.find((scene) => scene.id === id) ?? AMBIENT_SCENES[0];
-}
-
-function sceneForReaction(reaction: MascotReaction): MascotScene {
-  if (reaction === "hungry") return sceneById("hungry");
-  if (reaction === "curious") return sceneById("curious");
-  if (reaction === "sleepy") return sceneById("sleepy");
-  if (reaction === "happy" || reaction === "celebrate")
-    return {
-      id: reaction,
-      reaction,
-      gesture: "wave",
-      line: "Obaaa! Essa escolha deixou meu coração quentinho!",
-      duration: 5_500,
-    };
-  if (reaction === "full")
-    return {
-      id: "full",
-      reaction,
-      gesture: "belly",
-      line: "Agora sim… vou tirar um cochilo de barriga cheia.",
-      duration: 10_000,
-    };
-  if (reaction === "avoid")
-    return {
-      id: "avoid",
-      reaction,
-      gesture: "coverEyes",
-      line: "Não vou espiar nada, prometo. Privacidade é coisa séria!",
-      duration: 8_000,
-    };
-  return {
-    id: "idle",
-    reaction: "idle",
-    gesture: "stand",
-    line: "Estou aqui com você. Vamos encontrar uma boa escolha?",
-    duration: 8_000,
-  };
-}
-
+export { sceneForReaction } from "@/lib/mascot-scenes";
+export type { MascotReaction } from "@/lib/mascot-scenes";
 export function PediuMascot({
   theme,
   styleId = "classic",
-  reaction = "idle",
+  reaction,
   motionEnabled = true,
   compact = false,
   showSpeech = false,
@@ -154,23 +49,38 @@ export function PediuMascot({
   speechSide?: "left" | "right";
   onPress?: () => void;
 }) {
+  const pathname = usePathname();
+  const { mascotMoment } = useAppPreferences();
+  const activeReaction =
+    reaction ?? mascotMoment?.reaction ?? mascotReactionForPath(pathname);
   const [sceneIndex, setSceneIndex] = useState(0);
   const [scene, setScene] = useState<MascotScene>(() =>
-    sceneForReaction(reaction),
+    sceneForReaction(activeReaction),
   );
   const bob = useRef(new Animated.Value(0)).current;
   const wiggle = useRef(new Animated.Value(0)).current;
   const blink = useRef(new Animated.Value(0)).current;
   const sceneProgress = useRef(new Animated.Value(1)).current;
   const handsProgress = useRef(
-    new Animated.Value(reaction === "avoid" ? 1 : 0),
+    new Animated.Value(activeReaction === "avoid" ? 1 : 0),
   ).current;
-  const scripted = programmed && (reaction === "idle" || reaction === "hungry");
+  const eyeCloseProgress = useRef(
+    new Animated.Value(
+      activeReaction === "avoid" ||
+        activeReaction === "sleepy" ||
+        activeReaction === "happy" ||
+        activeReaction === "celebrate"
+        ? 1
+        : 0,
+    ),
+  ).current;
+  const scripted =
+    programmed && (activeReaction === "idle" || activeReaction === "hungry");
 
   useEffect(() => {
     setSceneIndex(0);
-    setScene(sceneForReaction(reaction));
-  }, [reaction]);
+    setScene(sceneForReaction(activeReaction));
+  }, [activeReaction]);
 
   useEffect(() => {
     if (!scripted || !motionEnabled) return;
@@ -188,6 +98,7 @@ export function PediuMascot({
 
   useEffect(() => {
     sceneProgress.setValue(0);
+    eyeCloseProgress.stopAnimation();
     Animated.timing(sceneProgress, {
       toValue: 1,
       duration: 520,
@@ -200,7 +111,26 @@ export function PediuMascot({
       easing: Easing.out(Easing.back(1.15)),
       useNativeDriver: true,
     }).start();
-  }, [handsProgress, scene.gesture, scene.id, sceneProgress]);
+    Animated.timing(eyeCloseProgress, {
+      toValue:
+        scene.gesture === "coverEyes" ||
+        scene.gesture === "sleep" ||
+        scene.reaction === "happy" ||
+        scene.reaction === "celebrate"
+          ? 1
+          : 0,
+      duration: 360,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [
+    eyeCloseProgress,
+    handsProgress,
+    scene.gesture,
+    scene.id,
+    scene.reaction,
+    sceneProgress,
+  ]);
 
   useEffect(() => {
     if (!motionEnabled) {
@@ -342,9 +272,10 @@ export function PediuMascot({
     speechSide === "right" ? styles.speechTailLeft : styles.speechTail;
   const eyeWidth = compact ? (eyesClosed ? 8 : 5) : eyesClosed ? 11 : 6;
   const eyeHeight = eyesClosed
-    ? compact
-      ? 3
-      : 4
+    ? eyeCloseProgress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [compact ? 7 : 9, compact ? 3 : 4],
+      })
     : blink.interpolate({
         inputRange: [0, 1],
         outputRange: [compact ? 7 : 9, 2],
@@ -859,16 +790,16 @@ const styles = StyleSheet.create({
   mouth: { fontWeight: "900", lineHeight: 21 },
   hand: {
     position: "absolute",
-    top: 18,
-    width: 13,
-    height: 25,
+    top: 15,
+    width: 16,
+    height: 32,
     borderRadius: 9,
     zIndex: 4,
     alignItems: "center",
     justifyContent: "center",
   },
-  leftHand: { left: 13 },
-  rightHand: { right: 13 },
+  leftHand: { left: 19 },
+  rightHand: { right: 19 },
   finger: { width: 3, height: 13, borderRadius: 3, opacity: 0.5 },
   scarf: {
     position: "absolute",

@@ -986,3 +986,29 @@ O preflight permanece honesto: OAuth real, push externo, storage externo, PSP/PI
 A instrução técnica desta etapa está em `docs/INSTRUCAO_FASE_UNIFICACAO_UX_UI_PR7.md`.
 
 Os checks remotos do commit `3264093fb6cff4aec1e20a69bac8a7df4f1aabad` também passaram: `Pediu CI` run `36404203450` e `Pediu Operational Validation` run `36404203461`. O PR #7 permaneceu aberto, `MERGEABLE` e `CLEAN`, com os dois checks obrigatórios verdes.
+
+
+---
+
+# 38. Correção UX/UI, mascote e responsividade — 28/09/2026
+
+A inspeção do preview mobile reproduziu três regressões de experiência: o gesto de privacidade do mascote não cobria os dois olhos de forma perceptível, as transições de rota/aba não alimentavam um momento contextual global e o estúdio de customização podia invadir a largura útil em telas estreitas. A análise DOM também encontrou dois orbes decorativos absolutos do `Page` expandindo o `scrollWidth` do documento.
+
+A correção extraiu as cenas e o mapeamento de rotas para `lib/mascot-scenes.ts`, adicionou o estado global de momentos no provider e uma ponte de navegação no layout raiz, reposicionou e animou progressivamente as mãos/olhos do mascote, tornou o modal e suas três personalidades responsivos e adicionou `overflow: hidden` ao shell visual para conter os orbes sem bloquear o scroll vertical. O preview do mascote no modal deixou de renderizar um balão sobre o texto; as falas continuam nas telas contextuais.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| Regressões do mascote | 8 testes determinísticos aprovados para `coverEyes`, barriga cheia e mapeamento de rotas |
+| Matriz local | 35 arquivos de teste, 150 testes aprovados; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados |
+| Export Expo Web | Export de produção concluído com 146 arquivos; rotas de configurações e perfil incluídas |
+| Preview visual | Home e configurações capturadas em viewport headless `375x812`; estúdio aberto no navegador; perfil confirmou a fala de privacidade |
+| Overflow real | Antes: `documentWidth=5216`, `innerWidth=5120`, `horizontalOverflow=true`; depois: `documentWidth=5120`, `horizontalOverflow=false`, inclusive com o modal aberto |
+| Deployment smoke | Backend público: health 200, marketplace 200, CORS exato e métricas protegidas |
+| Stress read-only | 120 requests / 12 workers; erro 0%; p50 19,2 ms; p95 83,5 ms; máximo 165,2 ms |
+| Preflight Expo público | 6 PASS, 0 BLOCKED e 5 `NOT_CONFIGURED`, com API HTTPS pública e App ID alinhado |
+
+A instrução técnica desta etapa está em `docs/INSTRUCAO_FASE_CORRECAO_UX_MASCOTE_PR7.md`. O preview temporário desta sandbox está disponível em [Expo Web](https://8081-iue696glzt2dfr1suc5xk-6d6ba285.us1.manus.computer), com API pública em `https://3000-iue696glzt2dfr1suc5xk-6d6ba285.us1.manus.computer`.
+
+Esta etapa não fecha a Fase 7 de dispositivos físicos. OAuth real, push externo, storage externo, PSP/PIX, CNPJ, evidência Android/iOS, staging/produção definitivos e publicação nas lojas continuam pendentes; o Go-Live comercial permanece bloqueado e não deve ser marcado como READY.
