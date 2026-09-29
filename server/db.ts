@@ -1511,6 +1511,12 @@ export async function getOrderForUser(orderId: number, userId: number) {
   return result[0];
 }
 
+export async function getOrderItems(orderId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+}
+
 export async function listOrdersForStore(
   storeId: number,
   limit = 50,

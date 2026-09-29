@@ -33,6 +33,67 @@ async function supportParticipant(ticketId: number, user: { id: number; role: "u
   return undefined;
 }
 
+const reviewInput = z.discriminatedUnion("target", [
+  z.object({
+    orderId: z.number().int().positive(),
+    target: z.literal("store"),
+    productId: z.never().optional(),
+    rating: z.number().int().min(1).max(5),
+    comment: z.string().max(2000).optional(),
+    idempotencyKey: z.string().trim().min(8).max(160),
+  }),
+  z.object({
+    orderId: z.number().int().positive(),
+    target: z.literal("product"),
+    productId: z.number().int().positive(),
+    rating: z.number().int().min(1).max(5),
+    comment: z.string().max(2000).optional(),
+    idempotencyKey: z.string().trim().min(8).max(160),
+  }),
+  z.object({
+    orderId: z.number().int().positive(),
+    target: z.literal("courier"),
+    productId: z.never().optional(),
+    rating: z.number().int().min(1).max(5),
+    comment: z.string().max(2000).optional(),
+    idempotencyKey: z.string().trim().min(8).max(160),
+  }),
+]);
+
+function sameReviewContext(
+  existing: {
+    userId: number;
+    orderId: number;
+    target: string;
+    productId: number | null;
+    rating: number;
+    comment: string | null;
+  },
+  input: z.infer<typeof reviewInput>,
+  userId: number,
+) {
+  return (
+    existing.userId === userId &&
+    existing.orderId === input.orderId &&
+    existing.target === input.target &&
+    (existing.productId ?? null) === (input.productId ?? null) &&
+    existing.rating === input.rating &&
+    (existing.comment ?? null) === (input.comment ?? null)
+  );
+}
+
+function assertReviewReplayMatches(
+  existing: Parameters<typeof sameReviewContext>[0],
+  input: z.infer<typeof reviewInput>,
+  userId: number,
+) {
+  if (!sameReviewContext(existing, input, userId)) {
+    throw new Error(
+      "Conflito de idempotência: chave já utilizada em outro contexto",
+    );
+  }
+}
+
 export const experienceRouter = router({
   coupons: router({
     validate: protectedProcedure.input(z.object({ code: z.string().trim().min(1).max(40), subtotal: z.number().nonnegative() })).query(async ({ input }) => {
@@ -42,8 +103,74 @@ export const experienceRouter = router({
     }),
   }),
   reviews: router({
-    create: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), target: z.enum(["store", "product", "courier"]), productId: z.number().int().positive().optional(), rating: z.number().int().min(1).max(5), comment: z.string().max(2000).optional(), idempotencyKey: z.string().trim().min(8).max(160) })).mutation(async ({ ctx, input }) => { const order = await data.getOrderForUser(input.orderId, ctx.user.id); if (!order || order.status !== "Entregue") throw new Error("Pedido não elegível para avaliação"); const existing = await data.getOrderReviewByIdempotencyKey(input.idempotencyKey); if (existing) return { success: true as const, reviewId: existing.id, duplicate: true as const }; const created = await data.createOrderReview({ ...input, userId: ctx.user.id }); return { success: true as const, reviewId: created.id, duplicate: created.duplicate }; }),
-    list: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).query(async ({ ctx, input }) => { if (!await data.getOrderForUser(input.orderId, ctx.user.id)) throw new Error("Pedido não encontrado"); return data.listOrderReviews(input.orderId); }),
+    products: protectedProcedure
+      .input(z.object({ orderId: z.number().int().positive() }))
+      .query(async ({ ctx, input }) => {
+        const order = await data.getOrderForUser(input.orderId, ctx.user.id);
+        if (!order) throw new Error("Pedido não encontrado");
+        const items = await data.getOrderItems(input.orderId);
+        return items.map((item) => item.productId);
+      }),
+    create: protectedProcedure
+      .input(reviewInput)
+      .mutation(async ({ ctx, input }) => {
+        const order = await data.getOrderForUser(input.orderId, ctx.user.id);
+        if (!order || order.status !== "Entregue") {
+          throw new Error("Pedido não elegível para avaliação");
+        }
+
+        const existing = await data.getOrderReviewByIdempotencyKey(
+          input.idempotencyKey,
+        );
+        if (existing) {
+          assertReviewReplayMatches(existing, input, ctx.user.id);
+          return {
+            success: true as const,
+            reviewId: existing.id,
+            duplicate: true as const,
+          };
+        }
+
+        if (input.target === "product") {
+          const items = await data.getOrderItems(input.orderId);
+          if (!items.some((item) => item.productId === input.productId)) {
+            throw new Error("Produto não pertence ao pedido");
+          }
+        }
+
+        if (input.target === "courier") {
+          const assignment = await data.getDeliveryAssignmentByOrder(
+            input.orderId,
+          );
+          if (!assignment || assignment.status === "cancelled") {
+            throw new Error("O pedido não possui um entregador atribuído");
+          }
+        }
+
+        const created = await data.createOrderReview({
+          ...input,
+          userId: ctx.user.id,
+        });
+        if (created.duplicate) {
+          const raced = await data.getOrderReviewByIdempotencyKey(
+            input.idempotencyKey,
+          );
+          if (!raced) throw new Error("Avaliação não encontrada após replay");
+          assertReviewReplayMatches(raced, input, ctx.user.id);
+        }
+        return {
+          success: true as const,
+          reviewId: created.id,
+          duplicate: created.duplicate,
+        };
+      }),
+    list: protectedProcedure
+      .input(z.object({ orderId: z.number().int().positive() }))
+      .query(async ({ ctx, input }) => {
+        if (!(await data.getOrderForUser(input.orderId, ctx.user.id)))
+          throw new Error("Pedido não encontrado");
+        return data.listOrderReviews(input.orderId);
+      }),
   }),
   tracking: router({
     events: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), limit: z.number().int().min(1).max(100).default(100), offset: z.number().int().min(0).default(0) })).query(async ({ ctx, input }) => { const db = await getDb(); if (!db) throw new Error("Database unavailable"); if (!await ownedOrder(db, input.orderId, ctx.user.id)) throw new Error("Pedido não encontrado"); return db.select().from(deliveryEvents).where(eq(deliveryEvents.orderId, input.orderId)).orderBy(desc(deliveryEvents.createdAt), desc(deliveryEvents.id)).limit(input.limit).offset(input.offset); }),

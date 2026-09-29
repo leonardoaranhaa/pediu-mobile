@@ -1062,3 +1062,28 @@ A migration `0027_payment_reconciliation.sql` foi aplicada e reexecutada no Mari
 Os gates operacionais finais no bundle local recompilado também passaram: deployment smoke com health/marketplace/CORS/métricas protegidas; stress read-only de 120 requests/12 workers com `p50=16.0ms`, `p95=27.7ms`, `max=62.0ms` e erro `0.0000`; E2E cliente; E2E lojista-entrega; concorrência com 24 retries/webhooks; fiado concorrente; CORS; storage; e limites de voz/payload. Durante a validação, uma falha de cleanup foi encontrada porque o novo ledger referenciava a loja; o cleanup foi corrigido para remover comissão/ledger antes da loja e a concorrência foi repetida com zero usuários, lojas e ledger órfãos.
 
 O mock local/CI prova somente o contrato técnico. O PSP/PIX real permanece pendente por CNPJ, credenciais, configuração de aplicação, URL HTTPS definitiva, webhook real e homologação autorizada; nenhum pagamento real foi executado. Também continuam abertas as dependências externas já registradas: domínio/staging/produção definitivos, OAuth/e-mail/push reais, storage externo, observabilidade externa, backup operacional contínuo, dispositivos físicos e publicação nas lojas. Consequentemente, a base financeira simulada está validada, mas o Go-Live comercial e o estado READY do PR #7 continuam bloqueados.
+
+
+---
+
+# 41. Readiness operacional e integridade de avaliações — 29/09/2026
+
+Esta fatia fechou duas lacunas P0 reproduzíveis no PR #7. O servidor passou a separar liveness (`/api/health`) de readiness dependente (`/api/readyz`): o novo probe bounded valida `SELECT 1`, o tracker de migrations e as tabelas críticas, retornando `503` de forma fail-closed quando uma dependência essencial está ausente. O deployment smoke e o checker de readiness agora consultam o endpoint HTTP real, e o workflow operacional exige readiness nos boots da API.
+
+A camada de avaliações pós-entrega foi endurecida para aceitar somente o cliente dono de um pedido `Entregue`. O alvo é validado por contexto: loja do pedido, produto presente nos itens ou courier efetivamente atribuído. A chave de idempotência retorna a mesma review em replay idêntico e rejeita replay conflitante. O novo `scripts/go-live-reviews.ts`, incluído como `pnpm go-live:reviews` e no `Pediu Operational Validation`, prova o contrato contra o MariaDB real.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| Baseline antes da alteração | Deployment aprovado; stress 120/12 com p50 17,6 ms, p95 32,1 ms, máximo 67,4 ms e erro 0% |
+| Readiness no bundle recompilado | `/api/health` 200; `/api/readyz` 200 com database, migrations e tables em `pass` |
+| Deployment smoke final | health 200, readyz 200, marketplace 200, CORS exato e métricas protegidas |
+| Stress final read-only | 120 requests / 12 workers; p50 18,4 ms; p95 63,4 ms; máximo 69,6 ms; erro 0% |
+| Smoke real de avaliações | Produtos elegíveis, loja, produto, courier, replay idempotente e replay conflitante aprovados contra MariaDB real |
+| Cleanup do smoke | 0 usuários, 0 lojas e 0 reviews com prefixo `ci-review-` |
+| Matriz local final | 38 arquivos, 182 testes aprovados; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados |
+
+A instrução técnica está em `docs/INSTRUCAO_FASE_READINESS_AVALIACOES_PR7.md`. O lint registrou somente o warning não bloqueante já conhecido de `MODULE_TYPELESS_PACKAGE_JSON` no config do ESLint.
+
+Esta fase não homologa PSP/PIX real, CNPJ, webhook externo, refund real, OAuth, e-mail, push, storage externo, observabilidade externa, backup contínuo, domínio/staging/produção definitivos, dispositivos físicos ou publicação em lojas. O Go-Live comercial permanece bloqueado e o PR #7 não deve ser marcado como READY sem as evidências externas correspondentes.

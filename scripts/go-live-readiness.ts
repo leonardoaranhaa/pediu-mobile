@@ -107,12 +107,12 @@ export function evaluateReadiness(
 
   checks.push({
     id: "api-health",
-    title: "API respondeu ao health check",
+    title: "API respondeu ao readiness check",
     status: input.healthStatus === 200 ? "PASS" : "BLOCKED",
     detail:
       input.healthStatus === 200
-        ? "Endpoint de saúde respondeu HTTP 200."
-        : `Health check não confirmou HTTP 200${input.healthStatus ? ` (HTTP ${input.healthStatus})` : "."}`,
+        ? "Endpoint de readiness respondeu HTTP 200."
+        : `Readiness não confirmou HTTP 200${input.healthStatus ? ` (HTTP ${input.healthStatus})` : "."}`,
   });
 
   const integrationChecks: Array<{
@@ -260,7 +260,7 @@ async function inspectDatabase(databaseUrl: string) {
 export async function runReadiness(env: NodeJS.ProcessEnv = process.env) {
   const apiUrl =
     env.READINESS_API_URL?.trim() ||
-    `http://127.0.0.1:${env.PORT?.trim() || "3000"}/api/health`;
+    `http://127.0.0.1:${env.PORT?.trim() || "3000"}/api/readyz`;
   let healthStatus: number | null = null;
   try {
     healthStatus = (await fetch(apiUrl, { signal: AbortSignal.timeout(5_000) }))

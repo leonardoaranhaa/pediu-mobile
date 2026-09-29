@@ -16,6 +16,7 @@
     "go-live:check": "tsx scripts/go-live-readiness.ts",
     "go-live:e2e": "tsx scripts/go-live-client-e2e.ts",
     "go-live:operations-e2e": "tsx scripts/go-live-operations-e2e.ts",
+    "go-live:reviews": "tsx scripts/go-live-reviews.ts",
     "go-live:concurrency": "tsx scripts/go-live-concurrency.ts",
     "go-live:fiado-concurrency": "tsx scripts/go-live-fiado-concurrency.ts",
     "go-live:finance": "tsx scripts/go-live-finance.ts",

@@ -124,8 +124,9 @@ jobs:
           pnpm dev:server > /tmp/pediu-api.log 2>&1 &
           echo $! > /tmp/pediu-api.pid
           for i in {1..60}; do
-            if curl -fsS http://127.0.0.1:3000/api/health > /tmp/health.json; then
-              cat /tmp/health.json
+            if curl -fsS http://127.0.0.1:3000/api/health > /tmp/health.json && \
+              curl -fsS http://127.0.0.1:3000/api/readyz > /tmp/readyz.json; then
+              cat /tmp/health.json /tmp/readyz.json
               exit 0
             fi
             if ! kill -0 $(cat /tmp/pediu-api.pid) 2>/dev/null; then
@@ -146,6 +147,8 @@ jobs:
         run: pnpm go-live:e2e
       - name: Run Go-Live merchant and delivery E2E smoke
         run: pnpm go-live:operations-e2e
+      - name: Run Go-Live reviews integrity smoke
+        run: pnpm go-live:reviews
       - name: Run Go-Live fiado concurrency smoke
         run: pnpm go-live:fiado-concurrency
       - name: Run Go-Live payment refund and reconciliation smoke
@@ -167,7 +170,8 @@ jobs:
           NODE_ENV=production PORT=3001 node dist/index.js > /tmp/pediu-prod-api.log 2>&1 &
           echo $! > /tmp/pediu-prod-api.pid
           for i in {1..30}; do
-            if curl -fsS http://127.0.0.1:3001/api/health; then
+            if curl -fsS http://127.0.0.1:3001/api/health && \
+              curl -fsS http://127.0.0.1:3001/api/readyz; then
               exit 0
             fi
             if ! kill -0 $(cat /tmp/pediu-prod-api.pid) 2>/dev/null; then

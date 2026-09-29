@@ -39,6 +39,18 @@ async function main() {
   const health = await healthResponse.json();
   assert.equal(health?.ok, true, "health endpoint must return ok=true");
 
+  const readinessResponse = await fetch(`${deploymentUrl}/api/readyz`, {
+    signal: AbortSignal.timeout(timeoutMs),
+    headers: { Accept: "application/json" },
+  });
+  assert.equal(
+    readinessResponse.status,
+    200,
+    `readiness endpoint returned HTTP ${readinessResponse.status}`,
+  );
+  const readiness = await readinessResponse.json();
+  assert.equal(readiness?.status, "ready", "readiness endpoint is not ready");
+
   const input = encodeURIComponent(
     JSON.stringify({
       json: { query: "", category: "Tudo", limit: 20, offset: 0 },
@@ -116,7 +128,7 @@ async function main() {
   }
 
   console.log(
-    `Deployment smoke passed: ${parsed.origin} health=200 marketplace=200${expectedOrigin ? " cors=exact" : ""}${metricsToken ? " metrics=protected" : ""}`,
+    `Deployment smoke passed: ${parsed.origin} health=200 readyz=200 marketplace=200${expectedOrigin ? " cors=exact" : ""}${metricsToken ? " metrics=protected" : ""}`,
   );
 }
 
