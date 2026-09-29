@@ -201,6 +201,8 @@ export function registerPaymentWebhookRoutes(app: Express) {
             payload.action?.trim() || payload.type?.trim() || "payment.updated",
           paymentId: local.paymentId,
           transactionId: paymentId,
+          amount: String(canonical.transaction_amount),
+          currency: "BRL",
           status,
         });
         res.status(200).json({ ok: true, ...result });

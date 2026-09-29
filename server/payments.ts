@@ -1,3 +1,9 @@
+import {
+  formatCents,
+  normalizeCurrency,
+  parseAmountToCents,
+} from "./domain/finance";
+
 export type PixChargeStatus = "pending" | "failed";
 
 export type PixChargeResult = {
@@ -8,6 +14,13 @@ export type PixChargeResult = {
   qrCode?: string;
   qrCodeBase64?: string;
   ticketUrl?: string;
+  message: string;
+};
+
+export type PixRefundResult = {
+  provider: string;
+  status: "processing" | "refunded" | "failed";
+  providerRefundId?: string;
   message: string;
 };
 
@@ -41,11 +54,13 @@ function accessToken() {
 }
 
 function amountAsNumber(amount: string | undefined) {
-  const parsed = Number(amount);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new Error("Valor PIX inválido.");
-  }
-  return Number(parsed.toFixed(2));
+  if (!amount) throw new Error("Valor PIX inválido.");
+  const cents = parseAmountToCents(amount);
+  return Number(formatCents(cents));
+}
+
+function configuredProvider() {
+  return (process.env.PIX_PROVIDER ?? "manual").trim().toLowerCase();
 }
 
 /**
@@ -58,7 +73,7 @@ export async function createPixCharge(input: {
   payerEmail: string;
   idempotencyKey: string;
 }): Promise<PixChargeResult> {
-  const provider = process.env.PIX_PROVIDER ?? "manual";
+  const provider = configuredProvider();
   if (provider === "manual") {
     if (process.env.NODE_ENV === "production") {
       throw new Error(
@@ -78,7 +93,6 @@ export async function createPixCharge(input: {
 
   const payerEmail = input.payerEmail.trim();
   if (!payerEmail) throw new Error("E-mail do pagador é obrigatório para PIX.");
-
   const externalReference = `pediu-order-${input.orderId}`;
   const notificationUrl = process.env.MERCADO_PAGO_NOTIFICATION_URL?.trim();
   if (!notificationUrl) {
@@ -95,6 +109,7 @@ export async function createPixCharge(input: {
   if (parsedNotificationUrl.protocol !== "https:") {
     throw new Error("MERCADO_PAGO_NOTIFICATION_URL precisa usar HTTPS.");
   }
+  normalizeCurrency("BRL");
 
   const response = await fetch(`${mercadoPagoApiBase()}/v1/payments`, {
     method: "POST",
@@ -151,6 +166,73 @@ export async function createPixCharge(input: {
       status === "failed"
         ? "O Mercado Pago recusou a cobrança PIX."
         : "Cobrança PIX criada no Mercado Pago; aguardando confirmação canônica.",
+  };
+}
+
+export async function requestPixRefund(input: {
+  paymentId: number;
+  orderId: number;
+  transactionId: string;
+  amount: string;
+  idempotencyKey: string;
+  reason?: string;
+}): Promise<PixRefundResult> {
+  const provider = configuredProvider();
+  const amountCents = parseAmountToCents(input.amount);
+  normalizeCurrency("BRL");
+  if (!input.transactionId.trim()) {
+    throw new Error("Refund exige a referência da transação no PSP");
+  }
+  if (provider === "manual") {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "Refund manual não pode ser executado em produção; configure Mercado Pago.",
+      );
+    }
+    return {
+      provider,
+      status: "processing",
+      message:
+        "Refund de simulação registrado; nenhuma solicitação foi enviada a um PSP.",
+    };
+  }
+  if (provider !== "mercado_pago") {
+    throw new Error(`PIX_PROVIDER=${provider} não é suportado.`);
+  }
+
+  const response = await fetch(
+    `${mercadoPagoApiBase()}/v1/payments/${encodeURIComponent(input.transactionId)}/refunds`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken()}`,
+        "Content-Type": "application/json",
+        "X-Idempotency-Key": input.idempotencyKey,
+      },
+      signal: AbortSignal.timeout(10_000),
+      body: JSON.stringify({
+        amount: Number(formatCents(amountCents)),
+      }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Mercado Pago recusou o refund (HTTP ${response.status}).`);
+  }
+  const payload = (await response.json()) as {
+    id?: string | number;
+    status?: string;
+  };
+  const status =
+    payload.status === "approved" || payload.status === "refunded"
+      ? "refunded"
+      : payload.status === "rejected" || payload.status === "cancelled"
+        ? "failed"
+        : "processing";
+  return {
+    provider,
+    status,
+    providerRefundId: payload.id === undefined ? undefined : String(payload.id),
+    message: "Refund enviado ao Mercado Pago; aguardando confirmação canônica.",
   };
 }
 

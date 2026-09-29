@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createPixCharge } from "../server/payments";
+import { createPixCharge, requestPixRefund } from "../server/payments";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -150,6 +150,45 @@ describe("Mercado Pago PIX provider", () => {
       status: "failed",
       providerChargeId: "987",
     });
+  });
+
+  it("creates a partial refund with the official Payments API contract", async () => {
+    configureMercadoPago();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 123456, status: "approved" }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      requestPixRefund({
+        paymentId: 20,
+        orderId: 30,
+        transactionId: "987654321",
+        amount: "5.00",
+        idempotencyKey: "refund-order-20",
+        reason: "customer request",
+      }),
+    ).resolves.toMatchObject({
+      provider: "mercado_pago",
+      status: "refunded",
+      providerRefundId: "123456",
+    });
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toBe(
+      "https://api.mercadopago.com/v1/payments/987654321/refunds",
+    );
+    expect(init.method).toBe("POST");
+    const headers = new Headers(init.headers);
+    expect(headers.get("Authorization")).toBe("Bearer test-access-token");
+    expect(headers.get("X-Idempotency-Key")).toBe("refund-order-20");
+    expect(JSON.parse(String(init.body))).toEqual({ amount: 5 });
   });
 
   it("requires a server-side Access Token and HTTPS notification URL", async () => {

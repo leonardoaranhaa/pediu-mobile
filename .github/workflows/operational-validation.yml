@@ -76,6 +76,9 @@ jobs:
               'pediu_push_tokens',
               'pediu_payment_transactions',
               'pediu_financial_ledger',
+              'pediu_refunds',
+              'pediu_payment_reconciliation_runs',
+              'pediu_payment_reconciliation_items',
               'pediu_webhook_events',
               'pediu_courier_profiles',
               'pediu_store_couriers',
@@ -88,6 +91,11 @@ jobs:
             const requiredPaymentColumns = ['externalReference', 'qrCode', 'qrCodeBase64', 'ticketUrl'];
             const missingPaymentColumns = requiredPaymentColumns.filter(name => !paymentColumnNames.includes(name));
             if (missingPaymentColumns.length) throw new Error(`Missing payment columns: ${missingPaymentColumns.join(', ')}`);
+            const [refundColumns] = await c.query('SHOW COLUMNS FROM pediu_refunds');
+            const refundColumnNames = refundColumns.map(row => row.Field);
+            const requiredRefundColumns = ['idempotencyKey', 'currency'];
+            const missingRefundColumns = requiredRefundColumns.filter(name => !refundColumnNames.includes(name));
+            if (missingRefundColumns.length) throw new Error(`Missing refund columns: ${missingRefundColumns.join(', ')}`);
             const [journal] = await c.query('SELECT COUNT(*) AS count FROM __drizzle_migrations');
             if (Number(journal[0].count) < 1) throw new Error('Drizzle migration journal is empty');
             console.log(`Migration smoke test OK: ${journal[0].count} migration(s), ${names.length} Pediu table(s)`);
@@ -140,6 +148,8 @@ jobs:
         run: pnpm go-live:operations-e2e
       - name: Run Go-Live fiado concurrency smoke
         run: pnpm go-live:fiado-concurrency
+      - name: Run Go-Live payment refund and reconciliation smoke
+        run: pnpm go-live:finance
       - name: Run Go-Live CORS security smoke
         run: CORS_ALLOWED_ORIGIN=http://localhost:8081 pnpm go-live:cors-security
       - name: Run Go-Live storage security smoke

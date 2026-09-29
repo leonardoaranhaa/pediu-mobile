@@ -141,6 +141,8 @@ describe("Mercado Pago payment webhook boundary", () => {
       eventType: "payment.updated",
       paymentId: 701,
       transactionId: paymentId,
+      amount: "42.5",
+      currency: "BRL",
       status: "paid",
     });
   });

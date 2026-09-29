@@ -357,10 +357,12 @@ export const refunds = mysqlTable(
     orderId: int("orderId").notNull(),
     provider: varchar("provider", { length: 40 }).notNull(),
     providerRefundId: varchar("providerRefundId", { length: 160 }),
+    idempotencyKey: varchar("idempotencyKey", { length: 160 }).notNull(),
     status: mysqlEnum("status", ["pending", "processing", "refunded", "failed"])
       .default("pending")
       .notNull(),
     amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+    currency: varchar("currency", { length: 3 }).default("BRL").notNull(),
     reason: varchar("reason", { length: 255 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     completedAt: timestamp("completedAt"),
@@ -370,6 +372,9 @@ export const refunds = mysqlTable(
       table.provider,
       table.providerRefundId,
     ),
+    providerRefundIdempotencyUnique: unique(
+      "pediu_refunds_provider_idempotency_unique",
+    ).on(table.provider, table.idempotencyKey),
   }),
 );
 
@@ -391,6 +396,75 @@ export const webhookEvents = mysqlTable(
     providerEventUnique: unique(
       "pediu_webhook_events_provider_event_unique",
     ).on(table.provider, table.providerEventId),
+  }),
+);
+
+export const paymentReconciliationRuns = mysqlTable(
+  "pediu_payment_reconciliation_runs",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    provider: varchar("provider", { length: 40 }).notNull(),
+    idempotencyKey: varchar("idempotencyKey", { length: 160 }).notNull(),
+    periodStart: timestamp("periodStart").notNull(),
+    periodEnd: timestamp("periodEnd").notNull(),
+    status: mysqlEnum("status", ["running", "completed", "failed"])
+      .default("running")
+      .notNull(),
+    matchedCount: int("matchedCount").default(0).notNull(),
+    mismatchCount: int("mismatchCount").default(0).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    completedAt: timestamp("completedAt"),
+  },
+  (table) => ({
+    providerIdempotencyUnique: unique(
+      "pediu_payment_reconciliation_provider_idempotency_unique",
+    ).on(table.provider, table.idempotencyKey),
+  }),
+);
+
+export const paymentReconciliationItems = mysqlTable(
+  "pediu_payment_reconciliation_items",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    runId: int("runId")
+      .notNull()
+      .references(() => paymentReconciliationRuns.id, { onDelete: "cascade" }),
+    providerTransactionId: varchar("providerTransactionId", {
+      length: 160,
+    }).notNull(),
+    paymentId: int("paymentId"),
+    orderId: int("orderId"),
+    classification: mysqlEnum("classification", [
+      "matched",
+      "missing_internal",
+      "missing_provider",
+      "amount_mismatch",
+      "currency_mismatch",
+      "status_mismatch",
+      "duplicate",
+    ]).notNull(),
+    providerStatus: varchar("providerStatus", { length: 32 }).notNull(),
+    internalStatus: varchar("internalStatus", { length: 32 }),
+    providerAmount: decimal("providerAmount", {
+      precision: 10,
+      scale: 2,
+    }).notNull(),
+    internalAmount: decimal("internalAmount", {
+      precision: 10,
+      scale: 2,
+    }),
+    currency: varchar("currency", { length: 3 }).notNull(),
+    details: varchar("details", { length: 500 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => ({
+    runProviderTransactionUnique: unique(
+      "pediu_payment_reconciliation_run_transaction_unique",
+    ).on(table.runId, table.providerTransactionId),
+    runCreatedIdx: index("pediu_payment_reconciliation_run_created_idx").on(
+      table.runId,
+      table.createdAt,
+    ),
   }),
 );
 
@@ -987,6 +1061,10 @@ export type FinancialLedgerEntry = typeof financialLedger.$inferSelect;
 export type Payout = typeof payouts.$inferSelect;
 export type Refund = typeof refunds.$inferSelect;
 export type WebhookEvent = typeof webhookEvents.$inferSelect;
+export type PaymentReconciliationRun =
+  typeof paymentReconciliationRuns.$inferSelect;
+export type PaymentReconciliationItem =
+  typeof paymentReconciliationItems.$inferSelect;
 export type InsertPayment = typeof payments.$inferInsert;
 export type Customer = typeof customers.$inferSelect;
 export type InsertCustomer = typeof customers.$inferInsert;

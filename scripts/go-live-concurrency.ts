@@ -323,6 +323,14 @@ async function main() {
         [idempotencyKey],
       );
       await connection.execute(
+        "DELETE FROM pediu_commission_entries WHERE orderId IN (SELECT id FROM pediu_orders WHERE idempotencyKey = ?)",
+        [idempotencyKey],
+      );
+      await connection.execute(
+        "DELETE FROM pediu_financial_ledger WHERE orderId IN (SELECT id FROM pediu_orders WHERE idempotencyKey = ?) OR storeId IN (SELECT id FROM pediu_stores WHERE name LIKE ?)",
+        [idempotencyKey, `Loja Concorrência ${runId}%`],
+      );
+      await connection.execute(
         "DELETE FROM pediu_payment_transactions WHERE paymentId IN (SELECT id FROM pediu_payments WHERE orderId IN (SELECT id FROM pediu_orders WHERE idempotencyKey = ?))",
         [idempotencyKey],
       );

@@ -1049,3 +1049,16 @@ A comparação confirmou que o baseline de delivery é: elegibilidade por endere
 8. Homologações externas e canary final.
 
 Após cada fatia continuam obrigatórios deployment smoke e stress; falha interrompe o avanço. O PSP/PIX segue pendente por CNPJ, e também permanecem pendentes OAuth real, push/dispositivos físicos, storage externo, backup operacional contínuo, observabilidade externa, staging/produção definitivos, domínio e publicação nas lojas. O Go-Live comercial permanece bloqueado e o PR #7 não deve ser marcado como READY.
+
+
+---
+
+# 40. Pagamento, refund e reconciliação financeira — 29/09/2026
+
+Esta fatia implementou o primeiro bloqueador P0 financeiro sobre o head do PR #7. O adapter Mercado Pago agora usa o endpoint oficial `POST /v1/payments/{id}/refunds`, com `amount` numérico para refund parcial e `X-Idempotency-Key`; o body não envia campos não previstos pelo contrato oficial. O banco serializa refunds por pagamento com `FOR UPDATE`, preserva retries pela chave provider/idempotency e rejeita oversubscription. O webhook canônico HMAC consulta o recurso no PSP mock, valida referência, valor, moeda e status e mantém um único lançamento de venda no ledger. A reconciliação bounded persiste o run e seus itens idempotentemente e deixa divergências classificadas para consulta administrativa.
+
+A migration `0027_payment_reconciliation.sql` foi aplicada e reexecutada no MariaDB real de validação. O smoke financeiro `pnpm go-live:finance` foi executado três vezes e novamente no bundle final, cobrindo confirmação HMAC, dois refunds simultâneos com a mesma chave, rejeição de refund adicional, ledger único e reconciliação com um item `matched` e um `missing_internal`; todas as execuções passaram e o cleanup terminou com zero fixtures financeiros. Os testes focados passaram com 27 testes em 4 arquivos; a matriz completa passou com 172 testes em 37 arquivos, além de `pnpm check`, build, lint, Prettier e `git diff --check`.
+
+Os gates operacionais finais no bundle local recompilado também passaram: deployment smoke com health/marketplace/CORS/métricas protegidas; stress read-only de 120 requests/12 workers com `p50=16.0ms`, `p95=27.7ms`, `max=62.0ms` e erro `0.0000`; E2E cliente; E2E lojista-entrega; concorrência com 24 retries/webhooks; fiado concorrente; CORS; storage; e limites de voz/payload. Durante a validação, uma falha de cleanup foi encontrada porque o novo ledger referenciava a loja; o cleanup foi corrigido para remover comissão/ledger antes da loja e a concorrência foi repetida com zero usuários, lojas e ledger órfãos.
+
+O mock local/CI prova somente o contrato técnico. O PSP/PIX real permanece pendente por CNPJ, credenciais, configuração de aplicação, URL HTTPS definitiva, webhook real e homologação autorizada; nenhum pagamento real foi executado. Também continuam abertas as dependências externas já registradas: domínio/staging/produção definitivos, OAuth/e-mail/push reais, storage externo, observabilidade externa, backup operacional contínuo, dispositivos físicos e publicação nas lojas. Consequentemente, a base financeira simulada está validada, mas o Go-Live comercial e o estado READY do PR #7 continuam bloqueados.

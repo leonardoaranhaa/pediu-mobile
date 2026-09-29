@@ -106,6 +106,15 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  const refundMatch = request.url?.match(/^\/v1\/payments\/(\d+)\/refunds$/);
+  if (request.method === "POST" && refundMatch) {
+    json(response, 201, {
+      id: `refund-${refundMatch[1]}`,
+      status: "approved",
+    });
+    return;
+  }
+
   const match = request.url?.match(/^\/v1\/payments\/(\d+)$/);
   if (request.method !== "GET" || !match) {
     response.writeHead(404);

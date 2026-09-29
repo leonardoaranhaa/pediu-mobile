@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   AdCredit,
@@ -38,6 +38,9 @@ import {
   Order,
   OrderReview,
   Payment,
+  PaymentReconciliationItem,
+  PaymentReconciliationRun,
+  Refund,
   Product,
   PushToken,
   Sale,
@@ -61,12 +64,17 @@ import {
   emailVerificationTokens,
   generatedAds,
   ledgerEntries,
+  commissionEntries,
+  commissionRules,
+  financialLedger,
   notificationPreferences,
   notifications,
   orderItems,
   orderReviews,
   orders,
   payments,
+  paymentReconciliationItems,
+  paymentReconciliationRuns,
   paymentTransactions,
   privacyConsents,
   products,
@@ -78,9 +86,17 @@ import {
   supportTickets,
   users,
   webhookEvents,
+  refunds,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { isUniqueConstraintError } from "./domain/idempotency";
+import {
+  calculateCommissionCents,
+  comparePaymentForReconciliation,
+  formatCents,
+  normalizeCurrency,
+  parseAmountToCents,
+} from "./domain/finance";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -2630,10 +2646,14 @@ export async function applyPaymentWebhook(input: {
   eventType: string;
   paymentId?: number;
   transactionId?: string;
+  amount: string;
+  currency: "BRL";
   status: PaymentStatus;
 }): Promise<{ paymentId: number; status: PaymentStatus; duplicate: boolean }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  const providerAmountCents = parseAmountToCents(input.amount);
+  const currency = normalizeCurrency(input.currency);
 
   const existingEvent = await db
     .select()
@@ -2683,21 +2703,30 @@ export async function applyPaymentWebhook(input: {
       if (!event) throw new Error("Webhook event was not persisted");
 
       const paymentRows = await tx
-        .select()
+        .select({ payment: payments, order: orders })
         .from(payments)
+        .innerJoin(orders, eq(payments.orderId, orders.id))
         .where(
           input.paymentId
             ? eq(payments.id, input.paymentId)
             : eq(payments.transactionId, input.transactionId ?? ""),
         )
         .limit(1);
-      const payment = paymentRows[0];
+      const payment = paymentRows[0]?.payment;
+      const order = paymentRows[0]?.order;
       if (!payment) {
         await tx
           .update(webhookEvents)
           .set({ status: "failed" })
           .where(eq(webhookEvents.id, event.id));
         throw new Error("Payment not found for webhook");
+      }
+      if (!order || parseAmountToCents(order.total) !== providerAmountCents) {
+        await tx
+          .update(webhookEvents)
+          .set({ status: "failed", processedAt: new Date() })
+          .where(eq(webhookEvents.id, event.id));
+        throw new Error("Payment webhook amount mismatch");
       }
       if (!canTransitionPayment(payment.status, input.status)) {
         await tx
@@ -2732,6 +2761,103 @@ export async function applyPaymentWebhook(input: {
             ),
           );
       }
+      if (input.status === "paid") {
+        const providerTransactionId =
+          input.transactionId ?? payment.transactionId ?? null;
+        const transactionIdempotencyKey = `webhook:${input.provider}:${input.providerEventId}`;
+        await tx
+          .insert(paymentTransactions)
+          .values({
+            paymentId: payment.id,
+            provider: input.provider,
+            providerTransactionId,
+            status: "paid",
+            amount: order.total,
+            currency,
+            idempotencyKey: transactionIdempotencyKey,
+          })
+          .onDuplicateKeyUpdate({
+            set: {
+              paymentId: payment.id,
+              status: "paid",
+              amount: order.total,
+              currency,
+            },
+          });
+
+        const commissionRows = await tx
+          .select()
+          .from(commissionRules)
+          .where(
+            and(
+              or(
+                eq(commissionRules.storeId, order.storeId),
+                isNull(commissionRules.storeId),
+              ),
+              lte(commissionRules.activeFrom, new Date()),
+              or(
+                isNull(commissionRules.activeUntil),
+                gt(commissionRules.activeUntil, new Date()),
+              ),
+            ),
+          )
+          .orderBy(
+            desc(commissionRules.storeId),
+            desc(commissionRules.activeFrom),
+          )
+          .limit(1);
+        const commissionRule = commissionRows[0];
+        const commissionAmount = formatCents(
+          calculateCommissionCents(providerAmountCents, commissionRule),
+        );
+        const saleReference = `payment:${payment.id}:sale`;
+        const [existingSale] = await tx
+          .select({ id: financialLedger.id })
+          .from(financialLedger)
+          .where(eq(financialLedger.referenceId, saleReference))
+          .limit(1);
+        if (!existingSale) {
+          await tx.insert(financialLedger).values({
+            storeId: order.storeId,
+            orderId: order.id,
+            paymentId: payment.id,
+            type: "sale",
+            direction: "credit",
+            amount: order.total,
+            currency,
+            referenceId: saleReference,
+            note: `Venda confirmada pelo provider ${input.provider}`,
+          });
+        }
+        if (Number(commissionAmount) > 0) {
+          const commissionReference = `payment:${payment.id}:commission`;
+          const [existingCommission] = await tx
+            .select({ id: financialLedger.id })
+            .from(financialLedger)
+            .where(eq(financialLedger.referenceId, commissionReference))
+            .limit(1);
+          if (!existingCommission) {
+            await tx.insert(commissionEntries).values({
+              orderId: order.id,
+              paymentId: payment.id,
+              ruleId: commissionRule?.id,
+              grossAmount: order.total,
+              commissionAmount,
+            });
+            await tx.insert(financialLedger).values({
+              storeId: order.storeId,
+              orderId: order.id,
+              paymentId: payment.id,
+              type: "commission",
+              direction: "debit",
+              amount: commissionAmount,
+              currency,
+              referenceId: commissionReference,
+              note: "Comissão da plataforma sobre venda paga",
+            });
+          }
+        }
+      }
       await tx
         .update(webhookEvents)
         .set({ status: "processed", processedAt: new Date() })
@@ -2740,28 +2866,36 @@ export async function applyPaymentWebhook(input: {
     });
   } catch (error) {
     if (!isUniqueConstraintError(error)) throw error;
-    const [racedEvent] = await db
-      .select()
-      .from(webhookEvents)
-      .where(
-        and(
-          eq(webhookEvents.provider, input.provider),
-          eq(webhookEvents.providerEventId, input.providerEventId),
-        ),
-      )
-      .limit(1);
-    if (!racedEvent) throw error;
-    const racedPayment = input.paymentId
-      ? await getPaymentById(input.paymentId)
-      : input.transactionId
-        ? await getPaymentByTransactionId(input.transactionId)
-        : undefined;
-    if (!racedPayment) throw error;
-    return {
-      paymentId: racedPayment.id,
-      status: racedPayment.status,
-      duplicate: true,
-    };
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const [racedEvent] = await db
+        .select()
+        .from(webhookEvents)
+        .where(
+          and(
+            eq(webhookEvents.provider, input.provider),
+            eq(webhookEvents.providerEventId, input.providerEventId),
+          ),
+        )
+        .limit(1);
+      const racedPayment = input.paymentId
+        ? await getPaymentById(input.paymentId)
+        : input.transactionId
+          ? await getPaymentByTransactionId(input.transactionId)
+          : undefined;
+      if (
+        racedEvent &&
+        racedPayment &&
+        (racedEvent.status === "processed" || racedEvent.status === "ignored")
+      ) {
+        return {
+          paymentId: racedPayment.id,
+          status: racedPayment.status,
+          duplicate: true,
+        };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 15 * (attempt + 1)));
+    }
+    throw error;
   }
 }
 
@@ -2774,6 +2908,375 @@ export async function cancelPendingPaymentForOrder(
     .update(payments)
     .set({ status: "cancelled" })
     .where(and(eq(payments.orderId, orderId), eq(payments.status, "pending")));
+}
+
+export type PaymentRefundRequest = {
+  paymentId: number;
+  provider: string;
+  amount: string;
+  idempotencyKey: string;
+  reason?: string;
+};
+
+export async function createPaymentRefund(
+  input: PaymentRefundRequest,
+): Promise<Refund> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const amountCents = parseAmountToCents(input.amount);
+  return db.transaction(async (tx) => {
+    const paymentRows = await tx
+      .select({ payment: payments, order: orders })
+      .from(payments)
+      .innerJoin(orders, eq(payments.orderId, orders.id))
+      .where(eq(payments.id, input.paymentId))
+      .for("update")
+      .limit(1);
+    const paymentRow = paymentRows[0];
+    if (!paymentRow) throw new Error("Payment not found");
+    if (paymentRow.payment.status !== "paid")
+      throw new Error("Somente pagamentos confirmados podem ser estornados");
+
+    const existing = await tx
+      .select()
+      .from(refunds)
+      .where(
+        and(
+          eq(refunds.provider, input.provider),
+          eq(refunds.idempotencyKey, input.idempotencyKey),
+        ),
+      )
+      .limit(1);
+    if (existing[0]) return existing[0];
+
+    const previousRefunds = await tx
+      .select({ amount: refunds.amount, status: refunds.status })
+      .from(refunds)
+      .where(eq(refunds.paymentId, input.paymentId))
+      .limit(100);
+    const refundedCents = previousRefunds.reduce(
+      (sum, refund) =>
+        refund.status === "failed"
+          ? sum
+          : sum + parseAmountToCents(refund.amount),
+      0,
+    );
+    const paidCents = parseAmountToCents(paymentRow.order.total);
+    if (amountCents + refundedCents > paidCents)
+      throw new Error("Refund excede o valor ainda disponível");
+
+    try {
+      const result = await tx.insert(refunds).values({
+        paymentId: input.paymentId,
+        orderId: paymentRow.order.id,
+        provider: input.provider,
+        idempotencyKey: input.idempotencyKey,
+        status: "pending",
+        amount: formatCents(amountCents),
+        currency: "BRL",
+        reason: input.reason,
+      });
+      const refundId = getInsertId(result);
+      const created = await tx
+        .select()
+        .from(refunds)
+        .where(eq(refunds.id, refundId))
+        .limit(1);
+      if (!created[0]) throw new Error("Refund was not persisted");
+      return created[0];
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) throw error;
+      const [raced] = await tx
+        .select()
+        .from(refunds)
+        .where(
+          and(
+            eq(refunds.provider, input.provider),
+            eq(refunds.idempotencyKey, input.idempotencyKey),
+          ),
+        )
+        .limit(1);
+      if (!raced) throw error;
+      return raced;
+    }
+  });
+}
+
+export async function updatePaymentRefund(
+  refundId: number,
+  input: {
+    status: "processing" | "refunded" | "failed";
+    providerRefundId?: string;
+  },
+): Promise<Refund> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(refunds)
+    .set({
+      status: input.status,
+      providerRefundId: input.providerRefundId,
+      completedAt: input.status === "refunded" ? new Date() : undefined,
+    })
+    .where(eq(refunds.id, refundId));
+  const [updated] = await db
+    .select()
+    .from(refunds)
+    .where(eq(refunds.id, refundId))
+    .limit(1);
+  if (!updated) throw new Error("Refund not found");
+  return updated;
+}
+
+export async function listPaymentRefunds(
+  limit = 100,
+  offset = 0,
+): Promise<Refund[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(refunds)
+    .orderBy(desc(refunds.createdAt), desc(refunds.id))
+    .limit(limit)
+    .offset(offset);
+}
+
+export type ProviderReconciliationRecord = {
+  providerTransactionId: string;
+  status: string;
+  amount: string;
+  currency: string;
+};
+
+export async function reconcilePaymentRecords(input: {
+  provider: string;
+  idempotencyKey: string;
+  periodStart: Date;
+  periodEnd: Date;
+  records: ProviderReconciliationRecord[];
+}): Promise<PaymentReconciliationRun & { items: PaymentReconciliationItem[] }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  if (input.records.length > 500)
+    throw new Error("Reconciliação limitada a 500 registros por execução");
+  for (const record of input.records) {
+    if (!record.providerTransactionId.trim())
+      throw new Error("Registro de reconciliação sem transaction id");
+    parseAmountToCents(record.amount);
+    normalizeCurrency(record.currency);
+  }
+
+  const existingRun = await db
+    .select()
+    .from(paymentReconciliationRuns)
+    .where(
+      and(
+        eq(paymentReconciliationRuns.provider, input.provider),
+        eq(paymentReconciliationRuns.idempotencyKey, input.idempotencyKey),
+      ),
+    )
+    .limit(1);
+  if (existingRun[0]) {
+    const existingItems = await db
+      .select()
+      .from(paymentReconciliationItems)
+      .where(eq(paymentReconciliationItems.runId, existingRun[0].id))
+      .orderBy(paymentReconciliationItems.id)
+      .limit(500);
+    return { ...existingRun[0], items: existingItems };
+  }
+
+  return db.transaction(async (tx) => {
+    let run: PaymentReconciliationRun | undefined;
+    try {
+      const result = await tx.insert(paymentReconciliationRuns).values({
+        provider: input.provider,
+        idempotencyKey: input.idempotencyKey,
+        periodStart: input.periodStart,
+        periodEnd: input.periodEnd,
+        status: "running",
+      });
+      const runId = getInsertId(result);
+      const [created] = await tx
+        .select()
+        .from(paymentReconciliationRuns)
+        .where(eq(paymentReconciliationRuns.id, runId))
+        .limit(1);
+      run = created;
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) throw error;
+      const [raced] = await tx
+        .select()
+        .from(paymentReconciliationRuns)
+        .where(
+          and(
+            eq(paymentReconciliationRuns.provider, input.provider),
+            eq(paymentReconciliationRuns.idempotencyKey, input.idempotencyKey),
+          ),
+        )
+        .limit(1);
+      if (!raced) throw error;
+      const racedItems = await tx
+        .select()
+        .from(paymentReconciliationItems)
+        .where(eq(paymentReconciliationItems.runId, raced.id))
+        .orderBy(paymentReconciliationItems.id)
+        .limit(500);
+      return { ...raced, items: racedItems };
+    }
+    if (!run) throw new Error("Reconciliation run was not persisted");
+
+    const seen = new Set<string>();
+    let matchedCount = 0;
+    let mismatchCount = 0;
+    for (const record of input.records) {
+      const duplicate = seen.has(record.providerTransactionId);
+      seen.add(record.providerTransactionId);
+      const transactionRows = await tx
+        .select({
+          transaction: paymentTransactions,
+          payment: payments,
+          order: orders,
+        })
+        .from(paymentTransactions)
+        .innerJoin(payments, eq(paymentTransactions.paymentId, payments.id))
+        .innerJoin(orders, eq(payments.orderId, orders.id))
+        .where(
+          and(
+            eq(paymentTransactions.provider, input.provider),
+            eq(
+              paymentTransactions.providerTransactionId,
+              record.providerTransactionId,
+            ),
+          ),
+        )
+        .limit(1);
+      const internal = transactionRows[0];
+      const comparison = comparePaymentForReconciliation({
+        providerAmount: record.amount,
+        providerCurrency: record.currency,
+        providerStatus: record.status,
+        internalAmount: internal?.order.total,
+        internalCurrency: internal?.transaction.currency,
+        internalStatus: internal?.payment.status,
+        paymentExists: Boolean(internal),
+        duplicate,
+      });
+      if (comparison.classification === "matched") matchedCount += 1;
+      else mismatchCount += 1;
+      await tx.insert(paymentReconciliationItems).values({
+        runId: run.id,
+        providerTransactionId: record.providerTransactionId,
+        paymentId: internal?.payment.id,
+        orderId: internal?.order.id,
+        classification: comparison.classification,
+        providerStatus: record.status,
+        internalStatus: internal?.payment.status,
+        providerAmount: record.amount,
+        internalAmount: internal?.order.total,
+        currency: record.currency.toUpperCase(),
+        details: comparison.details,
+      });
+    }
+
+    const providerTransactionIds = new Set(
+      input.records.map((record) => record.providerTransactionId),
+    );
+    const internalRows = await tx
+      .select({
+        transaction: paymentTransactions,
+        payment: payments,
+        order: orders,
+      })
+      .from(paymentTransactions)
+      .innerJoin(payments, eq(paymentTransactions.paymentId, payments.id))
+      .innerJoin(orders, eq(payments.orderId, orders.id))
+      .where(
+        and(
+          eq(paymentTransactions.provider, input.provider),
+          sql`${paymentTransactions.createdAt} >= ${input.periodStart}`,
+          sql`${paymentTransactions.createdAt} <= ${input.periodEnd}`,
+        ),
+      )
+      .limit(500);
+    for (const internal of internalRows) {
+      const providerTransactionId = internal.transaction.providerTransactionId;
+      if (
+        !providerTransactionId ||
+        providerTransactionIds.has(providerTransactionId)
+      )
+        continue;
+      mismatchCount += 1;
+      await tx.insert(paymentReconciliationItems).values({
+        runId: run.id,
+        providerTransactionId,
+        paymentId: internal.payment.id,
+        orderId: internal.order.id,
+        classification: "missing_provider",
+        providerStatus: "missing",
+        internalStatus: internal.payment.status,
+        providerAmount: "0.00",
+        internalAmount: internal.order.total,
+        currency: internal.transaction.currency,
+        details: "Transação interna não apareceu no relatório do PSP",
+      });
+    }
+
+    await tx
+      .update(paymentReconciliationRuns)
+      .set({
+        status: "completed",
+        matchedCount,
+        mismatchCount,
+        completedAt: new Date(),
+      })
+      .where(eq(paymentReconciliationRuns.id, run.id));
+    const [completed] = await tx
+      .select()
+      .from(paymentReconciliationRuns)
+      .where(eq(paymentReconciliationRuns.id, run.id))
+      .limit(1);
+    const items = await tx
+      .select()
+      .from(paymentReconciliationItems)
+      .where(eq(paymentReconciliationItems.runId, run.id))
+      .orderBy(paymentReconciliationItems.id)
+      .limit(500);
+    if (!completed) throw new Error("Reconciliation run disappeared");
+    return { ...completed, items };
+  });
+}
+
+export async function listPaymentReconciliationRuns(
+  limit = 50,
+  offset = 0,
+): Promise<PaymentReconciliationRun[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(paymentReconciliationRuns)
+    .orderBy(
+      desc(paymentReconciliationRuns.createdAt),
+      desc(paymentReconciliationRuns.id),
+    )
+    .limit(limit)
+    .offset(offset);
+}
+
+export async function listPaymentReconciliationItems(
+  runId: number,
+  limit = 500,
+): Promise<PaymentReconciliationItem[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(paymentReconciliationItems)
+    .where(eq(paymentReconciliationItems.runId, runId))
+    .orderBy(paymentReconciliationItems.id)
+    .limit(limit);
 }
 
 export async function listCustomersForStore(
