@@ -71,18 +71,31 @@ export const stores = mysqlTable(
   }),
 );
 
-export const products = mysqlTable("pediu_products", {
-  id: int("id").autoincrement().primaryKey(),
-  storeId: int("storeId")
-    .notNull()
-    .references(() => stores.id, { onDelete: "cascade" }),
-  name: varchar("name", { length: 180 }).notNull(),
-  category: varchar("category", { length: 80 }).notNull(),
-  description: text("description"),
-  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
-  available: int("available").default(1).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+export const products = mysqlTable(
+  "pediu_products",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    storeId: int("storeId")
+      .notNull()
+      .references(() => stores.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 180 }).notNull(),
+    category: varchar("category", { length: 80 }).notNull(),
+    description: text("description"),
+    price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+    available: int("available").default(1).notNull(),
+    inventoryTracked: int("inventoryTracked").default(0).notNull(),
+    stockQuantity: int("stockQuantity").default(0).notNull(),
+    reservedQuantity: int("reservedQuantity").default(0).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => ({
+    inventoryIdx: index("pediu_products_inventory_idx").on(
+      table.storeId,
+      table.inventoryTracked,
+      table.available,
+    ),
+  }),
+);
 
 export const orders = mysqlTable(
   "pediu_orders",

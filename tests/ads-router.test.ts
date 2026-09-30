@@ -37,6 +37,9 @@ const product = {
   description: "Bolo caseiro com cobertura de chocolate",
   price: "18.00",
   available: 1,
+  inventoryTracked: 0,
+  stockQuantity: 0,
+  reservedQuantity: 0,
   createdAt: new Date(),
 };
 

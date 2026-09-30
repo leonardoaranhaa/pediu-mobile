@@ -97,6 +97,10 @@ import {
   normalizeCurrency,
   parseAmountToCents,
 } from "./domain/finance";
+import {
+  inventoryAdjustmentForStatusChange,
+  normalizeInventoryQuantity,
+} from "./domain/inventory";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -1313,7 +1317,10 @@ export async function archiveGeneratedAd(
   if (affectedRows !== 1) throw new Error("Anúncio não encontrado");
 }
 
-export type MarketplaceProduct = Product & {
+export type MarketplaceProduct = Omit<
+  Product,
+  "inventoryTracked" | "stockQuantity" | "reservedQuantity"
+> & {
   storeName: string;
   deliveryFee: string;
   adId: number | null;
@@ -1337,7 +1344,11 @@ export async function searchAvailableProducts(
 ): Promise<{ items: MarketplaceProduct[]; hasMore: boolean }> {
   const db = await getDb();
   if (!db) return { items: [], hasMore: false };
-  const filters = [eq(products.available, 1), eq(stores.isOpen, 1)];
+  const filters = [
+    eq(products.available, 1),
+    eq(stores.isOpen, 1),
+    sql`(${products.inventoryTracked} = 0 OR ${products.stockQuantity} > ${products.reservedQuantity})`,
+  ];
   if (input.category && input.category !== "Tudo")
     filters.push(eq(products.category, input.category));
   if (input.query?.trim()) {
@@ -1413,6 +1424,9 @@ export async function listActiveCoupons(limit = 30): Promise<Coupon[]> {
 export async function createProduct(input: InsertProduct): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  if (input.inventoryTracked) {
+    normalizeInventoryQuantity(input.stockQuantity ?? 0);
+  }
   const result = await db.insert(products).values(input);
   return getInsertId(result);
 }
@@ -1442,6 +1456,139 @@ export async function updateProductAvailability(
     .where(eq(products.id, productId));
 }
 
+export async function updateProductInventory(input: {
+  productId: number;
+  inventoryTracked: boolean;
+  stockQuantity: number;
+}): Promise<Product> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const stockQuantity = normalizeInventoryQuantity(input.stockQuantity);
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(products)
+      .where(eq(products.id, input.productId))
+      .limit(1)
+      .for("update");
+    const product = rows[0];
+    if (!product) throw new Error("Produto não encontrado");
+    if (!input.inventoryTracked && product.reservedQuantity > 0)
+      throw new Error("Não é possível desativar estoque com reservas ativas");
+    if (input.inventoryTracked && stockQuantity < product.reservedQuantity)
+      throw new Error("O estoque não pode ficar abaixo das reservas ativas");
+    await tx
+      .update(products)
+      .set({
+        inventoryTracked: input.inventoryTracked ? 1 : 0,
+        stockQuantity,
+      })
+      .where(eq(products.id, input.productId));
+    const updated = await tx
+      .select()
+      .from(products)
+      .where(eq(products.id, input.productId))
+      .limit(1);
+    if (!updated[0]) throw new Error("Produto não encontrado após atualização");
+    return updated[0];
+  });
+}
+
+type InventoryOrderItem = { productId: number; quantity: number };
+
+async function reserveInventory(
+  tx: Parameters<
+    Parameters<NonNullable<Awaited<ReturnType<typeof getDb>>>["transaction"]>[0]
+  >[0],
+  items: InventoryOrderItem[],
+): Promise<void> {
+  const quantities = new Map<number, number>();
+  for (const item of items) {
+    if (!Number.isInteger(item.quantity) || item.quantity <= 0)
+      throw new Error("Quantidade de item inválida");
+    quantities.set(
+      item.productId,
+      (quantities.get(item.productId) ?? 0) + item.quantity,
+    );
+  }
+  const productIds = [...quantities.keys()].sort((a, b) => a - b);
+  const rows = await tx
+    .select()
+    .from(products)
+    .where(inArray(products.id, productIds))
+    .for("update");
+  const byId = new Map(rows.map((product) => [product.id, product]));
+  for (const productId of productIds) {
+    const product = byId.get(productId);
+    const quantity = quantities.get(productId)!;
+    if (!product) throw new Error("Produto não encontrado");
+    if (
+      product.inventoryTracked &&
+      product.stockQuantity - product.reservedQuantity < quantity
+    )
+      throw new Error(`Estoque insuficiente para o produto ${product.name}`);
+  }
+  for (const productId of productIds) {
+    const product = byId.get(productId)!;
+    if (product.inventoryTracked) {
+      await tx
+        .update(products)
+        .set({
+          reservedQuantity: sql`${products.reservedQuantity} + ${quantities.get(productId)!}`,
+        })
+        .where(eq(products.id, productId));
+    }
+  }
+}
+
+async function adjustInventoryForOrder(
+  tx: Parameters<
+    Parameters<NonNullable<Awaited<ReturnType<typeof getDb>>>["transaction"]>[0]
+  >[0],
+  orderId: number,
+  from: Order["status"],
+  to: Order["status"],
+): Promise<void> {
+  const adjustment = inventoryAdjustmentForStatusChange(from, to);
+  if (adjustment === "none") return;
+  const items = await tx
+    .select({ productId: orderItems.productId, quantity: orderItems.quantity })
+    .from(orderItems)
+    .where(eq(orderItems.orderId, orderId));
+  const quantities = new Map<number, number>();
+  for (const item of items)
+    quantities.set(
+      item.productId,
+      (quantities.get(item.productId) ?? 0) + item.quantity,
+    );
+  const productIds = [...quantities.keys()].sort((a, b) => a - b);
+  if (productIds.length === 0) return;
+  const productsForOrder = await tx
+    .select()
+    .from(products)
+    .where(inArray(products.id, productIds))
+    .for("update");
+  for (const product of productsForOrder) {
+    if (!product.inventoryTracked) continue;
+    const quantity = quantities.get(product.id)!;
+    if (product.reservedQuantity < quantity)
+      throw new Error("Reserva de estoque inconsistente para o pedido");
+    await tx
+      .update(products)
+      .set(
+        adjustment === "release"
+          ? {
+              reservedQuantity: sql`${products.reservedQuantity} - ${quantity}`,
+            }
+          : {
+              stockQuantity: sql`${products.stockQuantity} - ${quantity}`,
+              reservedQuantity: sql`${products.reservedQuantity} - ${quantity}`,
+            },
+      )
+      .where(eq(products.id, product.id));
+  }
+}
+
 export async function getProductForStore(productId: number, storeId: number) {
   const db = await getDb();
   if (!db) return undefined;
@@ -1465,7 +1612,7 @@ export async function getAvailableProductForStore(
     .select()
     .from(products)
     .where(
-      sql`${products.id} = ${productId} AND ${products.storeId} = ${storeId} AND ${products.available} = 1`,
+      sql`${products.id} = ${productId} AND ${products.storeId} = ${storeId} AND ${products.available} = 1 AND (${products.inventoryTracked} = 0 OR ${products.stockQuantity} > ${products.reservedQuantity})`,
     )
     .limit(1);
   return result[0];
@@ -1619,6 +1766,7 @@ export async function createOrder(
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.transaction(async (tx) => {
+    await reserveInventory(tx, items);
     const result = await tx.insert(orders).values(input);
     const orderId = getInsertId(result);
     if (items.length > 0)
@@ -1645,6 +1793,7 @@ export async function createOrderWithPayment(
   if (items.length === 0) throw new Error("Pedido sem itens");
 
   return db.transaction(async (tx) => {
+    await reserveInventory(tx, items);
     const orderResult = await tx.insert(orders).values(input);
     const orderId = getInsertId(orderResult);
     const itemRows = items.map((item) => ({ ...item, orderId }));
@@ -1709,6 +1858,7 @@ export async function createOrderWithFiado(
       throw new Error("Limite de fiado insuficiente");
     }
 
+    await reserveInventory(tx, items);
     const result = await tx.insert(orders).values(input);
     const orderId = getInsertId(result);
     await tx
@@ -1770,6 +1920,7 @@ export async function transitionOrderStatus(
         sql`${orders.id} = ${orderId} AND ${orders.status} = ${expectedStatus}`,
       );
     if (getAffectedRows(result) === 1) {
+      await adjustInventoryForOrder(tx, orderId, expectedStatus, status);
       await tx.insert(deliveryEvents).values({ orderId, eventType: status });
       return { changed: true, status };
     }
@@ -1977,6 +2128,7 @@ export async function completeDelivery(
       .where(sql`${orders.id} = ${orderId} AND ${orders.status} = 'A caminho'`);
     const changed = getAffectedRows(result) === 1;
     if (changed) {
+      await adjustInventoryForOrder(tx, orderId, "A caminho", "Entregue");
       await tx
         .update(deliveryAssignments)
         .set({ status: "delivered", updatedAt: new Date() })

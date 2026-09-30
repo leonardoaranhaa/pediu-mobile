@@ -133,7 +133,7 @@ async function main() {
     );
     storeId = insertId(storeResult);
     const [productResult] = await connection.execute(
-      "INSERT INTO pediu_products (storeId, name, category, description, price, available) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO pediu_products (storeId, name, category, description, price, available, inventoryTracked, stockQuantity, reservedQuantity) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [
         storeId,
         `Produto Operações ${runId}`,
@@ -141,6 +141,9 @@ async function main() {
         "Fixture operacional",
         "15.00",
         1,
+        1,
+        1,
+        0,
       ],
     );
     productId = insertId(productResult);
@@ -380,6 +383,13 @@ async function main() {
       ),
       ["Pendente", "Aceito", "Preparando", "Pronto", "A caminho", "Entregue"],
     );
+    const [inventoryRows] = await connection.execute(
+      "SELECT stockQuantity, reservedQuantity FROM pediu_products WHERE id = ?",
+      [productId],
+    );
+    assert.deepEqual(inventoryRows, [
+      { stockQuantity: 0, reservedQuantity: 0 },
+    ]);
 
     console.log(
       "Go-Live operations E2E passed: courier onboarding, approval, store link, offer, acceptance, GPS, customer tracking and idempotent completion.",

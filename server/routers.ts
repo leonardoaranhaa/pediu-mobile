@@ -553,13 +553,19 @@ export const appRouter = router({
             category: z.string().min(2).max(80),
             description: z.string().max(1000).optional(),
             price: z.string().regex(/^\d+(\.\d{1,2})?$/),
+            inventoryTracked: z.boolean().default(false),
+            stockQuantity: z.number().int().min(0).max(1_000_000).default(0),
           }),
         )
         .mutation(async ({ ctx, input }) => {
           const store = await db.getStoreForOwner(ctx.user.id);
           if (store?.id !== input.storeId)
             throw new Error("Loja não autorizada");
-          return db.createProduct({ ...input, available: 1 });
+          return db.createProduct({
+            ...input,
+            available: 1,
+            inventoryTracked: input.inventoryTracked ? 1 : 0,
+          });
         }),
       availability: protectedProcedure
         .input(
@@ -577,6 +583,24 @@ export const appRouter = router({
           );
           if (!product) throw new Error("Produto não pertence à sua loja");
           return db.updateProductAvailability(input.productId, input.available);
+        }),
+      inventory: protectedProcedure
+        .input(
+          z.object({
+            productId: z.number().int().positive(),
+            inventoryTracked: z.boolean(),
+            stockQuantity: z.number().int().min(0).max(1_000_000),
+          }),
+        )
+        .mutation(async ({ ctx, input }) => {
+          const store = await db.getStoreForOwner(ctx.user.id);
+          if (!store) throw new Error("Loja não encontrada");
+          const product = await db.getProductForStore(
+            input.productId,
+            store.id,
+          );
+          if (!product) throw new Error("Produto não pertence à sua loja");
+          return db.updateProductInventory(input);
         }),
       storeOpen: protectedProcedure
         .input(

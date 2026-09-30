@@ -1087,3 +1087,26 @@ A camada de avaliações pós-entrega foi endurecida para aceitar somente o clie
 A instrução técnica está em `docs/INSTRUCAO_FASE_READINESS_AVALIACOES_PR7.md`. O lint registrou somente o warning não bloqueante já conhecido de `MODULE_TYPELESS_PACKAGE_JSON` no config do ESLint.
 
 Esta fase não homologa PSP/PIX real, CNPJ, webhook externo, refund real, OAuth, e-mail, push, storage externo, observabilidade externa, backup contínuo, domínio/staging/produção definitivos, dispositivos físicos ou publicação em lojas. O Go-Live comercial permanece bloqueado e o PR #7 não deve ser marcado como READY sem as evidências externas correspondentes.
+
+
+---
+# 42. Inventário quantitativo e reserva atômica — 30/09/2026
+
+Esta fatia fechou a lacuna P0 de overselling no PR #7. Produtos agora podem ser marcados como controlados por estoque, com `stockQuantity` e `reservedQuantity`; a disponibilidade efetiva é calculada como estoque menos reservas. A criação de pedido reserva as unidades dentro da mesma transação do pedido, cancelamento libera a reserva e a transição `A caminho → Entregue` consome o estoque de forma idempotente. Produtos controlados sem saldo deixam de aparecer na cotação/marketplace, enquanto produtos legados permanecem compatíveis com `inventoryTracked=0`.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| Migration 0028 em banco limpo | Todas as migrations aplicadas; colunas `inventoryTracked`, `stockQuantity`, `reservedQuantity` e índice `pediu_products_inventory_idx` presentes; banco temporário removido |
+| Smoke concorrente real | 3 execuções com 12 pedidos simultâneos para 1 unidade; exatamente 1 reserva vencedora e 11 rejeições por `Estoque insuficiente` em cada rodada |
+| Liberação de reserva | Cancelamento do pedido vencedor retornou `stockQuantity=1`, `reservedQuantity=0` |
+| Consumo pós-entrega | E2E operacional real passou com courier, oferta, GPS, tracking e conclusão; após `Entregue`, `stockQuantity=0`, `reservedQuantity=0` |
+| Cleanup | 0 usuários `ci-inventory-*` e 0 produtos `Produto Inventário ...` no MariaDB de validação |
+| Deployment smoke | health 200, readiness 200, marketplace 200, CORS exato e métricas protegidas |
+| Stress read-only | 120 requests / 12 workers; p50 24,8 ms; p95 48,2 ms; máximo 87,0 ms; erro 0% |
+| Matriz local final | 39 arquivos de teste, 186 testes aprovados; `pnpm check`, `pnpm build`, `pnpm lint` e `git diff --check` aprovados; Prettier aprovado nos arquivos suportados |
+
+A instrução técnica está em `docs/INSTRUCAO_FASE_INVENTARIO_RESERVA_PR7.md`. A aplicação limpa da migration foi validada separadamente porque o parser do Prettier não processa SQL; isso não foi tratado como falha de código. Durante a primeira aplicação no banco de validação, um breakpoint final incorreto havia deixado o DDL parcialmente aplicado; o arquivo foi corrigido, o estado foi recuperado sem apagar dados e a execução em banco temporário limpo passou com o SQL versionado final.
+
+Esta fase não fecha serviceability por endereço, pickup, substituições ou política de expiração/reconciliação de reservas abandonadas. O PSP/PIX real continua pendente por CNPJ e homologação autorizada; OAuth/e-mail/push reais, storage externo, observabilidade externa, backup contínuo, staging/produção definitivos, dispositivos físicos e publicação nas lojas também permanecem pendentes. O Go-Live comercial e o PR #7 não devem ser marcados como READY.

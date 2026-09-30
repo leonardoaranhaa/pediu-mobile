@@ -57,4 +57,37 @@ describe("Pediu merchant catalog contract", () => {
       caller.pediu.products.availability({ productId: 999, available: false }),
     ).rejects.toThrow("Produto não pertence à sua loja");
   });
+
+  it("updates inventory only for the authenticated store owner", async () => {
+    vi.spyOn(db, "getStoreForOwner").mockResolvedValue({
+      id: 7,
+      ownerId: 10,
+      name: "Loja Teste",
+    } as any);
+    vi.spyOn(db, "getProductForStore").mockResolvedValue({
+      id: 101,
+      storeId: 7,
+    } as any);
+    const update = vi.spyOn(db, "updateProductInventory").mockResolvedValue({
+      id: 101,
+      storeId: 7,
+      inventoryTracked: 1,
+      stockQuantity: 12,
+      reservedQuantity: 0,
+    } as any);
+
+    const caller = appRouter.createCaller({ user: merchant } as any);
+    const result = await caller.pediu.products.inventory({
+      productId: 101,
+      inventoryTracked: true,
+      stockQuantity: 12,
+    });
+
+    expect(result).toMatchObject({ stockQuantity: 12, inventoryTracked: 1 });
+    expect(update).toHaveBeenCalledWith({
+      productId: 101,
+      inventoryTracked: true,
+      stockQuantity: 12,
+    });
+  });
 });

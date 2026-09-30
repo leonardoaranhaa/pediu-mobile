@@ -80,6 +80,7 @@ jobs:
               'pediu_payment_reconciliation_runs',
               'pediu_payment_reconciliation_items',
               'pediu_webhook_events',
+              'pediu_products',
               'pediu_courier_profiles',
               'pediu_store_couriers',
               'pediu_delivery_offers'
@@ -96,6 +97,11 @@ jobs:
             const requiredRefundColumns = ['idempotencyKey', 'currency'];
             const missingRefundColumns = requiredRefundColumns.filter(name => !refundColumnNames.includes(name));
             if (missingRefundColumns.length) throw new Error(`Missing refund columns: ${missingRefundColumns.join(', ')}`);
+            const [productColumns] = await c.query('SHOW COLUMNS FROM pediu_products');
+            const productColumnNames = productColumns.map(row => row.Field);
+            const requiredProductColumns = ['inventoryTracked', 'stockQuantity', 'reservedQuantity'];
+            const missingProductColumns = requiredProductColumns.filter(name => !productColumnNames.includes(name));
+            if (missingProductColumns.length) throw new Error(`Missing inventory columns: ${missingProductColumns.join(', ')}`);
             const [journal] = await c.query('SELECT COUNT(*) AS count FROM __drizzle_migrations');
             if (Number(journal[0].count) < 1) throw new Error('Drizzle migration journal is empty');
             console.log(`Migration smoke test OK: ${journal[0].count} migration(s), ${names.length} Pediu table(s)`);
@@ -149,6 +155,8 @@ jobs:
         run: pnpm go-live:operations-e2e
       - name: Run Go-Live reviews integrity smoke
         run: pnpm go-live:reviews
+      - name: Run Go-Live inventory reservation smoke
+        run: pnpm go-live:inventory
       - name: Run Go-Live fiado concurrency smoke
         run: pnpm go-live:fiado-concurrency
       - name: Run Go-Live payment refund and reconciliation smoke
