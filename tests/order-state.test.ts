@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { canCustomerCancelOrder, canTransitionOrder } from "../server/order-state";
+import {
+  canCustomerCancelOrder,
+  canTransitionOrder,
+} from "../server/order-state";
 
 describe("Pediu order state machine", () => {
   it("allows the operational delivery path", () => {
@@ -14,6 +17,16 @@ describe("Pediu order state machine", () => {
     expect(canTransitionOrder("Pendente", "Pronto")).toBe(false);
     expect(canTransitionOrder("Entregue", "Preparando")).toBe(false);
     expect(canTransitionOrder("Cancelado", "Aceito")).toBe(false);
+  });
+
+  it("allows pickup to finish directly after preparation", () => {
+    expect(canTransitionOrder("Pronto", "Entregue", "pickup")).toBe(true);
+    expect(canTransitionOrder("Pronto", "A caminho", "pickup")).toBe(false);
+  });
+
+  it("keeps delivery dependent on courier transit", () => {
+    expect(canTransitionOrder("Pronto", "A caminho", "delivery")).toBe(true);
+    expect(canTransitionOrder("Pronto", "Entregue", "delivery")).toBe(false);
   });
 
   it("allows customer cancellation only before preparation", () => {

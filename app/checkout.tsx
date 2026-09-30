@@ -30,12 +30,21 @@ export default function CheckoutScreen() {
   const addresses = trpc.pediu.addresses.list.useQuery(undefined, {
     enabled: isAuthenticated,
   });
+  const [fulfillmentMode, setFulfillmentMode] = useState<"delivery" | "pickup">(
+    "delivery",
+  );
+  const [address, setAddress] = useState("");
+  const [addressId, setAddressId] = useState<number | undefined>();
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix");
+  const [idempotencyKey, setIdempotencyKey] = useState("");
   const [couponCode, setCouponCode] = useState("");
   const [appliedCouponCode, setAppliedCouponCode] = useState("");
   const normalizedCouponInput = couponCode.trim().toUpperCase();
   const quoteInput = useMemo(
     () => ({
       storeId: items[0]?.storeId ?? 1,
+      addressId: fulfillmentMode === "delivery" ? addressId : undefined,
+      fulfillmentMode,
       items: items.map((item) => ({
         productId: item.id,
         quantity: item.quantity,
@@ -43,7 +52,7 @@ export default function CheckoutScreen() {
       })),
       couponCode: appliedCouponCode || undefined,
     }),
-    [appliedCouponCode, items],
+    [addressId, appliedCouponCode, fulfillmentMode, items],
   );
   const quote = trpc.pediu.checkout.quote.useQuery(quoteInput, {
     enabled: isAuthenticated && hydrated && items.length > 0,
@@ -76,11 +85,6 @@ export default function CheckoutScreen() {
       });
     },
   });
-  const [address, setAddress] = useState("");
-  const [addressId, setAddressId] = useState<number | undefined>();
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix");
-  const [idempotencyKey, setIdempotencyKey] = useState("");
-
   useEffect(() => {
     if (!idempotencyKey) setIdempotencyKey(checkoutKey());
   }, [idempotencyKey]);
@@ -124,7 +128,7 @@ export default function CheckoutScreen() {
   const submit = () => {
     if (
       !items.length ||
-      !address.trim() ||
+      (fulfillmentMode === "delivery" && !addressId) ||
       !idempotencyKey ||
       !quote.data ||
       quote.isFetching
@@ -135,9 +139,11 @@ export default function CheckoutScreen() {
       storeId: quote.data.storeId,
       total: quote.data.total,
       paymentMethod,
-      addressId,
+      fulfillmentMode,
+      ...(fulfillmentMode === "delivery"
+        ? { addressId, deliveryAddress: address.trim() }
+        : {}),
       couponCode: quote.data.couponCode,
-      deliveryAddress: address.trim(),
       items: quote.data.items.map((item) => ({
         productId: item.productId,
         quantity: item.quantity,
@@ -232,7 +238,11 @@ export default function CheckoutScreen() {
                 <Text style={value}>{money(quote.data.subtotal)}</Text>
               </View>
               <View style={row}>
-                <Text style={s.muted}>Entrega</Text>
+                <Text style={s.muted}>
+                  {quote.data.fulfillmentMode === "pickup"
+                    ? "Retirada"
+                    : "Entrega"}
+                </Text>
                 <Text style={value}>{money(quote.data.deliveryFee)}</Text>
               </View>
               {Number(quote.data.discount) > 0 ? (
@@ -300,62 +310,103 @@ export default function CheckoutScreen() {
         ) : null}
       </Card>
       <Card>
-        <Text style={s.sectionTitle}>Endereço de entrega</Text>
-        {addresses.data?.length ? (
-          <View style={{ gap: 8 }}>
-            {addresses.data.map((saved) => {
-              const label = [
-                `${saved.street}, ${saved.number}`,
-                saved.complement,
-                `${saved.neighborhood} · ${saved.city}/${saved.state}`,
-                saved.postalCode,
-              ]
-                .filter(Boolean)
-                .join(", ");
-              return (
-                <Pressable
-                  key={saved.id}
-                  onPress={() => {
-                    setAddressId(saved.id);
-                    setAddress(label);
-                  }}
-                  style={{
-                    borderWidth: 1,
-                    borderColor:
-                      addressId === saved.id ? PEDIU.coral : PEDIU.line,
-                    backgroundColor:
-                      addressId === saved.id ? PEDIU.coralSoft : PEDIU.white,
-                    borderRadius: 14,
-                    padding: 12,
-                    gap: 3,
-                  }}
-                >
-                  <Text style={{ color: PEDIU.ink, fontWeight: "900" }}>
-                    {saved.label}
-                    {saved.isDefault ? " · Padrão" : ""}
-                  </Text>
-                  <Text style={s.muted}>{label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        ) : null}
-        <Field
-          label="ENDEREÇO"
-          value={address}
-          onChangeText={(value) => {
-            setAddressId(undefined);
-            setAddress(value);
-          }}
-          placeholder="Rua, número, bairro e cidade"
-          multiline
-        />
-        {addresses.isError ? (
-          <Text style={{ color: PEDIU.coral, fontSize: 12 }}>
-            {addresses.error.message}
+        <Text style={s.sectionTitle}>Como receber?</Text>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          {(["delivery", "pickup"] as const).map((mode) => (
+            <Pressable
+              key={mode}
+              onPress={() => setFulfillmentMode(mode)}
+              style={{
+                flex: 1,
+                minHeight: 58,
+                alignItems: "center",
+                justifyContent: "center",
+                borderWidth: 1,
+                borderColor:
+                  fulfillmentMode === mode ? PEDIU.coral : PEDIU.line,
+                backgroundColor:
+                  fulfillmentMode === mode ? PEDIU.coralSoft : PEDIU.white,
+                borderRadius: 14,
+                paddingHorizontal: 8,
+              }}
+            >
+              <Text
+                style={{
+                  color: fulfillmentMode === mode ? PEDIU.coral : PEDIU.muted,
+                  fontWeight: "900",
+                  textAlign: "center",
+                }}
+              >
+                {mode === "delivery" ? "Entregar" : "Retirar na loja"}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        {fulfillmentMode === "pickup" ? (
+          <Text style={s.muted}>
+            Retirada sem taxa. A loja confirmará quando o pedido estiver pronto.
           </Text>
         ) : null}
       </Card>
+      {fulfillmentMode === "delivery" ? (
+        <Card>
+          <Text style={s.sectionTitle}>Endereço de entrega</Text>
+          {addresses.data?.length ? (
+            <View style={{ gap: 8 }}>
+              {addresses.data.map((saved) => {
+                const label = [
+                  `${saved.street}, ${saved.number}`,
+                  saved.complement,
+                  `${saved.neighborhood} · ${saved.city}/${saved.state}`,
+                  saved.postalCode,
+                ]
+                  .filter(Boolean)
+                  .join(", ");
+                return (
+                  <Pressable
+                    key={saved.id}
+                    onPress={() => {
+                      setAddressId(saved.id);
+                      setAddress(label);
+                    }}
+                    style={{
+                      borderWidth: 1,
+                      borderColor:
+                        addressId === saved.id ? PEDIU.coral : PEDIU.line,
+                      backgroundColor:
+                        addressId === saved.id ? PEDIU.coralSoft : PEDIU.white,
+                      borderRadius: 14,
+                      padding: 12,
+                      gap: 3,
+                    }}
+                  >
+                    <Text style={{ color: PEDIU.ink, fontWeight: "900" }}>
+                      {saved.label}
+                      {saved.isDefault ? " · Padrão" : ""}
+                    </Text>
+                    <Text style={s.muted}>{label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+          <Field
+            label="ENDEREÇO"
+            value={address}
+            onChangeText={(value) => {
+              setAddressId(undefined);
+              setAddress(value);
+            }}
+            placeholder="Rua, número, bairro e cidade"
+            multiline
+          />
+          {addresses.isError ? (
+            <Text style={{ color: PEDIU.coral, fontSize: 12 }}>
+              {addresses.error.message}
+            </Text>
+          ) : null}
+        </Card>
+      ) : null}
       <Card>
         <Text style={s.sectionTitle}>Pagamento</Text>
         <View style={{ flexDirection: "row", gap: 8 }}>
@@ -419,7 +470,7 @@ export default function CheckoutScreen() {
             createPix.isPending ||
             quote.isFetching ||
             !quote.data ||
-            !address.trim()
+            (fulfillmentMode === "delivery" && !addressId)
           }
         />
       </Card>

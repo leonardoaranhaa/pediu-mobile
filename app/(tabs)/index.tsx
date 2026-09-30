@@ -25,6 +25,7 @@ import {
   ScrollView,
   Share,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -902,6 +903,11 @@ export default function HomeScreen() {
     address?: string;
     pixKey?: string;
     deliveryFee?: string;
+    deliveryEnabled?: boolean;
+    pickupEnabled?: boolean;
+    deliveryRadiusKm?: string;
+    latitude?: number | null;
+    longitude?: number | null;
     isOpen?: boolean;
   }) => {
     updateStoreMutation.mutate(input);
@@ -2489,6 +2495,7 @@ function SellerOrders({
     total: string;
     status: string;
     deliveryAddress: string | null;
+    fulfillmentMode?: "delivery" | "pickup";
     createdAt: Date | null;
   }[];
   onUpdateStatus: (
@@ -2540,7 +2547,10 @@ function SellerOrders({
         </View>
       ) : (
         orders.map((order) => {
-          const next = nextStatus[order.status];
+          const next =
+            order.status === "Pronto" && order.fulfillmentMode === "pickup"
+              ? "Entregue"
+              : nextStatus[order.status];
           const actionLabel =
             order.status === "Pendente"
               ? "Aceitar pedido"
@@ -2549,7 +2559,9 @@ function SellerOrders({
                 : order.status === "Preparando"
                   ? "Marcar como pronto"
                   : order.status === "Pronto"
-                    ? "Enviar para entrega"
+                    ? order.fulfillmentMode === "pickup"
+                      ? "Liberar retirada"
+                      : "Enviar para entrega"
                     : order.status === "A caminho"
                       ? "Finalizar pedido"
                       : order.status;
@@ -2570,7 +2582,10 @@ function SellerOrders({
                 </Text>
               </View>
               <Text style={styles.muted}>
-                {order.deliveryAddress || "Endereço de entrega não informado"}
+                {order.fulfillmentMode === "pickup"
+                  ? "Retirada na loja"
+                  : order.deliveryAddress ||
+                    "Endereço de entrega não informado"}
               </Text>
 
               {next ? (
@@ -2707,6 +2722,11 @@ function SellerSettings({
     address: string | null;
     pixKey: string | null;
     deliveryFee: string;
+    deliveryEnabled: number;
+    pickupEnabled: number;
+    deliveryRadiusKm: string;
+    latitude: string | null;
+    longitude: string | null;
     isOpen: number;
   };
   salesCount: number;
@@ -2716,6 +2736,11 @@ function SellerSettings({
     address?: string;
     pixKey?: string;
     deliveryFee?: string;
+    deliveryEnabled?: boolean;
+    pickupEnabled?: boolean;
+    deliveryRadiusKm?: string;
+    latitude?: number | null;
+    longitude?: number | null;
     isOpen?: boolean;
   }) => void;
   saving: boolean;
@@ -2727,6 +2752,18 @@ function SellerSettings({
   const [address, setAddress] = useState(store?.address ?? "");
   const [pixKey, setPixKey] = useState(store?.pixKey ?? "");
   const [deliveryFee, setDeliveryFee] = useState(store?.deliveryFee ?? "0.00");
+  const [deliveryEnabled, setDeliveryEnabled] = useState(
+    Boolean(store?.deliveryEnabled ?? 1),
+  );
+  const [pickupEnabled, setPickupEnabled] = useState(
+    Boolean(store?.pickupEnabled),
+  );
+  const [deliveryRadiusKm, setDeliveryRadiusKm] = useState(
+    store?.deliveryRadiusKm ?? "10.00",
+  );
+  const [latitude, setLatitude] = useState(store?.latitude ?? "");
+  const [longitude, setLongitude] = useState(store?.longitude ?? "");
+  const [validationMessage, setValidationMessage] = useState("");
   const [isOpen, setIsOpen] = useState(Boolean(store?.isOpen));
   useEffect(() => {
     setName(store?.name ?? "");
@@ -2734,6 +2771,11 @@ function SellerSettings({
     setAddress(store?.address ?? "");
     setPixKey(store?.pixKey ?? "");
     setDeliveryFee(store?.deliveryFee ?? "0.00");
+    setDeliveryEnabled(Boolean(store?.deliveryEnabled ?? 1));
+    setPickupEnabled(Boolean(store?.pickupEnabled));
+    setDeliveryRadiusKm(store?.deliveryRadiusKm ?? "10.00");
+    setLatitude(store?.latitude ?? "");
+    setLongitude(store?.longitude ?? "");
     setIsOpen(Boolean(store?.isOpen));
   }, [
     store?.id,
@@ -2742,20 +2784,61 @@ function SellerSettings({
     store?.address,
     store?.pixKey,
     store?.deliveryFee,
+    store?.deliveryEnabled,
+    store?.pickupEnabled,
+    store?.deliveryRadiusKm,
+    store?.latitude,
+    store?.longitude,
     store?.isOpen,
   ]);
   const save = () => {
+    const normalizedRadius = deliveryRadiusKm.replace(",", ".").trim();
+    const parsedLatitude = latitude.trim()
+      ? Number(latitude.replace(",", "."))
+      : null;
+    const parsedLongitude = longitude.trim()
+      ? Number(longitude.replace(",", "."))
+      : null;
     if (
       name.trim().length < 2 ||
       !/^\d+(\.\d{1,2})?$/.test(deliveryFee.replace(",", ".").trim())
     )
       return;
+    if (
+      !/^\d+(\.\d{1,2})?$/.test(normalizedRadius) ||
+      Number(normalizedRadius) <= 0
+    ) {
+      setValidationMessage("Informe um raio de entrega positivo.");
+      return;
+    }
+    if (
+      deliveryEnabled &&
+      (parsedLatitude === null ||
+        parsedLongitude === null ||
+        !Number.isFinite(parsedLatitude) ||
+        !Number.isFinite(parsedLongitude) ||
+        parsedLatitude < -90 ||
+        parsedLatitude > 90 ||
+        parsedLongitude < -180 ||
+        parsedLongitude > 180)
+    ) {
+      setValidationMessage(
+        "Delivery ativo exige latitude e longitude válidas da loja.",
+      );
+      return;
+    }
+    setValidationMessage("");
     onSave({
       name: name.trim(),
       phone: phone.trim() || undefined,
       address: address.trim() || undefined,
       pixKey: pixKey.trim() || undefined,
       deliveryFee: deliveryFee.replace(",", ".").trim(),
+      deliveryEnabled,
+      pickupEnabled,
+      deliveryRadiusKm: normalizedRadius,
+      latitude: parsedLatitude,
+      longitude: parsedLongitude,
       isOpen,
     });
   };
@@ -2807,6 +2890,81 @@ function SellerSettings({
           style={styles.input}
           keyboardType="decimal-pad"
         />
+        <View style={{ gap: 8, marginTop: 6 }}>
+          <View style={styles.settingsRow}>
+            <View style={styles.settingsIcon}>
+              <MaterialIcons
+                name="delivery-dining"
+                size={20}
+                color={COLORS.ink}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>Delivery</Text>
+              <Text style={styles.muted}>
+                Só aceita pedidos dentro do raio configurado
+              </Text>
+            </View>
+            <Switch
+              value={deliveryEnabled}
+              onValueChange={setDeliveryEnabled}
+              trackColor={{ false: COLORS.line, true: COLORS.coralSoft }}
+              thumbColor={deliveryEnabled ? COLORS.coral : COLORS.muted}
+            />
+          </View>
+          <View style={styles.settingsRow}>
+            <View style={styles.settingsIcon}>
+              <MaterialIcons name="store" size={20} color={COLORS.ink} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>Retirada na loja</Text>
+              <Text style={styles.muted}>Pedido sem taxa e sem entregador</Text>
+            </View>
+            <Switch
+              value={pickupEnabled}
+              onValueChange={setPickupEnabled}
+              trackColor={{ false: COLORS.line, true: COLORS.coralSoft }}
+              thumbColor={pickupEnabled ? COLORS.coral : COLORS.muted}
+            />
+          </View>
+        </View>
+        <TextInput
+          value={deliveryRadiusKm}
+          onChangeText={setDeliveryRadiusKm}
+          placeholder="Raio de entrega em km"
+          placeholderTextColor={COLORS.muted}
+          style={styles.input}
+          keyboardType="decimal-pad"
+        />
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <TextInput
+            value={latitude}
+            onChangeText={setLatitude}
+            placeholder="Latitude da loja"
+            placeholderTextColor={COLORS.muted}
+            style={[styles.input, { flex: 1 }]}
+            keyboardType="numbers-and-punctuation"
+          />
+          <TextInput
+            value={longitude}
+            onChangeText={setLongitude}
+            placeholder="Longitude da loja"
+            placeholderTextColor={COLORS.muted}
+            style={[styles.input, { flex: 1 }]}
+            keyboardType="numbers-and-punctuation"
+          />
+        </View>
+        <Text style={styles.muted}>
+          Use as coordenadas reais do estabelecimento. O Pediu não promete
+          cobertura quando elas não estiverem configuradas.
+        </Text>
+        {validationMessage ? (
+          <Text
+            style={{ color: COLORS.coral, fontSize: 12, fontWeight: "800" }}
+          >
+            {validationMessage}
+          </Text>
+        ) : null}
         <Pressable
           style={styles.settingsRow}
           onPress={() => setIsOpen((value) => !value)}

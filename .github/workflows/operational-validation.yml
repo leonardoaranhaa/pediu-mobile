@@ -102,6 +102,16 @@ jobs:
             const requiredProductColumns = ['inventoryTracked', 'stockQuantity', 'reservedQuantity'];
             const missingProductColumns = requiredProductColumns.filter(name => !productColumnNames.includes(name));
             if (missingProductColumns.length) throw new Error(`Missing inventory columns: ${missingProductColumns.join(', ')}`);
+            const [storeColumns] = await c.query('SHOW COLUMNS FROM pediu_stores');
+            const storeColumnNames = storeColumns.map(row => row.Field);
+            const requiredStoreColumns = ['deliveryEnabled', 'pickupEnabled', 'deliveryRadiusKm', 'latitude', 'longitude'];
+            const missingStoreColumns = requiredStoreColumns.filter(name => !storeColumnNames.includes(name));
+            if (missingStoreColumns.length) throw new Error(`Missing serviceability store columns: ${missingStoreColumns.join(', ')}`);
+            const [orderColumns] = await c.query('SHOW COLUMNS FROM pediu_orders');
+            const orderColumnNames = orderColumns.map(row => row.Field);
+            const requiredOrderColumns = ['fulfillmentMode', 'deliveryFeeSnapshot'];
+            const missingOrderColumns = requiredOrderColumns.filter(name => !orderColumnNames.includes(name));
+            if (missingOrderColumns.length) throw new Error(`Missing fulfillment order columns: ${missingOrderColumns.join(', ')}`);
             const [journal] = await c.query('SELECT COUNT(*) AS count FROM __drizzle_migrations');
             if (Number(journal[0].count) < 1) throw new Error('Drizzle migration journal is empty');
             console.log(`Migration smoke test OK: ${journal[0].count} migration(s), ${names.length} Pediu table(s)`);
@@ -157,6 +167,8 @@ jobs:
         run: pnpm go-live:reviews
       - name: Run Go-Live inventory reservation smoke
         run: pnpm go-live:inventory
+      - name: Run Go-Live serviceability and pickup smoke
+        run: pnpm go-live:serviceability
       - name: Run Go-Live fiado concurrency smoke
         run: pnpm go-live:fiado-concurrency
       - name: Run Go-Live payment refund and reconciliation smoke

@@ -105,7 +105,7 @@ async function main() {
     );
     merchantUserId = insertId(merchantResult);
     const [storeResult] = await connection.execute(
-      "INSERT INTO pediu_stores (ownerId, name, phone, address, pixKey, deliveryFee, isOpen) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO pediu_stores (ownerId, name, phone, address, pixKey, deliveryFee, deliveryEnabled, pickupEnabled, deliveryRadiusKm, latitude, longitude, isOpen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [
         merchantUserId,
         `Loja Fiado ${runId}`,
@@ -113,6 +113,11 @@ async function main() {
         "Rua do Fiado, 10",
         `pix-fiado-${runId}`,
         "0.00",
+        1,
+        1,
+        "5.00",
+        "-23.5505200",
+        "-46.6333080",
         1,
       ],
     );
@@ -156,7 +161,7 @@ async function main() {
       storeId,
       total,
       paymentMethod: "fiado" as const,
-      deliveryAddress: "Rua do Fiado, 10",
+      fulfillmentMode: "pickup" as const,
       items: [{ productId, quantity: 1, unitPrice: total }],
     };
     const results = await Promise.all([

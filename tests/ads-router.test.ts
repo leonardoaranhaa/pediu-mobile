@@ -25,6 +25,11 @@ const store = {
   address: "Rua Teste, 42",
   pixKey: "pix@example.com",
   deliveryFee: "5.00",
+  deliveryEnabled: 1,
+  pickupEnabled: 0,
+  deliveryRadiusKm: "10.00",
+  latitude: null,
+  longitude: null,
   isOpen: 1,
   createdAt: new Date(),
 };

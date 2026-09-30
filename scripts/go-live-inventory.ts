@@ -98,7 +98,7 @@ async function main() {
     );
     merchantId = insertId(merchantResult);
     const [storeResult] = await connection.execute(
-      "INSERT INTO pediu_stores (ownerId, name, phone, address, pixKey, deliveryFee, isOpen) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO pediu_stores (ownerId, name, phone, address, pixKey, deliveryFee, deliveryEnabled, pickupEnabled, deliveryRadiusKm, latitude, longitude, isOpen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [
         merchantId,
         `Loja Inventário ${runId}`,
@@ -106,6 +106,11 @@ async function main() {
         "Rua do Estoque, 10",
         `pix-inventory-${runId}`,
         "0.00",
+        1,
+        0,
+        "5.00",
+        "-23.5505200",
+        "-46.6333080",
         1,
       ],
     );
@@ -152,7 +157,7 @@ async function main() {
     );
     const quote = await callTrpc<{ total: string }>(
       "pediu.checkout.quote",
-      { storeId, items: [{ productId, quantity: 1 }] },
+      { storeId, addressId, items: [{ productId, quantity: 1 }] },
       customerToken,
     );
     assert.equal(quote.total, "10.00");

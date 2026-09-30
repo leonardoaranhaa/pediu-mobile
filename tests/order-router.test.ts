@@ -87,6 +87,30 @@ describe("Pediu order operational contract", () => {
     ).rejects.toThrow("Transição de pedido inválida");
   });
 
+  it("allows the store to complete a pickup order without courier transit", async () => {
+    vi.spyOn(db, "getOrderForUser").mockResolvedValue({
+      ...order,
+      status: "Pronto",
+      fulfillmentMode: "pickup",
+      deliveryAddress: "Retirada em Loja Teste",
+    } as any);
+    vi.spyOn(db, "getStoreForOwner").mockResolvedValue({
+      id: 7,
+      ownerId: 10,
+    } as any);
+    const transition = vi.spyOn(db, "transitionOrderStatus").mockResolvedValue({
+      changed: true,
+      status: "Entregue",
+    });
+    vi.spyOn(push, "sendPushToUser").mockResolvedValue({ sent: 0 });
+
+    await appRouter
+      .createCaller({ user } as any)
+      .pediu.orders.status({ orderId: 101, status: "Entregue" });
+
+    expect(transition).toHaveBeenCalledWith(101, "Entregue", "Pronto");
+  });
+
   it("collapses two concurrent identical status changes into one event", async () => {
     vi.spyOn(db, "getOrderForUser").mockResolvedValue(order as any);
     vi.spyOn(db, "getStoreForOwner").mockResolvedValue({

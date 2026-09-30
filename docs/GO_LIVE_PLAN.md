@@ -1110,3 +1110,27 @@ Esta fatia fechou a lacuna P0 de overselling no PR #7. Produtos agora podem ser 
 A instrução técnica está em `docs/INSTRUCAO_FASE_INVENTARIO_RESERVA_PR7.md`. A aplicação limpa da migration foi validada separadamente porque o parser do Prettier não processa SQL; isso não foi tratado como falha de código. Durante a primeira aplicação no banco de validação, um breakpoint final incorreto havia deixado o DDL parcialmente aplicado; o arquivo foi corrigido, o estado foi recuperado sem apagar dados e a execução em banco temporário limpo passou com o SQL versionado final.
 
 Esta fase não fecha serviceability por endereço, pickup, substituições ou política de expiração/reconciliação de reservas abandonadas. O PSP/PIX real continua pendente por CNPJ e homologação autorizada; OAuth/e-mail/push reais, storage externo, observabilidade externa, backup contínuo, staging/produção definitivos, dispositivos físicos e publicação nas lojas também permanecem pendentes. O Go-Live comercial e o PR #7 não devem ser marcados como READY.
+
+
+---
+# 43. Serviceability por endereço e retirada (pickup) — 30/09/2026
+
+Esta fatia fechou a lacuna P1 de elegibilidade geográfica e fulfillment híbrido no PR #7. A migration `0029_serviceability_pickup.sql` adiciona à loja as flags de delivery/pickup, raio e coordenadas; o pedido passa a persistir `fulfillmentMode` e `deliveryFeeSnapshot`. O servidor calcula a cobertura com Haversine e falha fechado quando faltam coordenadas, a loja está fora da modalidade ou o endereço excede o raio. O checkout exige endereço salvo georreferenciado para delivery, permite pickup sem endereço e aplica taxa zero nessa modalidade. O total continua sendo recalculado com preços do catálogo e a recuperação idempotente rejeita, no mínimo, reuso da chave com loja, modalidade ou total incompatíveis.
+
+O painel do lojista expõe as modalidades, raio e coordenadas com validação de faixa. O checkout ativo usa a cotação server-side como total enviado e bloqueia confirmação sem quote válido. A máquina de estados permite `Pronto → Entregue` diretamente apenas para pickup; as rotas de atribuição, oferta e localização courier recusam pickup, preservando o fluxo delivery com courier. O smoke operacional `pnpm go-live:serviceability` foi incluído no workflow e confirma cobertura interna, bloqueio externo antes de pedido/pagamento/reserva, pickup e snapshots persistidos.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| Migration 0029 | Todas as migrations aplicadas em banco limpo e a migration final validada no banco local de execução |
+| Regressões locais | 40 arquivos de teste, 203 testes aprovados; serviceability, quote/order, pickup, estados e fronteira courier cobertos |
+| Matriz local | `pnpm check`, `pnpm test`, `pnpm build`, `pnpm lint`, Prettier nos arquivos suportados e `git diff --check` aprovados |
+| Readiness final | `/api/health` 200; `/api/readyz` 200 com database, migrations e tables em `pass` |
+| Smoke E2E no bundle final | Delivery dentro do raio aprovado; fora do raio bloqueado; pickup sem endereço/taxa e snapshot `0.00` aprovados |
+| Deployment smoke local | health 200, readyz 200, marketplace 200, CORS exato e métricas protegidas |
+| Stress local read-only | 120 requests / 12 workers; p50 29,8 ms; p95 101,9 ms; máximo 128,8 ms; erro 0% |
+| Deployment/stress HTTPS temporário | Smoke aprovado; 40 requests / 4 workers; p50 11,2 ms; p95 43,0 ms; máximo 137,5 ms; erro 0% |
+| Cleanup SQL | 0 usuários, 0 lojas, 0 produtos e 0 pedidos com prefixo serviceability residuais |
+
+A instrução técnica desta fase está em `docs/INSTRUCAO_FASE_SERVICEABILITY_PICKUP_PR7.md`. A validação usa somente banco e PSP mock locais; não há pagamento real, CNPJ, credencial de PSP, webhook real, geocodificação externa ou rastreamento físico simulados. Permanecem externos OAuth real, push/e-mail, storage, observabilidade/backup, domínio/staging/produção definitivos, GPS/background em dispositivos físicos e publicação nas lojas. O PSP/PIX real continua pendente por CNPJ, credenciais, configuração, webhook e homologação autorizada; portanto o Go-Live comercial e o PR #7 permanecem bloqueados e não READY.

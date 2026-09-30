@@ -104,7 +104,7 @@ async function main() {
     merchantId = insertId(merchantResult);
 
     const [storeResult] = await connection.execute(
-      "INSERT INTO pediu_stores (ownerId, name, phone, address, pixKey, deliveryFee, isOpen) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO pediu_stores (ownerId, name, phone, address, pixKey, deliveryFee, deliveryEnabled, pickupEnabled, deliveryRadiusKm, latitude, longitude, isOpen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [
         merchantId,
         `Loja E2E ${runId}`,
@@ -112,6 +112,11 @@ async function main() {
         "Rua E2E, 100",
         `pix-${runId}`,
         "4.50",
+        1,
+        0,
+        "5.00",
+        "-23.5616847",
+        "-46.6561393",
         1,
       ],
     );
@@ -213,7 +218,7 @@ async function main() {
       }>;
     }>(
       "pediu.checkout.quote",
-      { storeId, items: [{ productId, quantity: 1 }] },
+      { storeId, addressId, items: [{ productId, quantity: 1 }] },
       customerToken,
     );
     assert.deepEqual(
@@ -334,7 +339,7 @@ async function main() {
     });
 
     const [orderRows] = await connection.execute(
-      "SELECT id, total, status, deliveryAddress FROM pediu_orders WHERE idempotencyKey = ?",
+      "SELECT id, total, status, deliveryAddress, fulfillmentMode, deliveryFeeSnapshot FROM pediu_orders WHERE idempotencyKey = ?",
       [idempotencyKey],
     );
     assert.equal(
@@ -348,6 +353,8 @@ async function main() {
       status: "Pendente",
       deliveryAddress:
         "Rua do Teste, 123, Apto 4, Centro · São Paulo/SP, 01311000",
+      fulfillmentMode: "delivery",
+      deliveryFeeSnapshot: "4.50",
     });
 
     const [paymentRows] = await connection.execute(
@@ -400,6 +407,7 @@ async function main() {
       status: string;
       total: string;
       deliveryAddress: string | null;
+      fulfillmentMode: string;
     }>("pediu.orders.get", { orderId }, customerToken);
     assert.deepEqual(
       {
@@ -407,6 +415,7 @@ async function main() {
         status: finalOrder.status,
         total: finalOrder.total,
         deliveryAddress: finalOrder.deliveryAddress,
+        fulfillmentMode: finalOrder.fulfillmentMode,
       },
       {
         id: orderId,
@@ -414,6 +423,7 @@ async function main() {
         total: "17.00",
         deliveryAddress:
           "Rua do Teste, 123, Apto 4, Centro · São Paulo/SP, 01311000",
+        fulfillmentMode: "delivery",
       },
     );
 

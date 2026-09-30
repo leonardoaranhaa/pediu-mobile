@@ -204,6 +204,13 @@
       "when": 1790760052415,
       "tag": "0028_inventory_reservation",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "5",
+      "when": 1790760052416,
+      "tag": "0029_serviceability_pickup",
+      "breakpoints": true
     }
   ]
 }

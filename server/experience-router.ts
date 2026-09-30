@@ -186,17 +186,20 @@ export const experienceRouter = router({
     assign: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), courierName: z.string().trim().min(2).max(160).optional(), courierPhone: z.string().trim().max(32).optional(), etaMinutes: z.number().int().min(1).max(240).optional() })).mutation(async ({ ctx, input }) => {
       const order = await storeOwnedOrder(input.orderId, ctx.user.id);
       if (!order) throw new Error("Pedido não encontrado ou loja não autorizada");
+      if (order.fulfillmentMode === "pickup") throw new Error("Pedidos de retirada não passam pelo entregador");
       if (!["Pronto", "A caminho"].includes(order.status)) throw new Error("A entrega só pode ser atribuída quando o pedido estiver pronto");
       return data.upsertDeliveryAssignment({ orderId: input.orderId, courierId: ctx.user.id, courierName: input.courierName ?? ctx.user.name?.trim() ?? "Entregador da loja", courierPhone: input.courierPhone, etaMinutes: input.etaMinutes, status: order.status === "A caminho" ? "in_transit" : "assigned" });
     }),
     offer: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), courierUserId: z.number().int().positive(), etaMinutes: z.number().int().min(1).max(240).optional(), message: z.string().trim().max(255).optional(), idempotencyKey: z.string().trim().min(8).max(160), expiresInMinutes: z.number().int().min(1).max(120).default(10) })).mutation(async ({ ctx, input }) => {
       const order = await storeOwnedOrder(input.orderId, ctx.user.id);
       if (!order || order.status !== "Pronto") throw new Error("O pedido precisa estar pronto e pertencer à sua loja");
+      if (order.fulfillmentMode === "pickup") throw new Error("Pedidos de retirada não passam pelo entregador");
       return data.createDeliveryOffer({ ...input, ownerId: ctx.user.id, expiresAt: new Date(Date.now() + input.expiresInMinutes * 60_000) });
     }),
     location: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180), etaMinutes: z.number().int().min(0).max(240).optional(), idempotencyKey: z.string().trim().min(8).max(160) })).mutation(async ({ ctx, input }) => {
       const order = await data.getOrderForUser(input.orderId, ctx.user.id);
       if (!order) throw new Error("Pedido não encontrado ou não autorizado");
+      if (order.fulfillmentMode === "pickup") throw new Error("Pedidos de retirada não possuem rastreamento courier");
       if (!["Pronto", "A caminho"].includes(order.status)) throw new Error("A posição só pode ser atualizada durante a entrega");
       const assignment = await data.getDeliveryAssignmentByOrder(input.orderId);
       const store = await data.getStoreForOwner(ctx.user.id);

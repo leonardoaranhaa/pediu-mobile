@@ -18,6 +18,10 @@ import { adminRouter } from "./admin-router";
 import { experienceRouter } from "./experience-router";
 import { calculateCouponDiscount } from "./domain/coupons";
 import {
+  calculateServiceability,
+  serviceabilityMessage,
+} from "./domain/serviceability";
+import {
   consumeRateLimit,
   rateLimitKey,
   withConcurrencyLimit,
@@ -249,6 +253,8 @@ export const appRouter = router({
         .input(
           z.object({
             storeId: z.number().int().positive(),
+            addressId: z.number().int().positive().optional(),
+            fulfillmentMode: z.enum(["delivery", "pickup"]).default("delivery"),
             items: z
               .array(
                 z.object({
@@ -261,11 +267,23 @@ export const appRouter = router({
             couponCode: z.string().trim().min(1).max(40).optional(),
           }),
         )
-        .query(async ({ input }) => {
+        .query(async ({ ctx, input }) => {
           const store = await db.getStoreById(input.storeId);
           if (!store) throw new Error("Estabelecimento não encontrado");
           if (!store.isOpen)
             throw new Error("Estabelecimento fechado no momento");
+          const address = input.addressId
+            ? await db.getCustomerAddress(ctx.user.id, input.addressId)
+            : undefined;
+          if (input.addressId && !address)
+            throw new Error("Endereço não encontrado ou não autorizado");
+          const serviceability = calculateServiceability(
+            input.fulfillmentMode,
+            store,
+            address,
+          );
+          if (!serviceability.serviceable)
+            throw new Error(serviceabilityMessage(serviceability));
           const quotedItems = await Promise.all(
             input.items.map(async (item) => {
               const product = await db.getAvailableProductForStore(
@@ -291,7 +309,7 @@ export const appRouter = router({
             (sum, item) => sum + Number(item.lineTotal),
             0,
           );
-          const deliveryFee = Number(store.deliveryFee ?? 0);
+          const deliveryFee = Number(serviceability.deliveryFee);
           let couponCode: string | undefined;
           let discount = "0.00";
           if (input.couponCode) {
@@ -309,6 +327,9 @@ export const appRouter = router({
             items: quotedItems,
             subtotal: subtotal.toFixed(2),
             deliveryFee: deliveryFee.toFixed(2),
+            fulfillmentMode: serviceability.mode,
+            distanceKm: serviceability.distanceKm,
+            serviceabilityReason: serviceability.reason,
             couponCode,
             discount,
             total: (subtotal + deliveryFee - Number(discount)).toFixed(2),
@@ -333,12 +354,36 @@ export const appRouter = router({
               .string()
               .regex(/^\d+(\.\d{1,2})?$/)
               .default("0.00"),
+            deliveryEnabled: z.boolean().default(true),
+            pickupEnabled: z.boolean().default(false),
+            deliveryRadiusKm: z
+              .string()
+              .regex(/^\d+(\.\d{1,2})?$/)
+              .refine((value) => Number(value) > 0, "Raio de entrega inválido")
+              .default("10.00"),
+            latitude: z.number().min(-90).max(90).optional().nullable(),
+            longitude: z.number().min(-180).max(180).optional().nullable(),
           }),
         )
         .mutation(async ({ ctx, input }) => {
           if (await db.getStoreForOwner(ctx.user.id))
             throw new Error("Este usuário já possui uma loja");
-          return db.createStore({ ...input, ownerId: ctx.user.id });
+          const { deliveryEnabled, pickupEnabled, ...storeInput } = input;
+          return db.createStore({
+            ...storeInput,
+            deliveryEnabled: deliveryEnabled ? 1 : 0,
+            pickupEnabled: pickupEnabled ? 1 : 0,
+            latitude:
+              storeInput.latitude === null || storeInput.latitude === undefined
+                ? storeInput.latitude
+                : storeInput.latitude.toFixed(7),
+            longitude:
+              storeInput.longitude === null ||
+              storeInput.longitude === undefined
+                ? storeInput.longitude
+                : storeInput.longitude.toFixed(7),
+            ownerId: ctx.user.id,
+          });
         }),
       update: protectedProcedure
         .input(
@@ -352,6 +397,18 @@ export const appRouter = router({
                 .string()
                 .regex(/^\d+(\.\d{1,2})?$/)
                 .optional(),
+              deliveryEnabled: z.boolean().optional(),
+              pickupEnabled: z.boolean().optional(),
+              deliveryRadiusKm: z
+                .string()
+                .regex(/^\d+(\.\d{1,2})?$/)
+                .refine(
+                  (value) => Number(value) > 0,
+                  "Raio de entrega inválido",
+                )
+                .optional(),
+              latitude: z.number().min(-90).max(90).optional().nullable(),
+              longitude: z.number().min(-180).max(180).optional().nullable(),
               isOpen: z.boolean().optional(),
             })
             .refine(
@@ -361,9 +418,23 @@ export const appRouter = router({
             ),
         )
         .mutation(({ ctx, input }) => {
-          const { isOpen, ...changes } = input;
+          const { isOpen, deliveryEnabled, pickupEnabled, ...changes } = input;
           return db.updateStoreForOwner(ctx.user.id, {
             ...changes,
+            latitude:
+              changes.latitude === null || changes.latitude === undefined
+                ? changes.latitude
+                : changes.latitude.toFixed(7),
+            longitude:
+              changes.longitude === null || changes.longitude === undefined
+                ? changes.longitude
+                : changes.longitude.toFixed(7),
+            ...(deliveryEnabled === undefined
+              ? {}
+              : { deliveryEnabled: deliveryEnabled ? 1 : 0 }),
+            ...(pickupEnabled === undefined
+              ? {}
+              : { pickupEnabled: pickupEnabled ? 1 : 0 }),
             ...(isOpen === undefined ? {} : { isOpen: isOpen ? 1 : 0 }),
           });
         }),
@@ -667,6 +738,7 @@ export const appRouter = router({
             storeId: z.number().int().positive(),
             total: z.string().regex(/^\d+(\.\d{1,2})?$/),
             paymentMethod: z.enum(["pix", "cash", "fiado"]).default("pix"),
+            fulfillmentMode: z.enum(["delivery", "pickup"]).default("delivery"),
             addressId: z.number().int().positive().optional(),
             deliveryAddress: z.string().trim().max(255).optional(),
             couponCode: z.string().trim().min(1).max(40).optional(),
@@ -689,6 +761,17 @@ export const appRouter = router({
             idempotencyKey,
           );
           if (existing) {
+            if (
+              (existing.storeId !== undefined &&
+                existing.storeId !== input.storeId) ||
+              (existing.total !== undefined &&
+                Number(existing.total) !== Number(input.total)) ||
+              (existing.fulfillmentMode !== undefined &&
+                existing.fulfillmentMode !== input.fulfillmentMode)
+            )
+              throw new Error(
+                "A chave de idempotência já foi usada para outro pedido",
+              );
             if (input.paymentMethod === "fiado")
               return {
                 orderId: existing.id,
@@ -705,12 +788,34 @@ export const appRouter = router({
               status: existing.status,
             };
           }
-          let deliveryAddress = input.deliveryAddress?.trim() || "";
-          if (input.addressId) {
-            const savedAddress = await db.getCustomerAddress(
-              ctx.user.id,
-              input.addressId,
+          const store = await db.getStoreById(input.storeId);
+          if (!store) throw new Error("Estabelecimento não encontrado");
+          if (!store.isOpen)
+            throw new Error("Estabelecimento fechado no momento");
+
+          const savedAddress = input.addressId
+            ? await db.getCustomerAddress(ctx.user.id, input.addressId)
+            : undefined;
+          if (input.addressId && !savedAddress)
+            throw new Error("Endereço não encontrado ou não autorizado");
+          if (input.fulfillmentMode === "delivery" && !savedAddress)
+            throw new Error(
+              "Selecione um endereço salvo com localização para entrega",
             );
+
+          const serviceability = calculateServiceability(
+            input.fulfillmentMode,
+            store,
+            savedAddress,
+          );
+          if (!serviceability.serviceable)
+            throw new Error(serviceabilityMessage(serviceability));
+
+          let deliveryAddress =
+            input.fulfillmentMode === "pickup"
+              ? `Retirada em ${store.name}`
+              : "";
+          if (input.fulfillmentMode === "delivery" && input.addressId) {
             if (!savedAddress)
               throw new Error("Endereço não encontrado ou não autorizado");
             deliveryAddress = [
@@ -722,12 +827,6 @@ export const appRouter = router({
               .filter(Boolean)
               .join(", ");
           }
-          if (!deliveryAddress)
-            throw new Error("Informe o endereço de entrega");
-          const store = await db.getStoreById(input.storeId);
-          if (!store) throw new Error("Estabelecimento não encontrado");
-          if (!store.isOpen)
-            throw new Error("Estabelecimento fechado no momento");
           const products = await Promise.all(
             input.items.map((item) =>
               db.getAvailableProductForStore(item.productId, input.storeId),
@@ -752,7 +851,7 @@ export const appRouter = router({
             discount = calculation.discount;
           }
           const calculated =
-            subtotal + Number(store.deliveryFee ?? 0) - Number(discount);
+            subtotal + Number(serviceability.deliveryFee) - Number(discount);
           if (Math.abs(calculated - Number(input.total)) > 0.01)
             throw new Error("Total do pedido inválido");
           const serverTotal = calculated.toFixed(2);
@@ -801,6 +900,8 @@ export const appRouter = router({
                   couponCode,
                   discount,
                   deliveryAddress,
+                  fulfillmentMode: input.fulfillmentMode,
+                  deliveryFeeSnapshot: serviceability.deliveryFee,
                   idempotencyKey,
                 },
                 input.items.map((item, i) => ({
@@ -847,6 +948,8 @@ export const appRouter = router({
                 couponCode,
                 discount,
                 deliveryAddress,
+                fulfillmentMode: input.fulfillmentMode,
+                deliveryFeeSnapshot: serviceability.deliveryFee,
                 idempotencyKey,
               },
               input.items.map((item, i) => ({
@@ -929,7 +1032,13 @@ export const appRouter = router({
             }
             return { success: true as const };
           }
-          if (!canTransitionOrder(order.status, input.status))
+          if (
+            !canTransitionOrder(
+              order.status,
+              input.status,
+              order.fulfillmentMode,
+            )
+          )
             throw new Error(
               `Transição de pedido inválida: ${order.status} → ${input.status}`,
             );

@@ -62,6 +62,16 @@ export const stores = mysqlTable(
     deliveryFee: decimal("deliveryFee", { precision: 10, scale: 2 })
       .default("0.00")
       .notNull(),
+    deliveryEnabled: int("deliveryEnabled").default(1).notNull(),
+    pickupEnabled: int("pickupEnabled").default(0).notNull(),
+    deliveryRadiusKm: decimal("deliveryRadiusKm", {
+      precision: 6,
+      scale: 2,
+    })
+      .default("10.00")
+      .notNull(),
+    latitude: decimal("latitude", { precision: 10, scale: 7 }),
+    longitude: decimal("longitude", { precision: 10, scale: 7 }),
     isOpen: int("isOpen").default(1).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
@@ -124,6 +134,15 @@ export const orders = mysqlTable(
       .default("0.00")
       .notNull(),
     deliveryAddress: varchar("deliveryAddress", { length: 255 }),
+    fulfillmentMode: mysqlEnum("fulfillmentMode", ["delivery", "pickup"])
+      .default("delivery")
+      .notNull(),
+    deliveryFeeSnapshot: decimal("deliveryFeeSnapshot", {
+      precision: 10,
+      scale: 2,
+    })
+      .default("0.00")
+      .notNull(),
     idempotencyKey: varchar("idempotencyKey", { length: 160 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

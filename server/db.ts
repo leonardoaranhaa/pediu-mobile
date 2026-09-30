@@ -1054,7 +1054,17 @@ export async function createStore(input: InsertStore): Promise<number> {
 export type UpdateStoreInput = Partial<
   Pick<
     InsertStore,
-    "name" | "phone" | "address" | "pixKey" | "deliveryFee" | "isOpen"
+    | "name"
+    | "phone"
+    | "address"
+    | "pixKey"
+    | "deliveryFee"
+    | "deliveryEnabled"
+    | "pickupEnabled"
+    | "deliveryRadiusKm"
+    | "latitude"
+    | "longitude"
+    | "isOpen"
   >
 >;
 

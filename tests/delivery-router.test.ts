@@ -91,6 +91,30 @@ describe("Pediu delivery operational contract", () => {
     ).rejects.toThrow("loja não autorizada");
   });
 
+  it("does not create courier work for a pickup order", async () => {
+    vi.spyOn(db, "getOrderForUser").mockResolvedValue({
+      ...pronto,
+      fulfillmentMode: "pickup",
+    });
+    vi.spyOn(db, "getStoreForOwner").mockResolvedValue(store);
+    const assignmentSave = vi.spyOn(db, "upsertDeliveryAssignment");
+    const offerSave = vi.spyOn(db, "createDeliveryOffer");
+    const caller = appRouter.createCaller({ user: merchant } as any);
+
+    await expect(
+      caller.pediu.experience.delivery.assign({ orderId: 101 }),
+    ).rejects.toThrow("retirada");
+    await expect(
+      caller.pediu.experience.delivery.offer({
+        orderId: 101,
+        courierUserId: 99,
+        idempotencyKey: "pickup-offer-101",
+      }),
+    ).rejects.toThrow("retirada");
+    expect(assignmentSave).not.toHaveBeenCalled();
+    expect(offerSave).not.toHaveBeenCalled();
+  });
+
   it("records one location and starts the route without duplicating a retry event", async () => {
     vi.spyOn(db, "getOrderForUser").mockResolvedValue(pronto);
     vi.spyOn(db, "getStoreForOwner").mockResolvedValue(store);
