@@ -18,6 +18,7 @@ import { registerEmailVerificationRoutes } from "../email-verification";
 import { assertRuntimeConfig } from "./env";
 import { registerObservabilityMetrics } from "./observability";
 import { probeReadiness } from "./readiness";
+import { startInventoryReservationSweeper } from "../inventory-reservation-sweeper";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -123,6 +124,7 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`[api] server listening on port ${port}`);
+    startInventoryReservationSweeper();
   });
 }
 

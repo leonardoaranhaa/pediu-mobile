@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   availableInventoryQuantity,
+  inventoryReservationCutoff,
   inventoryAdjustmentForStatusChange,
+  isPendingReservationExpired,
   normalizeInventoryQuantity,
 } from "../server/domain/inventory";
 
@@ -38,6 +40,33 @@ describe("inventory domain", () => {
     );
     expect(() => normalizeInventoryQuantity(1_000_001)).toThrow(
       "Quantidade de estoque inválida",
+    );
+  });
+
+  it("expires only old pending reservations and keeps later states intact", () => {
+    const now = new Date("2026-09-30T12:00:00.000Z");
+    const cutoff = inventoryReservationCutoff(now, 30 * 60_000);
+
+    expect(cutoff.toISOString()).toBe("2026-09-30T11:30:00.000Z");
+    expect(
+      isPendingReservationExpired("Pendente", cutoff, now, 30 * 60_000),
+    ).toBe(true);
+    expect(
+      isPendingReservationExpired(
+        "Pendente",
+        new Date("2026-09-30T11:30:00.001Z"),
+        now,
+        30 * 60_000,
+      ),
+    ).toBe(false);
+    expect(
+      isPendingReservationExpired("Aceito", cutoff, now, 30 * 60_000),
+    ).toBe(false);
+  });
+
+  it("rejects a negative reservation TTL", () => {
+    expect(() => inventoryReservationCutoff(new Date(), -1)).toThrow(
+      "TTL de reserva inválido",
     );
   });
 });

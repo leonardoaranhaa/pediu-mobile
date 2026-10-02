@@ -18,6 +18,7 @@
     "go-live:operations-e2e": "tsx scripts/go-live-operations-e2e.ts",
     "go-live:reviews": "tsx scripts/go-live-reviews.ts",
     "go-live:inventory": "tsx scripts/go-live-inventory.ts",
+    "go-live:inventory-expiry": "tsx scripts/go-live-inventory-expiry.ts",
     "go-live:serviceability": "tsx scripts/go-live-serviceability.ts",
     "go-live:concurrency": "tsx scripts/go-live-concurrency.ts",
     "go-live:fiado-concurrency": "tsx scripts/go-live-fiado-concurrency.ts",

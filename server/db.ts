@@ -98,7 +98,9 @@ import {
   parseAmountToCents,
 } from "./domain/finance";
 import {
+  DEFAULT_INVENTORY_RESERVATION_TTL_MS,
   inventoryAdjustmentForStatusChange,
+  inventoryReservationCutoff,
   normalizeInventoryQuantity,
 } from "./domain/inventory";
 
@@ -1943,6 +1945,60 @@ export async function transitionOrderStatus(
       changed: false,
       status: current[0]?.status ?? status,
     };
+  });
+}
+
+export async function expireStaleInventoryReservations(
+  input: {
+    now?: Date;
+    ttlMs?: number;
+    limit?: number;
+  } = {},
+): Promise<number[]> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = input.now ?? new Date();
+  const ttlMs = input.ttlMs ?? DEFAULT_INVENTORY_RESERVATION_TTL_MS;
+  const limit = Math.min(Math.max(input.limit ?? 100, 1), 500);
+  const cutoff = inventoryReservationCutoff(now, ttlMs);
+
+  return db.transaction(async (tx) => {
+    const staleOrders = await tx
+      .select({ id: orders.id })
+      .from(orders)
+      .where(and(eq(orders.status, "Pendente"), lte(orders.createdAt, cutoff)))
+      .orderBy(orders.createdAt, orders.id)
+      .limit(limit)
+      .for("update");
+    const expiredOrderIds: number[] = [];
+
+    for (const staleOrder of staleOrders) {
+      const result = await tx
+        .update(orders)
+        .set({ status: "Cancelado", updatedAt: now })
+        .where(
+          and(eq(orders.id, staleOrder.id), eq(orders.status, "Pendente")),
+        );
+      if (getAffectedRows(result) !== 1) continue;
+
+      await adjustInventoryForOrder(tx, staleOrder.id, "Pendente", "Cancelado");
+      await tx
+        .update(payments)
+        .set({ status: "cancelled" })
+        .where(
+          and(
+            eq(payments.orderId, staleOrder.id),
+            eq(payments.status, "pending"),
+          ),
+        );
+      await tx.insert(deliveryEvents).values({
+        orderId: staleOrder.id,
+        eventType: "Cancelado",
+      });
+      expiredOrderIds.push(staleOrder.id);
+    }
+
+    return expiredOrderIds;
   });
 }
 

@@ -1134,3 +1134,28 @@ O painel do lojista expõe as modalidades, raio e coordenadas com validação de
 | Cleanup SQL | 0 usuários, 0 lojas, 0 produtos e 0 pedidos com prefixo serviceability residuais |
 
 A instrução técnica desta fase está em `docs/INSTRUCAO_FASE_SERVICEABILITY_PICKUP_PR7.md`. A validação usa somente banco e PSP mock locais; não há pagamento real, CNPJ, credencial de PSP, webhook real, geocodificação externa ou rastreamento físico simulados. Permanecem externos OAuth real, push/e-mail, storage, observabilidade/backup, domínio/staging/produção definitivos, GPS/background em dispositivos físicos e publicação nas lojas. O PSP/PIX real continua pendente por CNPJ, credenciais, configuração, webhook e homologação autorizada; portanto o Go-Live comercial e o PR #7 permanecem bloqueados e não READY.
+
+
+---
+# 44. Expiração e liberação de reservas abandonadas — 01/10/2026
+
+Esta fatia fechou a lacuna P1 de retenção indefinida de estoque reservado. O backend agora usa TTL padrão de 30 minutos para pedidos ainda `Pendente`: um sweeper nativo, iniciado junto com o servidor e limitado por intervalo/TTL configuráveis, seleciona candidatos com lock, cancela o pedido, libera a reserva, cancela o pagamento local ainda pendente e registra `Cancelado` na mesma transação. O sweep não toca pedidos `Aceito` ou posteriores, e a máquina de pagamentos impede que uma confirmação tardia reabra um pagamento local cancelado. Locks de banco permitem múltiplas instâncias sem dupla liberação; a confirmação tardia no PSP real continua exigindo reconciliação/estorno autorizado.
+
+O smoke `pnpm go-live:inventory-expiry` foi adicionado ao Operational Validation. Ele cria duas reservas concorrentes, expira uma em duas transações simultâneas, preserva a já aceita, verifica pagamento/evento/liberação, repete o sweep e confirma idempotência e cleanup.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| Migration/schema | Sem nova migration; a fase usa as colunas de inventário e status publicadas na `0028_inventory_reservation.sql` |
+| Regressões locais | 41 arquivos de teste, 207 testes aprovados; domínio de inventário, pagamento, pedidos e consistência cobertos |
+| Matriz local | `pnpm check`, `pnpm test`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados |
+| Smoke E2E real | Pedido pendente antigo cancelado; reserva liberada; pagamento local pendente cancelado; pedido `Aceito` preservado |
+| Concorrência/idempotência | Dois sweepers simultâneos produziram exatamente uma expiração; repetição não alterou o estoque novamente |
+| Cleanup SQL | 0 usuários, 0 produtos e 0 pedidos com prefixo `ci-inventory-expiry-` residuais |
+| Readiness do bundle recompilado | `/api/health` 200; `/api/readyz` 200 com database, migrations e tables em `pass` |
+| Deployment smoke local | health 200, readyz 200, marketplace 200, CORS exato e métricas protegidas |
+| Stress local read-only | 120 requests / 12 workers; p50 24,8 ms; p95 68,4 ms; máximo 82,7 ms; erro 0% |
+| Deployment/stress HTTPS temporário | Smoke aprovado; 40 requests / 4 workers; p50 13,1 ms; p95 44,6 ms; máximo 138,6 ms; erro 0% |
+
+A instrução técnica está em `docs/INSTRUCAO_FASE_INVENTARIO_EXPIRACAO_PR7.md`. A primeira tentativa de iniciar o bundle falhou somente por configuração ausente (`VITE_APP_ID`, `JWT_SECRET`, `ALLOWED_ORIGINS` e `OBSERVABILITY_TOKEN`); a repetição com ambiente determinístico completo passou. A validação não simula pagamento real: aprovação tardia no PSP, reconciliação e eventual estorno permanecem externos. Também permanecem externos OAuth real, push/e-mail, storage, observabilidade/backup, scheduler/hosting definitivos, domínio/staging/produção, GPS/background físico e publicação nas lojas. O PSP/PIX real continua pendente por CNPJ, credenciais, webhook e homologação autorizada; portanto o Go-Live comercial e o PR #7 permanecem bloqueados e não READY.

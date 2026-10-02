@@ -1,5 +1,35 @@
 export type InventoryAdjustment = "reserve" | "release" | "consume" | "none";
 
+export const DEFAULT_INVENTORY_RESERVATION_TTL_MS = 30 * 60_000;
+
+export function inventoryReservationCutoff(
+  now = new Date(),
+  ttlMs = DEFAULT_INVENTORY_RESERVATION_TTL_MS,
+): Date {
+  if (!Number.isFinite(ttlMs) || ttlMs < 0)
+    throw new Error("TTL de reserva inválido");
+  return new Date(now.getTime() - ttlMs);
+}
+
+export function isPendingReservationExpired(
+  status:
+    | "Pendente"
+    | "Aceito"
+    | "Preparando"
+    | "Pronto"
+    | "A caminho"
+    | "Entregue"
+    | "Cancelado",
+  createdAt: Date,
+  now = new Date(),
+  ttlMs = DEFAULT_INVENTORY_RESERVATION_TTL_MS,
+): boolean {
+  return (
+    status === "Pendente" &&
+    createdAt.getTime() <= inventoryReservationCutoff(now, ttlMs).getTime()
+  );
+}
+
 export function availableInventoryQuantity(
   stockQuantity: number,
   reservedQuantity: number,
