@@ -108,6 +108,7 @@ import {
   dispatchOfferExpiresAt,
   dispatchReofferKey,
 } from "./domain/dispatch";
+import { isTrackingCapturedAtAcceptable } from "./domain/tracking";
 import { isUniqueConstraintError } from "./domain/idempotency";
 import {
   calculateCommissionCents,
@@ -2065,7 +2066,7 @@ export async function getLatestDeliveryLocation(
     .select()
     .from(deliveryLocations)
     .where(eq(deliveryLocations.orderId, orderId))
-    .orderBy(desc(deliveryLocations.createdAt), desc(deliveryLocations.id))
+    .orderBy(desc(deliveryLocations.capturedAt), desc(deliveryLocations.id))
     .limit(1);
   return result[0];
 }
@@ -2111,6 +2112,11 @@ export async function recordDeliveryLocation(
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.transaction(async (tx) => {
+    const capturedAt = input.capturedAt ?? input.createdAt ?? new Date();
+    if (!isTrackingCapturedAtAcceptable(capturedAt)) {
+      throw new Error("A posição está fora da janela segura de reconexão");
+    }
+
     const existing = await tx
       .select()
       .from(deliveryLocations)
@@ -2165,17 +2171,31 @@ export async function recordDeliveryLocation(
       };
     }
 
-    await tx
-      .update(deliveryAssignments)
-      .set({
-        currentLatitude: input.latitude,
-        currentLongitude: input.longitude,
-        etaMinutes: input.etaMinutes,
-        lastLocationAt: input.createdAt ?? new Date(),
-        status: "in_transit",
-        updatedAt: new Date(),
-      })
-      .where(eq(deliveryAssignments.id, input.assignmentId));
+    const currentAssignments = await tx
+      .select()
+      .from(deliveryAssignments)
+      .where(eq(deliveryAssignments.id, input.assignmentId))
+      .limit(1);
+    const currentAssignment = currentAssignments[0];
+    if (!currentAssignment) {
+      throw new Error("Atribuição de entrega não encontrada");
+    }
+    const shouldUpdateCurrent =
+      !currentAssignment.lastLocationAt ||
+      capturedAt.getTime() >= currentAssignment.lastLocationAt.getTime();
+    if (shouldUpdateCurrent) {
+      await tx
+        .update(deliveryAssignments)
+        .set({
+          currentLatitude: input.latitude,
+          currentLongitude: input.longitude,
+          etaMinutes: input.etaMinutes,
+          lastLocationAt: capturedAt,
+          status: "in_transit",
+          updatedAt: new Date(),
+        })
+        .where(eq(deliveryAssignments.id, input.assignmentId));
+    }
     const orderUpdate = await tx
       .update(orders)
       .set({ status: "A caminho", updatedAt: new Date() })

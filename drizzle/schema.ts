@@ -842,6 +842,7 @@ export const deliveryLocations = mysqlTable(
     longitude: decimal("longitude", { precision: 10, scale: 7 }).notNull(),
     etaMinutes: int("etaMinutes"),
     idempotencyKey: varchar("idempotencyKey", { length: 160 }).notNull(),
+    capturedAt: timestamp("capturedAt").defaultNow().notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (table) => ({
@@ -851,6 +852,11 @@ export const deliveryLocations = mysqlTable(
     assignmentCreatedIdx: index(
       "pediu_delivery_location_assignment_created_idx",
     ).on(table.assignmentId, table.createdAt),
+    orderCapturedIdx: index("pediu_delivery_location_order_captured_idx").on(
+      table.orderId,
+      table.capturedAt,
+      table.id,
+    ),
   }),
 );
 

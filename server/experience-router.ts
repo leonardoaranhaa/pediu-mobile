@@ -6,6 +6,7 @@ import * as data from "./db";
 import { sendPushToUser } from "./push";
 import { coupons, orders, deliveryEvents, privacyConsents } from "../drizzle/schema";
 import { calculateCouponDiscount } from "./domain/coupons";
+import { classifyTrackingFreshness, isTrackingCapturedAtAcceptable, trackingAgeSeconds } from "./domain/tracking";
 
 async function ownedOrder(db: any, orderId: number, userId: number) {
   const rows = await db.select().from(orders).where(and(eq(orders.id, orderId), eq(orders.customerId, userId))).limit(1);
@@ -181,7 +182,8 @@ export const experienceRouter = router({
       if (!order) throw new Error("Pedido não encontrado ou não autorizado");
       const assignment = await data.getDeliveryAssignmentByOrder(input.orderId);
       const latestLocation = await data.getLatestDeliveryLocation(input.orderId);
-      return { orderId: input.orderId, status: order.status, assignment: assignment ?? null, latestLocation: latestLocation ?? null };
+      const now = new Date();
+      return { orderId: input.orderId, status: order.status, assignment: assignment ?? null, latestLocation: latestLocation ?? null, locationAgeSeconds: trackingAgeSeconds(latestLocation?.capturedAt, now), locationFreshness: classifyTrackingFreshness(latestLocation?.capturedAt, now) };
     }),
     assign: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), courierName: z.string().trim().min(2).max(160).optional(), courierPhone: z.string().trim().max(32).optional(), etaMinutes: z.number().int().min(1).max(240).optional() })).mutation(async ({ ctx, input }) => {
       const order = await storeOwnedOrder(input.orderId, ctx.user.id);
@@ -196,7 +198,7 @@ export const experienceRouter = router({
       if (order.fulfillmentMode === "pickup") throw new Error("Pedidos de retirada não passam pelo entregador");
       return data.createDeliveryOffer({ ...input, ownerId: ctx.user.id, expiresAt: new Date(Date.now() + input.expiresInMinutes * 60_000) });
     }),
-    location: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180), etaMinutes: z.number().int().min(0).max(240).optional(), idempotencyKey: z.string().trim().min(8).max(160) })).mutation(async ({ ctx, input }) => {
+    location: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180), etaMinutes: z.number().int().min(0).max(240).optional(), capturedAt: z.coerce.date().optional(), idempotencyKey: z.string().trim().min(8).max(160) })).mutation(async ({ ctx, input }) => {
       const order = await data.getOrderForUser(input.orderId, ctx.user.id);
       if (!order) throw new Error("Pedido não encontrado ou não autorizado");
       if (order.fulfillmentMode === "pickup") throw new Error("Pedidos de retirada não possuem rastreamento courier");
@@ -210,7 +212,9 @@ export const experienceRouter = router({
         const profile = await data.getCourierProfileByUser(ctx.user.id);
         if (!profile || profile.status !== "approved" || !profile.locationConsentAt) throw new Error("O perfil de entregador precisa estar aprovado e com localização autorizada");
       }
-      const result = await data.recordDeliveryLocation({ assignmentId: assignment.id, orderId: input.orderId, courierId: ctx.user.id, latitude: input.latitude.toFixed(7), longitude: input.longitude.toFixed(7), etaMinutes: input.etaMinutes, idempotencyKey: input.idempotencyKey });
+      const capturedAt = input.capturedAt ?? new Date();
+      if (!isTrackingCapturedAtAcceptable(capturedAt)) throw new Error("A posição está fora da janela segura de reconexão");
+      const result = await data.recordDeliveryLocation({ assignmentId: assignment.id, orderId: input.orderId, courierId: ctx.user.id, latitude: input.latitude.toFixed(7), longitude: input.longitude.toFixed(7), etaMinutes: input.etaMinutes, capturedAt, idempotencyKey: input.idempotencyKey });
       if (result.dispatched) { try { await sendPushToUser(order.customerId, "Entrega a caminho", `O pedido #${order.id} saiu para entrega.`, { type: "delivery", orderId: order.id, status: "A caminho" }); } catch (error) { console.warn("[Delivery] Failed to notify customer about dispatch:", error); } }
       return { locationId: result.location.id, assignment: result.assignment, status: "A caminho" as const };
     }),

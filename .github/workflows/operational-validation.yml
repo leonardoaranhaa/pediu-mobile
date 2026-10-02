@@ -113,6 +113,9 @@ jobs:
             const requiredOrderColumns = ['fulfillmentMode', 'deliveryFeeSnapshot'];
             const missingOrderColumns = requiredOrderColumns.filter(name => !orderColumnNames.includes(name));
             if (missingOrderColumns.length) throw new Error(`Missing fulfillment order columns: ${missingOrderColumns.join(', ')}`);
+            const [locationColumns] = await c.query('SHOW COLUMNS FROM pediu_delivery_locations');
+            const locationColumnNames = locationColumns.map(row => row.Field);
+            if (!locationColumnNames.includes('capturedAt')) throw new Error('Missing tracking capturedAt column');
             const [journal] = await c.query('SELECT COUNT(*) AS count FROM __drizzle_migrations');
             if (Number(journal[0].count) < 1) throw new Error('Drizzle migration journal is empty');
             console.log(`Migration smoke test OK: ${journal[0].count} migration(s), ${names.length} Pediu table(s)`);
@@ -174,6 +177,8 @@ jobs:
         run: pnpm go-live:notification-outbox
       - name: Run Go-Live courier dispatch reoffer smoke
         run: pnpm go-live:dispatch-reoffer
+      - name: Run Go-Live tracking resilience smoke
+        run: pnpm go-live:tracking-resilience
       - name: Run Go-Live serviceability and pickup smoke
         run: pnpm go-live:serviceability
       - name: Run Go-Live fiado concurrency smoke

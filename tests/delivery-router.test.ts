@@ -51,6 +51,7 @@ const location = {
   longitude: "-46.6333080",
   etaMinutes: 18,
   idempotencyKey: "location-key-101",
+  capturedAt: new Date(),
   createdAt: new Date(),
 } as any;
 
@@ -135,6 +136,7 @@ describe("Pediu delivery operational contract", () => {
       latitude: -23.55052,
       longitude: -46.633308,
       etaMinutes: 18,
+      capturedAt: new Date(),
       idempotencyKey: "location-key-101",
     });
 
@@ -209,5 +211,26 @@ describe("Pediu delivery operational contract", () => {
 
     expect(result.assignment?.courierName).toBe("Operador Loja");
     expect(result.latestLocation?.idempotencyKey).toBe("location-key-101");
+    expect(result.locationFreshness).toBe("fresh");
+    expect(result.locationAgeSeconds).toBeLessThanOrEqual(1);
+  });
+
+  it("rejects a location captured too far in the future before persistence", async () => {
+    vi.spyOn(db, "getOrderForUser").mockResolvedValue(pronto);
+    vi.spyOn(db, "getStoreForOwner").mockResolvedValue(store);
+    vi.spyOn(db, "getDeliveryAssignmentByOrder").mockResolvedValue(assignment);
+    const record = vi.spyOn(db, "recordDeliveryLocation");
+
+    const caller = appRouter.createCaller({ user: merchant } as any);
+    await expect(
+      caller.pediu.experience.delivery.location({
+        orderId: 101,
+        latitude: -23.55052,
+        longitude: -46.633308,
+        capturedAt: new Date(Date.now() + 3 * 60_000),
+        idempotencyKey: "location-future-101",
+      }),
+    ).rejects.toThrow("janela segura");
+    expect(record).not.toHaveBeenCalled();
   });
 });

@@ -1213,3 +1213,29 @@ Readiness e Operational Validation passaram a exigir `pediu_notification_outbox`
 | Deployment/stress HTTPS temporário | Smoke aprovado; 40 requests / 4 workers; p50 12,1 ms; p95 51,6 ms; máximo 153,7 ms; erro 0% |
 
 A instrução técnica está em `docs/INSTRUCAO_FASE_NOTIFICACAO_OUTBOX_PR7.md`. A entrega real continua dependente de tokens de dispositivo, URL/credencial e política do provedor de push. Permanecem externos Expo Push Service/push físico, CNPJ e PSP/PIX real, webhook, OAuth, e-mail/SMS, storage, observabilidade/backup, scheduler/hosting definitivo, domínio/staging/produção, GPS/background e publicação nas lojas; portanto o Go-Live comercial e o PR #7 permanecem bloqueados e não READY.
+
+
+---
+# 47. Tracking resiliente e reconexão segura — 02/10/2026
+
+Esta fatia fechou a parte interna da lacuna P1 de tracking. A migration `0031_tracking_captured_at` passou a persistir quando a posição foi capturada, além do horário de gravação, com índice por pedido e tempo capturado. O domínio aplica janela de reconexão de 15 minutos, tolerância de relógio futuro de 2 minutos e classifica a posição como `fresh`, `stale` ou `unavailable`.
+
+O endpoint de localização rejeita amostras futuras ou antigas demais antes da persistência. Amostras atrasadas dentro da janela continuam auditáveis, mas não podem sobrescrever a coordenada mais nova da atribuição. `delivery.current` agora retorna idade em segundos e freshness; a tela de tracking mantém o último dado conhecido quando a consulta falha, informa reconexão/stale e oferece retry explícito. O mapa cartográfico, background location e evidência física continuam fora do escopo externo.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| Migration limpa | Banco MySQL temporário com 32 migrations aplicadas; `capturedAt` confirmado |
+| Migration de validação | `0031_tracking_captured_at` aplicada e índice temporal confirmado |
+| Regressões locais | 44 arquivos de teste, 219 testes aprovados |
+| Matriz local final | `pnpm check`, `pnpm test`, `pnpm build`, `pnpm lint`, Prettier nos arquivos suportados e `git diff --check` aprovados |
+| Smoke E2E real | Amostra recente, amostra atrasada, timestamp futuro, freshness/stale e cleanup aprovados no bundle compilado |
+| Monotonicidade/idempotência | Amostra atrasada não reverteu a posição atual da atribuição; amostras futuras foram rejeitadas |
+| Cleanup SQL | 0 usuários, 0 pedidos e 0 localizações com prefixo da fase residuais |
+| Readiness do bundle final | `/api/health` 200; `/api/readyz` 200 com database, migrations e tables em `pass` |
+| Deployment smoke local | health 200, readyz 200, marketplace 200, CORS exato e métricas protegidas |
+| Stress local read-only | 120 requests / 12 workers; p50 21,6 ms; p95 59,0 ms; máximo 101,0 ms; erro 0% |
+| Deployment/stress HTTPS temporário | Smoke aprovado; 40 requests / 4 workers; p50 13,6 ms; p95 49,6 ms; máximo 145,5 ms; erro 0% |
+
+A instrução técnica está em `docs/INSTRUCAO_FASE_TRACKING_RESILIENTE_PR7.md`. A fase não homologa Google Maps/Mapbox, geocodificação, GPS/background em Android/iOS, rede móvel, push/receipts físicos ou dispositivos reais. Permanecem externos PSP/PIX e CNPJ, credenciais/homologação e webhook real, OAuth, Expo Push Service, e-mail/SMS, storage, observabilidade/backup, scheduler/hosting definitivo, domínio/staging/produção e publicação nas lojas; portanto o Go-Live comercial e o PR #7 permanecem bloqueados e não READY.
