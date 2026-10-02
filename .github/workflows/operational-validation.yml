@@ -169,6 +169,8 @@ jobs:
         run: pnpm go-live:inventory
       - name: Run Go-Live inventory reservation expiry smoke
         run: pnpm go-live:inventory-expiry
+      - name: Run Go-Live courier dispatch reoffer smoke
+        run: pnpm go-live:dispatch-reoffer
       - name: Run Go-Live serviceability and pickup smoke
         run: pnpm go-live:serviceability
       - name: Run Go-Live fiado concurrency smoke

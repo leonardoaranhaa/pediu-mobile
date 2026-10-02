@@ -83,13 +83,11 @@ describe("Pediu courier flow", () => {
   });
 
   it("audits administrative approval after the courier profile changes successfully", async () => {
-    const review = vi
-      .spyOn(db, "reviewCourierProfile")
-      .mockResolvedValue({
-        ...profile,
-        status: "approved",
-        approvedAt: new Date(),
-      });
+    const review = vi.spyOn(db, "reviewCourierProfile").mockResolvedValue({
+      ...profile,
+      status: "approved",
+      approvedAt: new Date(),
+    });
     const audit = vi.spyOn(db, "createAdminAuditLog").mockResolvedValue(99);
     const caller = appRouter.createCaller({
       user: { ...user, id: 1, role: "admin" },
@@ -110,5 +108,26 @@ describe("Pediu courier flow", () => {
         entityId: 11,
       }),
     );
+  });
+
+  it("returns the next eligible offer after a courier rejects one", async () => {
+    const respond = vi.spyOn(db, "respondToDeliveryOffer").mockResolvedValue({
+      offer: { id: 31, status: "rejected" } as any,
+      reoffer: { id: 32, status: "pending", courierUserId: 43 } as any,
+    });
+    const caller = appRouter.createCaller({ user } as any);
+
+    const result = await caller.pediu.courier.rejectOffer({ offerId: 31 });
+
+    expect(result.reoffer).toMatchObject({
+      id: 32,
+      status: "pending",
+      courierUserId: 43,
+    });
+    expect(respond).toHaveBeenCalledWith({
+      offerId: 31,
+      courierUserId: 42,
+      accept: false,
+    });
   });
 });

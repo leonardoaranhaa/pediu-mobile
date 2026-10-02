@@ -1159,3 +1159,31 @@ O smoke `pnpm go-live:inventory-expiry` foi adicionado ao Operational Validation
 | Deployment/stress HTTPS temporário | Smoke aprovado; 40 requests / 4 workers; p50 13,1 ms; p95 44,6 ms; máximo 138,6 ms; erro 0% |
 
 A instrução técnica está em `docs/INSTRUCAO_FASE_INVENTARIO_EXPIRACAO_PR7.md`. A primeira tentativa de iniciar o bundle falhou somente por configuração ausente (`VITE_APP_ID`, `JWT_SECRET`, `ALLOWED_ORIGINS` e `OBSERVABILITY_TOKEN`); a repetição com ambiente determinístico completo passou. A validação não simula pagamento real: aprovação tardia no PSP, reconciliação e eventual estorno permanecem externos. Também permanecem externos OAuth real, push/e-mail, storage, observabilidade/backup, scheduler/hosting definitivos, domínio/staging/produção, GPS/background físico e publicação nas lojas. O PSP/PIX real continua pendente por CNPJ, credenciais, webhook e homologação autorizada; portanto o Go-Live comercial e o PR #7 permanecem bloqueados e não READY.
+
+
+---
+# 45. Expiração e reoferta de despacho courier — 01/10/2026
+
+Esta fatia fechou a lacuna P1 em que uma oferta courier só expirava quando o entregador consultava a própria inbox. O backend agora executa sweep global bounded de ofertas `pending` vencidas, marca a oferta como `expired` e seleciona, dentro da mesma transação, um entregador vinculado à loja, aprovado, disponível e ainda não tentado para aquele pedido. O candidato recebe chave idempotente determinística e novo TTL limitado. A consulta da inbox também dispara o sweep para reduzir a latência, enquanto o timer cobre pedidos sem polling.
+
+Recusas disparam reoferta na mesma transação. O sistema não reoferta pickup, pedidos que saíram de `Pronto`, pedidos com atribuição ou candidatos indisponíveis/não aprovados/não vinculados. Se todos os candidatos já foram tentados, o pedido permanece `Pronto` para atribuição manual. O aceite continua sendo a única operação que cria `deliveryAssignments` e cancela ofertas irmãs; locks e a unicidade da chave impedem duplicidade em concorrência.
+
+O smoke `pnpm go-live:dispatch-reoffer` foi adicionado ao Operational Validation e cobre expiração/reoferta, recusa/reoferta, duas consultas concorrentes, aceite único, candidato já tentado, ausência de candidato e cleanup.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| Migration/schema | Sem nova migration; o schema publicado de ofertas, vínculos, perfis e atribuições foi suficiente |
+| Regressões locais | 42 arquivos de teste, 211 testes aprovados; dispatch, courier, atribuição, GPS, estados e pickup cobertos |
+| Matriz local | `pnpm check`, `pnpm test`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados |
+| Smoke E2E real | Expiração/reoferta, recusa/reoferta, aceite e ausência de candidato aprovados no MySQL 8.0 |
+| Concorrência/idempotência | Duas consultas courier simultâneas produziram uma única reoferta pendente e nenhuma atribuição duplicada |
+| Preservação operacional | Pedido sem candidato permaneceu `Pronto`; pickup continuou fora do fluxo courier |
+| Cleanup SQL | 0 usuários, 0 lojas, 0 pedidos e 0 ofertas com prefixo da fase residuais |
+| Readiness do bundle final | `/api/health` 200; `/api/readyz` 200 com database, migrations e tables em `pass` |
+| Deployment smoke local | health 200, readyz 200, marketplace 200, CORS exato e métricas protegidas |
+| Stress local read-only | 120 requests / 12 workers; p50 23,3 ms; p95 72,2 ms; máximo 89,8 ms; erro 0% |
+| Deployment/stress HTTPS temporário | Smoke aprovado; 40 requests / 4 workers; p50 14,3 ms; p95 45,8 ms; máximo 127,6 ms; erro 0% |
+
+A instrução técnica está em `docs/INSTRUCAO_FASE_DESPACHO_REOFERTA_PR7.md`. O dispatch é bounded e não implementa matching por distância, tarifa dinâmica, fila distribuída, background GPS ou push garantido. A validação não simula PSP/PIX real. Permanecem externos CNPJ, credenciais/homologação do PSP, webhook real, OAuth real, push/e-mail, storage, observabilidade/backup, scheduler/hosting definitivo, domínio/staging/produção, GPS/background físico e publicação nas lojas; portanto o Go-Live comercial e o PR #7 permanecem bloqueados e não READY.

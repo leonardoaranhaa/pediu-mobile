@@ -1,4 +1,15 @@
-import { and, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNull,
+  lte,
+  notExists,
+  or,
+  sql,
+} from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   AdCredit,
@@ -89,6 +100,12 @@ import {
   refunds,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import {
+  DEFAULT_DISPATCH_OFFER_TTL_MS,
+  boundedDispatchOfferTtl,
+  dispatchOfferExpiresAt,
+  dispatchReofferKey,
+} from "./domain/dispatch";
 import { isUniqueConstraintError } from "./domain/idempotency";
 import {
   calculateCommissionCents,
@@ -105,6 +122,14 @@ import {
 } from "./domain/inventory";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+
+type AppDatabase = NonNullable<Awaited<ReturnType<typeof getDb>>>;
+type DatabaseTransaction = Parameters<AppDatabase["transaction"]>[0] extends (
+  tx: infer T,
+  ...args: never[]
+) => Promise<unknown>
+  ? T
+  : never;
 
 function getInsertId(result: unknown): number {
   const header = Array.isArray(result) ? result[0] : result;
@@ -2215,6 +2240,113 @@ export async function completeDelivery(
   });
 }
 
+async function reofferDeliveryWithinTransaction(
+  tx: DatabaseTransaction,
+  input: {
+    orderId: number;
+    storeId: number;
+    now: Date;
+    ttlMs: number;
+  },
+): Promise<DeliveryOffer | undefined> {
+  const order = (
+    await tx
+      .select({ id: orders.id, status: orders.status })
+      .from(orders)
+      .where(
+        and(eq(orders.id, input.orderId), eq(orders.storeId, input.storeId)),
+      )
+      .for("update")
+      .limit(1)
+  )[0];
+  if (!order || order.status !== "Pronto") return undefined;
+
+  const assignment = (
+    await tx
+      .select({ id: deliveryAssignments.id })
+      .from(deliveryAssignments)
+      .where(eq(deliveryAssignments.orderId, input.orderId))
+      .for("update")
+      .limit(1)
+  )[0];
+  if (assignment) return undefined;
+
+  const pendingOffer = (
+    await tx
+      .select({ id: deliveryOffers.id })
+      .from(deliveryOffers)
+      .where(
+        and(
+          eq(deliveryOffers.orderId, input.orderId),
+          eq(deliveryOffers.status, "pending"),
+        ),
+      )
+      .limit(1)
+  )[0];
+  if (pendingOffer) return undefined;
+
+  const candidate = (
+    await tx
+      .select({
+        courierUserId: storeCouriers.courierUserId,
+        courierName: users.name,
+        courierPhone: courierProfiles.phone,
+      })
+      .from(storeCouriers)
+      .innerJoin(
+        courierProfiles,
+        eq(courierProfiles.userId, storeCouriers.courierUserId),
+      )
+      .innerJoin(users, eq(users.id, storeCouriers.courierUserId))
+      .where(
+        and(
+          eq(storeCouriers.storeId, input.storeId),
+          eq(storeCouriers.status, "active"),
+          eq(courierProfiles.status, "approved"),
+          eq(courierProfiles.availability, "available"),
+          notExists(
+            tx
+              .select({ id: deliveryOffers.id })
+              .from(deliveryOffers)
+              .where(
+                and(
+                  eq(deliveryOffers.orderId, input.orderId),
+                  eq(deliveryOffers.courierUserId, storeCouriers.courierUserId),
+                ),
+              ),
+          ),
+        ),
+      )
+      .orderBy(storeCouriers.updatedAt, storeCouriers.courierUserId)
+      .for("update")
+      .limit(1)
+  )[0];
+  if (!candidate) return undefined;
+
+  const idempotencyKey = dispatchReofferKey(
+    input.orderId,
+    candidate.courierUserId,
+  );
+  const result = await tx.insert(deliveryOffers).values({
+    orderId: input.orderId,
+    storeId: input.storeId,
+    courierUserId: candidate.courierUserId,
+    etaMinutes: undefined,
+    message: "Nova oferta de entrega disponível",
+    idempotencyKey,
+    expiresAt: dispatchOfferExpiresAt(input.now, input.ttlMs),
+    status: "pending",
+  });
+  const id = getInsertId(result);
+  const created = await tx
+    .select()
+    .from(deliveryOffers)
+    .where(eq(deliveryOffers.id, id))
+    .limit(1);
+  if (!created[0]) throw new Error("Reoferta não encontrada após criação");
+  return created[0];
+}
+
 export async function createDeliveryOffer(input: {
   ownerId: number;
   orderId: number;
@@ -2308,15 +2440,77 @@ export async function createDeliveryOffer(input: {
   });
 }
 
+export async function expireAndReofferDeliveryOffers(
+  input: {
+    now?: Date;
+    ttlMs?: number;
+    limit?: number;
+  } = {},
+): Promise<
+  Array<{ offerId: number; orderId: number; reoffer?: DeliveryOffer }>
+> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = input.now ?? new Date();
+  const ttlMs = boundedDispatchOfferTtl(
+    input.ttlMs ?? DEFAULT_DISPATCH_OFFER_TTL_MS,
+  );
+  const limit = Math.min(Math.max(input.limit ?? 100, 1), 500);
+
+  return db.transaction(async (tx) => {
+    const staleOffers = await tx
+      .select({
+        id: deliveryOffers.id,
+        orderId: deliveryOffers.orderId,
+        storeId: deliveryOffers.storeId,
+      })
+      .from(deliveryOffers)
+      .where(
+        and(
+          eq(deliveryOffers.status, "pending"),
+          lte(deliveryOffers.expiresAt, now),
+        ),
+      )
+      .orderBy(deliveryOffers.expiresAt, deliveryOffers.id)
+      .for("update")
+      .limit(limit);
+    const result: Array<{
+      offerId: number;
+      orderId: number;
+      reoffer?: DeliveryOffer;
+    }> = [];
+
+    for (const staleOffer of staleOffers) {
+      const updated = await tx
+        .update(deliveryOffers)
+        .set({ status: "expired", respondedAt: now })
+        .where(
+          and(
+            eq(deliveryOffers.id, staleOffer.id),
+            eq(deliveryOffers.status, "pending"),
+          ),
+        );
+      if (getAffectedRows(updated) !== 1) continue;
+      const reoffer = await reofferDeliveryWithinTransaction(tx, {
+        orderId: staleOffer.orderId,
+        storeId: staleOffer.storeId,
+        now,
+        ttlMs,
+      });
+      result.push({
+        offerId: staleOffer.id,
+        orderId: staleOffer.orderId,
+        ...(reoffer ? { reoffer } : {}),
+      });
+    }
+    return result;
+  });
+}
+
 export async function listPendingDeliveryOffers(courierUserId: number) {
   const db = await getDb();
   if (!db) return [];
-  await db
-    .update(deliveryOffers)
-    .set({ status: "expired", respondedAt: new Date() })
-    .where(
-      sql`${deliveryOffers.courierUserId} = ${courierUserId} AND ${deliveryOffers.status} = 'pending' AND ${deliveryOffers.expiresAt} < ${new Date()}`,
-    );
+  await expireAndReofferDeliveryOffers({ limit: 100 });
   return db
     .select({
       id: deliveryOffers.id,
@@ -2348,7 +2542,11 @@ export async function respondToDeliveryOffer(input: {
   offerId: number;
   courierUserId: number;
   accept: boolean;
-}): Promise<{ offer: DeliveryOffer; assignment?: DeliveryAssignment }> {
+}): Promise<{
+  offer: DeliveryOffer;
+  assignment?: DeliveryAssignment;
+  reoffer?: DeliveryOffer;
+}> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.transaction(async (tx) => {
@@ -2387,7 +2585,13 @@ export async function respondToDeliveryOffer(input: {
           .limit(1)
       )[0];
       if (!rejected) throw new Error("Oferta não encontrada após recusa");
-      return { offer: rejected };
+      const reoffer = await reofferDeliveryWithinTransaction(tx, {
+        orderId: offer.orderId,
+        storeId: offer.storeId,
+        now: new Date(),
+        ttlMs: DEFAULT_DISPATCH_OFFER_TTL_MS,
+      });
+      return { offer: rejected, ...(reoffer ? { reoffer } : {}) };
     }
     if (offer.expiresAt <= new Date()) throw new Error("Esta oferta expirou");
     const profile = (
