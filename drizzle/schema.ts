@@ -1033,6 +1033,20 @@ export const notificationOutbox = mysqlTable(
   }),
 );
 
+export const rateLimitBuckets = mysqlTable(
+  "pediu_rate_limit_buckets",
+  {
+    bucketKey: varchar("bucketKey", { length: 255 }).primaryKey(),
+    requestCount: int("requestCount", { unsigned: true }).default(0).notNull(),
+    windowStartedAt: timestamp("windowStartedAt").notNull(),
+    expiresAt: timestamp("expiresAt").notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => ({
+    expiresIdx: index("pediu_rate_limit_expires_idx").on(table.expiresAt),
+  }),
+);
+
 export const notificationPreferences = mysqlTable(
   "pediu_notification_preferences",
   {
@@ -1177,6 +1191,8 @@ export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = typeof notifications.$inferInsert;
 export type NotificationOutbox = typeof notificationOutbox.$inferSelect;
 export type InsertNotificationOutbox = typeof notificationOutbox.$inferInsert;
+export type RateLimitBucket = typeof rateLimitBuckets.$inferSelect;
+export type InsertRateLimitBucket = typeof rateLimitBuckets.$inferInsert;
 export type NotificationPreferences =
   typeof notificationPreferences.$inferSelect;
 export type InsertNotificationPreferences =

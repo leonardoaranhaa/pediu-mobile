@@ -84,7 +84,8 @@ jobs:
               'pediu_courier_profiles',
               'pediu_store_couriers',
               'pediu_delivery_offers',
-              'pediu_notification_outbox'
+              'pediu_notification_outbox',
+              'pediu_rate_limit_buckets'
             ];
             const missing = required.filter(name => !names.includes(name));
             if (missing.length) throw new Error(`Missing migrated tables: ${missing.join(', ')}`);
@@ -179,6 +180,8 @@ jobs:
         run: pnpm go-live:dispatch-reoffer
       - name: Run Go-Live tracking resilience smoke
         run: pnpm go-live:tracking-resilience
+      - name: Run Go-Live distributed rate-limit smoke
+        run: pnpm go-live:rate-limit
       - name: Run Go-Live serviceability and pickup smoke
         run: pnpm go-live:serviceability
       - name: Run Go-Live fiado concurrency smoke

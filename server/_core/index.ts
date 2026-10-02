@@ -21,6 +21,7 @@ import { probeReadiness } from "./readiness";
 import { startDispatchOfferSweeper } from "../dispatch-offer-sweeper";
 import { startInventoryReservationSweeper } from "../inventory-reservation-sweeper";
 import { startNotificationOutboxWorker } from "../notification-outbox-worker";
+import { startRateLimitBucketSweeper } from "../rate-limit-bucket-sweeper";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -129,6 +130,7 @@ async function startServer() {
     startDispatchOfferSweeper();
     startInventoryReservationSweeper();
     startNotificationOutboxWorker();
+    startRateLimitBucketSweeper();
   });
 }
 

@@ -22,6 +22,7 @@
     "go-live:notification-outbox": "tsx scripts/go-live-notification-outbox.ts",
     "go-live:dispatch-reoffer": "tsx scripts/go-live-dispatch-reoffer.ts",
     "go-live:tracking-resilience": "tsx scripts/go-live-tracking-resilience.ts",
+    "go-live:rate-limit": "tsx scripts/go-live-rate-limit.ts",
     "go-live:serviceability": "tsx scripts/go-live-serviceability.ts",
     "go-live:concurrency": "tsx scripts/go-live-concurrency.ts",
     "go-live:fiado-concurrency": "tsx scripts/go-live-fiado-concurrency.ts",

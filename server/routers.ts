@@ -16,17 +16,13 @@ import {
 } from "./domain/idempotency";
 import { adminRouter } from "./admin-router";
 import { experienceRouter } from "./experience-router";
+import { enforceDistributedRateLimit } from "./_core/distributed-rate-limit";
 import { calculateCouponDiscount } from "./domain/coupons";
 import {
   calculateServiceability,
   serviceabilityMessage,
 } from "./domain/serviceability";
-import {
-  consumeRateLimit,
-  rateLimitKey,
-  withConcurrencyLimit,
-  withTimeout,
-} from "./_core/security";
+import { withConcurrencyLimit, withTimeout } from "./_core/security";
 import crypto from "node:crypto";
 import { hashEmailToken, sendEmailVerification } from "./email-verification";
 import { generateAdCreative } from "./ad-generation";
@@ -531,16 +527,13 @@ export const appRouter = router({
           }),
         )
         .mutation(async ({ ctx, input }) => {
-          if (
-            !consumeRateLimit(
-              rateLimitKey(ctx.req, "ads:generate", ctx.user.id),
-              5,
-              10 * 60_000,
-            )
-          )
-            throw new Error(
-              "Limite de criações atingido. Tente novamente mais tarde.",
-            );
+          await enforceDistributedRateLimit(ctx, {
+            scope: "ads:generate",
+            identity: ctx.user.id,
+            limit: 5,
+            windowMs: 10 * 60_000,
+            message: "Limite de criações atingido. Tente novamente mais tarde.",
+          });
           const store = await db.getStoreForOwner(ctx.user.id);
           if (!store)
             throw new Error("Cadastre sua loja antes de criar anúncios");
@@ -788,6 +781,14 @@ export const appRouter = router({
               status: existing.status,
             };
           }
+          await enforceDistributedRateLimit(ctx, {
+            scope: "orders:create",
+            identity: ctx.user.id,
+            limit: 20,
+            windowMs: 60_000,
+            message:
+              "Muitos pedidos em pouco tempo. Tente novamente em instantes.",
+          });
           const store = await db.getStoreById(input.storeId);
           if (!store) throw new Error("Estabelecimento não encontrado");
           if (!store.isOpen)
@@ -1123,6 +1124,14 @@ export const appRouter = router({
               message: "Cobrança PIX já existente.",
             };
           }
+          await enforceDistributedRateLimit(ctx, {
+            scope: "payments:create-pix",
+            identity: ctx.user.id,
+            limit: 10,
+            windowMs: 60_000,
+            message:
+              "Muitas tentativas de cobrança PIX. Tente novamente em instantes.",
+          });
           if (payment.status !== "pending")
             throw new Error("Este pagamento PIX não está pendente");
 
@@ -1297,16 +1306,13 @@ export const appRouter = router({
           }),
         )
         .mutation(async ({ ctx, input }) => {
-          if (
-            !consumeRateLimit(
-              rateLimitKey(ctx.req, "voice:interpret"),
-              20,
-              5 * 60_000,
-            )
-          )
-            throw new Error(
+          await enforceDistributedRateLimit(ctx, {
+            scope: "voice:interpret",
+            limit: 20,
+            windowMs: 5 * 60_000,
+            message:
               "Limite de comandos de voz atingido. Tente novamente em alguns minutos.",
-            );
+          });
           return withConcurrencyLimit("voice:interpret", 4, () =>
             withTimeout(
               interpretVoiceCommand(input.mode, input.command),
@@ -1331,16 +1337,14 @@ export const appRouter = router({
           }),
         )
         .mutation(async ({ ctx, input }) => {
-          if (
-            !consumeRateLimit(
-              rateLimitKey(ctx.req, "voice:transcribe", ctx.user.id),
-              10,
-              10 * 60_000,
-            )
-          )
-            throw new Error(
+          await enforceDistributedRateLimit(ctx, {
+            scope: "voice:transcribe",
+            identity: ctx.user.id,
+            limit: 10,
+            windowMs: 10 * 60_000,
+            message:
               "Limite de transcrição atingido. Tente novamente mais tarde.",
-            );
+          });
           const encoded = input.audioBase64.replace(/\s/g, "");
           if (
             !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded) ||

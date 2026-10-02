@@ -92,6 +92,7 @@ import {
   privacyConsents,
   products,
   pushTokens,
+  rateLimitBuckets,
   sales,
   storeCouriers,
   stores,
@@ -128,6 +129,11 @@ import {
   nextNotificationAttemptAt,
   shouldRetryNotification,
 } from "./domain/notification-outbox";
+import {
+  boundedRateLimitLimit,
+  boundedRateLimitWindow,
+  decideDistributedRateLimit,
+} from "./domain/distributed-rate-limit";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -169,6 +175,102 @@ export async function getDb() {
     }
   }
   return _db;
+}
+
+export async function consumeDistributedRateLimit(input: {
+  bucketKey: string;
+  limit: number;
+  windowMs: number;
+  now?: Date;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Rate limit database not available");
+  const now = input.now ?? new Date();
+  const windowMs = boundedRateLimitWindow(input.windowMs);
+  const limit = boundedRateLimitLimit(input.limit);
+  const expiresAt = new Date(now.getTime() + windowMs);
+
+  return db.transaction(async (tx) => {
+    await tx
+      .insert(rateLimitBuckets)
+      .values({
+        bucketKey: input.bucketKey,
+        requestCount: 0,
+        windowStartedAt: now,
+        expiresAt: now,
+      })
+      .onDuplicateKeyUpdate({
+        set: { bucketKey: sql`bucketKey` },
+      });
+
+    const rows = await tx
+      .select()
+      .from(rateLimitBuckets)
+      .where(eq(rateLimitBuckets.bucketKey, input.bucketKey))
+      .limit(1)
+      .for("update");
+    const bucket = rows[0];
+    if (!bucket) throw new Error("Rate limit bucket was not created");
+
+    if (bucket.expiresAt.getTime() <= now.getTime()) {
+      await tx
+        .update(rateLimitBuckets)
+        .set({
+          requestCount: 1,
+          windowStartedAt: now,
+          expiresAt,
+          updatedAt: now,
+        })
+        .where(eq(rateLimitBuckets.bucketKey, input.bucketKey));
+      return {
+        allowed: true,
+        retryAfterSeconds: 0,
+        remaining: Math.max(0, limit - 1),
+      };
+    }
+
+    const decision = decideDistributedRateLimit(
+      bucket.requestCount,
+      limit,
+      bucket.expiresAt,
+      now,
+    );
+    if (!decision.allowed) return decision;
+
+    await tx
+      .update(rateLimitBuckets)
+      .set({
+        requestCount: bucket.requestCount + 1,
+        updatedAt: now,
+      })
+      .where(eq(rateLimitBuckets.bucketKey, input.bucketKey));
+    return decision;
+  });
+}
+
+export async function deleteExpiredRateLimitBuckets(
+  batchSize = 500,
+): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const now = new Date();
+  const rows = await db
+    .select({ bucketKey: rateLimitBuckets.bucketKey })
+    .from(rateLimitBuckets)
+    .where(lte(rateLimitBuckets.expiresAt, now))
+    .orderBy(rateLimitBuckets.expiresAt)
+    .limit(Math.max(1, Math.min(Math.floor(batchSize), 5_000)));
+  if (!rows.length) return 0;
+  const result = await db.delete(rateLimitBuckets).where(
+    and(
+      lte(rateLimitBuckets.expiresAt, now),
+      inArray(
+        rateLimitBuckets.bucketKey,
+        rows.map((row) => row.bucketKey),
+      ),
+    ),
+  );
+  return getAffectedRows(result);
 }
 
 export async function getUserProfile(

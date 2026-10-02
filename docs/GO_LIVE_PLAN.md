@@ -1239,3 +1239,30 @@ O endpoint de localização rejeita amostras futuras ou antigas demais antes da 
 | Deployment/stress HTTPS temporário | Smoke aprovado; 40 requests / 4 workers; p50 13,6 ms; p95 49,6 ms; máximo 145,5 ms; erro 0% |
 
 A instrução técnica está em `docs/INSTRUCAO_FASE_TRACKING_RESILIENTE_PR7.md`. A fase não homologa Google Maps/Mapbox, geocodificação, GPS/background em Android/iOS, rede móvel, push/receipts físicos ou dispositivos reais. Permanecem externos PSP/PIX e CNPJ, credenciais/homologação e webhook real, OAuth, Expo Push Service, e-mail/SMS, storage, observabilidade/backup, scheduler/hosting definitivo, domínio/staging/produção e publicação nas lojas; portanto o Go-Live comercial e o PR #7 permanecem bloqueados e não READY.
+
+
+---
+# 48. Rate limit distribuído e bounded — 02/10/2026
+
+Esta fatia fechou a lacuna P1 de limitação apenas em memória. A migration `0032_distributed_rate_limit` criou buckets InnoDB compartilhados, consumidos atomicamente por escopo, identidade e fingerprint de rede. O limite agora é aplicado em criação de anúncios, comandos/transcrição de voz, criação de pedidos e criação de cobrança PIX; retries idempotentes recuperados antes da execução não gastam nova cota.
+
+O bloqueio retorna `TOO_MANY_REQUESTS` com `Retry-After`; se o armazenamento distribuído falhar, a operação protegida falha fechado como `SERVICE_UNAVAILABLE`. Um sweeper nativo remove buckets expirados em lote bounded e revalida a expiração no `DELETE`, protegendo uma janela renovada contra corrida. Readiness e Operational Validation exigem a nova tabela, e o smoke cobre oito consumidores concorrentes, 429 HTTP, retry-after e cleanup.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| Migration limpa | Banco MySQL temporário `pediu_go_live_phase48_fresh`; 33 migrations aplicadas, 43 tabelas presentes e tabela nova confirmada |
+| Migration de validação | `0032_distributed_rate_limit` aplicada no banco local; colunas e índice `pediu_rate_limit_expires_idx` confirmados |
+| Regressões locais | 46 arquivos de teste, 225 testes aprovados; política, enforcement, readiness e contratos existentes preservados |
+| Matriz local final | `pnpm check`, `pnpm test`, `pnpm build`, `pnpm lint`, Prettier nos formatos suportados e `git diff --check` aprovados |
+| Atomicidade real | Oito consumidores concorrentes: exatamente 1 permitido e 7 bloqueados em bucket de limite 1 |
+| HTTP real | 21 mutações concorrentes: 20 alcançaram a procedure e a 21ª recebeu 429 com `Retry-After` |
+| Regressão operacional | Finance/refund/reconciliação, pedidos concorrentes, fiado, serviceability/pickup, expiração, dispatch, tracking, outbox e limites HTTP aprovados com PSP mock local onde necessário |
+| Cleanup SQL | 0 buckets, 0 usuários `ci-*`, 0 lojas de smoke e 0 pedidos `ci-*` residuais |
+| Readiness final | `/api/health` 200; `/api/readyz` 200 com database, migrations e tables em `pass` |
+| Deployment smoke local | health 200, readyz 200, marketplace 200, CORS exato e métricas protegidas |
+| Stress local read-only | 120 requests / 12 workers; p50 20,9 ms; p95 38,1 ms; máximo 76,6 ms; erro 0% |
+| Deployment/stress HTTPS temporário | Smoke aprovado; 40 requests / 4 workers; p50 13,6 ms; p95 53,5 ms; máximo 144,8 ms; erro 0% |
+
+A instrução técnica está em `docs/INSTRUCAO_FASE_RATE_LIMIT_DISTRIBUIDO_PR7.md`. A fase não instala Redis, WAF/CDN, rate-limit gerenciado, alta disponibilidade cross-region ou proteção L7 de borda. Permanecem externos PSP/PIX/CNPJ, credenciais/homologação e webhook real, OAuth, Expo Push/receipts, e-mail/SMS, storage, observabilidade/backup, scheduler/hosting definitivo, domínio/staging/produção, GPS/background físico e publicação nas lojas; portanto o Go-Live comercial e o PR #7 permanecem bloqueados e não READY.

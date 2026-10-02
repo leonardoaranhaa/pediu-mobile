@@ -225,6 +225,13 @@
       "when": 1791025200000,
       "tag": "0031_tracking_captured_at",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "5",
+      "when": 1791111600000,
+      "tag": "0032_distributed_rate_limit",
+      "breakpoints": true
     }
   ]
 }
