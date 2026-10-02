@@ -1,4 +1,12 @@
-export const ORDER_STATUSES = ["Pendente", "Aceito", "Preparando", "Pronto", "A caminho", "Entregue", "Cancelado"] as const;
+export const ORDER_STATUSES = [
+  "Pendente",
+  "Aceito",
+  "Preparando",
+  "Pronto",
+  "A caminho",
+  "Entregue",
+  "Cancelado",
+] as const;
 
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
@@ -12,7 +20,14 @@ const allowedTransitions: Record<OrderStatus, readonly OrderStatus[]> = {
   Cancelado: [],
 };
 
-export function canTransitionOrder(from: OrderStatus, to: OrderStatus): boolean {
+export function canTransitionOrder(
+  from: OrderStatus,
+  to: OrderStatus,
+  fulfillmentMode: "delivery" | "pickup" = "delivery",
+): boolean {
+  if (fulfillmentMode === "pickup" && to === "A caminho") return false;
+  if (fulfillmentMode === "pickup" && from === "Pronto" && to === "Entregue")
+    return true;
   return allowedTransitions[from].includes(to);
 }
 

@@ -27,6 +27,16 @@ jobs:
       DATABASE_URL: mysql://root:root@127.0.0.1:3306/pediu_test
       NODE_ENV: test
       PORT: 3000
+      VITE_APP_ID: ci-e2e-app
+      JWT_SECRET: ci-e2e-jwt-secret
+      PIX_PROVIDER: mercado_pago
+      MERCADO_PAGO_ACCESS_TOKEN: ci-mp-access-token
+      MERCADO_PAGO_WEBHOOK_SECRET: ci-payment-webhook-secret
+      # Reserved .invalid URL; the local CI mock never sends a notification to it.
+      MERCADO_PAGO_NOTIFICATION_URL: https://pediu-test.invalid/api/webhooks/payments
+      MERCADO_PAGO_API_BASE_URL: http://127.0.0.1:3100
+      OBSERVABILITY_TOKEN: ci-observability-token
+      ALLOWED_ORIGINS: http://localhost:8081
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -66,26 +76,78 @@ jobs:
               'pediu_push_tokens',
               'pediu_payment_transactions',
               'pediu_financial_ledger',
-              'pediu_webhook_events'
+              'pediu_refunds',
+              'pediu_payment_reconciliation_runs',
+              'pediu_payment_reconciliation_items',
+              'pediu_webhook_events',
+              'pediu_products',
+              'pediu_courier_profiles',
+              'pediu_store_couriers',
+              'pediu_delivery_offers',
+              'pediu_notification_outbox',
+              'pediu_rate_limit_buckets'
             ];
             const missing = required.filter(name => !names.includes(name));
             if (missing.length) throw new Error(`Missing migrated tables: ${missing.join(', ')}`);
+            const [paymentColumns] = await c.query('SHOW COLUMNS FROM pediu_payment_transactions');
+            const paymentColumnNames = paymentColumns.map(row => row.Field);
+            const requiredPaymentColumns = ['externalReference', 'qrCode', 'qrCodeBase64', 'ticketUrl'];
+            const missingPaymentColumns = requiredPaymentColumns.filter(name => !paymentColumnNames.includes(name));
+            if (missingPaymentColumns.length) throw new Error(`Missing payment columns: ${missingPaymentColumns.join(', ')}`);
+            const [refundColumns] = await c.query('SHOW COLUMNS FROM pediu_refunds');
+            const refundColumnNames = refundColumns.map(row => row.Field);
+            const requiredRefundColumns = ['idempotencyKey', 'currency'];
+            const missingRefundColumns = requiredRefundColumns.filter(name => !refundColumnNames.includes(name));
+            if (missingRefundColumns.length) throw new Error(`Missing refund columns: ${missingRefundColumns.join(', ')}`);
+            const [productColumns] = await c.query('SHOW COLUMNS FROM pediu_products');
+            const productColumnNames = productColumns.map(row => row.Field);
+            const requiredProductColumns = ['inventoryTracked', 'stockQuantity', 'reservedQuantity'];
+            const missingProductColumns = requiredProductColumns.filter(name => !productColumnNames.includes(name));
+            if (missingProductColumns.length) throw new Error(`Missing inventory columns: ${missingProductColumns.join(', ')}`);
+            const [storeColumns] = await c.query('SHOW COLUMNS FROM pediu_stores');
+            const storeColumnNames = storeColumns.map(row => row.Field);
+            const requiredStoreColumns = ['deliveryEnabled', 'pickupEnabled', 'deliveryRadiusKm', 'latitude', 'longitude'];
+            const missingStoreColumns = requiredStoreColumns.filter(name => !storeColumnNames.includes(name));
+            if (missingStoreColumns.length) throw new Error(`Missing serviceability store columns: ${missingStoreColumns.join(', ')}`);
+            const [orderColumns] = await c.query('SHOW COLUMNS FROM pediu_orders');
+            const orderColumnNames = orderColumns.map(row => row.Field);
+            const requiredOrderColumns = ['fulfillmentMode', 'deliveryFeeSnapshot'];
+            const missingOrderColumns = requiredOrderColumns.filter(name => !orderColumnNames.includes(name));
+            if (missingOrderColumns.length) throw new Error(`Missing fulfillment order columns: ${missingOrderColumns.join(', ')}`);
+            const [locationColumns] = await c.query('SHOW COLUMNS FROM pediu_delivery_locations');
+            const locationColumnNames = locationColumns.map(row => row.Field);
+            if (!locationColumnNames.includes('capturedAt')) throw new Error('Missing tracking capturedAt column');
             const [journal] = await c.query('SELECT COUNT(*) AS count FROM __drizzle_migrations');
             if (Number(journal[0].count) < 1) throw new Error('Drizzle migration journal is empty');
             console.log(`Migration smoke test OK: ${journal[0].count} migration(s), ${names.length} Pediu table(s)`);
             await c.end();
           })().catch(error => { console.error(error); process.exit(1); });
           NODE
+      - name: Run Go-Live backup and restore smoke
+        run: BACKUP_RESTORE_REQUIRED=1 pnpm go-live:backup-restore
       - name: Validate database connectivity
         run: |
           node -e "const mysql=require('mysql2/promise'); mysql.createConnection(process.env.DATABASE_URL).then(async c=>{const [r]=await c.query('SELECT 1 AS ok'); if(r[0].ok!==1) process.exit(1); await c.end(); console.log('MySQL operational')}).catch(e=>{console.error(e); process.exit(1)})"
+      - name: Start Mercado Pago test API
+        run: |
+          pnpm exec tsx scripts/mercado-pago-api-mock.ts > /tmp/mercado-pago-mock.log 2>&1 &
+          echo $! > /tmp/mercado-pago-mock.pid
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3100/health; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/mercado-pago-mock.log
+          exit 1
       - name: Start API
         run: |
           pnpm dev:server > /tmp/pediu-api.log 2>&1 &
           echo $! > /tmp/pediu-api.pid
           for i in {1..60}; do
-            if curl -fsS http://127.0.0.1:3000/api/health > /tmp/health.json; then
-              cat /tmp/health.json
+            if curl -fsS http://127.0.0.1:3000/api/health > /tmp/health.json && \
+              curl -fsS http://127.0.0.1:3000/api/readyz > /tmp/readyz.json; then
+              cat /tmp/health.json /tmp/readyz.json
               exit 0
             fi
             if ! kill -0 $(cat /tmp/pediu-api.pid) 2>/dev/null; then
@@ -98,9 +160,75 @@ jobs:
           echo "API health check timed out"
           cat /tmp/pediu-api.log
           exit 1
+      - name: Run Go-Live readiness baseline
+        run: pnpm go-live:check
+      - name: Run Go-Live device preflight
+        run: pnpm go-live:device-preflight
+      - name: Run Go-Live client E2E smoke
+        run: pnpm go-live:e2e
+      - name: Run Go-Live merchant and delivery E2E smoke
+        run: pnpm go-live:operations-e2e
+      - name: Run Go-Live reviews integrity smoke
+        run: pnpm go-live:reviews
+      - name: Run Go-Live inventory reservation smoke
+        run: pnpm go-live:inventory
+      - name: Run Go-Live inventory reservation expiry smoke
+        run: pnpm go-live:inventory-expiry
+      - name: Run Go-Live notification outbox smoke
+        run: pnpm go-live:notification-outbox
+      - name: Run Go-Live courier dispatch reoffer smoke
+        run: pnpm go-live:dispatch-reoffer
+      - name: Run Go-Live tracking resilience smoke
+        run: pnpm go-live:tracking-resilience
+      - name: Run Go-Live distributed rate-limit smoke
+        run: pnpm go-live:rate-limit
+      - name: Run Go-Live marketplace cursor pagination smoke
+        run: pnpm go-live:pagination
+      - name: Run Go-Live serviceability and pickup smoke
+        run: pnpm go-live:serviceability
+      - name: Run Go-Live fiado concurrency smoke
+        run: pnpm go-live:fiado-concurrency
+      - name: Run Go-Live payment refund and reconciliation smoke
+        run: pnpm go-live:finance
+      - name: Run Go-Live CORS security smoke
+        run: CORS_ALLOWED_ORIGIN=http://localhost:8081 pnpm go-live:cors-security
+      - name: Run Go-Live storage security smoke
+        run: pnpm go-live:storage-security
+      - name: Run Go-Live limits security smoke
+        run: CORS_ALLOWED_ORIGIN=http://localhost:8081 pnpm go-live:limits-security
+      - name: Run Go-Live concurrency smoke
+        run: CONCURRENCY_REQUESTS=12 pnpm go-live:concurrency
+      - name: Run read-only API stress baseline
+        run: STRESS_REQUESTS=60 STRESS_CONCURRENCY=8 pnpm go-live:stress
+      - name: Build production API
+        run: pnpm build
+      - name: Start production API
+        run: |
+          NODE_ENV=production PORT=3001 node dist/index.js > /tmp/pediu-prod-api.log 2>&1 &
+          echo $! > /tmp/pediu-prod-api.pid
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3001/api/health && \
+              curl -fsS http://127.0.0.1:3001/api/readyz; then
+              exit 0
+            fi
+            if ! kill -0 $(cat /tmp/pediu-prod-api.pid) 2>/dev/null; then
+              cat /tmp/pediu-prod-api.log
+              exit 1
+            fi
+            sleep 1
+          done
+          cat /tmp/pediu-prod-api.log
+          exit 1
+      - name: Verify production deployment smoke
+        run: DEPLOYMENT_URL=http://127.0.0.1:3001 DEPLOYMENT_ORIGIN=http://localhost:8081 DEPLOYMENT_METRICS_TOKEN="$OBSERVABILITY_TOKEN" DEPLOYMENT_REQUIRED=1 pnpm go-live:deployment
+      - name: Stress production API baseline
+        run: STRESS_BASE_URL=http://127.0.0.1:3001 STRESS_REQUESTS=60 STRESS_CONCURRENCY=8 pnpm go-live:stress
       - name: Verify API process cleanup
         if: always()
         run: |
           if [ -f /tmp/pediu-api.pid ]; then
             kill $(cat /tmp/pediu-api.pid) 2>/dev/null || true
+          fi
+          if [ -f /tmp/pediu-prod-api.pid ]; then
+            kill $(cat /tmp/pediu-prod-api.pid) 2>/dev/null || true
           fi

@@ -7,10 +7,21 @@ import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
-import { isAllowedOrigin, isUnsafeMethod, requestHasAllowedOrigin, requestUsesBearer } from "./security";
+import {
+  isAllowedOrigin,
+  isUnsafeMethod,
+  requestHasAllowedOrigin,
+  requestUsesBearer,
+} from "./security";
 import { registerPaymentWebhookRoutes } from "../payment-webhook";
 import { registerEmailVerificationRoutes } from "../email-verification";
 import { assertRuntimeConfig } from "./env";
+import { registerObservabilityMetrics } from "./observability";
+import { probeReadiness } from "./readiness";
+import { startDispatchOfferSweeper } from "../dispatch-offer-sweeper";
+import { startInventoryReservationSweeper } from "../inventory-reservation-sweeper";
+import { startNotificationOutboxWorker } from "../notification-outbox-worker";
+import { startRateLimitBucketSweeper } from "../rate-limit-bucket-sweeper";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -44,7 +55,10 @@ async function startServer() {
       res.header("Access-Control-Allow-Credentials", "true");
     }
     res.header("Vary", "Origin");
-    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.header(
+      "Access-Control-Allow-Methods",
+      "GET, POST, PUT, DELETE, OPTIONS",
+    );
     res.header(
       "Access-Control-Allow-Headers",
       "Origin, X-Requested-With, Content-Type, Accept, Authorization, X-CSRF-Token",
@@ -72,12 +86,28 @@ async function startServer() {
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true, timestamp: Date.now() });
   });
+  app.get("/api/readyz", async (_req, res) => {
+    const result = await probeReadiness();
+    res.status(result.ready ? 200 : 503).json({
+      service: "pediu-api",
+      status: result.ready ? "ready" : "not_ready",
+      checks: result.checks,
+      timestamp: Date.now(),
+    });
+  });
+  registerObservabilityMetrics(app);
 
   app.use(
     "/api/trpc",
     (req, res, next) => {
-      if (isUnsafeMethod(req.method) && !requestUsesBearer(req) && !requestHasAllowedOrigin(req)) {
-        res.status(403).json({ error: "Origin not allowed for cookie-authenticated mutation" });
+      if (
+        isUnsafeMethod(req.method) &&
+        !requestUsesBearer(req) &&
+        !requestHasAllowedOrigin(req)
+      ) {
+        res.status(403).json({
+          error: "Origin not allowed for cookie-authenticated mutation",
+        });
         return;
       }
       next();
@@ -97,6 +127,10 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`[api] server listening on port ${port}`);
+    startDispatchOfferSweeper();
+    startInventoryReservationSweeper();
+    startNotificationOutboxWorker();
+    startRateLimitBucketSweeper();
   });
 }
 

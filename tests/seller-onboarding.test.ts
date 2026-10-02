@@ -35,6 +35,11 @@ describe("Pediu seller onboarding", () => {
       address: "Rua Teste, 42",
       pixKey: "pix@example.com",
       deliveryFee: "0.00",
+      deliveryEnabled: 1,
+      pickupEnabled: 0,
+      deliveryRadiusKm: "10.00",
+      latitude: undefined,
+      longitude: undefined,
     });
   });
 
@@ -47,10 +52,17 @@ describe("Pediu seller onboarding", () => {
       address: "Rua Nova, 77",
       pixKey: "pix-novo@example.com",
       deliveryFee: "7.50",
+      deliveryEnabled: 1,
+      pickupEnabled: 0,
+      deliveryRadiusKm: "10.00",
+      latitude: null,
+      longitude: null,
       isOpen: 0,
       createdAt: new Date(),
     });
-    const caller = appRouter.createCaller({ user: { ...customer, role: "merchant" } } as any);
+    const caller = appRouter.createCaller({
+      user: { ...customer, role: "merchant" },
+    } as any);
 
     const store = await caller.pediu.stores.update({
       name: "Mercado Atualizado",

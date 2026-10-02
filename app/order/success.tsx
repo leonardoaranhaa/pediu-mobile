@@ -1,32 +1,193 @@
-import { Text, View } from "react-native";
+import { Image, Linking, Pressable, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { Card, Page, PrimaryButton, OutlineButton, PEDIU, s } from "@/components/pediu-page";
+import {
+  Card,
+  Page,
+  PrimaryButton,
+  OutlineButton,
+  PEDIU,
+  s,
+} from "@/components/pediu-page";
+import { PediuMascot } from "@/components/pediu-mascot";
+import { useAppPreferences } from "@/lib/app-preferences";
+import { trpc } from "@/lib/trpc";
 
 function money(value: string | undefined) {
   const amount = Number(value);
-  return Number.isFinite(amount) ? `R$ ${amount.toFixed(2).replace(".", ",")}` : "—";
+  return Number.isFinite(amount)
+    ? `R$ ${amount.toFixed(2).replace(".", ",")}`
+    : "—";
 }
 
 export default function OrderSuccessPage() {
-  const { orderId, paymentId, total } = useLocalSearchParams<{ orderId?: string; paymentId?: string; total?: string }>();
-  const validOrder = Boolean(orderId && Number.isInteger(Number(orderId)) && Number(orderId) > 0);
+  const { orderId, paymentId, total } = useLocalSearchParams<{
+    orderId?: string;
+    paymentId?: string;
+    total?: string;
+  }>();
+  const { theme, customization } = useAppPreferences();
+  const paymentIdNumber = Number(paymentId);
+  const paymentQuery = trpc.pediu.payments.get.useQuery(
+    { paymentId: paymentIdNumber },
+    {
+      enabled: Number.isInteger(paymentIdNumber) && paymentIdNumber > 0,
+      refetchInterval: (query) =>
+        query.state.data?.status === "pending" ? 5000 : false,
+    },
+  );
+  const validOrder = Boolean(
+    orderId && Number.isInteger(Number(orderId)) && Number(orderId) > 0,
+  );
 
   if (!validOrder) {
-    return <Page title="Pedido" eyebrow="CONFIRMAÇÃO"><Card><Text style={s.sectionTitle}>Pedido inválido</Text><Text style={s.muted}>Não foi possível identificar o pedido criado.</Text></Card></Page>;
+    return (
+      <Page title="Pedido" eyebrow="CONFIRMAÇÃO">
+        <Card>
+          <Text style={s.sectionTitle}>Pedido inválido</Text>
+          <Text style={s.muted}>
+            Não foi possível identificar o pedido criado.
+          </Text>
+        </Card>
+      </Page>
+    );
   }
 
-  return <Page title="Pedido confirmado" eyebrow="TUDO CERTO">
-    <Card>
-      <View style={{ width: 58, height: 58, borderRadius: 20, backgroundColor: PEDIU.coralSoft, alignItems: "center", justifyContent: "center", marginBottom: 12 }}><Text style={{ color: PEDIU.coral, fontSize: 30, fontWeight: "900" }}>✓</Text></View>
-      <Text style={s.sectionTitle}>Recebemos seu pedido</Text>
-      <Text style={s.body}>O estabelecimento recebeu a solicitação e poderá atualizar o status a qualquer momento.</Text>
-      <View style={{ borderTopWidth: 1, borderTopColor: PEDIU.line, marginTop: 16, paddingTop: 16, gap: 6 }}>
-        <Text style={s.muted}>Número do pedido</Text>
-        <Text style={{ color: PEDIU.ink, fontSize: 22, fontWeight: "900" }}>#{orderId}</Text>
-        <Text style={s.muted}>Total confirmado: {money(total)}</Text>
-      </View>
-    </Card>
-    <PrimaryButton title="Acompanhar pedido" onPress={() => router.replace({ pathname: "/order/track", params: { orderId, paymentId: paymentId ?? "" } })} />
-    <OutlineButton title="Voltar para descobrir" onPress={() => router.replace("/(tabs)" as never)} />
-  </Page>;
+  return (
+    <Page title="Pedido confirmado" eyebrow="TUDO CERTO">
+      <Card>
+        <View
+          style={{
+            width: 58,
+            height: 58,
+            borderRadius: 20,
+            backgroundColor: PEDIU.coralSoft,
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ color: PEDIU.coral, fontSize: 30, fontWeight: "900" }}>
+            ✓
+          </Text>
+        </View>
+        <Text style={s.sectionTitle}>Recebemos seu pedido</Text>
+        <Text style={s.body}>
+          O estabelecimento recebeu a solicitação e poderá atualizar o status a
+          qualquer momento.
+        </Text>
+        {customization.mascotEnabled ? (
+          <View
+            style={{ alignItems: "center", marginTop: 12, marginBottom: 2 }}
+          >
+            <PediuMascot
+              theme={theme}
+              styleId={customization.mascotStyle}
+              reaction="full"
+              motionEnabled={customization.motionEnabled}
+              showSpeech
+              speechSide="right"
+            />
+          </View>
+        ) : null}
+        <View
+          style={{
+            borderTopWidth: 1,
+            borderTopColor: PEDIU.line,
+            marginTop: 16,
+            paddingTop: 16,
+            gap: 6,
+          }}
+        >
+          <Text style={s.muted}>Número do pedido</Text>
+          <Text style={{ color: PEDIU.ink, fontSize: 22, fontWeight: "900" }}>
+            #{orderId}
+          </Text>
+          <Text style={s.muted}>Total confirmado: {money(total)}</Text>
+        </View>
+      </Card>
+      {paymentQuery.data?.method === "pix" ? (
+        <Card>
+          <Text style={s.sectionTitle}>
+            {paymentQuery.data.status === "paid"
+              ? "PIX confirmado"
+              : paymentQuery.data.status === "failed"
+                ? "PIX recusado"
+                : paymentQuery.data.status === "cancelled"
+                  ? "PIX cancelado"
+                  : "Pague com PIX"}
+          </Text>
+          {paymentQuery.data.status === "pending" ? (
+            <>
+              {paymentQuery.data.pixQrCodeBase64 ? (
+                <Image
+                  accessibilityLabel="QR Code Pix do pedido"
+                  source={{
+                    uri: `data:image/png;base64,${paymentQuery.data.pixQrCodeBase64}`,
+                  }}
+                  resizeMode="contain"
+                  style={{ width: 220, height: 220, alignSelf: "center" }}
+                />
+              ) : null}
+              {paymentQuery.data.pixQrCode ? (
+                <Text selectable style={s.muted}>
+                  Pix copia e cola: {paymentQuery.data.pixQrCode}
+                </Text>
+              ) : null}
+              {paymentQuery.data.pixTicketUrl ? (
+                <Pressable
+                  onPress={() =>
+                    void Linking.openURL(paymentQuery.data!.pixTicketUrl!)
+                  }
+                  style={{
+                    minHeight: 44,
+                    borderRadius: 13,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: PEDIU.coral,
+                  }}
+                >
+                  <Text style={{ color: PEDIU.white, fontWeight: "900" }}>
+                    Abrir pagamento PIX
+                  </Text>
+                </Pressable>
+              ) : null}
+              {!paymentQuery.data.pixQrCode &&
+              !paymentQuery.data.pixQrCodeBase64 &&
+              !paymentQuery.data.pixTicketUrl ? (
+                <Text style={s.muted}>
+                  A cobrança está pendente; os dados de pagamento ainda não
+                  chegaram. Esta tela atualizará o status automaticamente.
+                </Text>
+              ) : null}
+              <Text style={s.muted}>
+                Aguardando confirmação do Mercado Pago.
+              </Text>
+            </>
+          ) : paymentQuery.data.status === "failed" ? (
+            <Text style={s.muted}>
+              O Mercado Pago não aprovou esta cobrança. Consulte o pedido ou
+              entre em contato com a loja.
+            </Text>
+          ) : paymentQuery.data.status === "cancelled" ? (
+            <Text style={s.muted}>Esta cobrança PIX foi cancelada.</Text>
+          ) : (
+            <Text style={s.muted}>Pagamento confirmado pelo Mercado Pago.</Text>
+          )}
+        </Card>
+      ) : null}
+      <PrimaryButton
+        title="Acompanhar pedido"
+        onPress={() =>
+          router.replace({
+            pathname: "/order/track",
+            params: { orderId, paymentId: paymentId ?? "" },
+          })
+        }
+      />
+      <OutlineButton
+        title="Voltar para descobrir"
+        onPress={() => router.replace("/(tabs)" as never)}
+      />
+    </Page>
+  );
 }
