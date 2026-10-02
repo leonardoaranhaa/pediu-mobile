@@ -62,7 +62,16 @@ const baseInput = {
 };
 
 describe("go-live device preflight", () => {
-  it("blocks EAS production builds without a public HTTPS API endpoint", () => {
+  it("blocks EAS preview and production builds without a public HTTPS API endpoint", () => {
+    expect(() =>
+      assertProductionApiBaseUrl({ EAS_BUILD_PROFILE: "preview" }),
+    ).toThrow("EXPO_PUBLIC_API_BASE_URL must be configured");
+    expect(() =>
+      assertProductionApiBaseUrl({
+        EAS_BUILD_PROFILE: "preview",
+        EXPO_PUBLIC_API_BASE_URL: "http://localhost:3000",
+      }),
+    ).toThrow("EXPO_PUBLIC_API_BASE_URL must be configured");
     expect(() =>
       assertProductionApiBaseUrl({ EAS_BUILD_PROFILE: "production" }),
     ).toThrow("EXPO_PUBLIC_API_BASE_URL must be configured");

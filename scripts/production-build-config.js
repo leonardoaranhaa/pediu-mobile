@@ -13,11 +13,11 @@ function isPublicDeviceUrl(value) {
 }
 
 function assertProductionApiBaseUrl(env) {
-  if (env.EAS_BUILD_PROFILE !== "production") return;
+  if (!["preview", "production"].includes(env.EAS_BUILD_PROFILE)) return;
   const apiBaseUrl = env.EXPO_PUBLIC_API_BASE_URL?.trim();
   if (!apiBaseUrl || !isPublicDeviceUrl(apiBaseUrl)) {
     throw new Error(
-      "Production build blocked: EXPO_PUBLIC_API_BASE_URL must be configured as a public HTTPS endpoint.",
+      "Preview/production build blocked: EXPO_PUBLIC_API_BASE_URL must be configured as a public HTTPS endpoint.",
     );
   }
 }
