@@ -83,7 +83,8 @@ jobs:
               'pediu_products',
               'pediu_courier_profiles',
               'pediu_store_couriers',
-              'pediu_delivery_offers'
+              'pediu_delivery_offers',
+              'pediu_notification_outbox'
             ];
             const missing = required.filter(name => !names.includes(name));
             if (missing.length) throw new Error(`Missing migrated tables: ${missing.join(', ')}`);
@@ -169,6 +170,8 @@ jobs:
         run: pnpm go-live:inventory
       - name: Run Go-Live inventory reservation expiry smoke
         run: pnpm go-live:inventory-expiry
+      - name: Run Go-Live notification outbox smoke
+        run: pnpm go-live:notification-outbox
       - name: Run Go-Live courier dispatch reoffer smoke
         run: pnpm go-live:dispatch-reoffer
       - name: Run Go-Live serviceability and pickup smoke

@@ -1187,3 +1187,29 @@ O smoke `pnpm go-live:dispatch-reoffer` foi adicionado ao Operational Validation
 | Deployment/stress HTTPS temporário | Smoke aprovado; 40 requests / 4 workers; p50 14,3 ms; p95 45,8 ms; máximo 127,6 ms; erro 0% |
 
 A instrução técnica está em `docs/INSTRUCAO_FASE_DESPACHO_REOFERTA_PR7.md`. O dispatch é bounded e não implementa matching por distância, tarifa dinâmica, fila distribuída, background GPS ou push garantido. A validação não simula PSP/PIX real. Permanecem externos CNPJ, credenciais/homologação do PSP, webhook real, OAuth real, push/e-mail, storage, observabilidade/backup, scheduler/hosting definitivo, domínio/staging/produção, GPS/background físico e publicação nas lojas; portanto o Go-Live comercial e o PR #7 permanecem bloqueados e não READY.
+
+
+---
+# 46. Outbox persistente de notificações — 01/10/2026
+
+Esta fatia fechou a lacuna P1 em que as notificações eram persistidas localmente, mas a tentativa de push externo acontecia inline e podia falhar sem retry confiável. A migration `0030_notification_outbox` criou uma fila durável vinculada por chave única à notificação in-app. `sendPushToUser` agora grava notificação e payload na mesma transação, e o worker nativo do backend faz claim com lock, recupera locks stale, respeita preferências por tipo, entrega tokens em lote e aplica backoff bounded de 30 s, 120 s, 300 s e 900 s até cinco tentativas. Preferência desabilitada termina como `skipped`; erro terminal permanece `failed` com mensagem truncada.
+
+Readiness e Operational Validation passaram a exigir `pediu_notification_outbox`, e o comando `pnpm go-live:notification-outbox` cobre enqueue atômico, falha 503, retry, sucesso e skip de preferência usando mock HTTP local. O mock não é Expo Push Service e não prova push físico.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| Migration real | `pnpm exec drizzle-kit migrate` aplicado; tabela nova presente; journal com 31 migrations |
+| Regressões locais | 43 arquivos de teste, 214 testes aprovados |
+| Matriz local | `pnpm check`, `pnpm test`, `pnpm build`, `pnpm lint`, Prettier nos arquivos suportados e `git diff --check` aprovados |
+| Smoke E2E real | Enqueue atômico, 503, retry, entrega 200 pelo mock e preferência desabilitada aprovados |
+| Concorrência/lock | Claim transacional, status `processing`, lock stale e retry bounded cobertos por domínio e banco real |
+| Cleanup SQL | 0 usuários, 0 notificações e 0 itens de outbox com marcadores da fase residuais |
+| Readiness do bundle final | `/api/health` 200; `/api/readyz` 200 com database, migrations e tables em `pass` |
+| Deployment smoke local | health 200, readyz 200, marketplace 200, CORS exato e métricas protegidas |
+| Stress local read-only | 120 requests / 12 workers; p50 30,7 ms; p95 84,7 ms; máximo 112,1 ms; erro 0% |
+| Regressão courier | Smoke dispatch/reoffer aprovado no bundle final, preservando a fase 45 |
+| Deployment/stress HTTPS temporário | Smoke aprovado; 40 requests / 4 workers; p50 12,1 ms; p95 51,6 ms; máximo 153,7 ms; erro 0% |
+
+A instrução técnica está em `docs/INSTRUCAO_FASE_NOTIFICACAO_OUTBOX_PR7.md`. A entrega real continua dependente de tokens de dispositivo, URL/credencial e política do provedor de push. Permanecem externos Expo Push Service/push físico, CNPJ e PSP/PIX real, webhook, OAuth, e-mail/SMS, storage, observabilidade/backup, scheduler/hosting definitivo, domínio/staging/produção, GPS/background e publicação nas lojas; portanto o Go-Live comercial e o PR #7 permanecem bloqueados e não READY.

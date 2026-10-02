@@ -17,6 +17,7 @@ export const REQUIRED_TABLES = [
   "pediu_payments",
   "pediu_notifications",
   "pediu_push_tokens",
+  "pediu_notification_outbox",
   "pediu_payment_transactions",
   "pediu_financial_ledger",
   "pediu_webhook_events",

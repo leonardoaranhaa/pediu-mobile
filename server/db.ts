@@ -45,6 +45,7 @@ import {
   InsertUser,
   LedgerEntry,
   Notification,
+  NotificationOutbox,
   NotificationPreferences,
   Order,
   OrderReview,
@@ -79,6 +80,7 @@ import {
   commissionRules,
   financialLedger,
   notificationPreferences,
+  notificationOutbox,
   notifications,
   orderItems,
   orderReviews,
@@ -120,6 +122,11 @@ import {
   inventoryReservationCutoff,
   normalizeInventoryQuantity,
 } from "./domain/inventory";
+import {
+  NOTIFICATION_OUTBOX_LOCK_TIMEOUT_MS,
+  nextNotificationAttemptAt,
+  shouldRetryNotification,
+} from "./domain/notification-outbox";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -3828,6 +3835,153 @@ export async function createNotification(
   if (!db) throw new Error("Database not available");
   const result = await db.insert(notifications).values(input);
   return getInsertId(result);
+}
+
+export async function createNotificationWithOutbox(input: {
+  notification: InsertNotification;
+  payload: string;
+}): Promise<{ notificationId: number; outboxId: number }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const notificationResult = await tx
+      .insert(notifications)
+      .values(input.notification);
+    const notificationId = getInsertId(notificationResult);
+    const outboxResult = await tx.insert(notificationOutbox).values({
+      notificationId,
+      userId: input.notification.userId,
+      payload: input.payload,
+    });
+    return { notificationId, outboxId: getInsertId(outboxResult) };
+  });
+}
+
+export async function enqueueNotificationOutbox(input: {
+  notificationId: number;
+  userId: number;
+  payload: string;
+}): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(notificationOutbox).values(input);
+  return getInsertId(result);
+}
+
+export async function claimNotificationOutbox(
+  now = new Date(),
+): Promise<NotificationOutbox | undefined> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const staleBefore = new Date(
+    now.getTime() - NOTIFICATION_OUTBOX_LOCK_TIMEOUT_MS,
+  );
+  return db.transaction(async (tx) => {
+    await tx
+      .update(notificationOutbox)
+      .set({ status: "pending", lockedAt: null })
+      .where(
+        and(
+          eq(notificationOutbox.status, "processing"),
+          lte(notificationOutbox.lockedAt, staleBefore),
+        ),
+      );
+    const candidate = (
+      await tx
+        .select()
+        .from(notificationOutbox)
+        .where(
+          and(
+            eq(notificationOutbox.status, "pending"),
+            lte(notificationOutbox.availableAt, now),
+          ),
+        )
+        .orderBy(notificationOutbox.availableAt, notificationOutbox.id)
+        .for("update")
+        .limit(1)
+    )[0];
+    if (!candidate) return undefined;
+    await tx
+      .update(notificationOutbox)
+      .set({
+        status: "processing",
+        lockedAt: now,
+        attemptCount: sql`${notificationOutbox.attemptCount} + 1`,
+      })
+      .where(
+        and(
+          eq(notificationOutbox.id, candidate.id),
+          eq(notificationOutbox.status, "pending"),
+        ),
+      );
+    const claimed = (
+      await tx
+        .select()
+        .from(notificationOutbox)
+        .where(eq(notificationOutbox.id, candidate.id))
+        .limit(1)
+    )[0];
+    return claimed;
+  });
+}
+
+export async function markNotificationOutboxSent(
+  outboxId: number,
+  sentAt = new Date(),
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(notificationOutbox)
+    .set({ status: "sent", lockedAt: null, sentAt, lastError: null })
+    .where(
+      and(
+        eq(notificationOutbox.id, outboxId),
+        eq(notificationOutbox.status, "processing"),
+      ),
+    );
+}
+
+export async function markNotificationOutboxSkipped(
+  outboxId: number,
+  reason: string,
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(notificationOutbox)
+    .set({ status: "skipped", lockedAt: null, lastError: reason })
+    .where(
+      and(
+        eq(notificationOutbox.id, outboxId),
+        eq(notificationOutbox.status, "processing"),
+      ),
+    );
+}
+
+export async function markNotificationOutboxFailed(
+  outbox: NotificationOutbox,
+  error: string,
+  now = new Date(),
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const retryAt = nextNotificationAttemptAt(now, outbox.attemptCount);
+  const terminal = !shouldRetryNotification(outbox.attemptCount);
+  await db
+    .update(notificationOutbox)
+    .set({
+      status: terminal ? "failed" : "pending",
+      availableAt: retryAt,
+      lockedAt: null,
+      lastError: error.slice(0, 500),
+    })
+    .where(
+      and(
+        eq(notificationOutbox.id, outbox.id),
+        eq(notificationOutbox.status, "processing"),
+      ),
+    );
 }
 
 export async function listNotificationsForUser(

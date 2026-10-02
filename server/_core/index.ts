@@ -20,6 +20,7 @@ import { registerObservabilityMetrics } from "./observability";
 import { probeReadiness } from "./readiness";
 import { startDispatchOfferSweeper } from "../dispatch-offer-sweeper";
 import { startInventoryReservationSweeper } from "../inventory-reservation-sweeper";
+import { startNotificationOutboxWorker } from "../notification-outbox-worker";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -127,6 +128,7 @@ async function startServer() {
     console.log(`[api] server listening on port ${port}`);
     startDispatchOfferSweeper();
     startInventoryReservationSweeper();
+    startNotificationOutboxWorker();
   });
 }
 

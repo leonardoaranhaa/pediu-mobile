@@ -11,6 +11,7 @@ export const REQUIRED_READINESS_TABLES = [
   "pediu_payment_transactions",
   "pediu_notifications",
   "pediu_push_tokens",
+  "pediu_notification_outbox",
   "pediu_financial_ledger",
   "pediu_webhook_events",
   "pediu_refunds",

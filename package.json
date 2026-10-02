@@ -19,6 +19,7 @@
     "go-live:reviews": "tsx scripts/go-live-reviews.ts",
     "go-live:inventory": "tsx scripts/go-live-inventory.ts",
     "go-live:inventory-expiry": "tsx scripts/go-live-inventory-expiry.ts",
+    "go-live:notification-outbox": "tsx scripts/go-live-notification-outbox.ts",
     "go-live:dispatch-reoffer": "tsx scripts/go-live-dispatch-reoffer.ts",
     "go-live:serviceability": "tsx scripts/go-live-serviceability.ts",
     "go-live:concurrency": "tsx scripts/go-live-concurrency.ts",

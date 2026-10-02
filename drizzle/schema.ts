@@ -995,6 +995,38 @@ export const notifications = mysqlTable(
   }),
 );
 
+export const notificationOutbox = mysqlTable(
+  "pediu_notification_outbox",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    notificationId: int("notificationId")
+      .notNull()
+      .references(() => notifications.id, { onDelete: "cascade" }),
+    userId: int("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    payload: text("payload").notNull(),
+    status: varchar("status", { length: 16 }).default("pending").notNull(),
+    attemptCount: int("attemptCount").default(0).notNull(),
+    availableAt: timestamp("availableAt").defaultNow().notNull(),
+    lockedAt: timestamp("lockedAt"),
+    lastError: varchar("lastError", { length: 500 }),
+    sentAt: timestamp("sentAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => ({
+    notificationUnique: unique(
+      "pediu_notification_outbox_notification_unique",
+    ).on(table.notificationId),
+    pendingIdx: index("pediu_notification_outbox_status_available_idx").on(
+      table.status,
+      table.availableAt,
+      table.id,
+    ),
+  }),
+);
+
 export const notificationPreferences = mysqlTable(
   "pediu_notification_preferences",
   {
@@ -1137,6 +1169,8 @@ export type AdminAuditLog = typeof adminAuditLogs.$inferSelect;
 export type InsertAdminAuditLog = typeof adminAuditLogs.$inferInsert;
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = typeof notifications.$inferInsert;
+export type NotificationOutbox = typeof notificationOutbox.$inferSelect;
+export type InsertNotificationOutbox = typeof notificationOutbox.$inferInsert;
 export type NotificationPreferences =
   typeof notificationPreferences.$inferSelect;
 export type InsertNotificationPreferences =
