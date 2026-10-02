@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 import { appRouter } from "../server/routers";
 import * as db from "../server/db";
+import { encodeMarketplaceCursor } from "../server/domain/marketplace-cursor";
 
 const customer = {
   id: 20,
@@ -79,6 +80,16 @@ describe("Pediu customer marketplace contract", () => {
 
     expect(result).toMatchObject({ hasMore: true, items: [{ name: "Brownie", storeName: "Loja Teste" }] });
     expect(db.searchAvailableProducts).toHaveBeenCalledWith({ query: "brownie", category: "Doces", minPrice: 5, maxPrice: 20, limit: 12, offset: 0 });
+  });
+
+  it("forwards an opaque cursor and exposes the next cursor", async () => {
+    const cursor = encodeMarketplaceCursor({ filterKey: JSON.stringify({ category: "Doces", maxPrice: null, minPrice: null, query: "brownie" }), adId: null, createdAt: new Date("2026-10-02T12:00:00.000Z"), productId: 101 });
+    vi.spyOn(db, "searchAvailableProducts").mockResolvedValue({ items: [], hasMore: false, nextCursor: null });
+
+    const result = await appRouter.createCaller({ user: customer } as any).pediu.marketplace.search({ category: "Doces", cursor, limit: 12 });
+
+    expect(result.nextCursor).toBeNull();
+    expect(db.searchAvailableProducts).toHaveBeenCalledWith({ category: "Doces", cursor, limit: 12, offset: 0 });
   });
 
   it("quotes current prices and delivery fee from the server", async () => {

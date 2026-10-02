@@ -1266,3 +1266,25 @@ O bloqueio retorna `TOO_MANY_REQUESTS` com `Retry-After`; se o armazenamento dis
 | Deployment/stress HTTPS temporário | Smoke aprovado; 40 requests / 4 workers; p50 13,6 ms; p95 53,5 ms; máximo 144,8 ms; erro 0% |
 
 A instrução técnica está em `docs/INSTRUCAO_FASE_RATE_LIMIT_DISTRIBUIDO_PR7.md`. A fase não instala Redis, WAF/CDN, rate-limit gerenciado, alta disponibilidade cross-region ou proteção L7 de borda. Permanecem externos PSP/PIX/CNPJ, credenciais/homologação e webhook real, OAuth, Expo Push/receipts, e-mail/SMS, storage, observabilidade/backup, scheduler/hosting definitivo, domínio/staging/produção, GPS/background físico e publicação nas lojas; portanto o Go-Live comercial e o PR #7 permanecem bloqueados e não READY.
+
+
+---
+# 49. Paginação por cursor do marketplace — 02/10/2026
+
+Esta fatia fechou a lacuna P1 de listagens de marketplace paginadas por `offset`. O contrato `pediu.marketplace.search` agora aceita cursor opaco versionado, normaliza a combinação de filtros, usa keyset estrito pela ordem anúncio publicado descendente, `products.createdAt` descendente e `products.id` descendente, e retorna `nextCursor` junto com `hasMore`. O `offset` permanece aceito somente para compatibilidade temporária com clientes legados. A busca Expo foi migrada para `useInfiniteQuery`, acumulando páginas sem substituir resultados anteriores.
+
+O cursor falha fechado para payload malformado, versão desconhecida, IDs/data inválidos ou filtros incompatíveis. O servidor continua bounded entre 1 e 50 itens e consulta no máximo `limit + 1`. Não foi criada migration: a fase não adiciona índice sem evidência de plano de consulta que justifique custo de escrita; o smoke cobre a ordenação e continuidade no banco vigente.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| Regressões puras/router | `tests/marketplace-cursor.test.ts` e contrato marketplace aprovados; round-trip opaco, cauda sem anúncio, cursor inválido e encaminhamento tRPC cobertos |
+| Matriz local | `pnpm check`, 47 arquivos/232 testes em `pnpm test`, `pnpm build`, `pnpm lint`, Prettier dos arquivos suportados e `git diff --check` aprovados |
+| Smoke E2E MySQL + bundle | `pnpm go-live:pagination` no dist final de produção da porta 3022: páginas `[10, 10, 5]`, zero duplicação, inserção entre páginas não deslocou o cursor e cursor inválido retornou HTTP 400 |
+| Cleanup SQL | 0 produtos `Cursor-*` e 0 usuários `ci-pagination-*` após o smoke |
+| Deployment smoke local | health 200, readyz 200, marketplace 200, CORS exato e métricas protegidas |
+| Stress local read-only | 120 requests / 12 workers; p50 18,5 ms; p95 41,2 ms; máximo 104,0 ms; erro 0% |
+| Deployment/stress HTTPS temporário | `https://3022-i54sxpgl15gk7uuptg0z2-85761c05.us1.manus.computer` aprovado; 40 requests / 4 workers; p50 11,3 ms; p95 38,7 ms; máximo 129,4 ms; erro 0% |
+
+A instrução técnica está em `docs/INSTRUCAO_FASE_PAGINACAO_CURSOR_PR7.md`. A fase não implementa full-text/ranking, cache/CDN, migração de listagens administrativas ou presign em lote sem contrato real do Forge/storage. Permanecem externos PSP/PIX/CNPJ, credenciais/homologação e webhook real, OAuth, Expo Push/receipts, e-mail/SMS, storage/Forge, observabilidade/backup contínuos, scheduler/hosting definitivo, domínio/staging/produção, GPS/background físico, Android/iOS reais e publicação nas lojas; portanto o Go-Live comercial e o PR #7 permanecem bloqueados e não READY.

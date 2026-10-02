@@ -134,6 +134,11 @@ import {
   boundedRateLimitWindow,
   decideDistributedRateLimit,
 } from "./domain/distributed-rate-limit";
+import {
+  decodeMarketplaceCursor,
+  encodeMarketplaceCursor,
+  marketplaceFilterKey,
+} from "./domain/marketplace-cursor";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -1483,14 +1488,19 @@ export type MarketplaceSearchInput = {
   minPrice?: number;
   maxPrice?: number;
   limit?: number;
+  cursor?: string;
   offset?: number;
 };
 
 export async function searchAvailableProducts(
   input: MarketplaceSearchInput = {},
-): Promise<{ items: MarketplaceProduct[]; hasMore: boolean }> {
+): Promise<{
+  items: MarketplaceProduct[];
+  hasMore: boolean;
+  nextCursor: string | null;
+}> {
   const db = await getDb();
-  if (!db) return { items: [], hasMore: false };
+  if (!db) return { items: [], hasMore: false, nextCursor: null };
   const filters = [
     eq(products.available, 1),
     eq(stores.isOpen, 1),
@@ -1509,7 +1519,41 @@ export async function searchAvailableProducts(
   if (input.maxPrice !== undefined)
     filters.push(sql`${products.price} <= ${input.maxPrice.toFixed(2)}`);
   const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
-  const offset = Math.max(input.offset ?? 0, 0);
+  const filterKey = marketplaceFilterKey(input);
+  const cursor = input.cursor ? decodeMarketplaceCursor(input.cursor) : null;
+  if (cursor && cursor.filterKey !== filterKey)
+    throw new Error("Cursor de marketplace incompatível com os filtros");
+  if (cursor) {
+    const cursorCreatedAt = new Date(cursor.createdAt);
+    const cursorFilter =
+      cursor.adId === null
+        ? and(
+            isNull(generatedAds.id),
+            or(
+              sql`${products.createdAt} < ${cursorCreatedAt}`,
+              and(
+                eq(products.createdAt, cursorCreatedAt),
+                sql`${products.id} < ${cursor.productId}`,
+              ),
+            ),
+          )
+        : or(
+            isNull(generatedAds.id),
+            sql`${generatedAds.id} < ${cursor.adId}`,
+            and(
+              eq(generatedAds.id, cursor.adId),
+              or(
+                sql`${products.createdAt} < ${cursorCreatedAt}`,
+                and(
+                  eq(products.createdAt, cursorCreatedAt),
+                  sql`${products.id} < ${cursor.productId}`,
+                ),
+              ),
+            ),
+          );
+    if (!cursorFilter) throw new Error("Cursor de marketplace inválido");
+    filters.push(cursorFilter);
+  }
 
   const result = await db
     .select({
@@ -1541,9 +1585,24 @@ export async function searchAvailableProducts(
     .where(and(...filters))
     .orderBy(desc(generatedAds.id), desc(products.createdAt), desc(products.id))
     .limit(limit + 1)
-    .offset(offset);
+    .offset(cursor ? 0 : Math.max(input.offset ?? 0, 0));
 
-  return { items: result.slice(0, limit), hasMore: result.length > limit };
+  const items = result.slice(0, limit);
+  const hasMore = result.length > limit;
+  const lastItem = items.at(-1);
+  return {
+    items,
+    hasMore,
+    nextCursor:
+      hasMore && lastItem
+        ? encodeMarketplaceCursor({
+            filterKey,
+            adId: lastItem.adId,
+            createdAt: lastItem.createdAt,
+            productId: lastItem.id,
+          })
+        : null,
+  };
 }
 
 export async function listAvailableProducts(

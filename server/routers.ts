@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { COOKIE_NAME } from "../shared/const.js";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -228,11 +229,26 @@ export const appRouter = router({
             minPrice: z.number().nonnegative().optional(),
             maxPrice: z.number().nonnegative().optional(),
             limit: z.number().int().min(1).max(50).default(20),
+            cursor: z.string().trim().min(1).max(2_000).optional(),
             offset: z.number().int().min(0).default(0),
           }),
         )
         .query(async ({ input }) => {
-          const result = await db.searchAvailableProducts(input);
+          let result: Awaited<ReturnType<typeof db.searchAvailableProducts>>;
+          try {
+            result = await db.searchAvailableProducts(input);
+          } catch (error) {
+            if (
+              error instanceof Error &&
+              error.message.toLowerCase().includes("cursor")
+            ) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: error.message,
+              });
+            }
+            throw error;
+          }
           const items = await Promise.all(
             result.items.map(async (item) => ({
               ...item,

@@ -182,6 +182,8 @@ jobs:
         run: pnpm go-live:tracking-resilience
       - name: Run Go-Live distributed rate-limit smoke
         run: pnpm go-live:rate-limit
+      - name: Run Go-Live marketplace cursor pagination smoke
+        run: pnpm go-live:pagination
       - name: Run Go-Live serviceability and pickup smoke
         run: pnpm go-live:serviceability
       - name: Run Go-Live fiado concurrency smoke
