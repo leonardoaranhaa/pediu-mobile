@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { and, desc, eq } from "drizzle-orm";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { getDb } from "./db";
@@ -20,6 +21,13 @@ import {
   prioritizeFlashDeliveryQueue,
   suggestedFlashEtaMinutes,
 } from "./domain/delivery-queue";
+import {
+  JUNTO_DISABLED_REASON,
+  JUNTO_FEATURE_ENABLED,
+  canJoinJuntoShare,
+  generateJuntoInviteCode,
+  planJuntoShare,
+} from "./domain/junto";
 
 async function ownedOrder(db: any, orderId: number, userId: number) {
   const rows = await db
@@ -128,9 +136,78 @@ export const experienceRouter = router({
     market: true,
     taste: true,
     tip: true,
-    pediuJunto: false,
+    pediuJunto: JUNTO_FEATURE_ENABLED,
     tipDestination: "courier" as const,
+    juntoPaymentModel: "host_pays" as const,
   })),
+  junto: router({
+    status: publicProcedure.query(() => ({
+      enabled: JUNTO_FEATURE_ENABLED,
+      paymentModel: "host_pays" as const,
+      reason: JUNTO_FEATURE_ENABLED ? null : JUNTO_DISABLED_REASON,
+      maxParticipantsDefault: 6,
+    })),
+    preview: protectedProcedure
+      .input(
+        z.object({
+          storeId: z.number().int().positive(),
+          maxParticipants: z.number().int().min(2).max(12).optional(),
+          note: z.string().trim().max(255).optional(),
+        }),
+      )
+      .query(({ ctx, input }) => {
+        const plan = planJuntoShare({
+          hostUserId: ctx.user.id,
+          storeId: input.storeId,
+          maxParticipants: input.maxParticipants,
+          hostPaysAll: true,
+          note: input.note,
+        });
+        if (!plan.ok)
+          throw new TRPCError({ code: "BAD_REQUEST", message: plan.reason });
+        return {
+          ...plan,
+          enabled: JUNTO_FEATURE_ENABLED,
+          sampleInviteCode: generateJuntoInviteCode(
+            ctx.user.id + input.storeId,
+          ),
+          joinRules: canJoinJuntoShare({
+            shareStatus: "open",
+            participantCount: 1,
+            maxParticipants: plan.maxParticipants,
+            alreadyJoined: false,
+          }),
+        };
+      }),
+    create: protectedProcedure
+      .input(
+        z.object({
+          storeId: z.number().int().positive(),
+          maxParticipants: z.number().int().min(2).max(12).default(6),
+          note: z.string().trim().max(255).optional(),
+          idempotencyKey: z.string().trim().min(8).max(160),
+        }),
+      )
+      .mutation(() => {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: JUNTO_DISABLED_REASON,
+        });
+      }),
+    join: protectedProcedure
+      .input(
+        z.object({
+          inviteCode: z.string().trim().min(4).max(32),
+          idempotencyKey: z.string().trim().min(8).max(160),
+        }),
+      )
+      .mutation(() => {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: JUNTO_DISABLED_REASON,
+        });
+      }),
+  }),
   coupons: router({
     validate: protectedProcedure
       .input(

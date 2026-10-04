@@ -1,9 +1,11 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { useMemo, useState } from "react";
-import { Pressable, Share, Text, View } from "react-native";
+import { Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { EmptyState } from "@/components/pediu/empty-state";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
 import { Card, Field, Page, PrimaryButton, Row, s } from "@/components/pediu-page";
+import { PEDIU_TOKENS } from "@/lib/pediu-tokens";
 import { formatCatalogPrice, SALE_UNITS, SALE_UNIT_LABELS, suggestedSaleUnitForCategory, type SaleUnit } from "@/shared/market-units";
 
 export default function SellerCatalogPage() {
@@ -44,6 +46,15 @@ export default function SellerCatalogPage() {
 
   return (
     <Page title="Catálogo" eyebrow="VITRINE" action={<MaterialIcons name="inventory-2" size={22} color="#E20D2A" />}>
+      <View style={styles.hero}>
+        <Text style={styles.heroEyebrow}>{isMarket ? "MERCADO · UNIDADES" : "VITRINE DA LOJA"}</Text>
+        <Text style={styles.heroTitle}>{store.data?.name ?? "Catálogo"}</Text>
+        <Text style={styles.heroBody}>
+          {isMarket
+            ? "Publique itens com unidade (kg, cx, un). O preço unitário aparece igual para o cliente."
+            : "Publique produtos e controle disponibilidade. Divulgue o catálogo ativo em um toque."}
+        </Text>
+      </View>
       <Card>
         <Text style={s.sectionTitle}>Novo produto</Text>
         <Field label="NOME" value={name} onChangeText={setName} placeholder={isMarket ? "Ex.: Banana prata" : "Ex.: Combo X-Bacon"} />
@@ -123,7 +134,13 @@ export default function SellerCatalogPage() {
         </View>
         {products.isLoading ? <Text style={s.muted}>Carregando catálogo...</Text> : null}
         {products.isError ? <Text style={{ color: "#E20D2A", fontSize: 12 }}>{products.error.message}</Text> : null}
-        {!products.isLoading && !products.data?.length ? <Text style={s.muted}>Seu catálogo está vazio.</Text> : null}
+        {!products.isLoading && !products.data?.length ? (
+          <EmptyState
+            icon="inventory-2"
+            title="Catálogo vazio"
+            body={isMarket ? "Adicione o primeiro item com unidade de venda." : "Adicione o primeiro produto da sua vitrine."}
+          />
+        ) : null}
         {products.data?.map((product) => (
           <Row
             key={product.id}
@@ -146,3 +163,29 @@ export default function SellerCatalogPage() {
     </Page>
   );
 }
+
+const styles = StyleSheet.create({
+  hero: {
+    backgroundColor: PEDIU_TOKENS.ink,
+    borderRadius: 24,
+    padding: 18,
+    gap: 6,
+  },
+  heroEyebrow: {
+    color: PEDIU_TOKENS.accent,
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 1.2,
+  },
+  heroTitle: {
+    color: PEDIU_TOKENS.white,
+    fontSize: 22,
+    fontWeight: "900",
+    letterSpacing: -0.5,
+  },
+  heroBody: {
+    color: "rgba(255,244,232,0.72)",
+    fontSize: 12,
+    lineHeight: 18,
+  },
+});

@@ -738,10 +738,47 @@ export async function listAdminStores(limit = 50, offset = 0) {
   return db.select().from(stores).limit(limit).offset(offset);
 }
 
-export async function listAdminOrders(limit = 50, offset = 0) {
+export async function listAdminOrders(
+  limit = 50,
+  offset = 0,
+  filters?: { status?: Order["status"]; flash?: boolean },
+) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(orders).limit(limit).offset(offset);
+  const clauses = [];
+  if (filters?.status) clauses.push(eq(orders.status, filters.status));
+  if (filters?.flash === true) clauses.push(eq(orders.isFlash, 1));
+  if (filters?.flash === false) clauses.push(eq(orders.isFlash, 0));
+  return db
+    .select()
+    .from(orders)
+    .where(clauses.length ? and(...clauses) : undefined)
+    .orderBy(desc(orders.createdAt), desc(orders.id))
+    .limit(limit)
+    .offset(offset);
+}
+
+export async function listAdminTipSettlements(
+  limit = 50,
+  offset = 0,
+  filters?: {
+    status?: TipSettlement["status"];
+    destination?: TipSettlement["destination"];
+  },
+): Promise<TipSettlement[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const clauses = [];
+  if (filters?.status) clauses.push(eq(tipSettlements.status, filters.status));
+  if (filters?.destination)
+    clauses.push(eq(tipSettlements.destination, filters.destination));
+  return db
+    .select()
+    .from(tipSettlements)
+    .where(clauses.length ? and(...clauses) : undefined)
+    .orderBy(desc(tipSettlements.createdAt), desc(tipSettlements.id))
+    .limit(limit)
+    .offset(offset);
 }
 
 export async function listAdminPayments(limit = 50, offset = 0) {
@@ -840,11 +877,16 @@ export async function getAdminOverview() {
       flashStores: 0,
       orders: 0,
       pendingOrders: 0,
+      flashOrdersToday: 0,
       payments: 0,
       pendingPayments: 0,
       failedPayments: 0,
       openSupportTickets: 0,
       creditAccounts: 0,
+      tipSettlements: 0,
+      tipsSettled: 0,
+      tipsPending: 0,
+      tipsSettledAmount: "0.00",
     };
   }
 
@@ -869,6 +911,12 @@ export async function getAdminOverview() {
     .select({ value: sql<number>`count(*)` })
     .from(orders)
     .where(eq(orders.status, "Pendente"));
+  const [flashOrdersToday] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(orders)
+    .where(
+      and(eq(orders.isFlash, 1), sql`DATE(${orders.createdAt}) = CURRENT_DATE`),
+    );
   const [paymentsCount] = await db
     .select({ value: sql<number>`count(*)` })
     .from(payments);
@@ -887,6 +935,21 @@ export async function getAdminOverview() {
   const [creditAccounts] = await db
     .select({ value: sql<number>`count(*)` })
     .from(customers);
+  const [tipSettlementsCount] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(tipSettlements);
+  const [tipsSettled] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(tipSettlements)
+    .where(eq(tipSettlements.status, "settled"));
+  const [tipsPending] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(tipSettlements)
+    .where(eq(tipSettlements.status, "pending"));
+  const [tipsSettledAmount] = await db
+    .select({ value: sql<string>`coalesce(sum(${tipSettlements.amount}), 0)` })
+    .from(tipSettlements)
+    .where(eq(tipSettlements.status, "settled"));
 
   return {
     users: Number(usersCount?.value ?? 0),
@@ -895,11 +958,16 @@ export async function getAdminOverview() {
     flashStores: Number(flashStores?.value ?? 0),
     orders: Number(ordersCount?.value ?? 0),
     pendingOrders: Number(pendingOrders?.value ?? 0),
+    flashOrdersToday: Number(flashOrdersToday?.value ?? 0),
     payments: Number(paymentsCount?.value ?? 0),
     pendingPayments: Number(pendingPayments?.value ?? 0),
     failedPayments: Number(failedPayments?.value ?? 0),
     openSupportTickets: Number(openSupportTickets?.value ?? 0),
     creditAccounts: Number(creditAccounts?.value ?? 0),
+    tipSettlements: Number(tipSettlementsCount?.value ?? 0),
+    tipsSettled: Number(tipsSettled?.value ?? 0),
+    tipsPending: Number(tipsPending?.value ?? 0),
+    tipsSettledAmount: Number(tipsSettledAmount?.value ?? 0).toFixed(2),
   };
 }
 

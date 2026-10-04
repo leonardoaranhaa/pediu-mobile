@@ -246,6 +246,13 @@
       "when": 1791200100000,
       "tag": "0034_market_units_tip_settlement",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "5",
+      "when": 1791200200000,
+      "tag": "0035_order_shares_junto",
+      "breakpoints": true
     }
   ]
 }

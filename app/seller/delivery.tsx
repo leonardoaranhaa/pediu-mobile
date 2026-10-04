@@ -1,10 +1,12 @@
 import * as Location from "expo-location";
 import { useEffect, useMemo, useState } from "react";
 import { useLocalSearchParams } from "expo-router";
-import { Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { EmptyState } from "@/components/pediu/empty-state";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
 import { Card, Field, OutlineButton, Page, PrimaryButton, PEDIU, Row, s } from "@/components/pediu-page";
+import { PEDIU_TOKENS } from "@/lib/pediu-tokens";
 
 function formatCoordinate(value: number) {
   return value.toFixed(7);
@@ -80,53 +82,120 @@ export default function SellerDeliveryPage() {
     sendLocation.mutate({ orderId, latitude: lat, longitude: lon, etaMinutes: eta.trim() ? Number(eta) : undefined, idempotencyKey: key });
   };
 
-  return <Page title="Entregas" eyebrow="OPERAÇÃO DA LOJA">
-    <Card>
-      <Text style={s.sectionTitle}>Fila de entrega</Text>
-      <Text style={s.muted}>
-        Pedidos Flash sobem na fila. {queueQuery.data?.flashCount ? `${queueQuery.data.flashCount} Flash na fila.` : "Nenhum Flash aguardando."}
-      </Text>
-      {queueQuery.isLoading ? <Text style={s.muted}>Carregando pedidos...</Text> : null}
-      {!queueQuery.isLoading && !activeOrders.length ? <Text style={s.muted}>Nenhum pedido pronto ou em rota neste momento.</Text> : null}
-      {activeOrders.map((order, index) => (
-        <Row
-          key={order.id}
-          icon={order.isFlash ? "bolt" : "two-wheeler"}
-          title={`#${order.id}${order.isFlash ? " · FLASH" : ""}`}
-          subtitle={`${order.status} · R$ ${Number(order.total).toFixed(2).replace(".", ",")}${order.isFlash ? " · prioridade" : ""} · posição ${index + 1}`}
-          onPress={() => { setSelectedOrderId(order.id); setEta(order.suggestedEtaMinutes != null ? String(order.suggestedEtaMinutes) : ""); }}
-          right={<Text style={{ color: order.id === orderId ? PEDIU.coral : PEDIU.muted, fontWeight: "900" }}>{order.id === orderId ? "Selecionado" : "Abrir"}</Text>}
-        />
-      ))}
-    </Card>
-    {selectedOrder ? <>
+  return (
+    <Page title="Entregas" eyebrow="OPERAÇÃO DA LOJA">
+      <View style={styles.hero}>
+        <Text style={styles.heroEyebrow}>FILA PRIORIZADA</Text>
+        <Text style={styles.heroTitle}>Entregas da loja</Text>
+        <Text style={styles.heroBody}>
+          Pedidos Flash sobem primeiro. {queueQuery.data?.flashCount ? `${queueQuery.data.flashCount} Flash na fila.` : "Nenhum Flash aguardando."}
+        </Text>
+      </View>
+
       <Card>
-        <Text style={s.sectionTitle}>Entregador do pedido #{selectedOrder.id}</Text>
-        {selectedOrder.isFlash ? (
-          <View style={{ borderRadius: 12, backgroundColor: PEDIU.peach, padding: 10, marginBottom: 4 }}>
-            <Text style={{ color: PEDIU.ink, fontWeight: "800", fontSize: 12 }}>
-              Pediu Flash · ETA sugerido {selectedOrder.suggestedEtaMinutes ?? queueQuery.data?.flashEtaMaxMinutes ?? 20} min
-            </Text>
-          </View>
+        <Text style={s.sectionTitle}>Fila de entrega</Text>
+        {queueQuery.isLoading ? <Text style={s.muted}>Carregando pedidos...</Text> : null}
+        {!queueQuery.isLoading && !activeOrders.length ? (
+          <EmptyState
+            icon="two-wheeler"
+            title="Fila vazia no momento"
+            body="Quando um pedido estiver Pronto ou A caminho, ele aparece aqui com prioridade Flash."
+          />
         ) : null}
-        <Text style={s.muted}>O proprietário da loja é o operador autorizado nesta fase. A atribuição fica registrada para o cliente.</Text>
-        <Field label="NOME DO ENTREGADOR" value={courierName} onChangeText={setCourierName} placeholder="Nome exibido ao cliente" />
-        <Field label="TELEFONE (OPCIONAL)" value={courierPhone} onChangeText={setCourierPhone} placeholder="(00) 00000-0000" keyboardType="phone-pad" />
-        <Field label="ETA EM MINUTOS" value={eta} onChangeText={setEta} placeholder="Ex.: 25" keyboardType="numeric" />
-        {assign.error ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{assign.error.message}</Text> : null}
-        <PrimaryButton title={assign.isPending ? "Salvando..." : selectedOrder.isFlash ? "Atribuir Flash" : "Atribuir entrega"} onPress={saveAssignment} disabled={assign.isPending} />
+        {activeOrders.map((order, index) => (
+          <Row
+            key={order.id}
+            icon={order.isFlash ? "bolt" : "two-wheeler"}
+            title={`#${order.id}${order.isFlash ? " · FLASH" : ""}`}
+            subtitle={`${order.status} · R$ ${Number(order.total).toFixed(2).replace(".", ",")}${order.isFlash ? " · prioridade" : ""} · posição ${index + 1}`}
+            onPress={() => { setSelectedOrderId(order.id); setEta(order.suggestedEtaMinutes != null ? String(order.suggestedEtaMinutes) : ""); }}
+            right={<Text style={{ color: order.id === orderId ? PEDIU.coral : PEDIU.muted, fontWeight: "900" }}>{order.id === orderId ? "Selecionado" : "Abrir"}</Text>}
+          />
+        ))}
       </Card>
-      <Card>
-        <Text style={s.sectionTitle}>Posição atual</Text>
-        <Text style={s.muted}>Use o GPS no dispositivo ou informe coordenadas manualmente no preview web.</Text>
-        <Field label="LATITUDE" value={latitude} onChangeText={setLatitude} placeholder="Ex.: -23.550520" keyboardType="decimal-pad" />
-        <Field label="LONGITUDE" value={longitude} onChangeText={setLongitude} placeholder="Ex.: -46.633308" keyboardType="decimal-pad" />
-        <OutlineButton title="Usar minha localização" onPress={() => void requestGps()} />
-        {sendLocation.error ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{sendLocation.error.message}</Text> : null}
-        <PrimaryButton title={sendLocation.isPending ? "Enviando posição..." : "Atualizar posição"} onPress={updateLocation} disabled={sendLocation.isPending || !current.data?.assignment || !latitude || !longitude} />
-        {current.data?.latestLocation ? <Text style={s.muted}>Última atualização: {new Date(current.data.latestLocation.createdAt).toLocaleString("pt-BR")}</Text> : <Text style={s.muted}>Nenhuma posição enviada ainda.</Text>}
-      </Card>
-      {selectedOrder.status === "A caminho" ? <Card><Text style={s.sectionTitle}>Encerramento</Text><Text style={s.muted}>Confirme somente quando a entrega estiver concluída no endereço do cliente.</Text><PrimaryButton title={complete.isPending ? "Encerrando..." : "Marcar como entregue"} onPress={() => complete.mutate({ orderId })} disabled={complete.isPending} />{complete.error ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{complete.error.message}</Text> : null}</Card> : null}
-    </> : null}
-  </Page>;
+
+      {selectedOrder ? (
+        <>
+          <Card style={selectedOrder.isFlash ? styles.flashCard : undefined}>
+            <Text style={s.sectionTitle}>Entregador do pedido #{selectedOrder.id}</Text>
+            {selectedOrder.isFlash ? (
+              <View style={styles.flashNote}>
+                <Text style={styles.flashNoteText}>
+                  Pediu Flash · ETA sugerido {selectedOrder.suggestedEtaMinutes ?? queueQuery.data?.flashEtaMaxMinutes ?? 20} min
+                </Text>
+              </View>
+            ) : null}
+            <Text style={s.muted}>O proprietário da loja é o operador autorizado nesta fase. A atribuição fica registrada para o cliente.</Text>
+            <Field label="NOME DO ENTREGADOR" value={courierName} onChangeText={setCourierName} placeholder="Nome exibido ao cliente" />
+            <Field label="TELEFONE (OPCIONAL)" value={courierPhone} onChangeText={setCourierPhone} placeholder="(00) 00000-0000" keyboardType="phone-pad" />
+            <Field label="ETA EM MINUTOS" value={eta} onChangeText={setEta} placeholder="Ex.: 25" keyboardType="numeric" />
+            {assign.error ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{assign.error.message}</Text> : null}
+            <PrimaryButton title={assign.isPending ? "Salvando..." : selectedOrder.isFlash ? "Atribuir Flash" : "Atribuir entrega"} onPress={saveAssignment} disabled={assign.isPending} />
+          </Card>
+          <Card>
+            <Text style={s.sectionTitle}>Posição atual</Text>
+            <Text style={s.muted}>Use o GPS no dispositivo ou informe coordenadas manualmente no preview web.</Text>
+            <Field label="LATITUDE" value={latitude} onChangeText={setLatitude} placeholder="Ex.: -23.550520" keyboardType="decimal-pad" />
+            <Field label="LONGITUDE" value={longitude} onChangeText={setLongitude} placeholder="Ex.: -46.633308" keyboardType="decimal-pad" />
+            <OutlineButton title="Usar minha localização" onPress={() => void requestGps()} />
+            {sendLocation.error ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{sendLocation.error.message}</Text> : null}
+            <PrimaryButton title={sendLocation.isPending ? "Enviando posição..." : "Atualizar posição"} onPress={updateLocation} disabled={sendLocation.isPending || !current.data?.assignment || !latitude || !longitude} />
+            {current.data?.latestLocation ? (
+              <Text style={s.muted}>Última atualização: {new Date(current.data.latestLocation.createdAt).toLocaleString("pt-BR")}</Text>
+            ) : (
+              <Text style={s.muted}>Nenhuma posição enviada ainda.</Text>
+            )}
+          </Card>
+          {selectedOrder.status === "A caminho" ? (
+            <Card>
+              <Text style={s.sectionTitle}>Encerramento</Text>
+              <Text style={s.muted}>Confirme somente quando a entrega estiver concluída. Gorjeta, se houver, liquida automaticamente.</Text>
+              <PrimaryButton title={complete.isPending ? "Encerrando..." : "Marcar como entregue"} onPress={() => complete.mutate({ orderId })} disabled={complete.isPending} />
+              {complete.error ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{complete.error.message}</Text> : null}
+            </Card>
+          ) : null}
+        </>
+      ) : null}
+    </Page>
+  );
 }
+
+const styles = StyleSheet.create({
+  hero: {
+    backgroundColor: PEDIU_TOKENS.ink,
+    borderRadius: 24,
+    padding: 18,
+    gap: 6,
+  },
+  heroEyebrow: {
+    color: PEDIU_TOKENS.accent,
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 1.2,
+  },
+  heroTitle: {
+    color: PEDIU_TOKENS.white,
+    fontSize: 22,
+    fontWeight: "900",
+    letterSpacing: -0.5,
+  },
+  heroBody: {
+    color: "rgba(255,244,232,0.72)",
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  flashCard: {
+    borderColor: PEDIU_TOKENS.primary,
+    borderWidth: 1.5,
+  },
+  flashNote: {
+    borderRadius: 12,
+    backgroundColor: PEDIU_TOKENS.primarySoft,
+    padding: 10,
+  },
+  flashNoteText: {
+    color: PEDIU_TOKENS.ink,
+    fontWeight: "800",
+    fontSize: 12,
+  },
+});

@@ -416,6 +416,84 @@ export const tipSettlements = mysqlTable(
   }),
 );
 
+/** Pediu Junto: estrutura persistida, ainda bloqueada pela feature flag. */
+export const orderShares = mysqlTable(
+  "pediu_order_shares",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    orderId: int("orderId").references(() => orders.id, {
+      onDelete: "set null",
+    }),
+    hostUserId: int("hostUserId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    storeId: int("storeId")
+      .notNull()
+      .references(() => stores.id, { onDelete: "restrict" }),
+    status: mysqlEnum("status", [
+      "draft",
+      "open",
+      "locked",
+      "paid",
+      "cancelled",
+    ])
+      .default("draft")
+      .notNull(),
+    inviteCode: varchar("inviteCode", { length: 32 }).notNull(),
+    maxParticipants: int("maxParticipants").default(6).notNull(),
+    hostPaysAll: int("hostPaysAll").default(1).notNull(),
+    note: varchar("note", { length: 255 }),
+    idempotencyKey: varchar("idempotencyKey", { length: 160 }).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => ({
+    inviteUnique: unique("pediu_order_shares_invite_unique").on(
+      table.inviteCode,
+    ),
+    idempotencyUnique: unique("pediu_order_shares_idempotency_unique").on(
+      table.idempotencyKey,
+    ),
+    hostCreatedIdx: index("pediu_order_shares_host_created_idx").on(
+      table.hostUserId,
+      table.createdAt,
+    ),
+    storeStatusIdx: index("pediu_order_shares_store_status_idx").on(
+      table.storeId,
+      table.status,
+    ),
+  }),
+);
+
+export const orderShareParticipants = mysqlTable(
+  "pediu_order_share_participants",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    shareId: int("shareId")
+      .notNull()
+      .references(() => orderShares.id, { onDelete: "cascade" }),
+    userId: int("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: mysqlEnum("role", ["host", "guest"]).default("guest").notNull(),
+    status: mysqlEnum("status", ["invited", "joined", "left"])
+      .default("invited")
+      .notNull(),
+    joinedAt: timestamp("joinedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => ({
+    shareUserUnique: unique("pediu_order_share_participants_unique").on(
+      table.shareId,
+      table.userId,
+    ),
+    userIdx: index("pediu_order_share_participants_user_idx").on(
+      table.userId,
+      table.status,
+    ),
+  }),
+);
+
 export const payouts = mysqlTable(
   "pediu_payouts",
   {
@@ -1326,3 +1404,8 @@ export type LoyaltyLedgerEntry = typeof loyaltyLedger.$inferSelect;
 export type InsertLoyaltyLedgerEntry = typeof loyaltyLedger.$inferInsert;
 export type TipSettlement = typeof tipSettlements.$inferSelect;
 export type InsertTipSettlement = typeof tipSettlements.$inferInsert;
+export type OrderShare = typeof orderShares.$inferSelect;
+export type InsertOrderShare = typeof orderShares.$inferInsert;
+export type OrderShareParticipant = typeof orderShareParticipants.$inferSelect;
+export type InsertOrderShareParticipant =
+  typeof orderShareParticipants.$inferInsert;

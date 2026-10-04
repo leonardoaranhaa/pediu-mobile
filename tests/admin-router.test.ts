@@ -26,15 +26,21 @@ describe("Pediu admin authorization and contracts", () => {
       flashStores: 1,
       orders: 20,
       pendingOrders: 2,
+      flashOrdersToday: 3,
       payments: 18,
       pendingPayments: 1,
       failedPayments: 0,
       openSupportTickets: 1,
       creditAccounts: 5,
+      tipSettlements: 4,
+      tipsSettled: 3,
+      tipsPending: 1,
+      tipsSettledAmount: "24.00",
     });
     vi.spyOn(db, "listAdminUsers").mockResolvedValue([{ id: 10, name: "User", email: "user@test.local", role: "user", loginMethod: "test", createdAt: new Date(), lastSignedIn: new Date() }] as any);
     vi.spyOn(db, "listAdminStores").mockResolvedValue([{ id: 7, name: "Loja", ownerId: 10 }] as any);
-    vi.spyOn(db, "listAdminOrders").mockResolvedValue([{ id: 101, storeId: 7, customerId: 10, total: "25.00", status: "Pendente" }] as any);
+    vi.spyOn(db, "listAdminOrders").mockResolvedValue([{ id: 101, storeId: 7, customerId: 10, total: "25.00", status: "Pendente", isFlash: 1 }] as any);
+    vi.spyOn(db, "listAdminTipSettlements").mockResolvedValue([{ id: 901, orderId: 101, storeId: 7, amount: "5.00", destination: "courier", status: "settled" }] as any);
     vi.spyOn(db, "listAdminPayments").mockResolvedValue([{ id: 201, orderId: 101, method: "pix", status: "pending" }] as any);
     vi.spyOn(db, "listAdminCustomers").mockResolvedValue([{ id: 301, storeId: 7, userId: 10, balance: "5.00" }] as any);
     vi.spyOn(db, "listAdminLedgerEntries").mockResolvedValue([{ id: 401, storeId: 7, customerId: 301, type: "credit", amount: "5.00" }] as any);
@@ -47,10 +53,19 @@ describe("Pediu admin authorization and contracts", () => {
     const caller = appRouter.createCaller({ user: admin } as any);
     const input = { limit: 20, offset: 0 };
 
-    await expect(caller.admin.overview()).resolves.toMatchObject({ pendingOrders: 2, flashStores: 1 });
+    await expect(caller.admin.overview()).resolves.toMatchObject({
+      pendingOrders: 2,
+      flashStores: 1,
+      flashOrdersToday: 3,
+      tipsSettled: 3,
+      tipsSettledAmount: "24.00",
+    });
     await expect(caller.admin.users(input)).resolves.toHaveLength(1);
     await expect(caller.admin.stores(input)).resolves.toHaveLength(1);
     await expect(caller.admin.orders(input)).resolves.toHaveLength(1);
+    await expect(caller.admin.orders({ ...input, status: "Pendente", flash: true })).resolves.toHaveLength(1);
+    await expect(caller.admin.tips(input)).resolves.toHaveLength(1);
+    await expect(caller.admin.tips({ ...input, status: "settled", destination: "courier" })).resolves.toHaveLength(1);
     await expect(caller.admin.payments(input)).resolves.toHaveLength(1);
     await expect(caller.admin.credit(input)).resolves.toHaveLength(1);
     await expect(caller.admin.ledger(input)).resolves.toHaveLength(1);

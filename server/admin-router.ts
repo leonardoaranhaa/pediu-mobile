@@ -8,6 +8,16 @@ const pagination = z.object({
   offset: z.number().int().min(0).default(0),
 });
 
+const orderStatusSchema = z.enum([
+  "Pendente",
+  "Aceito",
+  "Preparando",
+  "Pronto",
+  "A caminho",
+  "Entregue",
+  "Cancelado",
+]);
+
 export const adminRouter = router({
   overview: adminProcedure.query(() => db.getAdminOverview()),
 
@@ -77,8 +87,32 @@ export const adminRouter = router({
     }),
 
   orders: adminProcedure
-    .input(pagination)
-    .query(({ input }) => db.listAdminOrders(input.limit, input.offset)),
+    .input(
+      pagination.extend({
+        status: orderStatusSchema.optional(),
+        flash: z.boolean().optional(),
+      }),
+    )
+    .query(({ input }) =>
+      db.listAdminOrders(input.limit, input.offset, {
+        status: input.status,
+        flash: input.flash,
+      }),
+    ),
+
+  tips: adminProcedure
+    .input(
+      pagination.extend({
+        status: z.enum(["pending", "settled", "reversed"]).optional(),
+        destination: z.enum(["courier", "store", "platform_pool"]).optional(),
+      }),
+    )
+    .query(({ input }) =>
+      db.listAdminTipSettlements(input.limit, input.offset, {
+        status: input.status,
+        destination: input.destination,
+      }),
+    ),
 
   payments: adminProcedure
     .input(pagination)
