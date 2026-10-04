@@ -230,15 +230,36 @@ async function main() {
       "Go-Live inventory smoke passed: one concurrent reservation won, overselling was rejected, and cancellation released the reservation.",
     );
   } finally {
-    if (orderIds.length) {
+    const cleanupOrderIds = new Set(orderIds);
+    const [fixtureOrders] = await connection.execute(
+      "SELECT id FROM pediu_orders WHERE idempotencyKey LIKE ?",
+      [`ci-inventory-${runId}-%`],
+    );
+    for (const row of fixtureOrders as Array<{ id: number | string }>)
+      cleanupOrderIds.add(Number(row.id));
+    const orderIdsToDelete = [...cleanupOrderIds];
+    if (orderIdsToDelete.length) {
+      const placeholders = orderIdsToDelete.map(() => "?").join(",");
       if (productId)
         await connection.execute(
           "UPDATE pediu_products SET reservedQuantity = GREATEST(0, reservedQuantity - ?) WHERE id = ?",
           [orderIds.length, productId],
         );
       await connection.query(
-        `DELETE FROM pediu_orders WHERE id IN (${orderIds.map(() => "?").join(",")})`,
-        orderIds,
+        `DELETE FROM pediu_delivery_events WHERE orderId IN (${placeholders})`,
+        orderIdsToDelete,
+      );
+      await connection.query(
+        `DELETE FROM pediu_payments WHERE orderId IN (${placeholders})`,
+        orderIdsToDelete,
+      );
+      await connection.query(
+        `DELETE FROM pediu_order_items WHERE orderId IN (${placeholders})`,
+        orderIdsToDelete,
+      );
+      await connection.query(
+        `DELETE FROM pediu_orders WHERE id IN (${placeholders})`,
+        orderIdsToDelete,
       );
     }
     if (addressId)
@@ -266,9 +287,11 @@ async function main() {
   }
 }
 
-void main().catch((error) => {
-  console.error(
-    `Go-Live inventory smoke failed: ${error instanceof Error ? error.message : "unknown error"}`,
-  );
-  process.exitCode = 1;
-});
+main()
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error(
+      `Go-Live inventory smoke failed: ${error instanceof Error ? error.message : "unknown error"}`,
+    );
+    process.exit(1);
+  });
