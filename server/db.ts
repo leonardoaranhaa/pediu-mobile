@@ -1811,14 +1811,18 @@ export async function getProductForStore(productId: number, storeId: number) {
 export async function getAvailableProductForStore(
   productId: number,
   storeId: number,
+  options?: { allowOutOfStock?: boolean },
 ) {
   const db = await getDb();
   if (!db) return undefined;
+  const stockPredicate = options?.allowOutOfStock
+    ? sql`1 = 1`
+    : sql`(${products.inventoryTracked} = 0 OR ${products.stockQuantity} > ${products.reservedQuantity})`;
   const result = await db
     .select()
     .from(products)
     .where(
-      sql`${products.id} = ${productId} AND ${products.storeId} = ${storeId} AND ${products.available} = 1 AND (${products.inventoryTracked} = 0 OR ${products.stockQuantity} > ${products.reservedQuantity})`,
+      sql`${products.id} = ${productId} AND ${products.storeId} = ${storeId} AND ${products.available} = 1 AND ${stockPredicate}`,
     )
     .limit(1);
   return result[0];

@@ -846,7 +846,9 @@ export const appRouter = router({
           }
           const products = await Promise.all(
             input.items.map((item) =>
-              db.getAvailableProductForStore(item.productId, input.storeId),
+              db.getAvailableProductForStore(item.productId, input.storeId, {
+                allowOutOfStock: true,
+              }),
             ),
           );
           if (products.some((p) => !p))
