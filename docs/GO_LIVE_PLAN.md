@@ -1288,3 +1288,27 @@ O cursor falha fechado para payload malformado, versão desconhecida, IDs/data i
 | Deployment/stress HTTPS temporário | `https://3022-i54sxpgl15gk7uuptg0z2-85761c05.us1.manus.computer` aprovado; 40 requests / 4 workers; p50 11,3 ms; p95 38,7 ms; máximo 129,4 ms; erro 0% |
 
 A instrução técnica está em `docs/INSTRUCAO_FASE_PAGINACAO_CURSOR_PR7.md`. A fase não implementa full-text/ranking, cache/CDN, migração de listagens administrativas ou presign em lote sem contrato real do Forge/storage. Permanecem externos PSP/PIX/CNPJ, credenciais/homologação e webhook real, OAuth, Expo Push/receipts, e-mail/SMS, storage/Forge, observabilidade/backup contínuos, scheduler/hosting definitivo, domínio/staging/produção, GPS/background físico, Android/iOS reais e publicação nas lojas; portanto o Go-Live comercial e o PR #7 permanecem bloqueados e não READY.
+
+---
+# 50. Unificação Pediu 2.0 + PR #7 — 04/10/2026
+
+Esta fatia incorporou no cliente Expo oficial a direção visual do workspace Pediu 2.0 sem substituir a fonte de verdade do PR #7. O shell passou a usar a paleta creme/vermelho/preto/amarelo, com hero local, atalhos Pediu Agora, Radar Flash, central de avisos, CTA de busca e estados responsivos. A camada nova usa somente contratos reais do backend: produtos do marketplace, notificações persistidas, mutação de leitura e navegação para busca por cursor; não foram portados mocks, banco, `.grok`, infraestrutura web ou assets sem origem/licença verificável.
+
+Também foram alinhados os tokens NativeWind, manifest Expo, splash, ícone adaptativo, mascote e páginas compartilhadas. Um guard portátil nos quatro workers preserva `unref()` em Node e elimina a incompatibilidade de tipagem com o ambiente Expo/DOM.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| TypeScript | `pnpm check` aprovado |
+| Testes | 46 arquivos, 225 testes aprovados |
+| Build/lint | `pnpm build` e `pnpm lint` aprovados |
+| Formatação | Prettier nos arquivos tocados e `git diff --check` aprovados |
+| Export Expo Web | 52 rotas estáticas exportadas; bundle de 11 MB |
+| Visual mobile | Chromium em 390×844 sem overflow horizontal ou clipping observado |
+| Console/API | Console sem erros; health/readiness 200; marketplace 200 |
+| Deployment local | Smoke aprovado em `127.0.0.1:3000` |
+| Stress local | 120 requests / 12 workers; p50 22,0 ms; p95 60,5 ms; máximo 96,7 ms; erro 0% |
+| HTTPS temporário | Smoke aprovado; 40 requests / 4 workers; p50 14,7 ms; p95 46,3 ms; máximo 130,0 ms; erro 0% |
+
+A instrução técnica está em `docs/INSTRUCAO_FASE_UNIFICACAO_V2_PR7.md`. O catálogo vazio no preview é o estado real do banco limpo de validação, não dado simulado. Permanecem externos e bloqueadores do Go-Live comercial: API/staging/produção HTTPS estável, OAuth público, `EXPO_TOKEN`/EAS autenticado e projeto configurado, aparelho físico Android/iOS, Expo Push/receipts, storage, domínio, credenciais e homologação PSP/PIX/Mercado Pago real/CNPJ, geocodificação/GPS em background, observabilidade/backup definitivo e publicação nas lojas. Portanto, o PR #7 permanece não READY para operação comercial.

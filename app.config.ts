@@ -33,7 +33,7 @@ const config: ExpoConfig = {
   },
   android: {
     adaptiveIcon: {
-      backgroundColor: "#FF5A4F",
+      backgroundColor: "#E20D2A",
       foregroundImage: "./assets/images/android-icon-foreground.png",
       backgroundImage: "./assets/images/android-icon-background.png",
       monochromeImage: "./assets/images/android-icon-monochrome.png",
@@ -73,7 +73,7 @@ const config: ExpoConfig = {
           "Permita que o Pediu use sua localização para encontrar lojas e acompanhar entregas.",
       },
     ],
-    ["expo-notifications", { color: "#FF5A4F" }],
+    ["expo-notifications", { color: "#E20D2A" }],
     "expo-font",
     [
       "expo-video",
@@ -86,7 +86,7 @@ const config: ExpoConfig = {
         image: "./assets/images/splash-icon.png",
         imageWidth: 200,
         resizeMode: "contain",
-        backgroundColor: "#FFF8F1",
+        backgroundColor: "#FFF4E8",
       },
     ],
     [

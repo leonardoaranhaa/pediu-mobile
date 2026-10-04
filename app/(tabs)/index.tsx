@@ -33,6 +33,7 @@ import {
 
 import { ScreenContainer } from "@/components/screen-container";
 import { PediuMascot, type MascotReaction } from "@/components/pediu-mascot";
+import { PediuV2Discovery } from "@/components/pediu-v2-discovery";
 import { ThemePicker } from "@/components/theme-picker";
 import { trpc } from "@/lib/trpc";
 import { canRegisterSale, cartTotal, pixPaymentLabel } from "@/lib/pediu-mvp";
@@ -41,17 +42,17 @@ import { useAppPreferences, type AppTheme } from "@/lib/app-preferences";
 import { resolveCurrentLocation } from "@/lib/location";
 
 const COLORS = {
-  coral: "#FF5A4F",
-  coralSoft: "#FFF0EC",
+  coral: "#E20D2A",
+  coralSoft: "#FFE7E7",
   orange: "#FF8A3D",
-  ink: "#163B48",
-  text: "#18252B",
-  muted: "#7C8A8F",
-  canvas: "#FFF8F1",
-  white: "#FFFFFF",
-  line: "#F0E9E3",
-  green: "#36B878",
-  yellow: "#FFD166",
+  ink: "#111111",
+  text: "#1A120C",
+  muted: "#6E635A",
+  canvas: "#FFF4E8",
+  white: "#FFFDF9",
+  line: "#E9DED3",
+  green: "#0B8A5C",
+  yellow: "#FFC400",
 };
 
 type Product = {
@@ -915,7 +916,7 @@ export default function HomeScreen() {
 
   return (
     <ScreenContainer
-      containerClassName="bg-[#FFF8F1]"
+      containerClassName="bg-[#FFF4E8]"
       edges={["top", "left", "right"]}
     >
       <Animated.View
@@ -954,6 +955,11 @@ export default function HomeScreen() {
                   onAssistant={() => openVoiceAssistant("customer")}
                   onOrders={() => changeCustomerTab("orders")}
                   onBenefits={() => router.push("/coupons")}
+                  onSearch={() => router.push("/search")}
+                  notifications={notificationsQuery.data ?? []}
+                  onReadNotification={(id) =>
+                    markNotificationMutation.mutate({ notificationId: id })
+                  }
                 />
               )}
               {customerTab === "orders" && (
@@ -1547,6 +1553,9 @@ function CustomerDiscover({
   onAssistant,
   onOrders,
   onBenefits,
+  onSearch,
+  notifications,
+  onReadNotification,
   theme,
 }: {
   products: Product[];
@@ -1569,6 +1578,15 @@ function CustomerDiscover({
   onAssistant: () => void;
   onOrders: () => void;
   onBenefits: () => void;
+  onSearch: () => void;
+  notifications: {
+    id: number;
+    title: string;
+    body: string;
+    readAt: Date | string | null;
+    actionPath?: string | null;
+  }[];
+  onReadNotification: (notificationId: number) => void;
   theme: AppTheme;
 }) {
   const firstName = userName?.trim().split(/\s+/)[0];
@@ -1742,6 +1760,17 @@ function CustomerDiscover({
           returnKeyType="search"
         />
       </View>
+      <PediuV2Discovery
+        theme={theme}
+        products={products}
+        notifications={notifications}
+        onProductPress={onProductPress}
+        onReadNotification={onReadNotification}
+        onSearch={onSearch}
+        onAssistant={onAssistant}
+        onOrders={onOrders}
+        onBenefits={onBenefits}
+      />
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Categorias</Text>
         <Text style={styles.link}>Ver tudo</Text>

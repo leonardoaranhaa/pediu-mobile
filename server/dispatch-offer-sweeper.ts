@@ -54,7 +54,8 @@ export function startDispatchOfferSweeper(): () => void {
     }
   };
   const timer = setInterval(run, intervalSeconds * 1_000);
-  timer.unref?.();
+  const nodeTimer = timer as unknown as { unref?: () => void };
+  nodeTimer.unref?.();
   void run();
   return () => clearInterval(timer);
 }

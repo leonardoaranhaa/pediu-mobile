@@ -106,7 +106,8 @@ export function startNotificationOutboxWorker(): () => void {
     }
   };
   const timer = setInterval(run, intervalMs);
-  timer.unref?.();
+  const nodeTimer = timer as unknown as { unref?: () => void };
+  nodeTimer.unref?.();
   void run();
   return () => clearInterval(timer);
 }

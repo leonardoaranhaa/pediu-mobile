@@ -13,17 +13,17 @@ import {
 import { useAppPreferences } from "@/lib/app-preferences";
 
 export const PEDIU = {
-  coral: "#FF5A4F",
-  coralSoft: "#FFF0EC",
+  coral: "#E20D2A",
+  coralSoft: "#FFE7E7",
   orange: "#FF8A3D",
-  ink: "#163B48",
-  text: "#18252B",
-  muted: "#7C8A8F",
-  canvas: "#FFF8F1",
-  white: "#FFFFFF",
-  line: "#F0E9E3",
-  green: "#36B878",
-  yellow: "#FFD166",
+  ink: "#111111",
+  text: "#1A120C",
+  muted: "#6E635A",
+  canvas: "#FFF4E8",
+  white: "#FFFDF9",
+  line: "#E9DED3",
+  green: "#0B8A5C",
+  yellow: "#FFC400",
   peach: "#FFF0D7",
 };
 

@@ -51,7 +51,8 @@ export function startInventoryReservationSweeper(): () => void {
   };
 
   const timer = setInterval(() => void run(), intervalMs);
-  timer.unref?.();
+  const nodeTimer = timer as unknown as { unref?: () => void };
+  nodeTimer.unref?.();
   void run();
   return () => clearInterval(timer);
 }
