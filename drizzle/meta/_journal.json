@@ -239,6 +239,13 @@
       "when": 1791200000000,
       "tag": "0033_domain_flash_loyalty",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "5",
+      "when": 1791200100000,
+      "tag": "0034_market_units_tip_settlement",
+      "breakpoints": true
     }
   ]
 }

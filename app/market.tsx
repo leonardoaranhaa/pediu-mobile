@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/pediu/empty-state";
 import { Page, PEDIU } from "@/components/pediu-page";
 import { assetForCategory, FOOD_ASSETS, PEDIU_TOKENS } from "@/lib/pediu-tokens";
 import { trpc } from "@/lib/trpc";
+import { formatCatalogPrice, unitSubtitle } from "@/shared/market-units";
 
 export default function MarketScreen() {
   const [cat, setCat] = useState("Tudo");
@@ -30,7 +31,7 @@ export default function MarketScreen() {
         </View>
         <Text style={styles.heroTitle}>Mercado Pediu</Text>
         <Text style={styles.heroBody}>
-          Hortifruti e mercearia filtrados por vertical `market` no servidor. Ops marca a loja no master management.
+          Hortifruti e mercearia com preço por unidade, kg ou caixa — vertical `market` no servidor.
         </Text>
         <Image source={FOOD_ASSETS.feijoada} style={styles.heroImg} />
       </View>
@@ -51,25 +52,31 @@ export default function MarketScreen() {
         <ActivityIndicator color={PEDIU.coral} />
       ) : items.length ? (
         <View style={styles.grid}>
-          {items.map((item) => (
-            <Pressable
-              key={item.id}
-              style={({ pressed }) => [styles.cell, pressed && { opacity: 0.9 }]}
-              onPress={() => router.push({ pathname: "/product/[id]", params: { id: String(item.id) } })}
-            >
-              <Image source={assetForCategory(item.category, item.id)} style={styles.cellImg} />
-              <View style={styles.cellBody}>
-                <Text style={styles.cellName} numberOfLines={2}>{item.name}</Text>
-                <Text style={styles.cellPrice}>R$ {Number(item.price).toFixed(2).replace(".", ",")}</Text>
-              </View>
-            </Pressable>
-          ))}
+          {items.map((item) => {
+            const unitLine = unitSubtitle(item.saleUnit, item.packSize);
+            return (
+              <Pressable
+                key={item.id}
+                style={({ pressed }) => [styles.cell, pressed && { opacity: 0.9 }]}
+                onPress={() => router.push({ pathname: "/product/[id]", params: { id: String(item.id) } })}
+              >
+                <Image source={assetForCategory(item.category, item.id)} style={styles.cellImg} />
+                <View style={styles.cellBody}>
+                  <Text style={styles.cellName} numberOfLines={2}>{item.name}</Text>
+                  {unitLine ? <Text style={styles.cellUnit}>{unitLine}</Text> : null}
+                  <Text style={styles.cellPrice}>
+                    {formatCatalogPrice(item.price, item.saleUnit, item.packSize)}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
         </View>
       ) : (
         <EmptyState
           icon="shopping-cart"
           title="Mercado ainda quieto"
-          body="Publique produtos com categoria de mercearia ou aguarde lojas market no domínio."
+          body="Publique produtos em lojas com vertical Mercado (unidade/kg/caixa) ou aguarde o catálogo no domínio."
           actionLabel="Explorar início"
           onAction={() => router.replace("/")}
         />
@@ -124,7 +131,8 @@ const styles = StyleSheet.create({
     borderColor: PEDIU_TOKENS.line,
   },
   cellImg: { width: "100%", height: 110 },
-  cellBody: { padding: 10, gap: 4 },
+  cellBody: { padding: 10, gap: 3 },
   cellName: { color: PEDIU_TOKENS.ink, fontSize: 13, fontWeight: "800" },
+  cellUnit: { color: PEDIU_TOKENS.muted, fontSize: 11, fontWeight: "600" },
   cellPrice: { color: PEDIU_TOKENS.ink, fontSize: 13, fontWeight: "900" },
 });

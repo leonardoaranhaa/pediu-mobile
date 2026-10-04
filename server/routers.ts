@@ -20,6 +20,8 @@ import { experienceRouter } from "./experience-router";
 import { enforceDistributedRateLimit } from "./_core/distributed-rate-limit";
 import { calculateCouponDiscount } from "./domain/coupons";
 import { clampTipAmount, resolveFlashFulfillment } from "./domain/flash";
+import { DEFAULT_TIP_DESTINATION } from "./domain/tips";
+import { normalizeSaleUnit, SALE_UNITS } from "./domain/market-units";
 import { getTasteMood, TASTE_MOODS } from "./domain/taste";
 import {
   calculateServiceability,
@@ -428,6 +430,7 @@ export const appRouter = router({
             flashEtaMaxMinutes: flash.etaMaxMinutes,
             storeKind: store.kind,
             tipAmount,
+            tipDestination: DEFAULT_TIP_DESTINATION,
             distanceKm: serviceability.distanceKm,
             serviceabilityReason: serviceability.reason,
             couponCode,
@@ -759,6 +762,12 @@ export const appRouter = router({
             category: z.string().min(2).max(80),
             description: z.string().max(1000).optional(),
             price: z.string().regex(/^\d+(\.\d{1,2})?$/),
+            saleUnit: z.enum(SALE_UNITS).optional(),
+            packSize: z
+              .string()
+              .regex(/^\d+(\.\d{1,3})?$/)
+              .nullable()
+              .optional(),
             inventoryTracked: z.boolean().default(false),
             stockQuantity: z.number().int().min(0).max(1_000_000).default(0),
           }),
@@ -769,6 +778,10 @@ export const appRouter = router({
             throw new Error("Loja não autorizada");
           return db.createProduct({
             ...input,
+            saleUnit: normalizeSaleUnit(
+              input.saleUnit ?? (store.kind === "market" ? "unit" : "unit"),
+            ),
+            packSize: input.packSize ?? null,
             available: 1,
             inventoryTracked: input.inventoryTracked ? 1 : 0,
           });
@@ -1066,6 +1079,7 @@ export const appRouter = router({
                   deliveryFeeSnapshot: serviceability.deliveryFee,
                   isFlash: flash.isFlash ? 1 : 0,
                   tipAmount,
+                  tipDestination: DEFAULT_TIP_DESTINATION,
                   fulfillment: input.fulfillment,
                   idempotencyKey,
                 },
@@ -1117,6 +1131,7 @@ export const appRouter = router({
                 deliveryFeeSnapshot: serviceability.deliveryFee,
                 isFlash: flash.isFlash ? 1 : 0,
                 tipAmount,
+                tipDestination: DEFAULT_TIP_DESTINATION,
                 fulfillment: input.fulfillment,
                 idempotencyKey,
               },

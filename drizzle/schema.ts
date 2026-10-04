@@ -101,6 +101,10 @@ export const products = mysqlTable(
     category: varchar("category", { length: 80 }).notNull(),
     description: text("description"),
     price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+    saleUnit: mysqlEnum("saleUnit", ["unit", "kg", "g", "L", "ml", "pack"])
+      .default("unit")
+      .notNull(),
+    packSize: decimal("packSize", { precision: 10, scale: 3 }),
     available: int("available").default(1).notNull(),
     inventoryTracked: int("inventoryTracked").default(0).notNull(),
     stockQuantity: int("stockQuantity").default(0).notNull(),
@@ -156,6 +160,13 @@ export const orders = mysqlTable(
     isFlash: int("isFlash").default(0).notNull(),
     tipAmount: decimal("tipAmount", { precision: 10, scale: 2 })
       .default("0.00")
+      .notNull(),
+    tipDestination: mysqlEnum("tipDestination", [
+      "courier",
+      "store",
+      "platform_pool",
+    ])
+      .default("courier")
       .notNull(),
     fulfillment: varchar("fulfillment", { length: 16 })
       .default("standard")
@@ -354,6 +365,7 @@ export const financialLedger = mysqlTable("pediu_financial_ledger", {
     "payout",
     "refund",
     "adjustment",
+    "tip",
   ]).notNull(),
   direction: mysqlEnum("direction", ["credit", "debit"]).notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
@@ -362,6 +374,47 @@ export const financialLedger = mysqlTable("pediu_financial_ledger", {
   note: varchar("note", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
+
+export const tipSettlements = mysqlTable(
+  "pediu_tip_settlements",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    orderId: int("orderId")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    storeId: int("storeId")
+      .notNull()
+      .references(() => stores.id, { onDelete: "restrict" }),
+    amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+    destination: mysqlEnum("destination", ["courier", "store", "platform_pool"])
+      .default("courier")
+      .notNull(),
+    recipientUserId: int("recipientUserId").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    status: mysqlEnum("status", ["pending", "settled", "reversed"])
+      .default("pending")
+      .notNull(),
+    idempotencyKey: varchar("idempotencyKey", { length: 160 }).notNull(),
+    note: varchar("note", { length: 255 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    settledAt: timestamp("settledAt"),
+  },
+  (table) => ({
+    idempotencyUnique: unique("pediu_tip_settlements_idempotency_unique").on(
+      table.idempotencyKey,
+    ),
+    orderUnique: unique("pediu_tip_settlements_order_unique").on(table.orderId),
+    storeCreatedIdx: index("pediu_tip_settlements_store_created_idx").on(
+      table.storeId,
+      table.createdAt,
+    ),
+    recipientIdx: index("pediu_tip_settlements_recipient_idx").on(
+      table.recipientUserId,
+      table.status,
+    ),
+  }),
+);
 
 export const payouts = mysqlTable(
   "pediu_payouts",
@@ -624,8 +677,8 @@ export const customerAddresses = mysqlTable("pediu_customer_addresses", {
   state: varchar("state", { length: 2 }).notNull(),
   postalCode: varchar("postalCode", { length: 8 }).notNull(),
   latitude: decimal("latitude", { precision: 10, scale: 7 }),
-    longitude: decimal("longitude", { precision: 10, scale: 7 }),
-    isDefault: int("isDefault").default(0).notNull(),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  isDefault: int("isDefault").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -1175,9 +1228,9 @@ export const loyaltyLedger = mysqlTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (table) => ({
-    idempotencyUnique: unique(
-      "pediu_loyalty_ledger_idempotency_unique",
-    ).on(table.idempotencyKey),
+    idempotencyUnique: unique("pediu_loyalty_ledger_idempotency_unique").on(
+      table.idempotencyKey,
+    ),
     userCreatedIdx: index("pediu_loyalty_ledger_user_created_idx").on(
       table.userId,
       table.createdAt,
@@ -1271,3 +1324,5 @@ export type LoyaltyAccount = typeof loyaltyAccounts.$inferSelect;
 export type InsertLoyaltyAccount = typeof loyaltyAccounts.$inferInsert;
 export type LoyaltyLedgerEntry = typeof loyaltyLedger.$inferSelect;
 export type InsertLoyaltyLedgerEntry = typeof loyaltyLedger.$inferInsert;
+export type TipSettlement = typeof tipSettlements.$inferSelect;
+export type InsertTipSettlement = typeof tipSettlements.$inferInsert;

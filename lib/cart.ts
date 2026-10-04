@@ -12,6 +12,8 @@ export type CartProduct = {
   emoji?: string;
   storeKind?: StoreKind;
   flashEnabled?: boolean;
+  saleUnit?: string | null;
+  packSize?: string | number | null;
 };
 
 export type CartItem = CartProduct & {

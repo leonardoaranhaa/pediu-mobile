@@ -45,6 +45,8 @@ const product = {
   category: "Doces",
   description: "Bolo caseiro com cobertura de chocolate",
   price: "18.00",
+  saleUnit: "unit" as const,
+  packSize: null,
   available: 1,
   inventoryTracked: 0,
   stockQuantity: 0,

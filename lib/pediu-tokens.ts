@@ -59,6 +59,11 @@ const CATEGORY_ASSET: Record<string, FoodAssetKey> = {
   Japonesa: "sushi",
   Massas: "pasta",
   Mercado: "feijoada",
+  Hortifruti: "feijoada",
+  Laticínios: "cafe",
+  Mercearia: "cafe",
+  Padaria: "cafe",
+  Bebidas: "burger",
 };
 
 export function assetForCategory(category?: string | null, seed = 0): number {

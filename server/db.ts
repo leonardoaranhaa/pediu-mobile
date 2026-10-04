@@ -63,6 +63,7 @@ import {
   StoreCourier,
   SupportTicket,
   SupportTicketMessage,
+  TipSettlement,
   User,
   adCredits,
   adminAuditLogs,
@@ -103,6 +104,7 @@ import {
   stores,
   supportTicketMessages,
   supportTickets,
+  tipSettlements,
   users,
   webhookEvents,
   refunds,
@@ -153,6 +155,12 @@ import {
   resolveLoyaltyTier,
   type LoyaltyTier,
 } from "./domain/loyalty";
+import {
+  DEFAULT_TIP_DESTINATION,
+  normalizeTipDestination,
+  planTipSettlement,
+  resolveTipRecipientUserId,
+} from "./domain/tips";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -1697,6 +1705,8 @@ export async function searchAvailableProducts(
       category: products.category,
       description: products.description,
       price: products.price,
+      saleUnit: products.saleUnit,
+      packSize: products.packSize,
       available: products.available,
       createdAt: products.createdAt,
       storeName: stores.name,
@@ -2575,6 +2585,11 @@ export async function completeDelivery(
         "[Loyalty] Failed to credit points for delivered order:",
         error,
       );
+    }
+    try {
+      await settleTipForDeliveredOrder(orderId);
+    } catch (error) {
+      console.warn("[Tips] Failed to settle tip for delivered order:", error);
     }
   }
   return outcome;
@@ -4637,4 +4652,114 @@ export async function creditLoyaltyForDeliveredOrder(
     });
     return { credited: true, points };
   });
+}
+
+/** Settles a delivered-order tip exactly once; the destination is frozen on the order. */
+export async function settleTipForDeliveredOrder(orderId: number): Promise<{
+  settled: boolean;
+  duplicate?: boolean;
+  amount?: string;
+  destination?: string;
+  recipientUserId?: number | null;
+  settlementId?: number;
+}> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const idempotencyKey = `tip-settle-order-${orderId}`;
+  const existing = await db
+    .select()
+    .from(tipSettlements)
+    .where(eq(tipSettlements.idempotencyKey, idempotencyKey))
+    .limit(1);
+  if (existing[0])
+    return {
+      settled: false,
+      duplicate: true,
+      amount: existing[0].amount,
+      destination: existing[0].destination,
+      recipientUserId: existing[0].recipientUserId,
+      settlementId: existing[0].id,
+    };
+
+  const order = (
+    await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
+  )[0];
+  if (!order || order.status !== "Entregue") return { settled: false };
+  const plan = planTipSettlement(
+    order.tipAmount,
+    order.tipDestination ?? DEFAULT_TIP_DESTINATION,
+  );
+  if (!plan.ok) return { settled: false };
+
+  const assignment = await getDeliveryAssignmentByOrder(orderId);
+  const store = await getStoreById(order.storeId);
+  const destination = normalizeTipDestination(plan.destination);
+  const recipientUserId = resolveTipRecipientUserId({
+    destination,
+    courierUserId: assignment?.courierId,
+    storeOwnerId: store?.ownerId,
+  });
+
+  return db.transaction(async (tx) => {
+    const concurrent = await tx
+      .select()
+      .from(tipSettlements)
+      .where(eq(tipSettlements.idempotencyKey, idempotencyKey))
+      .for("update")
+      .limit(1);
+    if (concurrent[0])
+      return {
+        settled: false,
+        duplicate: true,
+        amount: concurrent[0].amount,
+        destination: concurrent[0].destination,
+        recipientUserId: concurrent[0].recipientUserId,
+        settlementId: concurrent[0].id,
+      };
+
+    const result = await tx.insert(tipSettlements).values({
+      orderId,
+      storeId: order.storeId,
+      amount: plan.amount,
+      destination,
+      recipientUserId,
+      status: "settled",
+      idempotencyKey,
+      note: plan.note,
+      settledAt: new Date(),
+    });
+    const settlementId = getInsertId(result);
+    if (destination === "store") {
+      await tx.insert(financialLedger).values({
+        storeId: order.storeId,
+        orderId,
+        type: "tip",
+        direction: "credit",
+        amount: plan.amount,
+        currency: "BRL",
+        referenceId: idempotencyKey,
+        note: plan.note,
+      });
+    }
+    return {
+      settled: true,
+      amount: plan.amount,
+      destination,
+      recipientUserId,
+      settlementId,
+    };
+  });
+}
+
+export async function getTipSettlementForOrder(
+  orderId: number,
+): Promise<TipSettlement | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select()
+    .from(tipSettlements)
+    .where(eq(tipSettlements.orderId, orderId))
+    .limit(1);
+  return rows[0];
 }

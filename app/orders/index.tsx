@@ -3,6 +3,7 @@ import { Text, View } from "react-native";
 import { router } from "expo-router";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
+import { EmptyState } from "@/components/pediu/empty-state";
 import { Page, Card, PrimaryButton, Row, PEDIU, s } from "@/components/pediu-page";
 
 export default function OrdersPage() {
@@ -35,7 +36,13 @@ export default function OrdersPage() {
           ))}
         </Card>
       ) : (
-        <Card><Text style={s.muted}>Você ainda não fez pedidos.</Text></Card>
+        <EmptyState
+          icon="receipt-long"
+          title="Nenhum pedido ainda"
+          body="Quando você pedir, o status real da loja e do entregador aparece aqui — sem relógio fictício."
+          actionLabel="Explorar início"
+          onAction={() => router.replace("/")}
+        />
       )}
     </Page>
   );

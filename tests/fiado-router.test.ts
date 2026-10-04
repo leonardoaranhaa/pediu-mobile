@@ -179,6 +179,7 @@ describe("Pediu Fiado contract", () => {
         idempotencyKey: "test-fiado-order",
         isFlash: 0,
         tipAmount: "0.00",
+        tipDestination: "courier",
         fulfillment: "standard",
       },
       [{ productId: 101, quantity: 1, unitPrice: "30.00" }],
