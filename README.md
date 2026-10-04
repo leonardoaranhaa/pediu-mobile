@@ -92,6 +92,19 @@ pnpm dev:metro
 
 O backend expõe a verificação de saúde em `GET /api/health`. O Expo web normalmente usa a porta `8081`, enquanto o servidor usa a porta `3000` quando `PORT` não é sobrescrita.
 
+### Ambiente local com dados de teste
+
+Sem provedor OAuth, use as contas de desenvolvimento. Com um MySQL ou MariaDB local e um banco vazio:
+
+```bash
+cp .env.example .env   # ajuste DATABASE_URL e JWT_SECRET
+pnpm db:migrate
+pnpm db:seed
+pnpm dev
+```
+
+O seed é idempotente e cria um cliente com endereço padrão e um lojista com a loja "Lanchonete da Vila" e cinco produtos. Com `DEV_AUTH_ENABLED=true` no servidor e `EXPO_PUBLIC_DEV_AUTH=true` no Expo, a tela `/login` oferece "Entrar como cliente de teste" e "Entrar como lojista de teste". A rota `POST /api/dev/login` só existe fora de produção e só autentica essas duas contas. O servidor recusa iniciar com `NODE_ENV=production` e a flag ligada.
+
 ## Validação
 
 Execute a matriz local antes de enviar alterações:
