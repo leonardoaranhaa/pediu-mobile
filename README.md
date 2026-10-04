@@ -129,8 +129,17 @@ A interpretação de voz e a transcrição possuem limites de taxa, timeout, con
 
 Os limites de taxa e concorrência são locais ao processo. Antes de escalar horizontalmente, substitua-os por Redis, API Gateway ou outro mecanismo distribuído. O webhook de pagamento é uma fronteira de integração; ele não substitui a homologação de um PSP, a reconciliação financeira, refunds ou chargebacks. O envio de e-mail também depende do webhook externo configurado.
 
+## Produto unificado (pediu-mobile + pediu2.0)
+
+Este repositório concentra o **backend transacional** e o app **Expo** (cliente, lojista, admin e entregador). O repositório irmão [pediu2.0](https://github.com/leonardoaranhaa/pediu2.0) entrega o **cliente web/PWA** (descoberta, sacola, checkout demo e tracking) para preview e instalação no navegador, sem exigir MySQL.
+
+Juntos cobrem o funil completo de um app de delivery; a fonte de verdade de preço, pagamento e operação permanece aqui. Veja [docs/UNIFICACAO_REPOSITORIOS.md](docs/UNIFICACAO_REPOSITORIOS.md).
+
+Para subir MySQL localmente: `docker compose up -d` (arquivo na raiz deste repo).
+
 ## Documentação complementar
 
+- [Unificação com pediu2.0 (web)](docs/UNIFICACAO_REPOSITORIOS.md)
 - [Arquitetura da aplicação](docs/APP_ARCHITECTURE.md)
 - [Máquina de estados de domínio](docs/DOMAIN_STATE_MACHINE.md)
 - [Matriz de implementação](docs/IMPLEMENTATION_MATRIX.md)
