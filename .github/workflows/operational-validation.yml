@@ -133,6 +133,8 @@ jobs:
           pnpm db:seed
           pnpm db:seed | tee /tmp/seed.log
           grep -q "0 produto(s) criado(s), endereço já existente" /tmp/seed.log
+      - name: Cash checkout against MySQL
+        run: PEDIU_INTEGRATION=1 pnpm exec vitest run tests/cash-order.integration.test.ts
       - name: Start Mercado Pago test API
         run: |
           pnpm exec tsx scripts/mercado-pago-api-mock.ts > /tmp/mercado-pago-mock.log 2>&1 &
