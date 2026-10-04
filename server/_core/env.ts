@@ -20,4 +20,6 @@ export function assertRuntimeConfig() {
   ].filter((value): value is string => Boolean(value));
   if (missing.length > 0)
     throw new Error(`Missing production configuration: ${missing.join(", ")}`);
+  if (process.env.DEV_AUTH_ENABLED === "true")
+    throw new Error("DEV_AUTH_ENABLED must not be set in production");
 }

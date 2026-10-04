@@ -36,6 +36,8 @@
     "go-live:stress": "tsx scripts/go-live-stress.ts",
     "go-live:deployment": "tsx scripts/go-live-deployment.ts",
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:seed": "tsx scripts/seed-dev.ts",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "qr": "node scripts/generate_qr.mjs",

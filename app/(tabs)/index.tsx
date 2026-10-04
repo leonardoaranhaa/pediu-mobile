@@ -10,7 +10,6 @@ import {
   useAudioRecorderState,
 } from "expo-audio";
 import * as FileSystem from "expo-file-system/legacy";
-import { isOAuthConfigured, startOAuthLogin } from "@/constants/oauth";
 import { router, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -595,13 +594,7 @@ export default function HomeScreen() {
     setTimeout(() => setNotice(""), 2400);
   };
 
-  const requestLogin = () => {
-    if (!isOAuthConfigured) {
-      notify("Login seguro ainda não está configurado neste ambiente.");
-      return;
-    }
-    void startOAuthLogin();
-  };
+  const requestLogin = () => router.push("/login");
 
   const addToCart = (product: Product) => {
     if (!isAuthenticated) {

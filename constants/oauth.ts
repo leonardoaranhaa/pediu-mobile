@@ -25,6 +25,7 @@ export const OWNER_OPEN_ID = env.ownerId;
 export const OWNER_NAME = env.ownerName;
 export const API_BASE_URL = env.apiBaseUrl;
 export const isOAuthConfigured = Boolean(OAUTH_PORTAL_URL.trim() && APP_ID.trim());
+export const isDevAuthEnabled = __DEV__ && process.env.EXPO_PUBLIC_DEV_AUTH === "true";
 
 /**
  * Get the API base URL, deriving from current hostname if not set.

@@ -66,6 +66,14 @@ export async function exchangeOAuthCode(
   return { sessionToken, user: result.user };
 }
 
+export async function devLogin(persona: "customer" | "merchant"): Promise<{ sessionToken: string; user: any }> {
+  const result = await apiCall<{ app_session_id: string; user: any }>("/api/dev/login", {
+    method: "POST",
+    body: JSON.stringify({ persona }),
+  });
+  return { sessionToken: result.app_session_id, user: result.user };
+}
+
 export async function logout(): Promise<void> {
   await apiCall<void>("/api/auth/logout", { method: "POST" });
 }

@@ -170,6 +170,7 @@ export default function CheckoutScreen() {
             Sua sessão é necessária para criar um pedido e acompanhar o
             pagamento.
           </Text>
+          <PrimaryButton title="Entrar" onPress={() => router.push("/login")} />
         </Card>
       </Page>
     );
