@@ -107,6 +107,8 @@ O seed é idempotente e cria um cliente com endereço padrão e um lojista com a
 
 Com o cliente de teste, o caminho produto → carrinho → checkout em dinheiro persiste um pedido `Pendente`. O servidor recalcula o total: o X-Burger semeado custa R$ 28,90 e a entrega da loja custa R$ 5,00. O mesmo pedido continua em `/orders` e em `/order/track` depois de recarregar. Em `/seller/orders`, o lojista de teste avança esse pedido até `Entregue`; o cliente passa a ver o mesmo status.
 
+A publicação nas lojas está em [docs/STORE_RELEASE.md](docs/STORE_RELEASE.md). O perfil de produção não usa o login de desenvolvimento. `pnpm db:seed:review` cria as contas de revisão a partir de `REVIEW_CUSTOMER_OPEN_ID` e `REVIEW_MERCHANT_OPEN_ID`. A política e os termos ficam em `/legal/privacy` e `/legal/terms`. Encerrar a conta remove os dados pessoais e conserva o pedido.
+
 ## Validação
 
 Execute a matriz local antes de enviar alterações:
@@ -154,6 +156,7 @@ Os limites de taxa e concorrência são locais ao processo. Antes de escalar hor
 - [Instrução técnica da fase cliente e anúncios com IA](docs/INSTRUCAO_FASE_CLIENTE_ANUNCIOS_IA.md)
 - [Instrução técnica da fase de personalização e mascote](docs/INSTRUCAO_FASE_MASCOTE_CUSTOMIZACAO.md)
 - [QA Android e iOS](QA_ANDROID_IOS.md)
+- [Publicação nas lojas](docs/STORE_RELEASE.md)
 
 ## Contribuição
 

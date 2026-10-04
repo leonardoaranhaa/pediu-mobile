@@ -387,8 +387,7 @@ export default function HomeScreen() {
     () =>
       `legacy-checkout-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
   );
-  const [checkoutPayment, setCheckoutPayment] = useState<"pix" | "cash">("pix");
-  const [showVoice, setShowVoice] = useState(false);
+  const [checkoutPayment, setCheckoutPayment] = useState<"pix" | "cash">("pix");  const [showVoice, setShowVoice] = useState(false);
   const [voiceMode, setVoiceMode] = useState<VoiceMode>("customer");
   const [voiceReply, setVoiceReply] = useState("");
   const [showSellerOnboarding, setShowSellerOnboarding] = useState(false);
@@ -1254,8 +1253,7 @@ export default function HomeScreen() {
                 </Pressable>
               </ScrollView>
             </View>
-          </View>
-        </Modal>
+          </View>        </Modal>
 
         <Modal
           visible={showCheckout}
@@ -5607,8 +5605,7 @@ function CheckoutModal({
         </ScrollView>
       </View>
     </KeyboardAvoidingView>
-  );
-}
+  );}
 
 const checkoutStyles = StyleSheet.create({
   addressInput: { minHeight: 70, textAlignVertical: "top", paddingTop: 12 },

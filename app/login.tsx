@@ -40,6 +40,45 @@ function DevLoginCard() {
   </Card>;
 }
 
+function AppleLoginButton() {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (Platform.OS !== "ios") return null;
+
+  async function signIn() {
+    setPending(true);
+    setError(null);
+    try {
+      const AppleAuthentication = await import("expo-apple-authentication");
+      const available = await AppleAuthentication.isAvailableAsync();
+      if (!available) throw new Error("Sign in with Apple não está disponível neste aparelho.");
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [AppleAuthentication.AppleAuthenticationScope.FULL_NAME, AppleAuthentication.AppleAuthenticationScope.EMAIL],
+      });
+      if (!credential.identityToken) throw new Error("A Apple não devolveu um token de identidade.");
+      const name = [credential.fullName?.givenName, credential.fullName?.familyName].filter(Boolean).join(" ");
+      const { sessionToken, user } = await Api.appleLogin(credential.identityToken, name || undefined);
+      await Auth.setSessionToken(sessionToken);
+      await Auth.setUserInfo({ ...user, lastSignedIn: new Date(user.lastSignedIn) });
+      router.replace("/(tabs)");
+    } catch (err) {
+      if (err && typeof err === "object" && "code" in err && err.code === "ERR_REQUEST_CANCELED") {
+        setPending(false);
+        return;
+      }
+      setError(err instanceof Error ? err.message : "Não foi possível entrar com a Apple.");
+      setPending(false);
+    }
+  }
+
+  return <Card>
+    <Text style={s.sectionTitle}>Sign in with Apple</Text>
+    <Text style={s.muted}>No iPhone, você também pode entrar com a Apple. A conta é criada na primeira vez.</Text>
+    <PrimaryButton title={pending ? "Entrando..." : "Continuar com a Apple"} onPress={() => void signIn()} disabled={pending} />
+    {error ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{error}</Text> : null}
+  </Card>;
+}
+
 export default function LoginScreen() {
   const loginAvailable = isOAuthConfigured;
   return <Page title="Entrar no Pediu" eyebrow="BEM-VINDO" back={false}>
@@ -55,6 +94,7 @@ export default function LoginScreen() {
       <OutlineButton title="Criar uma conta" onPress={() => router.push("/register")} />
       {!loginAvailable ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>O provedor de autenticação ainda não foi configurado neste ambiente.</Text> : null}
     </Card>
+    <AppleLoginButton />
     {isDevAuthEnabled ? <DevLoginCard /> : null}
     <View style={{ backgroundColor: PEDIU.coralSoft, borderRadius: 18, padding: 15, flexDirection: "row", gap: 10 }}>
       <MaterialIcons name="lock" size={19} color={PEDIU.coral} />

@@ -74,6 +74,14 @@ export async function devLogin(persona: "customer" | "merchant"): Promise<{ sess
   return { sessionToken: result.app_session_id, user: result.user };
 }
 
+export async function appleLogin(identityToken: string, name?: string): Promise<{ sessionToken: string; user: any }> {
+  const result = await apiCall<{ app_session_id: string; user: any }>("/api/auth/apple", {
+    method: "POST",
+    body: JSON.stringify({ identityToken, name }),
+  });
+  return { sessionToken: result.app_session_id, user: result.user };
+}
+
 export async function logout(): Promise<void> {
   await apiCall<void>("/api/auth/logout", { method: "POST" });
 }

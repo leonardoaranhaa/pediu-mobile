@@ -12,7 +12,7 @@ import {
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
-  openId: varchar("openId", { length: 64 }).notNull().unique(),
+  openId: varchar("openId", { length: 128 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
@@ -25,7 +25,23 @@ export const users = mysqlTable("users", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
+  deletedAt: timestamp("deletedAt"),
 });
+
+export const revokedIdentities = mysqlTable(
+  "pediu_revoked_identities",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    openId: varchar("openId", { length: 128 }).notNull().unique(),
+    userId: int("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    revokedAt: timestamp("revokedAt").defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdx: index("pediu_revoked_identities_user_idx").on(table.userId),
+  }),
+);
 
 export const emailVerificationTokens = mysqlTable(
   "pediu_email_verification_tokens",

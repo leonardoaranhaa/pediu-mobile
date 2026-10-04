@@ -50,6 +50,7 @@ const seededCustomer = {
   createdAt: new Date(),
   updatedAt: new Date(),
   lastSignedIn: new Date(),
+  deletedAt: null,
 };
 
 describe("development login boundary", () => {
@@ -71,10 +72,12 @@ describe("development login boundary", () => {
     ENV.isProduction = true;
     ENV.databaseUrl = "mysql://example";
     process.env.ALLOWED_ORIGINS = "https://pediu.example";
+    process.env.OBSERVABILITY_TOKEN = "test-observability";
     try {
       expect(() => assertRuntimeConfig()).toThrow("DEV_AUTH_ENABLED");
     } finally {
       delete process.env.ALLOWED_ORIGINS;
+      delete process.env.OBSERVABILITY_TOKEN;
     }
   });
 

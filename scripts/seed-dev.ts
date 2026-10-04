@@ -8,6 +8,11 @@ const STORE = {
   address: "Rua das Flores, 120 - Centro, São Paulo/SP",
   pixKey: "lojista@pediu.local",
   deliveryFee: "5.00",
+  deliveryEnabled: 1,
+  pickupEnabled: 1,
+  deliveryRadiusKm: "12.00",
+  latitude: "-23.5505200",
+  longitude: "-46.6333080",
 };
 
 const PRODUCTS = [
@@ -28,6 +33,8 @@ const ADDRESS = {
   city: "São Paulo",
   state: "SP",
   postalCode: "05422001",
+  latitude: "-23.5614000",
+  longitude: "-46.6558000",
   isDefault: true,
 };
 
@@ -48,16 +55,18 @@ async function main() {
   const merchantUser = await requireUser(merchant.openId);
 
   const storeId = (await db.getStoreForOwner(merchantUser.id))?.id ?? (await db.createStore({ ...STORE, ownerId: merchantUser.id }));
+  await db.updateStoreForOwner(merchantUser.id, STORE);
 
   const existingProducts = new Set((await db.listProductsForStore(storeId)).map((product) => product.name));
   const missingProducts = PRODUCTS.filter((product) => !existingProducts.has(product.name));
   for (const product of missingProducts) await db.createProduct({ ...product, storeId });
 
-  const hasAddress = (await db.listCustomerAddresses(customerUser.id)).length > 0;
-  if (!hasAddress) await db.createCustomerAddress(customerUser.id, ADDRESS);
+  const savedAddresses = await db.listCustomerAddresses(customerUser.id);
+  if (!savedAddresses.length) await db.createCustomerAddress(customerUser.id, ADDRESS);
+  else if (!savedAddresses[0]?.latitude) await db.updateCustomerAddress(customerUser.id, savedAddresses[0].id, { latitude: ADDRESS.latitude, longitude: ADDRESS.longitude });
 
   console.log(`[seed] cliente #${customerUser.id}, lojista #${merchantUser.id}, loja #${storeId}`);
-  console.log(`[seed] ${missingProducts.length} produto(s) criado(s), endereço ${hasAddress ? "já existente" : "criado"}`);
+  console.log(`[seed] ${missingProducts.length} produto(s) criado(s), endereço ${savedAddresses.length ? "já existente" : "criado"}`);
 }
 
 main()

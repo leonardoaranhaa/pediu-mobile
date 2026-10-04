@@ -27,6 +27,7 @@ function createAuthContext(): {
     createdAt: new Date(),
     updatedAt: new Date(),
     lastSignedIn: new Date(),
+    deletedAt: null,
   };
 
   const ctx: TrpcContext = {

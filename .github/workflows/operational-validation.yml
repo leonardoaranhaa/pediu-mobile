@@ -85,7 +85,8 @@ jobs:
               'pediu_store_couriers',
               'pediu_delivery_offers',
               'pediu_notification_outbox',
-              'pediu_rate_limit_buckets'
+              'pediu_rate_limit_buckets',
+              'pediu_revoked_identities'
             ];
             const missing = required.filter(name => !names.includes(name));
             if (missing.length) throw new Error(`Missing migrated tables: ${missing.join(', ')}`);
@@ -133,7 +134,11 @@ jobs:
           pnpm db:seed
           pnpm db:seed | tee /tmp/seed.log
           grep -q "0 produto(s) criado(s), endereço já existente" /tmp/seed.log
-      - name: Seeded cash order and delivery against MySQL
+      - name: Seed review accounts without the development login
+        run: |
+          REVIEW_CUSTOMER_OPEN_ID=review-customer REVIEW_MERCHANT_OPEN_ID=review-merchant pnpm db:seed:review
+          REVIEW_CUSTOMER_OPEN_ID=review-customer REVIEW_MERCHANT_OPEN_ID=review-merchant pnpm db:seed:review
+      - name: Seeded cash order, delivery, and account deletion against MySQL
         run: PEDIU_INTEGRATION=1 pnpm exec vitest run tests/cash-order.integration.test.ts
       - name: Start Mercado Pago test API
         run: |
@@ -195,6 +200,12 @@ jobs:
             const merchant = await login('merchant');
             const store = await trpc('pediu.stores.mine', merchant);
             if (!store?.isOpen) throw new Error('Merchant store is missing or closed');
+            const privacy = await fetch(`${base}/legal/privacy`);
+            if (!privacy.ok || !(await privacy.text()).includes('Política de privacidade')) throw new Error('Privacy policy is not published');
+            const terms = await fetch(`${base}/legal/terms`);
+            if (!terms.ok || !(await terms.text()).includes('Termos de uso')) throw new Error('Terms are not published');
+            const apple = await fetch(`${base}/api/auth/apple`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+            if (apple.status !== 503) throw new Error(`Apple login should stay unavailable without APPLE_BUNDLE_ID, got ${apple.status}`);
             console.log(`Seed smoke OK: ${catalog.items.length} product(s), store #${store.id}`);
           })().catch((error) => { console.error(error); process.exit(1); });
           NODE

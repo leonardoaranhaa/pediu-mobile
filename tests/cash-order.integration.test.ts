@@ -30,19 +30,21 @@ describe.skipIf(!enabled)("cash checkout against MySQL", () => {
 
     const customerApi = callerFor(customer);
     const merchantApi = callerFor(merchant);
+    const store = await db.getStoreForOwner(merchant.id);
+    if (!store) throw new Error("A loja semeada não foi encontrada");
     const catalog = await customerApi.pediu.marketplace.search({ query: "X-Burger", limit: 20, offset: 0 });
-    const burger = catalog.items.find((item) => item.name === "X-Burger");
+    const burger = catalog.items.find((item) => item.name === "X-Burger" && item.storeId === store.id);
     expect(burger).toBeTruthy();
-
-    const quote = await customerApi.pediu.checkout.quote({
-      storeId: burger!.storeId,
-      items: [{ productId: burger!.id, quantity: 1 }],
-    });
-    expect(quote).toMatchObject({ subtotal: "28.90", deliveryFee: "5.00", discount: "0.00", total: "33.90" });
 
     const addresses = await customerApi.pediu.addresses.list();
     const address = addresses.find((item) => item.isDefault === 1);
     expect(address?.street).toBe("Rua dos Pinheiros");
+    const quote = await customerApi.pediu.checkout.quote({
+      storeId: burger!.storeId,
+      addressId: address!.id,
+      items: [{ productId: burger!.id, quantity: 1 }],
+    });
+    expect(quote).toMatchObject({ subtotal: "28.90", deliveryFee: "5.00", discount: "0.00", total: "33.90" });
 
     const idempotencyKey = `integration-cash-${Date.now()}`;
     const input = {
@@ -82,10 +84,12 @@ describe.skipIf(!enabled)("cash checkout against MySQL", () => {
     const customerApi = callerFor(customer);
     const merchantApi = callerFor(merchant);
 
+    const store = await db.getStoreForOwner(merchant.id);
+    if (!store) throw new Error("A loja semeada não foi encontrada");
     const catalog = await customerApi.pediu.marketplace.search({ query: "Batata frita", limit: 20, offset: 0 });
-    const item = catalog.items.find((product) => product.name === "Batata frita");
-    const quote = await customerApi.pediu.checkout.quote({ storeId: item!.storeId, items: [{ productId: item!.id, quantity: 1 }] });
+    const item = catalog.items.find((product) => product.name === "Batata frita" && product.storeId === store.id);
     const address = (await customerApi.pediu.addresses.list()).find((entry) => entry.isDefault === 1);
+    const quote = await customerApi.pediu.checkout.quote({ storeId: item!.storeId, addressId: address!.id, items: [{ productId: item!.id, quantity: 1 }] });
     const created = await customerApi.pediu.orders.create({
       idempotencyKey: `integration-delivery-${Date.now()}`,
       storeId: quote.storeId,
@@ -107,5 +111,53 @@ describe.skipIf(!enabled)("cash checkout against MySQL", () => {
     const events = await customerApi.pediu.experience.tracking.events({ orderId: created.orderId });
     expect(events.map((event) => event.eventType)).toEqual(["Entregue", "A caminho", "Pronto", "Preparando", "Aceito", "Pendente"]);
     await expect(merchantApi.pediu.orders.status({ orderId: created.orderId, status: "Cancelado" })).rejects.toThrow(/Transição de pedido inválida/);
+  });
+
+  it("erases personal data, revokes the login and keeps the cash order", async () => {
+    const openId = `deletion-${Date.now()}`;
+    await db.upsertUser({ openId, name: "Pessoa a excluir", email: "excluir@example.com", loginMethod: "test", role: "user" });
+    const person = await db.getUserByOpenId(openId);
+    const merchant = await db.getUserByOpenId(DEV_PERSONAS.merchant.openId);
+    if (!person || !merchant) throw new Error("Rode pnpm db:seed antes do teste de exclusão");
+    const api = callerFor(person);
+    const store = await db.getStoreForOwner(merchant.id);
+    if (!store) throw new Error("A loja semeada não foi encontrada");
+    const catalog = await api.pediu.marketplace.search({ query: "X-Burger", limit: 20, offset: 0 });
+    const burger = catalog.items.find((item) => item.name === "X-Burger" && item.storeId === store.id);
+    expect(burger).toBeTruthy();
+    const addressId = await api.pediu.addresses.create({
+      label: "Temp",
+      recipientName: "Pessoa a excluir",
+      street: "Rua Sigilo",
+      number: "1",
+      neighborhood: "Centro",
+      city: "São Paulo",
+      state: "SP",
+      postalCode: "01001000",
+      latitude: "-23.5510000",
+      longitude: "-46.6340000",
+      isDefault: true,
+    });
+    const quote = await api.pediu.checkout.quote({ storeId: burger!.storeId, addressId, items: [{ productId: burger!.id, quantity: 1 }] });
+    const created = await api.pediu.orders.create({
+      idempotencyKey: `integration-deletion-${Date.now()}`,
+      storeId: quote.storeId,
+      total: quote.total,
+      paymentMethod: "cash",
+      addressId,
+      items: quote.items.map((quoted) => ({ productId: quoted.productId, quantity: quoted.quantity, unitPrice: quoted.unitPrice })),
+    });
+
+    const result = await api.pediu.experience.privacy.requestDeletion();
+
+    expect(result).toMatchObject({ deleted: true, alreadyDeleted: false });
+    expect(await db.getUserByOpenId(openId)).toBeUndefined();
+    expect(await db.isIdentityRevoked(openId)).toBe(true);
+    await expect(db.upsertUser({ openId, name: "Não deve voltar" })).rejects.toThrow(/Account deleted/);
+    const erased = await db.getUserByOpenId(`deleted-${person.id}`);
+    expect(erased).toMatchObject({ name: "Conta encerrada", email: null, loginMethod: null });
+    expect(erased?.deletedAt).toBeTruthy();
+    expect(await db.listCustomerAddresses(person.id)).toEqual([]);
+    expect((await callerFor(merchant).pediu.orders.get({ orderId: created.orderId })).total).toBe(quote.total);
   });
 });

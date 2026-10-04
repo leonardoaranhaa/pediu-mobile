@@ -281,8 +281,14 @@ class SDKServer {
     }
 
     const sessionUserId = session.openId;
+    if (await db.isIdentityRevoked(sessionUserId)) {
+      throw ForbiddenError("Account deleted");
+    }
     const signedInAt = new Date();
     let user = await db.getUserByOpenId(sessionUserId);
+    if (user?.deletedAt) {
+      throw ForbiddenError("Account deleted");
+    }
 
     // If user not in DB, sync from OAuth server automatically
     if (!user) {
