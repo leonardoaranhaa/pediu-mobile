@@ -31,6 +31,10 @@ const store = {
   latitude: null,
   longitude: null,
   isOpen: 1,
+  kind: "restaurant" as const,
+  flashEnabled: 0,
+  flashEtaMaxMinutes: 30,
+  flashFeeOverride: null,
   createdAt: new Date(),
 };
 

@@ -10,10 +10,14 @@ import {
   s,
 } from "@/components/pediu-page";
 import { useAuth } from "@/hooks/use-auth";
+import { cartFlashEligible } from "@/lib/cart";
 import { useCart } from "@/providers/cart-provider";
 import { trpc } from "@/lib/trpc";
 
 type PaymentMethod = "pix" | "cash";
+type Fulfillment = "standard" | "flash";
+
+const TIP_OPTIONS = [0, 2, 5, 8] as const;
 
 function money(value: number | string) {
   return `R$ ${Number(value).toFixed(2).replace(".", ",")}`;
@@ -27,6 +31,9 @@ export default function CheckoutScreen() {
   const { isAuthenticated } = useAuth();
   const params = useLocalSearchParams<{ coupon?: string }>();
   const { items, total: estimatedTotal, hydrated, clear } = useCart();
+  const flags = trpc.pediu.experience.flags.useQuery(undefined, {
+    staleTime: 60_000,
+  });
   const addresses = trpc.pediu.addresses.list.useQuery(undefined, {
     enabled: isAuthenticated,
   });
@@ -39,12 +46,19 @@ export default function CheckoutScreen() {
   const [idempotencyKey, setIdempotencyKey] = useState("");
   const [couponCode, setCouponCode] = useState("");
   const [appliedCouponCode, setAppliedCouponCode] = useState("");
+  const [fulfillment, setFulfillment] = useState<Fulfillment>("standard");
+  const [tipAmount, setTipAmount] = useState(0);
   const normalizedCouponInput = couponCode.trim().toUpperCase();
+  const tipEnabled = flags.data?.tip !== false;
+  const flashFlagOn = flags.data?.flash !== false;
+  const flashEligibleLocal = cartFlashEligible(items);
   const quoteInput = useMemo(
     () => ({
       storeId: items[0]?.storeId ?? 1,
       addressId: fulfillmentMode === "delivery" ? addressId : undefined,
       fulfillmentMode,
+      fulfillment,
+      tipAmount: tipEnabled ? tipAmount : 0,
       items: items.map((item) => ({
         productId: item.id,
         quantity: item.quantity,
@@ -52,7 +66,15 @@ export default function CheckoutScreen() {
       })),
       couponCode: appliedCouponCode || undefined,
     }),
-    [addressId, appliedCouponCode, fulfillmentMode, items],
+    [
+      addressId,
+      appliedCouponCode,
+      fulfillment,
+      fulfillmentMode,
+      items,
+      tipAmount,
+      tipEnabled,
+    ],
   );
   const quote = trpc.pediu.checkout.quote.useQuery(quoteInput, {
     enabled: isAuthenticated && hydrated && items.length > 0,
@@ -116,6 +138,17 @@ export default function CheckoutScreen() {
     }
   }, [address, addresses.data]);
 
+  useEffect(() => {
+    if (
+      fulfillment !== "flash" ||
+      fulfillmentMode !== "delivery" ||
+      !quote.isError
+    )
+      return;
+    if ((quote.error?.message ?? "").toLowerCase().includes("flash"))
+      setFulfillment("standard");
+  }, [fulfillment, fulfillmentMode, quote.error?.message, quote.isError]);
+
   const applyCoupon = () => {
     if (appliedCouponCode && normalizedCouponInput === appliedCouponCode) {
       setAppliedCouponCode("");
@@ -140,6 +173,8 @@ export default function CheckoutScreen() {
       total: quote.data.total,
       paymentMethod,
       fulfillmentMode,
+      fulfillment: quote.data.fulfillment,
+      tipAmount: Number(quote.data.tipAmount),
       ...(fulfillmentMode === "delivery"
         ? { addressId, deliveryAddress: address.trim() }
         : {}),
@@ -348,6 +383,95 @@ export default function CheckoutScreen() {
           </Text>
         ) : null}
       </Card>
+      {flashFlagOn ? (
+        <Card>
+          <Text style={s.sectionTitle}>Pediu Flash</Text>
+          <Text style={s.muted}>
+            {flashEligibleLocal
+              ? "Prioridade na fila da loja e do entregador. A taxa vem da cotação do servidor."
+              : "Esta loja não oferece Flash no momento."}
+          </Text>
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+            {(["standard", "flash"] as const).map((option) => {
+              const selected = fulfillment === option;
+              const disabled =
+                option === "flash" &&
+                (!flashEligibleLocal || fulfillmentMode !== "delivery");
+              return (
+                <Pressable
+                  key={option}
+                  disabled={disabled}
+                  onPress={() => setFulfillment(option)}
+                  style={{
+                    flex: 1,
+                    minHeight: 52,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderWidth: 1,
+                    borderColor: selected ? PEDIU.coral : PEDIU.line,
+                    backgroundColor: selected ? PEDIU.coralSoft : PEDIU.white,
+                    borderRadius: 14,
+                    opacity: disabled ? 0.45 : 1,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: selected ? PEDIU.coral : PEDIU.muted,
+                      fontWeight: "900",
+                    }}
+                  >
+                    {option === "flash" ? "Flash" : "Padrão"}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          {fulfillment === "flash" && quote.data?.isFlash ? (
+            <Text
+              style={{ color: PEDIU.green, fontSize: 12, fontWeight: "800" }}
+            >
+              Flash ativo · até{" "}
+              {quote.data.flashEtaMaxMinutes ?? "o prazo informado"} min
+            </Text>
+          ) : null}
+        </Card>
+      ) : null}
+      {tipEnabled ? (
+        <Card>
+          <Text style={s.sectionTitle}>Gorjeta para a entrega</Text>
+          <Text style={s.muted}>
+            O valor é enviado ao servidor e fica fora dos pontos do Clube.
+          </Text>
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+            {TIP_OPTIONS.map((value) => (
+              <Pressable
+                key={value}
+                onPress={() => setTipAmount(value)}
+                style={{
+                  flex: 1,
+                  minHeight: 46,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderWidth: 1,
+                  borderColor: tipAmount === value ? PEDIU.coral : PEDIU.line,
+                  backgroundColor:
+                    tipAmount === value ? PEDIU.coralSoft : PEDIU.white,
+                  borderRadius: 12,
+                }}
+              >
+                <Text
+                  style={{
+                    color: tipAmount === value ? PEDIU.coral : PEDIU.muted,
+                    fontWeight: "900",
+                  }}
+                >
+                  {value ? money(value) : "Sem gorjeta"}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </Card>
+      ) : null}
       {fulfillmentMode === "delivery" ? (
         <Card>
           <Text style={s.sectionTitle}>Endereço de entrega</Text>

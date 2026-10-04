@@ -1,7 +1,7 @@
 import * as Location from "expo-location";
 import { useEffect, useMemo, useState } from "react";
 import { useLocalSearchParams } from "expo-router";
-import { Text } from "react-native";
+import { Text, View } from "react-native";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
 import { Card, Field, OutlineButton, Page, PrimaryButton, PEDIU, Row, s } from "@/components/pediu-page";
@@ -14,8 +14,11 @@ export default function SellerDeliveryPage() {
   const { user } = useAuth();
   const params = useLocalSearchParams<{ orderId?: string }>();
   const requestedOrderId = Number(params.orderId);
-  const orders = trpc.pediu.orders.storeMine.useQuery(undefined, { enabled: user?.role === "merchant", refetchInterval: 10_000 });
-  const activeOrders = useMemo(() => (orders.data ?? []).filter((order) => order.status === "Pronto" || order.status === "A caminho"), [orders.data]);
+  const queueQuery = trpc.pediu.experience.delivery.queue.useQuery(undefined, {
+    enabled: user?.role === "merchant",
+    refetchInterval: 10_000,
+  });
+  const activeOrders = useMemo(() => queueQuery.data?.queue ?? [], [queueQuery.data?.queue]);
   const [selectedOrderId, setSelectedOrderId] = useState<number>(Number.isInteger(requestedOrderId) && requestedOrderId > 0 ? requestedOrderId : 0);
   const selectedOrder = activeOrders.find((order) => order.id === selectedOrderId) ?? activeOrders[0];
   const orderId = selectedOrder?.id ?? 0;
@@ -26,12 +29,19 @@ export default function SellerDeliveryPage() {
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
   const [locationKey, setLocationKey] = useState<string>();
-  const assign = trpc.pediu.experience.delivery.assign.useMutation({ onSuccess: () => void current.refetch() });
-  const sendLocation = trpc.pediu.experience.delivery.location.useMutation({ onSuccess: () => { setLocationKey(undefined); void current.refetch(); void orders.refetch(); } });
-  const complete = trpc.pediu.experience.delivery.complete.useMutation({ onSuccess: () => { void current.refetch(); void orders.refetch(); } });
+  const assign = trpc.pediu.experience.delivery.assign.useMutation({ onSuccess: () => { void current.refetch(); void queueQuery.refetch(); } });
+  const sendLocation = trpc.pediu.experience.delivery.location.useMutation({ onSuccess: () => { setLocationKey(undefined); void current.refetch(); void queueQuery.refetch(); } });
+  const complete = trpc.pediu.experience.delivery.complete.useMutation({ onSuccess: () => { void current.refetch(); void queueQuery.refetch(); } });
 
   const assignment = current.data?.assignment;
   const latestLocation = current.data?.latestLocation;
+  useEffect(() => {
+    if (!selectedOrder) return;
+    if (!eta && selectedOrder.suggestedEtaMinutes != null) {
+      setEta(String(selectedOrder.suggestedEtaMinutes));
+    }
+  }, [eta, selectedOrder]);
+
   useEffect(() => {
     if (!assignment) return;
     setCourierName(assignment.courierName);
@@ -53,7 +63,12 @@ export default function SellerDeliveryPage() {
 
   const saveAssignment = () => {
     if (!orderId) return;
-    assign.mutate({ orderId, courierName: courierName.trim() || undefined, courierPhone: courierPhone.trim() || undefined, etaMinutes: eta.trim() ? Number(eta) : undefined });
+    assign.mutate({
+      orderId,
+      courierName: courierName.trim() || undefined,
+      courierPhone: courierPhone.trim() || undefined,
+      etaMinutes: eta.trim() ? Number(eta) : undefined,
+    });
   };
 
   const updateLocation = () => {
@@ -67,20 +82,39 @@ export default function SellerDeliveryPage() {
 
   return <Page title="Entregas" eyebrow="OPERAÇÃO DA LOJA">
     <Card>
-      <Text style={s.sectionTitle}>Pedidos prontos para entrega</Text>
-      {orders.isLoading ? <Text style={s.muted}>Carregando pedidos...</Text> : null}
-      {!orders.isLoading && !activeOrders.length ? <Text style={s.muted}>Nenhum pedido pronto ou em rota neste momento.</Text> : null}
-      {activeOrders.map((order) => <Row key={order.id} icon="two-wheeler" title={`Pedido #${order.id}`} subtitle={`${order.status} · R$ ${Number(order.total).toFixed(2).replace(".", ",")}`} onPress={() => setSelectedOrderId(order.id)} right={<Text style={{ color: order.id === orderId ? PEDIU.coral : PEDIU.muted, fontWeight: "900" }}>{order.id === orderId ? "Selecionado" : "Abrir"}</Text>} />)}
+      <Text style={s.sectionTitle}>Fila de entrega</Text>
+      <Text style={s.muted}>
+        Pedidos Flash sobem na fila. {queueQuery.data?.flashCount ? `${queueQuery.data.flashCount} Flash na fila.` : "Nenhum Flash aguardando."}
+      </Text>
+      {queueQuery.isLoading ? <Text style={s.muted}>Carregando pedidos...</Text> : null}
+      {!queueQuery.isLoading && !activeOrders.length ? <Text style={s.muted}>Nenhum pedido pronto ou em rota neste momento.</Text> : null}
+      {activeOrders.map((order, index) => (
+        <Row
+          key={order.id}
+          icon={order.isFlash ? "bolt" : "two-wheeler"}
+          title={`#${order.id}${order.isFlash ? " · FLASH" : ""}`}
+          subtitle={`${order.status} · R$ ${Number(order.total).toFixed(2).replace(".", ",")}${order.isFlash ? " · prioridade" : ""} · posição ${index + 1}`}
+          onPress={() => { setSelectedOrderId(order.id); setEta(order.suggestedEtaMinutes != null ? String(order.suggestedEtaMinutes) : ""); }}
+          right={<Text style={{ color: order.id === orderId ? PEDIU.coral : PEDIU.muted, fontWeight: "900" }}>{order.id === orderId ? "Selecionado" : "Abrir"}</Text>}
+        />
+      ))}
     </Card>
     {selectedOrder ? <>
       <Card>
         <Text style={s.sectionTitle}>Entregador do pedido #{selectedOrder.id}</Text>
+        {selectedOrder.isFlash ? (
+          <View style={{ borderRadius: 12, backgroundColor: PEDIU.peach, padding: 10, marginBottom: 4 }}>
+            <Text style={{ color: PEDIU.ink, fontWeight: "800", fontSize: 12 }}>
+              Pediu Flash · ETA sugerido {selectedOrder.suggestedEtaMinutes ?? queueQuery.data?.flashEtaMaxMinutes ?? 20} min
+            </Text>
+          </View>
+        ) : null}
         <Text style={s.muted}>O proprietário da loja é o operador autorizado nesta fase. A atribuição fica registrada para o cliente.</Text>
         <Field label="NOME DO ENTREGADOR" value={courierName} onChangeText={setCourierName} placeholder="Nome exibido ao cliente" />
         <Field label="TELEFONE (OPCIONAL)" value={courierPhone} onChangeText={setCourierPhone} placeholder="(00) 00000-0000" keyboardType="phone-pad" />
         <Field label="ETA EM MINUTOS" value={eta} onChangeText={setEta} placeholder="Ex.: 25" keyboardType="numeric" />
         {assign.error ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{assign.error.message}</Text> : null}
-        <PrimaryButton title={assign.isPending ? "Salvando..." : "Atribuir entrega"} onPress={saveAssignment} disabled={assign.isPending} />
+        <PrimaryButton title={assign.isPending ? "Salvando..." : selectedOrder.isFlash ? "Atribuir Flash" : "Atribuir entrega"} onPress={saveAssignment} disabled={assign.isPending} />
       </Card>
       <Card>
         <Text style={s.sectionTitle}>Posição atual</Text>

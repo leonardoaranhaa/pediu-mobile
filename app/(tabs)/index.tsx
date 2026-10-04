@@ -72,6 +72,8 @@ type Product = {
   emoji: string;
   available: boolean;
   deliveryFee?: string;
+  storeKind?: "restaurant" | "market" | "service";
+  flashEnabled?: boolean;
 };
 
 type SavedAddress = {
@@ -373,6 +375,8 @@ export default function HomeScreen() {
           emoji: item.emoji ?? "🍽️",
           available: true,
           deliveryFee: item.deliveryFee,
+          storeKind: item.storeKind,
+          flashEnabled: Boolean(item.flashEnabled),
         })),
       ),
     [globalCartItems],
@@ -578,6 +582,8 @@ export default function HomeScreen() {
               : "🍰",
         available: Boolean(product.available),
         deliveryFee: product.deliveryFee,
+        storeKind: product.storeKind,
+        flashEnabled: Boolean(product.flashEnabled),
       })),
     [marketplaceQuery.data],
   );

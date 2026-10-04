@@ -89,6 +89,10 @@ export default function ClubScreen() {
             <Card>
               <Text style={s.rowTitle}>Cupom gerado</Text>
               <Text style={s.muted}>Use {redeem.data.couponCode} no checkout · R$ {redeem.data.creditAmount}</Text>
+              <PrimaryButton
+                title="Aplicar no checkout"
+                onPress={() => router.push({ pathname: "/checkout", params: { coupon: redeem.data!.couponCode } })}
+              />
             </Card>
           ) : null}
           {redeem.error ? <Text style={{ color: PEDIU.coral, fontWeight: "700" }}>{redeem.error.message}</Text> : null}

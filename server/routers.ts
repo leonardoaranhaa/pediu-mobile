@@ -424,6 +424,7 @@ export const appRouter = router({
             fulfillmentMode: serviceability.mode,
             fulfillment: input.fulfillment,
             isFlash: flash.isFlash,
+            flashEligible: resolveFlashFulfillment(store, "flash").isFlash,
             flashEtaMaxMinutes: flash.etaMaxMinutes,
             storeKind: store.kind,
             tipAmount,

@@ -28,6 +28,8 @@ export default function ProductDetailPage() {
       description: product.description,
       price: String(product.price),
       deliveryFee: String(product.deliveryFee ?? "0.00"),
+      storeKind: product.storeKind,
+      flashEnabled: Boolean(product.flashEnabled),
       emoji: product.category === "Lanches" ? "🍔" : product.category === "Doces" ? "🍰" : "🛠️",
     }, quantity);
     if (!result.ok) {
