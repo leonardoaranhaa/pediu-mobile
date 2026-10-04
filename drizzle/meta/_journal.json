@@ -232,6 +232,13 @@
       "when": 1791111600000,
       "tag": "0032_distributed_rate_limit",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "5",
+      "when": 1791138000000,
+      "tag": "0033_account_deletion",
+      "breakpoints": true
     }
   ]
 }

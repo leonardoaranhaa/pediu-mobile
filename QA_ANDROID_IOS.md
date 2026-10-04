@@ -14,7 +14,7 @@ A auditoria foi realizada sobre o fluxo principal esperado de um aplicativo de p
 | Total do carrinho | Corrigido para soma real dos preços | Corrigido para soma real dos preços | Aprovado em código e testes |
 | Exigir autenticação antes do pedido | Fluxo encaminha ao login | Fluxo encaminha ao login | Aprovado |
 | Informar endereço de entrega | Checkout implementado com teclado adaptativo | Checkout implementado com comportamento `padding` | Aprovado em build; requer aparelho físico |
-| Selecionar PIX, cartão ou dinheiro | UI implementada e forma persistida no pedido | UI implementada e forma persistida no pedido | Aprovado em build |
+| Selecionar dinheiro na entrega | Checkout de loja oferece dinheiro; PIX fica desligado até um provedor | Mesmo componente React Native | Aprovado em código e no Expo Web |
 | Criar pedido persistente | tRPC + banco conectados | Mesmo fluxo nativo | Aprovado em build; requer sessão válida para E2E |
 | Acompanhar status | Tela existente com progresso | Mesmo fluxo nativo | Parcial: status ainda demonstrativo |
 | GPS | Permissão e leitura de localização configuradas | Permissão e leitura de localização configuradas | Requer teste físico |
@@ -29,6 +29,10 @@ A auditoria foi realizada sobre o fluxo principal esperado de um aplicativo de p
 O checkout deixou de ser simulado. O carrinho agora calcula o total a partir dos itens, exige autenticação antes de avançar, solicita endereço de entrega, permite selecionar PIX, cartão ou dinheiro e cria o pedido e o registro de pagamento no backend. O comportamento do teclado foi adaptado por plataforma para evitar que o campo de endereço fique escondido.
 
 Também foram adicionadas regras puras e testes para cálculo de preços brasileiros e total do carrinho. A suíte atual passou com **7 testes aprovados e 1 teste de autenticação ignorado por depender de sessão externa**. O TypeScript e o export web passaram.
+
+## Publicação
+
+O PIX do go-live usa Mercado Pago, e dinheiro na entrega continua disponível. A exclusão de conta apaga os dados pessoais e a política fica em `/legal/privacy`. O fluxo em dinheiro até `Entregue` foi exercido no Expo Web. TestFlight, teste interno da Play, permissão negada no aparelho e o binário AAB/IPA continuam dependendo das credenciais da conta de desenvolvedor. O passo a passo está em `docs/STORE_RELEASE.md`.
 
 ## Limitações honestas
 

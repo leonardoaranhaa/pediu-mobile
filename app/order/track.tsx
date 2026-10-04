@@ -222,7 +222,9 @@ export default function TrackOrderPage() {
               </Text>
               {i === active ? (
                 <Text style={s.muted}>
-                  Acompanhe a atualização em tempo real.
+                  {query.data.status === "Entregue"
+                    ? "Pedido concluído."
+                    : "Acompanhe a atualização em tempo real."}
                 </Text>
               ) : null}
             </View>
@@ -244,5 +246,4 @@ export default function TrackOrderPage() {
         ) : null}
       </Card>
     </Page>
-  );
-}
+  );}

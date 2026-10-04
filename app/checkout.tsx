@@ -8,8 +8,7 @@ import {
   PrimaryButton,
   PEDIU,
   s,
-} from "@/components/pediu-page";
-import { useAuth } from "@/hooks/use-auth";
+} from "@/components/pediu-page";import { useAuth } from "@/hooks/use-auth";
 import { useCart } from "@/providers/cart-provider";
 import { trpc } from "@/lib/trpc";
 
@@ -170,6 +169,7 @@ export default function CheckoutScreen() {
             Sua sessão é necessária para criar um pedido e acompanhar o
             pagamento.
           </Text>
+          <PrimaryButton title="Entrar" onPress={() => router.push("/login")} />
         </Card>
       </Page>
     );
@@ -475,8 +475,7 @@ export default function CheckoutScreen() {
         />
       </Card>
     </Page>
-  );
-}
+  );}
 
 const row = {
   flexDirection: "row" as const,

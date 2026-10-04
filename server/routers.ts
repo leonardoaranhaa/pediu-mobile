@@ -1085,8 +1085,7 @@ export const appRouter = router({
             );
           }
           return { success: true as const };
-        }),
-    }),
+        }),    }),
     payments: router({
       get: protectedProcedure
         .input(z.object({ paymentId: z.number().int().positive() }))

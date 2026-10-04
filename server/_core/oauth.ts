@@ -84,7 +84,7 @@ async function syncUser(userInfo: {
   );
 }
 
-function buildUserResponse(
+export function buildUserResponse(
   user:
     | Awaited<ReturnType<typeof getUserByOpenId>>
     | {

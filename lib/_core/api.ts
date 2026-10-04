@@ -66,6 +66,22 @@ export async function exchangeOAuthCode(
   return { sessionToken, user: result.user };
 }
 
+export async function devLogin(persona: "customer" | "merchant"): Promise<{ sessionToken: string; user: any }> {
+  const result = await apiCall<{ app_session_id: string; user: any }>("/api/dev/login", {
+    method: "POST",
+    body: JSON.stringify({ persona }),
+  });
+  return { sessionToken: result.app_session_id, user: result.user };
+}
+
+export async function appleLogin(identityToken: string, name?: string): Promise<{ sessionToken: string; user: any }> {
+  const result = await apiCall<{ app_session_id: string; user: any }>("/api/auth/apple", {
+    method: "POST",
+    body: JSON.stringify({ identityToken, name }),
+  });
+  return { sessionToken: result.app_session_id, user: result.user };
+}
+
 export async function logout(): Promise<void> {
   await apiCall<void>("/api/auth/logout", { method: "POST" });
 }
@@ -84,7 +100,7 @@ export async function getMe(): Promise<{
     const result = await apiCall<{ user: any }>("/api/auth/me");
     return result.user || null;
   } catch (error) {
-    if (error instanceof Error && /invalid session|unauthorized|forbidden/i.test(error.message)) return null;
+    if (error instanceof Error && /not authenticated|invalid session|unauthorized|forbidden/i.test(error.message)) return null;
     console.error("[API] getMe failed");
     return null;
   }

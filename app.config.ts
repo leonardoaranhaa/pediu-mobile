@@ -10,7 +10,16 @@ assertProductionApiBaseUrl(process.env);
 // the runtime OAuth client uses the shared constant in constants/oauth-scheme.ts.
 const PEDIU_OAUTH_SCHEME = "pediupediu";
 
-const rawBundleId = "space.manus.pediu.mobile";
+if (process.env.EAS_BUILD_PROFILE === "production") {
+  if (!process.env.EXPO_PUBLIC_API_BASE_URL?.trim()) {
+    throw new Error("EXPO_PUBLIC_API_BASE_URL is required for the production store build");
+  }
+  if (process.env.EXPO_PUBLIC_DEV_AUTH === "true") {
+    throw new Error("EXPO_PUBLIC_DEV_AUTH must not be set for the production store build");
+  }
+}
+
+const rawBundleId = process.env.EXPO_PUBLIC_BUNDLE_ID?.trim() || "app.pediu.mobile";
 const bundleId = rawBundleId
   .replace(/[-_]/g, ".")
   .replace(/[^a-zA-Z0-9.]/g, "")
@@ -29,6 +38,7 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: bundleId,
+    usesAppleSignIn: true,
     infoPlist: { ITSAppUsesNonExemptEncryption: false },
   },
   android: {
@@ -58,6 +68,7 @@ const config: ExpoConfig = {
   },
   plugins: [
     "expo-router",
+    "expo-apple-authentication",
     "expo-asset",
     [
       "expo-audio",
@@ -100,6 +111,11 @@ const config: ExpoConfig = {
     ],
   ],
   experiments: { typedRoutes: true, reactCompiler: true },
+  extra: {
+    eas: process.env.EAS_PROJECT_ID ? { projectId: process.env.EAS_PROJECT_ID } : undefined,
+    privacyPolicyPath: "/legal/privacy",
+    termsPath: "/legal/terms",
+  },
 };
 
 export default config;

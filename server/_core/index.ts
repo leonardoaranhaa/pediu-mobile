@@ -4,6 +4,9 @@ import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
+import { registerAppleAuthRoutes } from "./apple-auth";
+import { registerDevAuthRoutes } from "./dev-auth";
+import { registerLegalRoutes } from "../legal";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
@@ -81,7 +84,10 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "16mb", extended: true }));
 
   registerStorageProxy(app);
+  registerLegalRoutes(app);
   registerOAuthRoutes(app);
+  registerAppleAuthRoutes(app);
+  registerDevAuthRoutes(app);
 
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true, timestamp: Date.now() });

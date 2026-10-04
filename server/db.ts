@@ -93,6 +93,7 @@ import {
   products,
   pushTokens,
   rateLimitBuckets,
+  revokedIdentities,
   sales,
   storeCouriers,
   stores,
@@ -101,8 +102,7 @@ import {
   users,
   webhookEvents,
   refunds,
-} from "../drizzle/schema";
-import { ENV } from "./_core/env";
+} from "../drizzle/schema";import { ENV } from "./_core/env";
 import {
   DEFAULT_DISPATCH_OFFER_TTL_MS,
   boundedDispatchOfferTtl,
@@ -642,8 +642,16 @@ export async function createOrderReview(
   }
 }
 
+export async function isIdentityRevoked(openId: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db.select({ id: revokedIdentities.id }).from(revokedIdentities).where(eq(revokedIdentities.openId, openId)).limit(1);
+  return rows.length > 0;
+}
+
 export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) throw new Error("User openId is required for upsert");
+  if (await isIdentityRevoked(user.openId)) throw new Error("Account deleted");
   const db = await getDb();
   if (!db) {
     console.warn("[Database] Cannot upsert user: database not available");
@@ -817,6 +825,66 @@ export async function getUserByOpenId(openId: string) {
     .where(eq(users.openId, openId))
     .limit(1);
   return result.length > 0 ? result[0] : undefined;
+}
+
+export async function erasePersonalData(
+  userId: number,
+): Promise<{ alreadyDeleted: boolean }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const rows = await tx.select().from(users).where(eq(users.id, userId)).limit(1);
+    const current = rows[0];
+    if (!current) throw new Error("Usuário não encontrado");
+    if (current.deletedAt) return { alreadyDeleted: true };
+    await tx
+      .insert(revokedIdentities)
+      .values({ openId: current.openId, userId })
+      .onDuplicateKeyUpdate({ set: { userId } });
+    await tx
+      .update(users)
+      .set({
+        openId: `deleted-${userId}`,
+        name: "Conta encerrada",
+        email: null,
+        loginMethod: null,
+        deletedAt: new Date(),
+      })
+      .where(eq(users.id, userId));
+    await tx.delete(customerAddresses).where(eq(customerAddresses.userId, userId));
+    await tx.delete(pushTokens).where(eq(pushTokens.userId, userId));
+    await tx
+      .delete(emailVerificationTokens)
+      .where(eq(emailVerificationTokens.userId, userId));
+    await tx
+      .delete(notificationPreferences)
+      .where(eq(notificationPreferences.userId, userId));
+    await tx.delete(notifications).where(eq(notifications.userId, userId));
+    await tx
+      .delete(customerPaymentPreferences)
+      .where(eq(customerPaymentPreferences.userId, userId));
+    await tx
+      .update(chatMessages)
+      .set({ body: "Mensagem removida com a conta" })
+      .where(eq(chatMessages.userId, userId));
+    await tx
+      .update(orderReviews)
+      .set({ comment: null })
+      .where(eq(orderReviews.userId, userId));
+    await tx
+      .update(supportTickets)
+      .set({ subject: "Conta encerrada", body: "Conteúdo removido com a conta." })
+      .where(eq(supportTickets.userId, userId));
+    await tx
+      .update(supportTicketMessages)
+      .set({ body: "Mensagem removida com a conta" })
+      .where(eq(supportTicketMessages.userId, userId));
+    await tx
+      .update(customers)
+      .set({ name: "Conta encerrada", phone: null, notes: null, userId: null })
+      .where(eq(customers.userId, userId));
+    return { alreadyDeleted: false };
+  });
 }
 
 export async function getCourierProfileByUser(

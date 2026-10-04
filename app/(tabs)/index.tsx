@@ -10,7 +10,6 @@ import {
   useAudioRecorderState,
 } from "expo-audio";
 import * as FileSystem from "expo-file-system/legacy";
-import { isOAuthConfigured, startOAuthLogin } from "@/constants/oauth";
 import { router, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -388,8 +387,7 @@ export default function HomeScreen() {
     () =>
       `legacy-checkout-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
   );
-  const [checkoutPayment, setCheckoutPayment] = useState<"pix" | "cash">("pix");
-  const [showVoice, setShowVoice] = useState(false);
+  const [checkoutPayment, setCheckoutPayment] = useState<"pix" | "cash">("pix");  const [showVoice, setShowVoice] = useState(false);
   const [voiceMode, setVoiceMode] = useState<VoiceMode>("customer");
   const [voiceReply, setVoiceReply] = useState("");
   const [showSellerOnboarding, setShowSellerOnboarding] = useState(false);
@@ -595,13 +593,7 @@ export default function HomeScreen() {
     setTimeout(() => setNotice(""), 2400);
   };
 
-  const requestLogin = () => {
-    if (!isOAuthConfigured) {
-      notify("Login seguro ainda não está configurado neste ambiente.");
-      return;
-    }
-    void startOAuthLogin();
-  };
+  const requestLogin = () => router.push("/login");
 
   const addToCart = (product: Product) => {
     if (!isAuthenticated) {
@@ -1261,8 +1253,7 @@ export default function HomeScreen() {
                 </Pressable>
               </ScrollView>
             </View>
-          </View>
-        </Modal>
+          </View>        </Modal>
 
         <Modal
           visible={showCheckout}
@@ -2107,9 +2098,9 @@ function CustomerOrders({
           <View style={styles.orderCard} key={order.id}>
             <View style={styles.orderTop}>
               <View>
-                <Text style={styles.eyebrow}>`PEDIDO #${order.id}`</Text>
+                <Text style={styles.eyebrow}>{`PEDIDO #${order.id}`}</Text>
                 <Text style={styles.orderStore}>
-                  `Estabelecimento #${order.storeId}`
+                  {`Estabelecimento #${order.storeId}`}
                 </Text>
               </View>
               <View style={styles.statusPill}>
@@ -2121,7 +2112,7 @@ function CustomerOrders({
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Total</Text>
               <Text style={styles.totalValue}>
-                `R$ ${Number(order.total).toFixed(2).replace(".", ",")}`
+                {`R$ ${Number(order.total).toFixed(2).replace(".", ",")}`}
               </Text>
             </View>
             {order.deliveryAddress ? (
@@ -2182,8 +2173,7 @@ function CustomerOrders({
         </View>
       )}
     </>
-  );
-}
+  );}
 function CustomerProfile({
   user,
   isAuthenticated,
@@ -5615,8 +5605,7 @@ function CheckoutModal({
         </ScrollView>
       </View>
     </KeyboardAvoidingView>
-  );
-}
+  );}
 
 const checkoutStyles = StyleSheet.create({
   addressInput: { minHeight: 70, textAlignVertical: "top", paddingTop: 12 },

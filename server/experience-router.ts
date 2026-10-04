@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
+import { COOKIE_NAME } from "../shared/const";
+import { getSessionCookieOptions } from "./_core/cookies";
 import { protectedProcedure, router } from "./_core/trpc";
 import { getDb } from "./db";
 import * as data from "./db";
@@ -253,6 +255,10 @@ export const experienceRouter = router({
     mine: protectedProcedure.input(z.object({ limit: z.number().int().min(1).max(100).default(50), offset: z.number().int().min(0).default(0) }).optional()).query(async ({ ctx, input }) => { const db = await getDb(); if (!db) throw new Error("Database unavailable"); return db.select().from(privacyConsents).where(eq(privacyConsents.userId, ctx.user.id)).orderBy(desc(privacyConsents.acceptedAt)).limit(input?.limit ?? 50).offset(input?.offset ?? 0); }),
     accept: protectedProcedure.input(z.object({ kind: z.enum(["terms", "privacy"]), version: z.string().trim().min(1).max(20) })).mutation(async ({ ctx, input }) => { const db = await getDb(); if (!db) throw new Error("Database unavailable"); await db.insert(privacyConsents).values({ userId: ctx.user.id, kind: input.kind, version: input.version }).onDuplicateKeyUpdate({ set: { acceptedAt: new Date() } }); return { success: true as const }; }),
     export: protectedProcedure.query(({ ctx }) => data.exportUserData(ctx.user.id)),
-    requestDeletion: protectedProcedure.mutation(async ({ ctx }) => { const ticketId = await data.createSupportTicket({ userId: ctx.user.id, subject: "Solicitação de exclusão de conta", body: "Solicito a análise e a exclusão assistida dos dados da minha conta, respeitando as retenções legais e financeiras aplicáveis." }); return { ticketId, success: true as const }; }),
+    requestDeletion: protectedProcedure.mutation(async ({ ctx }) => {
+      const result = await data.erasePersonalData(ctx.user.id);
+      if (ctx.req?.hostname && ctx.res?.clearCookie) ctx.res.clearCookie(COOKIE_NAME, { ...getSessionCookieOptions(ctx.req), maxAge: -1 });
+      return { success: true as const, deleted: true as const, alreadyDeleted: result.alreadyDeleted };
+    }),
   }),
 });

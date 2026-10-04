@@ -18,10 +18,16 @@
     "production": {
       "autoIncrement": true,
       "distribution": "store",
-      "environment": "production"
+      "environment": "production",
+      "env": {
+        "EXPO_PUBLIC_DEV_AUTH": "false"
+      }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": { "track": "internal" },
+      "ios": {}
+    }
   }
 }
