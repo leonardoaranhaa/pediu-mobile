@@ -128,6 +128,11 @@ jobs:
       - name: Validate database connectivity
         run: |
           node -e "const mysql=require('mysql2/promise'); mysql.createConnection(process.env.DATABASE_URL).then(async c=>{const [r]=await c.query('SELECT 1 AS ok'); if(r[0].ok!==1) process.exit(1); await c.end(); console.log('MySQL operational')}).catch(e=>{console.error(e); process.exit(1)})"
+      - name: Seed development data twice
+        run: |
+          pnpm db:seed
+          pnpm db:seed | tee /tmp/seed.log
+          grep -q "0 produto(s) criado(s), endereço já existente" /tmp/seed.log
       - name: Start Mercado Pago test API
         run: |
           pnpm exec tsx scripts/mercado-pago-api-mock.ts > /tmp/mercado-pago-mock.log 2>&1 &
@@ -141,6 +146,8 @@ jobs:
           cat /tmp/mercado-pago-mock.log
           exit 1
       - name: Start API
+        env:
+          DEV_AUTH_ENABLED: "true"
         run: |
           pnpm dev:server > /tmp/pediu-api.log 2>&1 &
           echo $! > /tmp/pediu-api.pid
@@ -160,6 +167,35 @@ jobs:
           echo "API health check timed out"
           cat /tmp/pediu-api.log
           exit 1
+      - name: Smoke seeded sessions and catalog
+        run: |
+          node - <<'NODE'
+          const base = 'http://127.0.0.1:3000';
+          const trpc = async (path, token, input) => {
+            const query = input ? `?input=${encodeURIComponent(JSON.stringify({ json: input }))}` : '';
+            const response = await fetch(`${base}/api/trpc/${path}${query}`, { headers: token ? { authorization: `Bearer ${token}` } : {} });
+            if (!response.ok) throw new Error(`${path} returned ${response.status}`);
+            return (await response.json()).result.data.json;
+          };
+          const login = async (persona) => {
+            const response = await fetch(`${base}/api/dev/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ persona }) });
+            if (!response.ok) throw new Error(`dev login ${persona} returned ${response.status}`);
+            return (await response.json()).app_session_id;
+          };
+          (async () => {
+            const catalog = await trpc('pediu.marketplace.search', null, { category: 'Tudo', limit: 50, offset: 0 });
+            if (catalog.items.length < 5) throw new Error(`Expected seeded catalog, got ${catalog.items.length} item(s)`);
+            const customer = await login('customer');
+            const me = await trpc('auth.me', customer);
+            if (me?.openId !== 'dev-customer') throw new Error('Customer session did not resolve');
+            const addresses = await trpc('pediu.addresses.list', customer);
+            if (!addresses.some((address) => address.isDefault === 1)) throw new Error('Customer has no default address');
+            const merchant = await login('merchant');
+            const store = await trpc('pediu.stores.mine', merchant);
+            if (!store?.isOpen) throw new Error('Merchant store is missing or closed');
+            console.log(`Seed smoke OK: ${catalog.items.length} product(s), store #${store.id}`);
+          })().catch((error) => { console.error(error); process.exit(1); });
+          NODE
       - name: Run Go-Live readiness baseline
         run: pnpm go-live:check
       - name: Run Go-Live device preflight
