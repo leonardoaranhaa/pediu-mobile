@@ -2100,9 +2100,9 @@ function CustomerOrders({
           <View style={styles.orderCard} key={order.id}>
             <View style={styles.orderTop}>
               <View>
-                <Text style={styles.eyebrow}>`PEDIDO #${order.id}`</Text>
+                <Text style={styles.eyebrow}>{`PEDIDO #${order.id}`}</Text>
                 <Text style={styles.orderStore}>
-                  `Estabelecimento #${order.storeId}`
+                  {`Estabelecimento #${order.storeId}`}
                 </Text>
               </View>
               <View style={styles.statusPill}>
@@ -2114,7 +2114,7 @@ function CustomerOrders({
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Total</Text>
               <Text style={styles.totalValue}>
-                `R$ ${Number(order.total).toFixed(2).replace(".", ",")}`
+                {`R$ ${Number(order.total).toFixed(2).replace(".", ",")}`}
               </Text>
             </View>
             {order.deliveryAddress ? (
@@ -2175,8 +2175,7 @@ function CustomerOrders({
         </View>
       )}
     </>
-  );
-}
+  );}
 function CustomerProfile({
   user,
   isAuthenticated,

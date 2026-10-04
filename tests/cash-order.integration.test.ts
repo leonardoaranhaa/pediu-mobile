@@ -73,4 +73,39 @@ describe.skipIf(!enabled)("cash checkout against MySQL", () => {
 
     await expect(customerApi.pediu.orders.create({ ...input, idempotencyKey: `${idempotencyKey}-total`, total: "1.00" })).rejects.toThrow(/Total do pedido inválido/);
   });
+
+  it("lets the seeded merchant deliver the order and the customer read the same final status", async () => {
+    if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL é obrigatório para o teste de checkout");
+    const customer = await db.getUserByOpenId(DEV_PERSONAS.customer.openId);
+    const merchant = await db.getUserByOpenId(DEV_PERSONAS.merchant.openId);
+    if (!customer || !merchant) throw new Error("Rode pnpm db:seed antes do teste de integração");
+    const customerApi = callerFor(customer);
+    const merchantApi = callerFor(merchant);
+
+    const catalog = await customerApi.pediu.marketplace.search({ query: "Batata frita", limit: 20, offset: 0 });
+    const item = catalog.items.find((product) => product.name === "Batata frita");
+    const quote = await customerApi.pediu.checkout.quote({ storeId: item!.storeId, items: [{ productId: item!.id, quantity: 1 }] });
+    const address = (await customerApi.pediu.addresses.list()).find((entry) => entry.isDefault === 1);
+    const created = await customerApi.pediu.orders.create({
+      idempotencyKey: `integration-delivery-${Date.now()}`,
+      storeId: quote.storeId,
+      total: quote.total,
+      paymentMethod: "cash",
+      addressId: address!.id,
+      items: quote.items.map((quoted) => ({ productId: quoted.productId, quantity: quoted.quantity, unitPrice: quoted.unitPrice })),
+    });
+
+    await expect(merchantApi.pediu.orders.status({ orderId: created.orderId, status: "Entregue" })).rejects.toThrow(/Transição de pedido inválida/);
+    await expect(customerApi.pediu.orders.status({ orderId: created.orderId, status: "Aceito" })).rejects.toThrow(/cancelar/);
+
+    for (const status of ["Aceito", "Preparando", "Pronto", "A caminho", "Entregue"] as const) {
+      await merchantApi.pediu.orders.status({ orderId: created.orderId, status });
+      expect((await customerApi.pediu.orders.get({ orderId: created.orderId })).status).toBe(status);
+    }
+
+    expect((await merchantApi.pediu.orders.get({ orderId: created.orderId })).status).toBe("Entregue");
+    const events = await customerApi.pediu.experience.tracking.events({ orderId: created.orderId });
+    expect(events.map((event) => event.eventType)).toEqual(["Entregue", "A caminho", "Pronto", "Preparando", "Aceito", "Pendente"]);
+    await expect(merchantApi.pediu.orders.status({ orderId: created.orderId, status: "Cancelado" })).rejects.toThrow(/Transição de pedido inválida/);
+  });
 });
