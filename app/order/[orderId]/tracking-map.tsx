@@ -1,7 +1,7 @@
 import { Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { trpc } from "@/lib/trpc";
-import { Page, Card, PEDIU, s } from "@/components/pediu-page";
+import { Page, Card, OutlineButton, PEDIU, s } from "@/components/pediu-page";
 
 function formatDate(value: Date | string) {
   const date = new Date(value);
@@ -14,6 +14,10 @@ export default function TrackingMapPage() {
   const events = trpc.pediu.experience.tracking.events.useQuery({ orderId: id }, { enabled: Number.isInteger(id) && id > 0, refetchInterval: 10000 });
   const current = trpc.pediu.experience.delivery.current.useQuery({ orderId: id }, { enabled: Number.isInteger(id) && id > 0, refetchInterval: 8000 });
   const latest = events.data?.find((event) => event.latitude != null && event.longitude != null);
+  const freshness = current.data?.locationFreshness ?? "unavailable";
+  const freshnessLabel = freshness === "fresh" ? "Posição atualizada" : freshness === "stale" ? "Última posição está desatualizada" : "Sem posição recente";
+  const ageLabel = current.data?.locationAgeSeconds == null ? "idade indisponível" : `${current.data.locationAgeSeconds}s atrás`;
+  const hasNetworkError = current.isError || events.isError;
   return <Page title="Acompanhar entrega" eyebrow="RASTREAMENTO">
     <Card>
       <View style={{ height: 240, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "#F2F2F2", gap: 8 }}>
@@ -21,7 +25,9 @@ export default function TrackingMapPage() {
         {current.data?.assignment ? <Text style={s.muted}>Entregador: {current.data.assignment.courierName}{current.data.assignment.courierPhone ? ` · ${current.data.assignment.courierPhone}` : ""}</Text> : <Text style={s.muted}>Aguardando atribuição do entregador.</Text>}
         {current.data?.assignment?.etaMinutes != null ? <Text style={{ color: PEDIU.coral, fontSize: 14, fontWeight: "900" }}>ETA: {current.data.assignment.etaMinutes} min</Text> : null}
         {current.data?.latestLocation ? <Text style={s.muted}>Última posição: {Number(current.data.latestLocation.latitude).toFixed(5)}, {Number(current.data.latestLocation.longitude).toFixed(5)}</Text> : latest ? <Text style={s.muted}>Última posição registrada no evento: {Number(latest.latitude).toFixed(5)}, {Number(latest.longitude).toFixed(5)}</Text> : <Text style={s.muted}>Aguardando posição do entregador.</Text>}
-        <Text style={{ color: PEDIU.green, fontSize: 11, fontWeight: "800" }}>Atualização automática a cada 8 segundos</Text>
+        <Text style={{ color: freshness === "fresh" ? PEDIU.green : freshness === "stale" ? PEDIU.orange : PEDIU.muted, fontSize: 11, fontWeight: "800" }}>{freshnessLabel} · {ageLabel}</Text>
+        {hasNetworkError ? <Text style={{ color: PEDIU.coral, fontSize: 11, fontWeight: "800" }}>Reconectando… o último dado conhecido foi preservado.</Text> : <Text style={{ color: PEDIU.green, fontSize: 11, fontWeight: "800" }}>Atualização automática a cada 8 segundos</Text>}
+        {hasNetworkError ? <OutlineButton title="Tentar novamente" onPress={() => { void current.refetch(); void events.refetch(); }} disabled={current.isFetching || events.isFetching} /> : null}
       </View>
     </Card>
     <Card>

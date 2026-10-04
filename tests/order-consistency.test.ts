@@ -25,7 +25,24 @@ describe("Pediu order/payment consistency", () => {
       name: "Loja Teste",
       isOpen: 1,
       deliveryFee: "5.00",
+      deliveryEnabled: 1,
+      pickupEnabled: 0,
+      deliveryRadiusKm: "5.00",
+      latitude: "-23.550520",
+      longitude: "-46.633308",
       pixKey: "pix@test.local",
+    } as any);
+    vi.spyOn(db, "getCustomerAddress").mockResolvedValue({
+      id: 900,
+      latitude: "-23.550520",
+      longitude: "-46.633308",
+      street: "Rua Teste",
+      number: "10",
+      complement: null,
+      neighborhood: "Centro",
+      city: "São Paulo",
+      state: "SP",
+      postalCode: "01311000",
     } as any);
     vi.spyOn(db, "getAvailableProductForStore").mockResolvedValue({
       id: 101,
@@ -36,13 +53,17 @@ describe("Pediu order/payment consistency", () => {
       available: 1,
     } as any);
 
-    const atomicCreate = vi.spyOn(db, "createOrderWithPayment").mockResolvedValue({
-      orderId: 501,
-      paymentId: 701,
-    });
+    const atomicCreate = vi
+      .spyOn(db, "createOrderWithPayment")
+      .mockResolvedValue({
+        orderId: 501,
+        paymentId: 701,
+      });
     const legacyOrder = vi.spyOn(db, "createOrder");
     const legacyPayment = vi.spyOn(db, "createOrderPayment");
-    vi.spyOn(push, "sendPushToUser").mockRejectedValue(new Error("push unavailable"));
+    vi.spyOn(push, "sendPushToUser").mockRejectedValue(
+      new Error("push unavailable"),
+    );
 
     const caller = appRouter.createCaller({ user: customer } as any);
     const result = await caller.pediu.orders.create({
@@ -50,7 +71,7 @@ describe("Pediu order/payment consistency", () => {
       storeId: 7,
       total: "35.00",
       paymentMethod: "pix",
-      deliveryAddress: "Rua Teste, 10",
+      addressId: 900,
       items: [{ productId: 101, quantity: 1, unitPrice: "999.99" }],
     });
 
@@ -61,7 +82,9 @@ describe("Pediu order/payment consistency", () => {
         total: "35.00",
         couponCode: undefined,
         discount: "0.00",
-        deliveryAddress: "Rua Teste, 10",
+        deliveryAddress: "Rua Teste, 10, Centro · São Paulo/SP, 01311000",
+        fulfillmentMode: "delivery",
+        deliveryFeeSnapshot: "5.00",
         idempotencyKey: "test-atomic-order",
       },
       [{ productId: 101, quantity: 1, unitPrice: "30.00" }],
@@ -69,6 +92,10 @@ describe("Pediu order/payment consistency", () => {
     );
     expect(legacyOrder).not.toHaveBeenCalled();
     expect(legacyPayment).not.toHaveBeenCalled();
-    expect(result).toMatchObject({ orderId: 501, paymentId: 701, status: "Pendente" });
+    expect(result).toMatchObject({
+      orderId: 501,
+      paymentId: 701,
+      status: "Pendente",
+    });
   });
 });

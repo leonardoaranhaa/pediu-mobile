@@ -1,0 +1,1314 @@
+# Plano de Go-Live — Pediu
+
+> Documento operacional para levar o Pediu do estado de desenvolvimento/QA para uma operação comercial real, controlada e observável.
+
+**Status:** 🟡 Em preparação para Go-Live  
+**Branch de origem do plano:** `main`  
+**Última referência técnica:** auditoria de 22–23/09/2026  
+**Objetivo:** transformar a base técnica já implementada em uma operação real, com pagamentos, comunicação, segurança, infraestrutura, QA e publicação devidamente homologados.
+
+---
+
+## 1. Objetivo do Go-Live
+
+O Go-Live do Pediu não será tratado como um único deploy. Ele será considerado concluído somente quando o fluxo completo estiver validado:
+
+**Cliente → catálogo → carrinho → checkout → pagamento → lojista → preparo → entregador → entrega → comunicação → pós-venda**
+
+O código atual já possui uma base funcional importante. O foco desta etapa é fechar as dependências externas e operacionais que não podem ser validadas apenas por testes unitários.
+
+### Critério geral
+
+O Pediu só deve entrar em operação comercial aberta depois que:
+
+- todos os bloqueadores P0 estiverem concluídos;
+- o pagamento real estiver homologado;
+- os fluxos críticos tiverem E2E automatizado e validação em dispositivos reais;
+- backup e restauração do banco tiverem sido testados;
+- observabilidade e alertas estiverem ativos;
+- OAuth, e-mail, push, storage e domínios estiverem configurados;
+- o primeiro piloto controlado tiver sido executado sem incidentes críticos.
+
+---
+
+# 2. Estado atual
+
+## Já implementado e validado no código
+
+- CORS e proteções de origem/cookie.
+- Sanitização de logs OAuth.
+- Remoção de sessão por URL.
+- Controles de rate limit/timeout/concurrency no fluxo de voz.
+- Cartão removido do checkout até existir gateway real.
+- Boundary de webhook de pagamento com assinatura HMAC e idempotência.
+- Promoção transacional de lojista.
+- Persistência de localização.
+- Transições de entrega atômicas/idempotentes.
+- Centralização de `getInsertId`.
+- Foreign keys.
+- Limites defensivos em listagens.
+- Storage com escopo por usuário.
+- Validação de `appId` na sessão.
+- Preferência de tema por usuário.
+- Verificação de e-mail baseada em token com hash e expiração.
+- Auditoria de alteração de tickets administrativos.
+- Suíte unitária, build, lint e migrations validados.
+
+## Ainda não significa produção
+
+Os pontos abaixo continuam dependentes de configuração, homologação ou validação externa:
+
+- PSP/gateway PIX real.
+- Webhook real do PSP.
+- Refund/cancelamento/reconciliação financeira.
+- OAuth em configuração real.
+- Provedor de e-mail.
+- Push em dispositivos reais.
+- Storage/publicação de assets gerados.
+- Infraestrutura de produção.
+- Backup e restore.
+- Observabilidade operacional.
+- E2E automatizado.
+- Testes em Android/iOS físicos.
+- Publicação nas lojas.
+
+---
+
+# 3. Bloqueadores P0 — obrigatórios antes de produção
+
+| ID    | Item                 | Critério de aceite                                                             | Status |
+| ----- | -------------------- | ------------------------------------------------------------------------------ | ------ |
+| P0-01 | Ambiente de staging  | Ambiente isolado de produção, com variáveis próprias e banco próprio           | ⬜     |
+| P0-02 | Ambiente de produção | API/app/backend publicados com HTTPS e configuração segura                     | ⬜     |
+| P0-03 | Banco de produção    | Banco provisionado, migrations executadas e acesso restrito                    | ⬜     |
+| P0-04 | Backup               | Backup automático configurado e restore testado                                | ⬜     |
+| P0-05 | Domínio/HTTPS        | Domínio definitivo e certificados válidos                                      | ⬜     |
+| P0-06 | Secrets              | Segredos fora do código e separados por ambiente                               | ⬜     |
+| P0-07 | OAuth                | Client IDs, redirect URIs, state/PKCE e domínio homologados                    | ⬜     |
+| P0-08 | CORS                 | `ALLOWED_ORIGINS` configurado para os domínios reais                           | ⬜     |
+| P0-09 | PIX                  | PSP escolhido, credenciais de produção e criação de cobrança homologadas       | ⬜     |
+| P0-10 | Webhook PIX          | Assinatura, idempotência, atualização de pagamento e eventos de erro validados | ⬜     |
+| P0-11 | E-mail               | Provedor configurado e verificação de e-mail testada em produção controlada    | ⬜     |
+| P0-12 | Push                 | Push real validado em Android e iOS                                            | ⬜     |
+| P0-13 | Observabilidade      | Logs, erros, latência e disponibilidade monitorados com alertas                | ⬜     |
+| P0-14 | E2E crítico          | Jornada principal automatizada e verde                                         | ⬜     |
+| P0-15 | Dispositivos reais   | Android/iOS testados com rede normal, ruim, permissões e background            | ⬜     |
+
+**Regra:** qualquer item P0 pendente mantém o Go-Live bloqueado.
+
+---
+
+# 4. Fase 1 — Infraestrutura de produção
+
+## 4.1 Staging
+
+Criar um ambiente equivalente à produção, mas isolado.
+
+### Requisitos
+
+- banco separado;
+- secrets separados;
+- domínio próprio;
+- storage separado;
+- OAuth separado quando o provedor permitir;
+- webhook de pagamento apontando para sandbox;
+- logs identificados como staging.
+
+### Aceite
+
+Um deploy de staging deve ser reproduzível e não pode acessar dados de produção.
+
+---
+
+## 4.2 Produção
+
+Definir e provisionar:
+
+- servidor/API;
+- banco MariaDB;
+- storage;
+- domínio;
+- HTTPS;
+- DNS;
+- variáveis de ambiente;
+- política de firewall/rede;
+- processo de deploy;
+- processo de rollback.
+
+### Aceite
+
+Um novo deploy deve poder ser executado sem alteração manual de código no servidor.
+
+---
+
+# 5. Fase 2 — Banco, dados e recuperação
+
+## Checklist
+
+- [ ] Executar migrations em banco de produção.
+- [ ] Validar foreign keys.
+- [ ] Verificar índices das tabelas críticas.
+- [ ] Configurar backup automático.
+- [ ] Definir retenção.
+- [ ] Fazer restore em ambiente separado.
+- [ ] Registrar procedimento de recuperação.
+- [ ] Criar rotina para verificar falha de backup.
+- [ ] Fazer relatório de órfãos antes de aplicar migrations em qualquer base existente.
+
+## Critério de aceite
+
+É possível recuperar o ambiente a partir de um backup conhecido e validar integridade das tabelas essenciais.
+
+---
+
+# 6. Fase 3 — Pagamentos
+
+Esta é uma das principais portas de entrada do dinheiro real.
+
+## 6.1 PIX
+
+O código já possui uma fronteira assinada/idempotente para webhook. Isso não substitui a homologação do PSP.
+
+### Necessário
+
+- escolher PSP;
+- criar conta empresarial adequada;
+- homologar API;
+- configurar credenciais de produção;
+- configurar webhook;
+- configurar segredo de assinatura;
+- validar status pendente;
+- validar pago;
+- validar expirado;
+- validar falha;
+- validar duplicidade de webhook;
+- validar divergência entre PSP e banco;
+- validar cancelamento/refund quando suportado;
+- definir reconciliação financeira.
+
+### Cenários obrigatórios
+
+1. Cliente cria pedido.
+2. PIX é gerado.
+3. Pagamento fica pendente.
+4. PSP confirma pagamento.
+5. Webhook chega.
+6. Evento é processado.
+7. Mesmo webhook chega novamente.
+8. Pedido não é duplicado.
+9. Status financeiro é atualizado.
+10. Lojista recebe autorização para prosseguir conforme regra de negócio.
+11. Falha/expiração não libera pedido indevidamente.
+
+## 6.2 Cartão
+
+**Não liberar cartão no checkout enquanto não existir:**
+
+- gateway real;
+- tokenização segura;
+- autorização/captura;
+- webhook;
+- idempotência;
+- cancelamento;
+- refund;
+- tratamento de chargeback;
+- reconciliação.
+
+---
+
+# 7. Fase 4 — Comunicação
+
+## E-mail
+
+Validar:
+
+- cadastro;
+- verificação;
+- recuperação de conta;
+- alteração de e-mail;
+- links expirados;
+- token reutilizado;
+- domínio/remetente;
+- entregabilidade.
+
+Configurar:
+
+- `EMAIL_WEBHOOK_URL`;
+- `EMAIL_VERIFICATION_BASE_URL`.
+
+## Push
+
+Validar:
+
+- novo pedido;
+- atualização do pedido;
+- atribuição de entrega;
+- pedido pronto;
+- pedido a caminho;
+- pedido entregue;
+- mensagens importantes.
+
+Testar:
+
+- app aberto;
+- app em background;
+- app encerrado;
+- permissão negada;
+- permissão concedida;
+- token expirado/renovado;
+- Android;
+- iOS.
+
+---
+
+# 8. Fase 5 — E2E obrigatório
+
+A ausência de E2E automatizado é uma das principais lacunas atuais.
+
+## Jornada Cliente
+
+- [ ] cadastro/login;
+- [ ] localização;
+- [ ] catálogo;
+- [ ] produto;
+- [ ] carrinho;
+- [ ] checkout;
+- [ ] pagamento;
+- [ ] acompanhamento;
+- [ ] cancelamento permitido;
+- [ ] avaliação.
+
+## Jornada Lojista
+
+- [ ] cadastro;
+- [ ] criação da loja;
+- [ ] sessão como merchant;
+- [ ] produtos;
+- [ ] recebimento do pedido;
+- [ ] aceite;
+- [ ] preparo;
+- [ ] pedido pronto.
+
+## Jornada Entregador
+
+- [ ] login;
+- [ ] disponibilidade;
+- [ ] atribuição;
+- [ ] aceite;
+- [ ] saída para entrega;
+- [ ] entrega;
+- [ ] atualização de localização.
+
+## Jornada Administrativa
+
+- [ ] autenticação;
+- [ ] suporte;
+- [ ] auditoria;
+- [ ] alterações administrativas;
+- [ ] validação de permissões.
+
+---
+
+# 9. Fase 6 — Testes de concorrência e segurança
+
+Criar testes para:
+
+- dois checkouts simultâneos;
+- mesma chave de idempotência;
+- dois webhooks iguais;
+- duas mudanças de status de entrega;
+- dois `complete` simultâneos;
+- dois lançamentos de fiado;
+- callback OAuth inválido;
+- replay de OAuth;
+- state inválido;
+- origem não permitida;
+- preflight CORS;
+- cookie mutation de origem inválida;
+- acesso indevido a storage;
+- limites de voz;
+- payload acima do limite.
+
+---
+
+# 10. Fase 7 — Dispositivos reais
+
+## Android
+
+Testar pelo menos:
+
+- aparelho de entrada;
+- aparelho intermediário;
+- Android atualizado;
+- Android com pouca memória;
+- Wi-Fi;
+- 4G/5G;
+- internet instável;
+- GPS desligado;
+- permissão negada;
+- app em background;
+- app encerrado.
+
+## iOS
+
+Testar:
+
+- login;
+- localização;
+- notificações;
+- deep links;
+- background;
+- recuperação de sessão;
+- checkout;
+- comportamento após atualização.
+
+---
+
+# 11. Fase 8 — Observabilidade e operação
+
+Antes do primeiro cliente real, a equipe deve conseguir responder:
+
+- O servidor está online?
+- O banco está saudável?
+- Quantos pedidos estão ativos?
+- Quantos pagamentos estão pendentes?
+- Quantos pagamentos foram confirmados?
+- Existem webhooks falhando?
+- Existem pedidos travados?
+- Existem entregas sem atualização?
+- Existem erros de login?
+- O push está funcionando?
+- O e-mail está sendo entregue?
+- A latência aumentou?
+- Qual foi o último erro crítico?
+
+## Alertas mínimos
+
+- API indisponível;
+- aumento de erros 5xx;
+- banco indisponível;
+- webhook de pagamento falhando;
+- fila/outbox, quando implementada, acumulando;
+- backup falhando;
+- latência acima do limite;
+- aumento anormal de pedidos/pagamentos com erro.
+
+---
+
+# 12. Fase 9 — Escalabilidade
+
+O código atual possui controles process-local. Isso é aceitável para o primeiro ambiente controlado, mas não deve ser tratado como arquitetura distribuída.
+
+Antes de escalar horizontalmente:
+
+- [ ] Redis ou mecanismo equivalente para rate limit;
+- [ ] circuit breaker distribuído;
+- [ ] outbox transacional;
+- [ ] worker de notificações;
+- [ ] filas;
+- [ ] métricas de banco;
+- [ ] load test;
+- [ ] teste de múltiplas instâncias.
+
+---
+
+# 13. Fase 10 — Publicação
+
+## Google Play
+
+- [ ] conta de desenvolvedor;
+- [ ] app ID/package definitivo;
+- [ ] ícone;
+- [ ] screenshots;
+- [ ] descrição;
+- [ ] política de privacidade;
+- [ ] classificação indicativa;
+- [ ] permissões justificadas;
+- [ ] build production;
+- [ ] teste interno;
+- [ ] teste fechado;
+- [ ] release.
+
+## Apple App Store
+
+- [ ] Apple Developer;
+- [ ] Bundle ID;
+- [ ] certificados/provisionamento;
+- [ ] App Store Connect;
+- [ ] screenshots;
+- [ ] descrição;
+- [ ] política de privacidade;
+- [ ] permissões;
+- [ ] build production;
+- [ ] TestFlight;
+- [ ] validação;
+- [ ] release.
+
+---
+
+# 14. Fase 11 — Piloto controlado
+
+Não abrir imediatamente para o mercado inteiro.
+
+## Modelo
+
+### Etapa A — Homologação interna
+
+Usuários controlados.
+
+Objetivo: validar tecnologia.
+
+### Etapa B — Piloto fechado
+
+Poucos clientes, poucos lojistas e poucos entregadores.
+
+Objetivo: validar operação real.
+
+### Etapa C — Produção limitada
+
+Aumentar volume gradualmente.
+
+Objetivo: validar capacidade e suporte.
+
+### Etapa D — Operação aberta
+
+Liberar aquisição normal de clientes.
+
+Objetivo: operação comercial.
+
+---
+
+# 15. Matriz de Go/No-Go
+
+| Área            | Go quando                        | No-Go quando                                        |
+| --------------- | -------------------------------- | --------------------------------------------------- |
+| Segurança       | P0 de segurança validado         | Existe falha crítica aberta                         |
+| Banco           | Backup + restore testados        | Não existe recuperação confiável                    |
+| Pagamento       | PSP homologado                   | Pagamento depende de operação manual não controlada |
+| Webhook         | Assinado + idempotente + testado | Eventos podem duplicar pedido/pagamento             |
+| OAuth           | Fluxo real validado              | Callback ou sessão não homologados                  |
+| E-mail          | Entrega real validada            | Verificação/recuperação não funcionam               |
+| Push            | Android/iOS validados            | Notificações críticas falham                        |
+| E2E             | Jornada principal verde          | Fluxo principal só foi testado manualmente          |
+| Dispositivos    | Android/iOS reais aprovados      | Só preview/web foi validado                         |
+| Observabilidade | Alertas operacionais ativos      | Falhas não são detectadas                           |
+| Rollback        | Procedimento testado             | Não existe caminho de recuperação                   |
+| Piloto          | Sem incidentes críticos          | Existem bloqueios operacionais                      |
+
+---
+
+# 16. Critérios de saída do Go-Live
+
+O Pediu estará operacionalmente pronto quando:
+
+- [ ] P0 = 100% concluído.
+- [ ] Jornada cliente E2E = verde.
+- [ ] Jornada lojista E2E = verde.
+- [ ] Jornada entregador E2E = verde.
+- [ ] Pagamento real = homologado.
+- [ ] Webhook = homologado.
+- [ ] Backup = validado.
+- [ ] Restore = validado.
+- [ ] OAuth = homologado.
+- [ ] E-mail = homologado.
+- [ ] Push = homologado.
+- [ ] Android = aprovado.
+- [ ] iOS = aprovado.
+- [ ] Observabilidade = ativa.
+- [ ] Alertas = ativos.
+- [ ] Rollback = testado.
+- [ ] Piloto fechado = concluído.
+- [ ] Nenhum incidente crítico aberto.
+
+---
+
+# 17. Ordem de execução recomendada
+
+## Sprint 1 — Infraestrutura
+
+1. Staging.
+2. Produção.
+3. Banco.
+4. Backup.
+5. HTTPS/domínio.
+6. Secrets.
+7. Observabilidade.
+
+## Sprint 2 — Integrações externas
+
+1. PSP PIX.
+2. Webhook.
+3. E-mail.
+4. OAuth.
+5. Push.
+6. Storage.
+
+## Sprint 3 — Qualidade
+
+1. E2E cliente.
+2. E2E lojista.
+3. E2E entregador.
+4. E2E administrativo.
+5. Concorrência.
+6. Segurança HTTP.
+
+## Sprint 4 — Dispositivos e publicação
+
+1. Android.
+2. iOS.
+3. Testes de rede.
+4. Testes de permissões.
+5. TestFlight.
+6. Google Play internal/closed testing.
+
+## Sprint 5 — Piloto
+
+1. Grupo controlado.
+2. Monitoramento diário.
+3. Correção de incidentes.
+4. Regressão.
+5. Expansão gradual.
+
+---
+
+# 18. Pós-Go-Live
+
+Durante os primeiros dias de operação, acompanhar diariamente:
+
+- pedidos criados;
+- pedidos cancelados;
+- pagamentos pendentes;
+- pagamentos confirmados;
+- pagamentos divergentes;
+- tempo médio de preparo;
+- tempo médio de entrega;
+- erros 4xx/5xx;
+- falhas de webhook;
+- falhas de push;
+- falhas de e-mail;
+- chamados de suporte;
+- crashes mobile;
+- consumo de banco;
+- uso de storage.
+
+Qualquer incidente crítico deve interromper a expansão do piloto até causa, correção e regressão serem identificadas.
+
+---
+
+# 19. Referências técnicas
+
+Este plano foi consolidado a partir dos documentos de auditoria existentes no repositório:
+
+- `docs/RELATORIO_AUDITORIA_COMPLETA_DELIVERY_2026-09-22.md`
+- `docs/INSTRUCAO_CORRECAO_15_ACHADOS_2026-09-22.md`
+
+A auditoria registrou como validações pós-correção:
+
+- `pnpm check` — passou;
+- `pnpm test` — 22 arquivos, 90 testes aprovados e 1 teste pulado;
+- `pnpm build` — passou;
+- `pnpm lint` — passou;
+- `git diff --check` — passou;
+- migrations MariaDB `0000`–`0023` — passaram;
+- 34 tabelas e 49 FKs na validação de banco vazio;
+- testes focados de segurança/admin/entrega — passaram;
+- E2E automatizado — ainda ausente.
+
+**Importante:** este documento não afirma que provedores externos, contas, credenciais, infraestrutura ou lojas de aplicativos já estejam configurados. Ele define o caminho necessário para chegar a esse estado.
+
+---
+
+# 20. Regra operacional do projeto
+
+> **Não adicionar complexidade de produto antes de fechar a operação básica.**
+
+A prioridade agora é transformar o que já existe em uma operação confiável.
+
+**Sequência:**  
+**Infraestrutura → Dinheiro → Comunicação → E2E → Dispositivos → Publicação → Piloto → Escala**
+
+**Objetivo final:** colocar o Pediu no mercado com capacidade de receber pedidos reais, processar pagamentos reais, acompanhar entregas reais e detectar/falhar com segurança quando algo sair do esperado.
+
+---
+
+# 21. Registro de execução — 25/09/2026
+
+A execução do plano foi iniciada no head do PR #7 (`38045bfa56010f8b2a3cadd531c79ad1511d9173`). O primeiro incremento versionado é o `Go-Live Readiness Check`, disponível por `pnpm go-live:check` em `scripts/go-live-readiness.ts`.
+
+O checker valida configuração mínima de runtime, conexão de banco, migrations e tabelas críticas, health check da API e a presença não revelada de configurações de PIX, webhook, OAuth, e-mail e storage. Também mantém explicitamente como `NOT_CONFIGURED` as dependências que exigem PSP, backup/restore, push em Android/iOS, E2E crítico, dispositivos reais e observabilidade externa. Em produção, configuração mínima ausente ou wildcard em `ALLOWED_ORIGINS` resulta em `BLOCKED`.
+
+## Evidência local
+
+No ambiente E2E local, o checker respondeu `3 PASS`, `0 BLOCKED` e `10 NOT_CONFIGURED`. Foram confirmados HTTP 200 da API, 14 migrations e as 9 tabelas críticas exigidas pelo smoke operacional. Nenhum valor de segredo foi impresso.
+
+A implementação foi validada adicionalmente com `pnpm check`, `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm exec prettier --check` e `git diff --check`. A suíte atual deste head passou com 26 arquivos, 101 testes aprovados e 1 teste ignorado. O workflow operacional foi atualizado para executar o checker depois do health check da API.
+
+## Estado dos bloqueadores
+
+Este incremento **não conclui nenhum P0 externo**. PSP PIX, webhook real, OAuth de produção, e-mail, push, backup/restore, observabilidade, E2E completo e dispositivos reais permanecem pendentes até que existam credenciais, ambientes, homologação e evidências correspondentes. O status geral continua `🟡 Em preparação para Go-Live` e o Go-Live comercial permanece bloqueado conforme a regra do plano.
+
+---
+
+# 22. Registro de execução — jornada E2E vertical do cliente — 25/09/2026
+
+O segundo incremento executável foi implementado sobre o head do PR #7. Foram adicionados `scripts/go-live-client-e2e.ts`, o comando `pnpm go-live:e2e`, a etapa correspondente no workflow operacional e a instrução técnica `docs/INSTRUCAO_FASE_E2E_CLIENTE_PR7.md`.
+
+A jornada usa uma API Express real, sessão Bearer emitida pelo SDK com identidade de teste e um banco MySQL limpo. O fixture cria usuário cliente, usuário lojista, loja aberta e produto disponível com identificadores únicos; ao final, remove os registros criados.
+
+| Etapa            | Evidência automatizada                                                                      |
+| ---------------- | ------------------------------------------------------------------------------------------- |
+| Catálogo         | Produto fixture retornado pelo marketplace com loja e categoria corretas                    |
+| Localização      | Endereço persistido com latitude, longitude e seleção como padrão                           |
+| Quote            | Preço, taxa de entrega e total calculados pelo servidor                                     |
+| Checkout         | Pedido criado usando endereço autorizado e total recalculado                                |
+| Pagamento        | PIX criado e mantido em `pending`; nenhum estado `paid` é fabricado                         |
+| Idempotência     | Repetição da mesma chave devolve o mesmo pedido/pagamento e mantém uma linha em cada tabela |
+| Operação lojista | Pedido visível para o lojista e progressão `Pendente → Aceito → Preparando → Pronto`        |
+| Acompanhamento   | Pedido final e eventos persistidos confirmados pelo cliente                                 |
+
+A execução local em banco limpo aplicou as 24 migrations versionadas e passou com a mensagem `Go-Live client E2E smoke passed`. O banco de preview híbrido anterior foi deliberadamente descartado como evidência: ele tinha tabelas antigas de anúncios, mas não possuía `users.themePreference`, demonstrando por que o smoke deve sempre começar de um schema limpo.
+
+Este incremento cobre um smoke de API integrado, não substitui cadastro/login OAuth real, permissões nativas de localização, carrinho na UI, pagamento confirmado por PSP, webhook, rastreamento GPS, cancelamento, avaliação, push ou teste em Android/iOS. As caixas da jornada completa continuam pendentes até essas evidências serem produzidas.
+
+---
+
+# 23. Registro de execução — estresse e verificação de implantação — 25/09/2026
+
+A terceira etapa executável foi adicionada antes de qualquer nova fatia funcional. Foram criados `scripts/go-live-stress.ts`, `scripts/go-live-deployment.ts`, os comandos `pnpm go-live:stress` e `pnpm go-live:deployment`, além dos workflows `Pediu Operational Validation` e `Pediu Deployment Smoke`.
+
+O teste de estresse é deliberadamente somente leitura: alterna entre `GET /api/health` e `pediu.marketplace.search`, possui timeout, limite de requisições, limite de concorrência, orçamento de p95 e bloqueio explícito para hosts remotos sem `STRESS_ALLOW_REMOTE=1`. Assim, ele não cria pedidos, pagamentos ou dados de negócio.
+
+## Evidências executadas
+
+| Ambiente                                                   |                             Carga | Resultado                                            |
+| ---------------------------------------------------------- | --------------------------------: | ---------------------------------------------------- |
+| API iniciada com bundle de produção e banco limpo          |      120 requisições / 12 workers | 0% erro; p50 20,1 ms; p95 64,4 ms; máximo 76,8 ms    |
+| Processo `NODE_ENV=production` na porta 3001 (passo do CI) |        60 requisições / 8 workers | 0% erro; p50 14,6 ms; p95 40,1 ms; máximo 62,4 ms    |
+| URL HTTPS pública temporária da sandbox                    |        40 requisições / 4 workers | 0% erro; p50 11,1 ms; p95 53,7 ms; máximo 144,8 ms   |
+| Smoke do bundle de produção local                          | health + marketplace + CORS exato | aprovado; health 200, marketplace 200, preflight 204 |
+
+A URL pública temporária utilizada foi `https://3000-iue696glzt2dfr1suc5xk-6d6ba285.us1.manus.computer`. Ela comprova o caminho HTTP implantado na sandbox, mas não é staging ou produção permanente.
+
+A auditoria de implantação encontrou zero deployments GitHub para este repositório e nenhum projeto Vercel associado ao Pediu. Por isso, o repositório agora contém um workflow manual `Pediu Deployment Smoke`: quando houver uma URL de staging/produção, ele exige a URL, valida health/marketplace/CORS e executa carga read-only antes do aceite operacional.
+
+## Estado operacional
+
+O baseline de código e implantação está verde. O PSP PIX continua pendente por depender da criação do CNPJ, escolha de provedor, credenciais e homologação. A existência de um baseline verde não transforma a sandbox em produção nem substitui domínio, banco, secrets, backup/restore, observabilidade, OAuth/e-mail/push e dispositivos reais; esses itens precisam ser confirmados no ambiente definitivo antes do Go-Live comercial. Nenhuma nova etapa funcional deve ser considerada concluída sem repetir estresse e smoke de implantação.
+
+---
+
+# 24. Registro de execução — E2E operacional de lojista e entrega — 25/09/2026
+
+A próxima fatia vertical foi implementada como `scripts/go-live-operations-e2e.ts` e integrada ao workflow operacional pelo comando `pnpm go-live:operations-e2e`. O smoke cria fixture isolada, usa Bearer de teste, percorre o fluxo de lojista e entrega, valida o acompanhamento pelo cliente e remove os dados ao terminar.
+
+Na primeira execução contra MariaDB real, o E2E encontrou uma regressão que os mocks unitários não capturavam: o `UPDATE` alterava corretamente o status do pedido para `A caminho`, mas a leitura direta de `affectedRows` no retorno do Drizzle não funcionava em todos os formatos do driver. Como consequência, o evento `A caminho` não era criado. Foi corrigido o helper `getAffectedRows`, aceitando tanto o cabeçalho direto quanto o cabeçalho retornado em array, e a mesma normalização foi aplicada à conclusão de entrega e ao status administrativo de suporte.
+
+Após a correção, o E2E passou em banco limpo: `Pendente → Aceito → Preparando → Pronto → A caminho → Entregue`, atribuição ao lojista, localização com ETA, consulta do tracking pelo cliente, conclusão idempotente e cleanup do fixture. Esta descoberta reforça a regra de não avançar apenas com mocks: cada fatia deve atravessar o banco e o processo de produção reais.
+
+O PSP PIX continua fora deste smoke e permanece pendente de CNPJ, provedor, credenciais e homologação.
+
+Durante a repetição do smoke público, o primeiro preflight retornou 403 porque a instância temporária tinha `ALLOWED_ORIGINS` somente com `http://localhost:8081`. O código bloqueou corretamente a origem HTTPS não declarada. A instância foi reiniciada com as origens local e pública explícitas; o smoke então passou com CORS exato e o estresse público voltou a zero erro. Essa evidência deve ser reproduzida com os domínios definitivos no staging/produção.
+
+---
+
+# 25. Revalidação do ambiente próprio do entregador — 26/09/2026
+
+A fatia courier foi reaplicada sobre o head do PR #7 e revalidada antes de qualquer avanço:
+
+- MariaDB limpo: 25 migrations, 37 tabelas, 56 FKs e `users.role` com `courier`.
+- E2E contra bundle de produção em `127.0.0.1:3002`: cadastro do courier, aprovação administrativa, vínculo com a loja, disponibilidade, oferta, aceite transacional, consentimento de localização, GPS, tracking do cliente e conclusão idempotente.
+- Cleanup confirmado: zero usuários `ci-ops-*` e zero auditorias residuais após o smoke.
+- Deployment smoke: health, marketplace e CORS exato aprovados.
+- Estresse read-only: 120 requests, concorrência 12, p95 de 49,2 ms, erro 0%.
+- Matriz local: `pnpm check`, `pnpm test` (105 passed, 1 skipped), `pnpm build`, `pnpm lint` e `git diff --check` aprovados.
+
+O PSP e repasse financeiro do entregador continuam pendentes exclusivamente por CNPJ, provedor, credenciais e homologação; nenhum pagamento foi simulado como concluído.
+
+---
+
+# 26. Backup e restauração — 26/09/2026
+
+A próxima etapa executável adicionou `scripts/go-live-backup-restore.ts`, o comando `pnpm go-live:backup-restore` e um gate obrigatório no workflow operacional. O smoke faz dump lógico com transação consistente, restaura em banco temporário isolado, compara a estrutura, o journal de migrations e as contagens de linhas críticas, e remove o banco temporário e o arquivo de dump mesmo quando ocorre falha.
+
+Na validação local contra MariaDB real, o backup/restore passou com 37 tabelas, 25 migrations e 7 verificações de contagem de linhas. O cleanup confirmou zero banco temporário e zero arquivo de dump residual. O mesmo gate usa a credencial administrativa do MySQL de CI e não altera a base de origem.
+
+Após a restauração, o bundle `NODE_ENV=production` foi iniciado em `127.0.0.1:3003`. O deployment smoke passou com health 200, marketplace 200 e CORS exato. O stress read-only passou com 120 requests, concorrência 12, p95 de 73,4 ms, máximo de 85,7 ms e taxa de erro 0%.
+
+Esta etapa valida recuperação lógica em ambiente controlado; backup agendado, retenção, armazenamento externo, criptografia, alertas de falha e restore de produção continuam dependentes da infraestrutura definitiva e permanecem P0.
+
+---
+
+# 27. Observabilidade operacional mínima — 26/09/2026
+
+Foi implementado um endpoint protegido `GET /api/metrics`, com token Bearer em `OBSERVABILITY_TOKEN`, comparação em tempo constante, `Cache-Control: no-store` e ausência de exposição de payloads de usuário. O coletor mantém contagem, erros, taxa de erro, média, p95 aproximado por buckets, máximo e uptime; a cardinalidade de procedimentos é limitada a 256 entradas para evitar crescimento sem teto em processo.
+
+O runtime de produção agora bloqueia o boot quando `OBSERVABILITY_TOKEN` não está configurado. O deployment smoke passou validando health 200, marketplace 200, CORS exato e `metrics=protected`; sem token, a chamada recebeu 401. O stress read-only passou com 120 requests, concorrência 12, p95 de 55,8 ms, máximo de 70,2 ms e taxa de erro 0%.
+
+A matriz local passou com `pnpm check`, `pnpm test` (107 passed, 1 skipped), `pnpm build`, `pnpm lint`, testes específicos de observabilidade e `git diff --check`. O token protege o endpoint, mas envio para um SaaS externo, dashboards, alertas e retenção centralizada continuam dependentes da infraestrutura definitiva e não são considerados concluídos por este incremento.
+
+---
+
+# 28. Concorrência e idempotência de checkout/webhook — 26/09/2026
+
+A fase de concorrência foi implementada sobre o head do PR #7 com `scripts/go-live-concurrency.ts`, o comando `pnpm go-live:concurrency`, o helper `isUniqueConstraintError` e recuperação transacional nos caminhos de checkout e webhook. A instrução técnica está em `docs/INSTRUCAO_FASE_CONCORRENCIA_PR7.md`.
+
+Na primeira execução contra MariaDB real, o smoke encontrou duas corridas que mocks não capturavam:
+
+- 12 checkouts com a mesma chave retornavam HTTP 500 ao perder a unique key de `pediu_orders_idempotency_unique`;
+- depois da correção do checkout, 12 webhooks HMAC idênticos retornavam uma resposta 200 e onze 422 por colisão em `(provider, providerEventId)` de `pediu_webhook_events`.
+
+O checkout agora relê o pedido/pagamento vencedor após conflito único. `applyPaymentWebhook` mantém a transação como autoridade e, quando perde a inserção concorrente do evento, relê o evento e o pagamento persistidos; erros não relacionados continuam sendo propagados. O detector percorre envelopes `cause`, `originalError` e `driverError`, com regressão unitária para códigos, errno, mensagens encapsuladas e erro irrelevante.
+
+## Evidências executadas
+
+| Validação                                                                            | Resultado                                                                                                                                                                               |
+| ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Smoke de concorrência em bundle `NODE_ENV=production`, MariaDB real, 12 concorrentes | 12 checkouts convergiram para 1 pedido/pagamento; 12 webhooks convergiram para 1 evento; todas as respostas foram aceitas e o cleanup da fixture passou                                 |
+| Repetição ampliada no mesmo bundle, 24 concorrentes                                  | 24 checkouts convergiram para 1 pedido/pagamento; 24 webhooks convergiram para 1 evento                                                                                                 |
+| Deployment smoke em `127.0.0.1:3004`                                                 | health 200, marketplace 200, CORS exato e métricas protegidas aprovados                                                                                                                 |
+| Stress read-only no bundle de produção                                               | 120 requests / 12 workers; p50 20,9 ms; p95 34,1 ms; máximo 73,7 ms; erro 0%                                                                                                            |
+| Suíte e qualidade local                                                              | 28 arquivos passaram, 115 testes passaram e 1 foi ignorado; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier dos arquivos de código/configuração da fase e `git diff --check` passaram |
+
+O workflow `Pediu Operational Validation` passou a injetar `PAYMENT_WEBHOOK_SECRET` de teste e executar o smoke concorrente após os E2Es de lojista/entrega. A carga do CI é limitada a 12 concorrentes e usa somente fixtures isoladas.
+
+Esta entrega cobre apenas checkout com a mesma chave e webhook com o mesmo evento. Não conclui a Fase 6 inteira: concorrência de status/`complete`, fiado, OAuth, CORS, storage, voz e limites de payload continuam como incrementos próprios. PSP/PIX, webhook real do provedor, CNPJ, credenciais, refund e reconciliação permanecem pendentes; nenhum pagamento real foi simulado como homologado. O Go-Live comercial continua bloqueado pelos P0 externos e operacionais do plano.
+
+---
+
+# 29. Concorrência de status e conclusão de entrega — 26/09/2026
+
+A próxima fatia da Fase 6 foi implementada sobre o PR #7 com atualização condicional de status e regressões concorrentes no E2E operacional. A instrução técnica está em `docs/INSTRUCAO_FASE_CONCORRENCIA_ENTREGA_PR7.md`.
+
+`updateOrderStatus` agora recebe o status esperado e só atualiza a linha quando o pedido ainda está nesse estado. Quando outra chamada vence a corrida, a rota trata a repetição do mesmo status como sucesso idempotente, não cria evento/notificação duplicado e rejeita uma transição stale diferente. A conclusão `A caminho → Entregue` já era condicional e transacional; o E2E passou a enviar duas conclusões simultâneas para proteger esse contrato.
+
+## Evidências executadas
+
+| Validação                                  | Resultado                                                                                                                                                               |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Baseline antes da alteração                | Deployment smoke aprovado; stress 120/12 com p95 de 45,1 ms e erro 0%; checkout/webhook concorrente aprovado                                                            |
+| Regressões unitárias focadas               | 13 testes aprovados para transição idêntica, retry já aplicado, transição stale e conclusão simultânea                                                                  |
+| E2E operacional real                       | Três execuções consecutivas aprovadas com onboarding courier, fluxo de entrega, duas chamadas paralelas por status e duas conclusões paralelas; zero fixtures residuais |
+| Deployment smoke final em `127.0.0.1:3004` | health 200, marketplace 200, CORS exato e métricas protegidas aprovados                                                                                                 |
+| Stress final read-only                     | 120 requests / 12 workers; p50 14,0 ms; p95 34,8 ms; máximo 62,5 ms; erro 0%                                                                                            |
+| Matriz local final                         | 28 arquivos, 119 testes aprovados e 1 ignorado; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier dos arquivos da fase e `git diff --check` aprovados                   |
+
+O primeiro run remoto do Operational Validation encontrou um timing que as execuções locais anteriores não haviam capturado: a segunda chamada podia ler `Aceito` já persistido e falhava ao validar a transição impossível `Aceito → Aceito`. A rota passou a tratar o status já persistido como retry idempotente, sem gravar evento/notificação, e foi adicionada regressão unitária. A reprodução local posterior passou três vezes consecutivas e os gates finais permaneceram verdes.
+
+O commit de correção `0a083e1` passou no CI (`36238830915`) e no `Pediu Operational Validation` (`36238830911`), incluindo o E2E de lojista/entrega com o timing anteriormente falho, o smoke de checkout/webhook concorrente, deployment smoke e stress. A fase está concluída neste escopo; os bloqueadores externos do Go-Live comercial permanecem os mesmos do plano.
+
+O workflow operacional já contém o E2E de lojista/entrega e passará a executar este cenário concorrente por meio do script atualizado. Esta entrega cobre status idêntico/stale e `complete` concorrente; fiado, OAuth, CORS, storage, voz e limites de payload continuam pendentes. PSP/PIX, webhook real, CNPJ, credenciais, refund, reconciliação e infraestrutura externa permanecem bloqueadores do Go-Live comercial.
+
+---
+
+# 30. Concorrência de fiado e proteção do limite de crédito — 26/09/2026
+
+A próxima fatia da Fase 6 foi implementada sobre o PR #7 com lock pessimista do cliente, retry fiado idempotente e smoke de oversubscription. A instrução técnica está em `docs/INSTRUCAO_FASE_CONCORRENCIA_FIADO_PR7.md`.
+
+`createOrderWithFiado` agora bloqueia o registro de `pediu_customers` com `SELECT ... FOR UPDATE` dentro da transação. Depois de obter o lock, a operação relê a chave de idempotência; somente uma transação cria pedido/itens, atualiza saldo, lança ledger e cria pagamento fiado. A segunda chamada com a mesma chave retorna o pedido já persistido sem repetir efeitos. Chaves diferentes são serializadas e uma segunda compra que excede o limite é rejeitada sem sobrescrever o saldo.
+
+A rota preserva `paymentId: null` para fiado em todos os caminhos de retry. Durante a validação real, o smoke descobriu primeiro que a recuperação genérica expunha o ID do pagamento fiado e, depois, que o pré-check inicial também retornava esse ID. Ambos os caminhos foram separados e cobertos por regressão unitária; nenhum pagamento externo foi usado.
+
+## Evidências executadas
+
+| Validação                                      | Resultado                                                                                                                                                        |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Baseline antes da alteração                    | Deployment smoke aprovado; stress 120/12 com p50 13,5 ms, p95 27,5 ms, máximo 60,8 ms e erro 0%; checkout/webhook concorrente aprovado                           |
+| Regressões unitárias focadas                   | 6 testes de fiado aprovados, incluindo retry encontrado no pré-check                                                                                             |
+| Smoke fiado real ampliado                      | Três execuções finais aprovadas; mesma chave convergiu para um crédito e chaves diferentes produziram uma aprovação e uma rejeição por limite, sem saldo perdido |
+| E2E operacional e checkout/webhook concorrente | Ambos aprovados no bundle final                                                                                                                                  |
+| Deployment smoke final em `127.0.0.1:3004`     | health 200, marketplace 200, CORS exato e métricas protegidas aprovados                                                                                          |
+| Stress final read-only                         | 120 requests / 12 workers; p50 17,0 ms; p95 47,8 ms; máximo 62,7 ms; erro 0%                                                                                     |
+| Cleanup SQL                                    | Zero usuários, pedidos, clientes e fixtures concorrentes residuais                                                                                               |
+| Matriz local final                             | 28 arquivos, 120 testes aprovados e 1 ignorado; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier dos arquivos da fase e `git diff --check` aprovados            |
+
+O workflow operacional recebeu `pnpm go-live:fiado-concurrency` após o E2E de lojista/entrega. Esta entrega fecha apenas a concorrência do crédito interno; PSP/PIX real, CNPJ, webhook real de provedor, credenciais externas, cobrança/reconciliação, OAuth, CORS, storage, voz e demais dependências do plano continuam sem evidência de produção e impedem declarar Go-Live comercial READY.
+
+O commit `7fdda14` passou no CI (`36239443014`) e no `Pediu Operational Validation` (`36239443036`), incluindo migrações limpas, E2Es de cliente/lojista/entrega, o smoke de fiado, checkout/webhook concorrente, deployment smoke e stress. A fase está concluída neste escopo; o Go-Live comercial continua bloqueado pelas dependências externas e operacionais registradas no plano.
+
+---
+
+# 31. Segurança do callback OAuth — 27/09/2026
+
+A próxima fatia da Fase 6 foi implementada sobre o PR #7 com validação estrita de `state`, bloqueio de replay do authorization code e regressões HTTP do callback. A instrução técnica está em `docs/INSTRUCAO_FASE_OAUTH_SEGURANCA_PR7.md`.
+
+O SDK agora rejeita state vazio, não canônico ou malformado e aceita somente redirect URIs com `http`, `https` ou o esquema nativo `pediupediu`, sem credenciais ou fragmentos. Os callbacks web e mobile falham com HTTP 400 antes de contactar o provedor quando o state é inválido. Uma guarda processual de TTL curto, com cardinalidade limitada e chave hash do código, bloqueia replay antes da troca de token e libera a tentativa quando há falha transitória. Nenhum código, token ou state é registrado em logs.
+
+## Evidências executadas
+
+| Validação                                  | Resultado                                                                                                                                        |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Baseline antes da alteração                | Deployment smoke aprovado; stress 120/12 com p50 13,7 ms, p95 29,8 ms, máximo 65,8 ms e erro 0%; checkout/webhook e fiado concorrentes aprovados |
+| Regressões OAuth focadas                   | 6 testes aprovados para state inválido, protocolo/credenciais/fragmento inseguros, replay e retry após falha                                     |
+| Matriz local final                         | 29 arquivos, 126 testes aprovados e 1 ignorado; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados                 |
+| Callback inválido no bundle compilado      | HTTP 400 com `invalid OAuth state`, sem chamada ao provedor                                                                                      |
+| Deployment smoke final em `127.0.0.1:3004` | health 200, marketplace 200, CORS exato e métricas protegidas aprovados                                                                          |
+| Stress final read-only                     | 120 requests / 12 workers; p50 19,1 ms; p95 42,5 ms; máximo 65,6 ms; erro 0%                                                                     |
+| Regressões operacionais                    | E2E courier, checkout/webhook concorrente e fiado ampliado aprovados após a recompilação                                                         |
+
+Esta entrega endurece a fronteira local, mas não homologa OAuth real. Provedor, credenciais, redirect URIs definitivas, execução em web/domínio real, deep-link em Android/iOS e homologação do fluxo continuam dependências externas. PSP/PIX, CNPJ, webhook real, cobrança/reconciliação, e-mail, push, storage, observabilidade externa e demais itens do plano continuam sem evidência de produção; o Go-Live comercial permanece bloqueado.
+
+O commit `0a3fc50` passou no CI (`36316685469`) e no `Pediu Operational Validation` (`36316685457`), incluindo migrations limpas, E2Es operacionais, deployment smoke e stress. A fase está concluída neste escopo; OAuth real continua pendente até existir provedor, credenciais, redirect URIs definitivas e homologação real.
+
+---
+
+# 32. CORS, origem e cookie mutation — 27/09/2026
+
+A próxima fatia da Fase 6 transformou os controles de origem já existentes em um smoke HTTP real e adicionou regressões explícitas para cookie de sessão. O comando `pnpm go-live:cors-security` foi versionado e incluído no `Pediu Operational Validation`. Durante a ativação do teste foi encontrada e corrigida uma falha de robustez: `getSessionCookieOptions` podia quebrar se um request de teste não tivesse `hostname`; agora há fallback seguro para `localhost`.
+
+O smoke prova que preflight e mutation de origem permitida funcionam sem wildcard, que preflight e mutation de origem proibida retornam 403 sem ecoar `Access-Control-Allow-Origin`, que um cliente nativo com Bearer atravessa a barreira de cookie e que o logout mantém cookie `HttpOnly`, `Path=/` e `SameSite=Lax`. A regra existente de CORS continua permitindo apenas origens configuradas e a configuração de produção continua proibindo wildcard.
+
+## Evidências executadas
+
+| Validação                                  | Resultado                                                                                                                                   |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Baseline antes da fase                     | Deployment smoke, stress 120/12, checkout/webhook concorrente e fiado concorrente aprovados                                                 |
+| Regressões focadas                         | Logout ativado e 5 testes de segurança aprovados; cookie HTTPS e HTTP cobertos com `Secure` coerente, `HttpOnly`, `SameSite=Lax` e `Path=/` |
+| Matriz local final                         | 30 arquivos, 128 testes aprovados; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados                         |
+| Smoke CORS no bundle recompilado           | Preflight/mutation permitidos aprovados; preflight/mutation proibidos bloqueados; Bearer nativo aprovado; cookie protegido aprovado         |
+| Deployment smoke final em `127.0.0.1:3004` | health 200, marketplace 200, CORS exato e métricas protegidas aprovados                                                                     |
+| Stress final read-only                     | 120 requests / 12 workers; p50 17,2 ms; p95 44,1 ms; máximo 63,2 ms; erro 0%                                                                |
+| Regressões operacionais                    | E2E courier, checkout/webhook concorrente e fiado ampliado aprovados após a recompilação                                                    |
+
+Esta fase cobre o guardrail do servidor, não configura os domínios definitivos. Origens reais de staging/produção, HTTPS público, domínio de cookie, OAuth real, PSP/PIX, CNPJ, webhook de provedor, cobrança/reconciliação, e-mail, push, storage, observabilidade externa e dispositivos físicos continuam dependências externas; o Go-Live comercial permanece bloqueado.
+
+O commit `c40a4cf` passou no CI (`36317097963`) e no `Pediu Operational Validation` (`36317097959`), que executou também o novo `go-live:cors-security`. A fase está concluída neste escopo; as origens e domínios externos definitivos continuam pendentes.
+
+---
+
+# 33. Autorização de storage e isolamento de namespace — 27/09/2026
+
+A fatia de storage da Fase 6 foi implementada como um smoke HTTP real sobre o proxy existente, sem fabricar backend, URL assinada ou asset. O comando `pnpm go-live:storage-security` foi versionado e incluído no `Pediu Operational Validation`. A instrução técnica está em `docs/INSTRUCAO_FASE_STORAGE_SEGURANCA_PR7.md`.
+
+O smoke criou dois usuários temporários e comprovou que path traversal falha com 400 antes de autenticação, acesso anônimo retorna 401, tentativa de ler `voice/{outroUsuario}` retorna 403 e o namespace do próprio usuário não revela URL nem erro do backend: retorna 503 porque o storage externo não está configurado. O cleanup das fixtures ocorre em `finally` e foi concluído sem deixar dependências funcionais.
+
+## Evidências executadas
+
+| Validação                                  | Resultado                                                                                                                                                    |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Baseline antes da fase                     | Deployment smoke, stress 120/12, CORS, checkout/webhook concorrente e fiado concorrente aprovados; stress p50 19,5 ms, p95 36,2 ms, máximo 70,9 ms e erro 0% |
+| Smoke de storage no bundle real            | Traversal 400, anônimo 401, namespace cruzado 403 e namespace próprio 503 sem backend externo; cleanup isolado aprovado                                      |
+| Matriz local final                         | 30 arquivos, 128 testes aprovados; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados                                          |
+| Deployment smoke final em `127.0.0.1:3004` | health 200, marketplace 200, CORS exato e métricas protegidas aprovados                                                                                      |
+| Stress final read-only                     | 120 requests / 12 workers; p50 19,8 ms; p95 37,1 ms; máximo 68,9 ms; erro 0%                                                                                 |
+| Regressões operacionais                    | CORS, E2E courier, checkout/webhook concorrente e fiado ampliado aprovados após a execução final                                                             |
+
+A fase prova autorização e falha segura, não homologa storage real. Backend externo, bucket, presign, assets gerados, domínio/HTTPS definitivos, OAuth, PSP/PIX, CNPJ, webhook de provedor, cobrança/reconciliação, e-mail, push, observabilidade externa e dispositivos físicos continuam dependências externas; o Go-Live comercial permanece bloqueado.
+
+O commit `911c910` passou no CI (`36317506563`) e no `Pediu Operational Validation` (`36317506600`), que executou também o novo `go-live:storage-security`. A fase está concluída neste escopo; storage externo continua pendente até configuração e homologação reais.
+
+---
+
+# 34. Limites de voz e payload — 27/09/2026
+
+A última fatia da Fase 6 adicionou regressões e smoke operacional para os limites de entrada já definidos no servidor. O comando `pnpm go-live:limits-security` foi versionado e incluído no `Pediu Operational Validation`; a instrução técnica está em `docs/INSTRUCAO_FASE_LIMITES_VOZ_PAYLOAD_PR7.md`.
+
+O smoke HTTP contra o bundle real enviou payload JSON sintético acima de 16 MB e obteve HTTP 413 antes do router. Também enviou comando de voz acima de 500 caracteres e obteve HTTP 400 antes de executar interpretação. As regressões unitárias cobrem entrada base64 acima do limite codificado, base64 malformado, áudio decodificado abaixo de 1 KB e assinatura incompatível com o MIME, impedindo chegar a storage ou transcrição.
+
+## Evidências executadas
+
+| Validação                                  | Resultado                                                                                                                                                             |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Baseline antes da fase                     | Deployment smoke, stress 120/12, CORS, storage, checkout/webhook concorrente e fiado concorrente aprovados; stress p50 15,0 ms, p95 29,9 ms, máximo 69,1 ms e erro 0% |
+| Regressões focadas                         | 5 testes de limites de voz e payload aprovados                                                                                                                        |
+| Smoke no bundle real                       | Payload JSON acima de 16 MB retornou 413; comando de voz com 501 caracteres retornou 400                                                                              |
+| Matriz local final                         | 31 arquivos, 133 testes aprovados; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados                                                   |
+| Deployment smoke final em `127.0.0.1:3004` | health 200, marketplace 200, CORS exato e métricas protegidas aprovados                                                                                               |
+| Stress final read-only                     | 120 requests / 12 workers; p50 15,3 ms; p95 29,9 ms; máximo 68,5 ms; erro 0%                                                                                          |
+| Regressões operacionais                    | CORS, storage, checkout/webhook concorrente e fiado ampliado aprovados após a execução final                                                                          |
+
+Esta fase endurece limites locais, mas não homologa transcrição real, LLM, storage externo, captura de áudio de usuário, provedor de voz ou payloads de produção. OAuth, PSP/PIX, CNPJ, webhook de provedor, cobrança/reconciliação, e-mail, push, observabilidade externa e dispositivos físicos continuam dependências externas; o Go-Live comercial permanece bloqueado.
+
+O commit `978d09a` passou no CI (`36317926354`) e no `Pediu Operational Validation` (`36317926344`), que executou também o novo `go-live:limits-security`. A fase está concluída neste escopo; integrações externas de voz e domínios de produção continuam pendentes.
+
+---
+
+# 35. Pré-validação de dispositivos Expo — 28/09/2026
+
+A próxima etapa executável da Fase 7 foi iniciada com `scripts/device-preflight.ts`, `scripts/go-live-device-preflight.ts`, o comando `pnpm go-live:device-preflight`, regressões unitárias e a instrução `docs/INSTRUCAO_FASE_DISPOSITIVOS_REAIS_PR7.md`. O preflight valida a identidade nativa `Pediu`, scheme `pediupediu`, bundle ID iOS, package Android, dependências e plugins Expo, perfis EAS, URL HTTPS pública do backend e alinhamento entre `EXPO_PUBLIC_APP_ID` e `VITE_APP_ID`.
+
+## Evidências executadas
+
+| Validação                                                         | Resultado                                                                                                           |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Preflight estrutural com API pública temporária e app ID alinhado | `PASS=6`, `BLOCKED=0`, `NOT_CONFIGURED=5`                                                                           |
+| Regressões focadas                                                | 4 testes aprovados para identidade, URL local inválida, app ID divergente e ausência de evidência física            |
+| Matriz local final                                                | 32 arquivos, 137 testes aprovados; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados |
+| Deployment smoke após a alteração                                 | health 200, marketplace 200, CORS exato e métricas protegidas aprovados                                             |
+| Stress final após a alteração                                     | 120 requests / 12 workers; p50 24,2 ms; p95 88,4 ms; máximo 145,2 ms; erro 0%                                       |
+| Operational Validation                                            | O workflow recebeu o passo `pnpm go-live:device-preflight`, sem transformar ausência de dispositivos em falso verde |
+
+O preflight deixou explicitamente como `NOT_CONFIGURED` OAuth real, Forge para push/storage, PSP/PIX e evidência física Android/iOS. A Fase 7 não está concluída: ainda faltam aparelhos Android e iOS reais, permissões, background, rede instável, GPS, notificações, deep links, recuperação de sessão e checkout observados em dispositivos físicos. Preview web e Expo Go comprovam o bundle de desenvolvimento, mas não substituem a matriz real. PSP/PIX, CNPJ, OAuth, push, storage externo, e-mail, observabilidade externa, staging/produção definitivos e publicação nas lojas continuam bloqueadores comerciais do Go-Live.
+
+---
+
+# 36. Compatibilidade nativa Expo SDK 54 — 28/09/2026
+
+A pré-validação de dispositivos revelou um bloqueador nativo real: `expo-audio` exigia a peer dependency `expo-asset`, que não estava declarada diretamente. A etapa também encontrou versões patch desatualizadas do SDK 54 e os config plugins ausentes de `expo-font` e `expo-web-browser` no app config dinâmico.
+
+A correção adicionou `expo-asset` na lista de dependências, declarou os plugins nativos necessários no `app.config.ts`, alinhou as versões compatíveis do Expo SDK 54 e normalizou os ranges esperados do React Navigation. O lockfile foi regenerado e validado com `pnpm install --frozen-lockfile --offline`.
+
+## Evidências executadas
+
+| Validação                 | Resultado                                                                                                           |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Expo Doctor               | `18/18 checks passed; No issues detected`                                                                           |
+| Configuração pública Expo | `Pediu`, versão `1.0.0`, scheme `pediupediu`, bundle/package `space.manus.pediu.mobile`, 10 plugins nativos         |
+| Regressões focadas        | 5 testes do preflight aprovados, incluindo bloqueio de `expo-asset` ausente                                         |
+| Matriz local final        | 32 arquivos, 138 testes aprovados; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados |
+| Export web de produção    | Export concluído com 91 arquivos e 50 rotas estáticas                                                               |
+| Deployment smoke final    | health 200, marketplace 200, CORS exato e métricas protegidas aprovados                                             |
+| Stress final read-only    | 120 requests / 12 workers; p50 20,9 ms; p95 76,6 ms; máximo 153,9 ms; erro 0%                                       |
+
+A etapa nativa estrutural está pronta para um build EAS, mas a sandbox não possui EAS CLI autenticado, Android SDK, `adb` ou dispositivos físicos. A Fase 7 continua aberta: não há evidência de instalação, permissões, localização, notificações, background, deep links ou checkout em Android/iOS reais. OAuth, push, storage externo, PSP/PIX, CNPJ, staging/produção definitivos e publicação nas lojas continuam pendentes; o Go-Live comercial permanece bloqueado.
+
+---
+
+# 37. Unificação UX/UI com o PR #7 — 28/09/2026
+
+A branch `docs/go-live-plan` foi unificada com `feat/customer-ai-ads` por merge de três vias. O merge recuperou o mascote Pediu, a personalização persistida de tema e movimento, o carrinho e a confirmação de pedido atualizados, a central de benefícios/cupons e o estúdio de anúncios IA do lojista. As resoluções preservaram o fluxo de entregador, a Central do entregador no perfil, as proteções de idempotência, concorrência, OAuth, CORS, storage, limites e observabilidade já entregues no PR #7.
+
+A migração `0024_ai_ads` foi aplicada no MariaDB real de validação antes dos gates. As tabelas `pediu_ad_credits` e `pediu_generated_ads` foram verificadas, e o journal passou a registrar 26 migrations incluindo `0024_ai_ads` e `0025_courier_flow`.
+
+## Evidências executadas
+
+| Validação               | Resultado                                                                                                            |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Matriz local            | 34 arquivos, 142 testes aprovados; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados  |
+| Deployment smoke        | health 200, marketplace 200, CORS exato e métricas protegidas                                                        |
+| Stress read-only        | 120 requests / 12 workers; erro 0%; p50 21,4 ms; p95 59,8 ms; máximo 72,6 ms                                         |
+| E2E cliente e operações | Fluxos cliente, checkout, courier, GPS, tracking e conclusão idempotente aprovados                                   |
+| Concorrência            | 24 retries de checkout/webhook colapsados em um pedido/pagamento/evento; fiado same-key e oversubscription aprovados |
+| Segurança operacional   | CORS/cookies, storage namespace/traversal e limites de payload/voz aprovados                                         |
+| Preflight Expo público  | 6 PASS, 0 BLOCKED e 5 `NOT_CONFIGURED`; API HTTPS pública e app ID alinhado                                          |
+
+O preflight permanece honesto: OAuth real, push externo, storage externo, PSP/PIX e evidência física Android/iOS continuam `NOT_CONFIGURED`. O PSP/PIX segue pendente por CNPJ; a unificação UX/UI não altera essa pendência nem autoriza declarar o Go-Live comercial READY.
+
+A instrução técnica desta etapa está em `docs/INSTRUCAO_FASE_UNIFICACAO_UX_UI_PR7.md`.
+
+Os checks remotos do commit `3264093fb6cff4aec1e20a69bac8a7df4f1aabad` também passaram: `Pediu CI` run `36404203450` e `Pediu Operational Validation` run `36404203461`. O PR #7 permaneceu aberto, `MERGEABLE` e `CLEAN`, com os dois checks obrigatórios verdes.
+
+
+---
+
+# 38. Correção UX/UI, mascote e responsividade — 28/09/2026
+
+A inspeção do preview mobile reproduziu três regressões de experiência: o gesto de privacidade do mascote não cobria os dois olhos de forma perceptível, as transições de rota/aba não alimentavam um momento contextual global e o estúdio de customização podia invadir a largura útil em telas estreitas. A análise DOM também encontrou dois orbes decorativos absolutos do `Page` expandindo o `scrollWidth` do documento.
+
+A correção extraiu as cenas e o mapeamento de rotas para `lib/mascot-scenes.ts`, adicionou o estado global de momentos no provider e uma ponte de navegação no layout raiz, reposicionou e animou progressivamente as mãos/olhos do mascote, tornou o modal e suas três personalidades responsivos e adicionou `overflow: hidden` ao shell visual para conter os orbes sem bloquear o scroll vertical. O preview do mascote no modal deixou de renderizar um balão sobre o texto; as falas continuam nas telas contextuais.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| Regressões do mascote | 8 testes determinísticos aprovados para `coverEyes`, barriga cheia e mapeamento de rotas |
+| Matriz local | 35 arquivos de teste, 150 testes aprovados; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados |
+| Export Expo Web | Export de produção concluído com 146 arquivos; rotas de configurações e perfil incluídas |
+| Preview visual | Home e configurações capturadas em viewport headless `375x812`; estúdio aberto no navegador; perfil confirmou a fala de privacidade |
+| Overflow real | Antes: `documentWidth=5216`, `innerWidth=5120`, `horizontalOverflow=true`; depois: `documentWidth=5120`, `horizontalOverflow=false`, inclusive com o modal aberto |
+| Deployment smoke | Backend público: health 200, marketplace 200, CORS exato e métricas protegidas |
+| Stress read-only | 120 requests / 12 workers; erro 0%; p50 19,2 ms; p95 83,5 ms; máximo 165,2 ms |
+| Preflight Expo público | 6 PASS, 0 BLOCKED e 5 `NOT_CONFIGURED`, com API HTTPS pública e App ID alinhado |
+
+A instrução técnica desta etapa está em `docs/INSTRUCAO_FASE_CORRECAO_UX_MASCOTE_PR7.md`. O preview temporário desta sandbox está disponível em [Expo Web](https://8081-iue696glzt2dfr1suc5xk-6d6ba285.us1.manus.computer), com API pública em `https://3000-iue696glzt2dfr1suc5xk-6d6ba285.us1.manus.computer`.
+
+Esta etapa não fecha a Fase 7 de dispositivos físicos. OAuth real, push externo, storage externo, PSP/PIX, CNPJ, evidência Android/iOS, staging/produção definitivos e publicação nas lojas continuam pendentes; o Go-Live comercial permanece bloqueado e não deve ser marcado como READY.
+
+
+---
+
+# 39. Reanálise de mercado e lacunas para Go-Live — 28/09/2026
+
+Foi realizada uma reanálise do Pediu no head `df7ad15188d6dce73de16ddaf741edc611f696b8` do PR #7, combinando auditoria direta do código com comparação atualizada de iFood, Rappi, 99Food, aiqfome e Zé Delivery. O relatório completo está em `docs/REANALISE_MERCADO_E_LACUNAS_GO_LIVE_PR7_2026-09-28.md`.
+
+## Conclusão operacional
+
+A fundação do Pediu está acima de um protótipo: cliente, lojista, courier, marketplace, checkout server-side, idempotência, concorrência, segurança HTTP, suporte, UX, mascote, personalização e anúncios IA estão implementados estruturalmente e cobertos por testes. Isso não equivale a READY comercial.
+
+A comparação confirmou que o baseline de delivery é: elegibilidade por endereço, checkout com preço/taxas/ETA claros, fulfillment híbrido, console operacional de lojista, despacho com fallback, status/prova de entrega, suporte por incidente e política de cancelamento/crédito/estorno.
+
+## Bloqueadores técnicos priorizados
+
+- **P0:** PSP/PIX, refund, chargeback, reconciliação, comissão e payout ainda não fecham o ciclo financeiro.
+- **P0:** cancelamento não reverte pagamento liquidado nem saldo/ledger de fiado.
+- **P0:** não existe estoque quantitativo nem reserva atômica contra overselling.
+- **P0:** mutation genérica de status ainda pode bypassar assignment/localização/prova de entrega.
+- **P0:** health/readiness pode ficar verde com banco indisponível ou listagens mascarando falha como vazio.
+- **P0:** avaliações precisam restringir autor ao cliente e validar produto/courier alvo.
+- **P0:** despacho precisa de reoferta/fallback e suporte a ausência de entregador.
+- **P1:** push/outbox/receipts, tracking de mapa/background, expiração de offers, LGPD completa, serviceability/pickup, offline/reconexão, rate limit distribuído, cursor pagination e presign em lote.
+
+## Próxima ordem vertical
+
+1. Pagamento comercial e reconciliação.
+2. Estoque, serviceability e pickup.
+3. Máquina de estados e prova de entrega.
+4. Incidentes, suporte e comunicação confiável.
+5. Tracking e validação em dispositivos reais.
+6. Autorização e privacidade completas.
+7. Escala, readiness, dashboards e piloto.
+8. Homologações externas e canary final.
+
+Após cada fatia continuam obrigatórios deployment smoke e stress; falha interrompe o avanço. O PSP/PIX segue pendente por CNPJ, e também permanecem pendentes OAuth real, push/dispositivos físicos, storage externo, backup operacional contínuo, observabilidade externa, staging/produção definitivos, domínio e publicação nas lojas. O Go-Live comercial permanece bloqueado e o PR #7 não deve ser marcado como READY.
+
+
+---
+
+# 40. Pagamento, refund e reconciliação financeira — 29/09/2026
+
+Esta fatia implementou o primeiro bloqueador P0 financeiro sobre o head do PR #7. O adapter Mercado Pago agora usa o endpoint oficial `POST /v1/payments/{id}/refunds`, com `amount` numérico para refund parcial e `X-Idempotency-Key`; o body não envia campos não previstos pelo contrato oficial. O banco serializa refunds por pagamento com `FOR UPDATE`, preserva retries pela chave provider/idempotency e rejeita oversubscription. O webhook canônico HMAC consulta o recurso no PSP mock, valida referência, valor, moeda e status e mantém um único lançamento de venda no ledger. A reconciliação bounded persiste o run e seus itens idempotentemente e deixa divergências classificadas para consulta administrativa.
+
+A migration `0027_payment_reconciliation.sql` foi aplicada e reexecutada no MariaDB real de validação. O smoke financeiro `pnpm go-live:finance` foi executado três vezes e novamente no bundle final, cobrindo confirmação HMAC, dois refunds simultâneos com a mesma chave, rejeição de refund adicional, ledger único e reconciliação com um item `matched` e um `missing_internal`; todas as execuções passaram e o cleanup terminou com zero fixtures financeiros. Os testes focados passaram com 27 testes em 4 arquivos; a matriz completa passou com 172 testes em 37 arquivos, além de `pnpm check`, build, lint, Prettier e `git diff --check`.
+
+Os gates operacionais finais no bundle local recompilado também passaram: deployment smoke com health/marketplace/CORS/métricas protegidas; stress read-only de 120 requests/12 workers com `p50=16.0ms`, `p95=27.7ms`, `max=62.0ms` e erro `0.0000`; E2E cliente; E2E lojista-entrega; concorrência com 24 retries/webhooks; fiado concorrente; CORS; storage; e limites de voz/payload. Durante a validação, uma falha de cleanup foi encontrada porque o novo ledger referenciava a loja; o cleanup foi corrigido para remover comissão/ledger antes da loja e a concorrência foi repetida com zero usuários, lojas e ledger órfãos.
+
+O mock local/CI prova somente o contrato técnico. O PSP/PIX real permanece pendente por CNPJ, credenciais, configuração de aplicação, URL HTTPS definitiva, webhook real e homologação autorizada; nenhum pagamento real foi executado. Também continuam abertas as dependências externas já registradas: domínio/staging/produção definitivos, OAuth/e-mail/push reais, storage externo, observabilidade externa, backup operacional contínuo, dispositivos físicos e publicação nas lojas. Consequentemente, a base financeira simulada está validada, mas o Go-Live comercial e o estado READY do PR #7 continuam bloqueados.
+
+
+---
+
+# 41. Readiness operacional e integridade de avaliações — 29/09/2026
+
+Esta fatia fechou duas lacunas P0 reproduzíveis no PR #7. O servidor passou a separar liveness (`/api/health`) de readiness dependente (`/api/readyz`): o novo probe bounded valida `SELECT 1`, o tracker de migrations e as tabelas críticas, retornando `503` de forma fail-closed quando uma dependência essencial está ausente. O deployment smoke e o checker de readiness agora consultam o endpoint HTTP real, e o workflow operacional exige readiness nos boots da API.
+
+A camada de avaliações pós-entrega foi endurecida para aceitar somente o cliente dono de um pedido `Entregue`. O alvo é validado por contexto: loja do pedido, produto presente nos itens ou courier efetivamente atribuído. A chave de idempotência retorna a mesma review em replay idêntico e rejeita replay conflitante. O novo `scripts/go-live-reviews.ts`, incluído como `pnpm go-live:reviews` e no `Pediu Operational Validation`, prova o contrato contra o MariaDB real.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| Baseline antes da alteração | Deployment aprovado; stress 120/12 com p50 17,6 ms, p95 32,1 ms, máximo 67,4 ms e erro 0% |
+| Readiness no bundle recompilado | `/api/health` 200; `/api/readyz` 200 com database, migrations e tables em `pass` |
+| Deployment smoke final | health 200, readyz 200, marketplace 200, CORS exato e métricas protegidas |
+| Stress final read-only | 120 requests / 12 workers; p50 18,4 ms; p95 63,4 ms; máximo 69,6 ms; erro 0% |
+| Smoke real de avaliações | Produtos elegíveis, loja, produto, courier, replay idempotente e replay conflitante aprovados contra MariaDB real |
+| Cleanup do smoke | 0 usuários, 0 lojas e 0 reviews com prefixo `ci-review-` |
+| Matriz local final | 38 arquivos, 182 testes aprovados; `pnpm check`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados |
+
+A instrução técnica está em `docs/INSTRUCAO_FASE_READINESS_AVALIACOES_PR7.md`. O lint registrou somente o warning não bloqueante já conhecido de `MODULE_TYPELESS_PACKAGE_JSON` no config do ESLint.
+
+Esta fase não homologa PSP/PIX real, CNPJ, webhook externo, refund real, OAuth, e-mail, push, storage externo, observabilidade externa, backup contínuo, domínio/staging/produção definitivos, dispositivos físicos ou publicação em lojas. O Go-Live comercial permanece bloqueado e o PR #7 não deve ser marcado como READY sem as evidências externas correspondentes.
+
+
+---
+# 42. Inventário quantitativo e reserva atômica — 30/09/2026
+
+Esta fatia fechou a lacuna P0 de overselling no PR #7. Produtos agora podem ser marcados como controlados por estoque, com `stockQuantity` e `reservedQuantity`; a disponibilidade efetiva é calculada como estoque menos reservas. A criação de pedido reserva as unidades dentro da mesma transação do pedido, cancelamento libera a reserva e a transição `A caminho → Entregue` consome o estoque de forma idempotente. Produtos controlados sem saldo deixam de aparecer na cotação/marketplace, enquanto produtos legados permanecem compatíveis com `inventoryTracked=0`.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| Migration 0028 em banco limpo | Todas as migrations aplicadas; colunas `inventoryTracked`, `stockQuantity`, `reservedQuantity` e índice `pediu_products_inventory_idx` presentes; banco temporário removido |
+| Smoke concorrente real | 3 execuções com 12 pedidos simultâneos para 1 unidade; exatamente 1 reserva vencedora e 11 rejeições por `Estoque insuficiente` em cada rodada |
+| Liberação de reserva | Cancelamento do pedido vencedor retornou `stockQuantity=1`, `reservedQuantity=0` |
+| Consumo pós-entrega | E2E operacional real passou com courier, oferta, GPS, tracking e conclusão; após `Entregue`, `stockQuantity=0`, `reservedQuantity=0` |
+| Cleanup | 0 usuários `ci-inventory-*` e 0 produtos `Produto Inventário ...` no MariaDB de validação |
+| Deployment smoke | health 200, readiness 200, marketplace 200, CORS exato e métricas protegidas |
+| Stress read-only | 120 requests / 12 workers; p50 24,8 ms; p95 48,2 ms; máximo 87,0 ms; erro 0% |
+| Matriz local final | 39 arquivos de teste, 186 testes aprovados; `pnpm check`, `pnpm build`, `pnpm lint` e `git diff --check` aprovados; Prettier aprovado nos arquivos suportados |
+
+A instrução técnica está em `docs/INSTRUCAO_FASE_INVENTARIO_RESERVA_PR7.md`. A aplicação limpa da migration foi validada separadamente porque o parser do Prettier não processa SQL; isso não foi tratado como falha de código. Durante a primeira aplicação no banco de validação, um breakpoint final incorreto havia deixado o DDL parcialmente aplicado; o arquivo foi corrigido, o estado foi recuperado sem apagar dados e a execução em banco temporário limpo passou com o SQL versionado final.
+
+Esta fase não fecha serviceability por endereço, pickup, substituições ou política de expiração/reconciliação de reservas abandonadas. O PSP/PIX real continua pendente por CNPJ e homologação autorizada; OAuth/e-mail/push reais, storage externo, observabilidade externa, backup contínuo, staging/produção definitivos, dispositivos físicos e publicação nas lojas também permanecem pendentes. O Go-Live comercial e o PR #7 não devem ser marcados como READY.
+
+
+---
+# 43. Serviceability por endereço e retirada (pickup) — 30/09/2026
+
+Esta fatia fechou a lacuna P1 de elegibilidade geográfica e fulfillment híbrido no PR #7. A migration `0029_serviceability_pickup.sql` adiciona à loja as flags de delivery/pickup, raio e coordenadas; o pedido passa a persistir `fulfillmentMode` e `deliveryFeeSnapshot`. O servidor calcula a cobertura com Haversine e falha fechado quando faltam coordenadas, a loja está fora da modalidade ou o endereço excede o raio. O checkout exige endereço salvo georreferenciado para delivery, permite pickup sem endereço e aplica taxa zero nessa modalidade. O total continua sendo recalculado com preços do catálogo e a recuperação idempotente rejeita, no mínimo, reuso da chave com loja, modalidade ou total incompatíveis.
+
+O painel do lojista expõe as modalidades, raio e coordenadas com validação de faixa. O checkout ativo usa a cotação server-side como total enviado e bloqueia confirmação sem quote válido. A máquina de estados permite `Pronto → Entregue` diretamente apenas para pickup; as rotas de atribuição, oferta e localização courier recusam pickup, preservando o fluxo delivery com courier. O smoke operacional `pnpm go-live:serviceability` foi incluído no workflow e confirma cobertura interna, bloqueio externo antes de pedido/pagamento/reserva, pickup e snapshots persistidos.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| Migration 0029 | Todas as migrations aplicadas em banco limpo e a migration final validada no banco local de execução |
+| Regressões locais | 40 arquivos de teste, 203 testes aprovados; serviceability, quote/order, pickup, estados e fronteira courier cobertos |
+| Matriz local | `pnpm check`, `pnpm test`, `pnpm build`, `pnpm lint`, Prettier nos arquivos suportados e `git diff --check` aprovados |
+| Readiness final | `/api/health` 200; `/api/readyz` 200 com database, migrations e tables em `pass` |
+| Smoke E2E no bundle final | Delivery dentro do raio aprovado; fora do raio bloqueado; pickup sem endereço/taxa e snapshot `0.00` aprovados |
+| Deployment smoke local | health 200, readyz 200, marketplace 200, CORS exato e métricas protegidas |
+| Stress local read-only | 120 requests / 12 workers; p50 29,8 ms; p95 101,9 ms; máximo 128,8 ms; erro 0% |
+| Deployment/stress HTTPS temporário | Smoke aprovado; 40 requests / 4 workers; p50 11,2 ms; p95 43,0 ms; máximo 137,5 ms; erro 0% |
+| Cleanup SQL | 0 usuários, 0 lojas, 0 produtos e 0 pedidos com prefixo serviceability residuais |
+
+A instrução técnica desta fase está em `docs/INSTRUCAO_FASE_SERVICEABILITY_PICKUP_PR7.md`. A validação usa somente banco e PSP mock locais; não há pagamento real, CNPJ, credencial de PSP, webhook real, geocodificação externa ou rastreamento físico simulados. Permanecem externos OAuth real, push/e-mail, storage, observabilidade/backup, domínio/staging/produção definitivos, GPS/background em dispositivos físicos e publicação nas lojas. O PSP/PIX real continua pendente por CNPJ, credenciais, configuração, webhook e homologação autorizada; portanto o Go-Live comercial e o PR #7 permanecem bloqueados e não READY.
+
+
+---
+# 44. Expiração e liberação de reservas abandonadas — 01/10/2026
+
+Esta fatia fechou a lacuna P1 de retenção indefinida de estoque reservado. O backend agora usa TTL padrão de 30 minutos para pedidos ainda `Pendente`: um sweeper nativo, iniciado junto com o servidor e limitado por intervalo/TTL configuráveis, seleciona candidatos com lock, cancela o pedido, libera a reserva, cancela o pagamento local ainda pendente e registra `Cancelado` na mesma transação. O sweep não toca pedidos `Aceito` ou posteriores, e a máquina de pagamentos impede que uma confirmação tardia reabra um pagamento local cancelado. Locks de banco permitem múltiplas instâncias sem dupla liberação; a confirmação tardia no PSP real continua exigindo reconciliação/estorno autorizado.
+
+O smoke `pnpm go-live:inventory-expiry` foi adicionado ao Operational Validation. Ele cria duas reservas concorrentes, expira uma em duas transações simultâneas, preserva a já aceita, verifica pagamento/evento/liberação, repete o sweep e confirma idempotência e cleanup.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| Migration/schema | Sem nova migration; a fase usa as colunas de inventário e status publicadas na `0028_inventory_reservation.sql` |
+| Regressões locais | 41 arquivos de teste, 207 testes aprovados; domínio de inventário, pagamento, pedidos e consistência cobertos |
+| Matriz local | `pnpm check`, `pnpm test`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados |
+| Smoke E2E real | Pedido pendente antigo cancelado; reserva liberada; pagamento local pendente cancelado; pedido `Aceito` preservado |
+| Concorrência/idempotência | Dois sweepers simultâneos produziram exatamente uma expiração; repetição não alterou o estoque novamente |
+| Cleanup SQL | 0 usuários, 0 produtos e 0 pedidos com prefixo `ci-inventory-expiry-` residuais |
+| Readiness do bundle recompilado | `/api/health` 200; `/api/readyz` 200 com database, migrations e tables em `pass` |
+| Deployment smoke local | health 200, readyz 200, marketplace 200, CORS exato e métricas protegidas |
+| Stress local read-only | 120 requests / 12 workers; p50 24,8 ms; p95 68,4 ms; máximo 82,7 ms; erro 0% |
+| Deployment/stress HTTPS temporário | Smoke aprovado; 40 requests / 4 workers; p50 13,1 ms; p95 44,6 ms; máximo 138,6 ms; erro 0% |
+
+A instrução técnica está em `docs/INSTRUCAO_FASE_INVENTARIO_EXPIRACAO_PR7.md`. A primeira tentativa de iniciar o bundle falhou somente por configuração ausente (`VITE_APP_ID`, `JWT_SECRET`, `ALLOWED_ORIGINS` e `OBSERVABILITY_TOKEN`); a repetição com ambiente determinístico completo passou. A validação não simula pagamento real: aprovação tardia no PSP, reconciliação e eventual estorno permanecem externos. Também permanecem externos OAuth real, push/e-mail, storage, observabilidade/backup, scheduler/hosting definitivos, domínio/staging/produção, GPS/background físico e publicação nas lojas. O PSP/PIX real continua pendente por CNPJ, credenciais, webhook e homologação autorizada; portanto o Go-Live comercial e o PR #7 permanecem bloqueados e não READY.
+
+
+---
+# 45. Expiração e reoferta de despacho courier — 01/10/2026
+
+Esta fatia fechou a lacuna P1 em que uma oferta courier só expirava quando o entregador consultava a própria inbox. O backend agora executa sweep global bounded de ofertas `pending` vencidas, marca a oferta como `expired` e seleciona, dentro da mesma transação, um entregador vinculado à loja, aprovado, disponível e ainda não tentado para aquele pedido. O candidato recebe chave idempotente determinística e novo TTL limitado. A consulta da inbox também dispara o sweep para reduzir a latência, enquanto o timer cobre pedidos sem polling.
+
+Recusas disparam reoferta na mesma transação. O sistema não reoferta pickup, pedidos que saíram de `Pronto`, pedidos com atribuição ou candidatos indisponíveis/não aprovados/não vinculados. Se todos os candidatos já foram tentados, o pedido permanece `Pronto` para atribuição manual. O aceite continua sendo a única operação que cria `deliveryAssignments` e cancela ofertas irmãs; locks e a unicidade da chave impedem duplicidade em concorrência.
+
+O smoke `pnpm go-live:dispatch-reoffer` foi adicionado ao Operational Validation e cobre expiração/reoferta, recusa/reoferta, duas consultas concorrentes, aceite único, candidato já tentado, ausência de candidato e cleanup.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| Migration/schema | Sem nova migration; o schema publicado de ofertas, vínculos, perfis e atribuições foi suficiente |
+| Regressões locais | 42 arquivos de teste, 211 testes aprovados; dispatch, courier, atribuição, GPS, estados e pickup cobertos |
+| Matriz local | `pnpm check`, `pnpm test`, `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados |
+| Smoke E2E real | Expiração/reoferta, recusa/reoferta, aceite e ausência de candidato aprovados no MySQL 8.0 |
+| Concorrência/idempotência | Duas consultas courier simultâneas produziram uma única reoferta pendente e nenhuma atribuição duplicada |
+| Preservação operacional | Pedido sem candidato permaneceu `Pronto`; pickup continuou fora do fluxo courier |
+| Cleanup SQL | 0 usuários, 0 lojas, 0 pedidos e 0 ofertas com prefixo da fase residuais |
+| Readiness do bundle final | `/api/health` 200; `/api/readyz` 200 com database, migrations e tables em `pass` |
+| Deployment smoke local | health 200, readyz 200, marketplace 200, CORS exato e métricas protegidas |
+| Stress local read-only | 120 requests / 12 workers; p50 23,3 ms; p95 72,2 ms; máximo 89,8 ms; erro 0% |
+| Deployment/stress HTTPS temporário | Smoke aprovado; 40 requests / 4 workers; p50 14,3 ms; p95 45,8 ms; máximo 127,6 ms; erro 0% |
+
+A instrução técnica está em `docs/INSTRUCAO_FASE_DESPACHO_REOFERTA_PR7.md`. O dispatch é bounded e não implementa matching por distância, tarifa dinâmica, fila distribuída, background GPS ou push garantido. A validação não simula PSP/PIX real. Permanecem externos CNPJ, credenciais/homologação do PSP, webhook real, OAuth real, push/e-mail, storage, observabilidade/backup, scheduler/hosting definitivo, domínio/staging/produção, GPS/background físico e publicação nas lojas; portanto o Go-Live comercial e o PR #7 permanecem bloqueados e não READY.
+
+
+---
+# 46. Outbox persistente de notificações — 01/10/2026
+
+Esta fatia fechou a lacuna P1 em que as notificações eram persistidas localmente, mas a tentativa de push externo acontecia inline e podia falhar sem retry confiável. A migration `0030_notification_outbox` criou uma fila durável vinculada por chave única à notificação in-app. `sendPushToUser` agora grava notificação e payload na mesma transação, e o worker nativo do backend faz claim com lock, recupera locks stale, respeita preferências por tipo, entrega tokens em lote e aplica backoff bounded de 30 s, 120 s, 300 s e 900 s até cinco tentativas. Preferência desabilitada termina como `skipped`; erro terminal permanece `failed` com mensagem truncada.
+
+Readiness e Operational Validation passaram a exigir `pediu_notification_outbox`, e o comando `pnpm go-live:notification-outbox` cobre enqueue atômico, falha 503, retry, sucesso e skip de preferência usando mock HTTP local. O mock não é Expo Push Service e não prova push físico.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| Migration real | `pnpm exec drizzle-kit migrate` aplicado; tabela nova presente; journal com 31 migrations |
+| Regressões locais | 43 arquivos de teste, 214 testes aprovados |
+| Matriz local | `pnpm check`, `pnpm test`, `pnpm build`, `pnpm lint`, Prettier nos arquivos suportados e `git diff --check` aprovados |
+| Smoke E2E real | Enqueue atômico, 503, retry, entrega 200 pelo mock e preferência desabilitada aprovados |
+| Concorrência/lock | Claim transacional, status `processing`, lock stale e retry bounded cobertos por domínio e banco real |
+| Cleanup SQL | 0 usuários, 0 notificações e 0 itens de outbox com marcadores da fase residuais |
+| Readiness do bundle final | `/api/health` 200; `/api/readyz` 200 com database, migrations e tables em `pass` |
+| Deployment smoke local | health 200, readyz 200, marketplace 200, CORS exato e métricas protegidas |
+| Stress local read-only | 120 requests / 12 workers; p50 30,7 ms; p95 84,7 ms; máximo 112,1 ms; erro 0% |
+| Regressão courier | Smoke dispatch/reoffer aprovado no bundle final, preservando a fase 45 |
+| Deployment/stress HTTPS temporário | Smoke aprovado; 40 requests / 4 workers; p50 12,1 ms; p95 51,6 ms; máximo 153,7 ms; erro 0% |
+
+A instrução técnica está em `docs/INSTRUCAO_FASE_NOTIFICACAO_OUTBOX_PR7.md`. A entrega real continua dependente de tokens de dispositivo, URL/credencial e política do provedor de push. Permanecem externos Expo Push Service/push físico, CNPJ e PSP/PIX real, webhook, OAuth, e-mail/SMS, storage, observabilidade/backup, scheduler/hosting definitivo, domínio/staging/produção, GPS/background e publicação nas lojas; portanto o Go-Live comercial e o PR #7 permanecem bloqueados e não READY.
+
+
+---
+# 47. Tracking resiliente e reconexão segura — 02/10/2026
+
+Esta fatia fechou a parte interna da lacuna P1 de tracking. A migration `0031_tracking_captured_at` passou a persistir quando a posição foi capturada, além do horário de gravação, com índice por pedido e tempo capturado. O domínio aplica janela de reconexão de 15 minutos, tolerância de relógio futuro de 2 minutos e classifica a posição como `fresh`, `stale` ou `unavailable`.
+
+O endpoint de localização rejeita amostras futuras ou antigas demais antes da persistência. Amostras atrasadas dentro da janela continuam auditáveis, mas não podem sobrescrever a coordenada mais nova da atribuição. `delivery.current` agora retorna idade em segundos e freshness; a tela de tracking mantém o último dado conhecido quando a consulta falha, informa reconexão/stale e oferece retry explícito. O mapa cartográfico, background location e evidência física continuam fora do escopo externo.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| Migration limpa | Banco MySQL temporário com 32 migrations aplicadas; `capturedAt` confirmado |
+| Migration de validação | `0031_tracking_captured_at` aplicada e índice temporal confirmado |
+| Regressões locais | 44 arquivos de teste, 219 testes aprovados |
+| Matriz local final | `pnpm check`, `pnpm test`, `pnpm build`, `pnpm lint`, Prettier nos arquivos suportados e `git diff --check` aprovados |
+| Smoke E2E real | Amostra recente, amostra atrasada, timestamp futuro, freshness/stale e cleanup aprovados no bundle compilado |
+| Monotonicidade/idempotência | Amostra atrasada não reverteu a posição atual da atribuição; amostras futuras foram rejeitadas |
+| Cleanup SQL | 0 usuários, 0 pedidos e 0 localizações com prefixo da fase residuais |
+| Readiness do bundle final | `/api/health` 200; `/api/readyz` 200 com database, migrations e tables em `pass` |
+| Deployment smoke local | health 200, readyz 200, marketplace 200, CORS exato e métricas protegidas |
+| Stress local read-only | 120 requests / 12 workers; p50 21,6 ms; p95 59,0 ms; máximo 101,0 ms; erro 0% |
+| Deployment/stress HTTPS temporário | Smoke aprovado; 40 requests / 4 workers; p50 13,6 ms; p95 49,6 ms; máximo 145,5 ms; erro 0% |
+
+A instrução técnica está em `docs/INSTRUCAO_FASE_TRACKING_RESILIENTE_PR7.md`. A fase não homologa Google Maps/Mapbox, geocodificação, GPS/background em Android/iOS, rede móvel, push/receipts físicos ou dispositivos reais. Permanecem externos PSP/PIX e CNPJ, credenciais/homologação e webhook real, OAuth, Expo Push Service, e-mail/SMS, storage, observabilidade/backup, scheduler/hosting definitivo, domínio/staging/produção e publicação nas lojas; portanto o Go-Live comercial e o PR #7 permanecem bloqueados e não READY.
+
+
+---
+# 48. Rate limit distribuído e bounded — 02/10/2026
+
+Esta fatia fechou a lacuna P1 de limitação apenas em memória. A migration `0032_distributed_rate_limit` criou buckets InnoDB compartilhados, consumidos atomicamente por escopo, identidade e fingerprint de rede. O limite agora é aplicado em criação de anúncios, comandos/transcrição de voz, criação de pedidos e criação de cobrança PIX; retries idempotentes recuperados antes da execução não gastam nova cota.
+
+O bloqueio retorna `TOO_MANY_REQUESTS` com `Retry-After`; se o armazenamento distribuído falhar, a operação protegida falha fechado como `SERVICE_UNAVAILABLE`. Um sweeper nativo remove buckets expirados em lote bounded e revalida a expiração no `DELETE`, protegendo uma janela renovada contra corrida. Readiness e Operational Validation exigem a nova tabela, e o smoke cobre oito consumidores concorrentes, 429 HTTP, retry-after e cleanup.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| Migration limpa | Banco MySQL temporário `pediu_go_live_phase48_fresh`; 33 migrations aplicadas, 43 tabelas presentes e tabela nova confirmada |
+| Migration de validação | `0032_distributed_rate_limit` aplicada no banco local; colunas e índice `pediu_rate_limit_expires_idx` confirmados |
+| Regressões locais | 46 arquivos de teste, 225 testes aprovados; política, enforcement, readiness e contratos existentes preservados |
+| Matriz local final | `pnpm check`, `pnpm test`, `pnpm build`, `pnpm lint`, Prettier nos formatos suportados e `git diff --check` aprovados |
+| Atomicidade real | Oito consumidores concorrentes: exatamente 1 permitido e 7 bloqueados em bucket de limite 1 |
+| HTTP real | 21 mutações concorrentes: 20 alcançaram a procedure e a 21ª recebeu 429 com `Retry-After` |
+| Regressão operacional | Finance/refund/reconciliação, pedidos concorrentes, fiado, serviceability/pickup, expiração, dispatch, tracking, outbox e limites HTTP aprovados com PSP mock local onde necessário |
+| Cleanup SQL | 0 buckets, 0 usuários `ci-*`, 0 lojas de smoke e 0 pedidos `ci-*` residuais |
+| Readiness final | `/api/health` 200; `/api/readyz` 200 com database, migrations e tables em `pass` |
+| Deployment smoke local | health 200, readyz 200, marketplace 200, CORS exato e métricas protegidas |
+| Stress local read-only | 120 requests / 12 workers; p50 20,9 ms; p95 38,1 ms; máximo 76,6 ms; erro 0% |
+| Deployment/stress HTTPS temporário | Smoke aprovado; 40 requests / 4 workers; p50 13,6 ms; p95 53,5 ms; máximo 144,8 ms; erro 0% |
+
+A instrução técnica está em `docs/INSTRUCAO_FASE_RATE_LIMIT_DISTRIBUIDO_PR7.md`. A fase não instala Redis, WAF/CDN, rate-limit gerenciado, alta disponibilidade cross-region ou proteção L7 de borda. Permanecem externos PSP/PIX/CNPJ, credenciais/homologação e webhook real, OAuth, Expo Push/receipts, e-mail/SMS, storage, observabilidade/backup, scheduler/hosting definitivo, domínio/staging/produção, GPS/background físico e publicação nas lojas; portanto o Go-Live comercial e o PR #7 permanecem bloqueados e não READY.
+
+
+---
+# 49. Paginação por cursor do marketplace — 02/10/2026
+
+Esta fatia fechou a lacuna P1 de listagens de marketplace paginadas por `offset`. O contrato `pediu.marketplace.search` agora aceita cursor opaco versionado, normaliza a combinação de filtros, usa keyset estrito pela ordem anúncio publicado descendente, `products.createdAt` descendente e `products.id` descendente, e retorna `nextCursor` junto com `hasMore`. O `offset` permanece aceito somente para compatibilidade temporária com clientes legados. A busca Expo foi migrada para `useInfiniteQuery`, acumulando páginas sem substituir resultados anteriores.
+
+O cursor falha fechado para payload malformado, versão desconhecida, IDs/data inválidos ou filtros incompatíveis. O servidor continua bounded entre 1 e 50 itens e consulta no máximo `limit + 1`. Não foi criada migration: a fase não adiciona índice sem evidência de plano de consulta que justifique custo de escrita; o smoke cobre a ordenação e continuidade no banco vigente.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| Regressões puras/router | `tests/marketplace-cursor.test.ts` e contrato marketplace aprovados; round-trip opaco, cauda sem anúncio, cursor inválido e encaminhamento tRPC cobertos |
+| Matriz local | `pnpm check`, 47 arquivos/232 testes em `pnpm test`, `pnpm build`, `pnpm lint`, Prettier dos arquivos suportados e `git diff --check` aprovados |
+| Smoke E2E MySQL + bundle | `pnpm go-live:pagination` no dist final de produção da porta 3022: páginas `[10, 10, 5]`, zero duplicação, inserção entre páginas não deslocou o cursor e cursor inválido retornou HTTP 400 |
+| Cleanup SQL | 0 produtos `Cursor-*` e 0 usuários `ci-pagination-*` após o smoke |
+| Deployment smoke local | health 200, readyz 200, marketplace 200, CORS exato e métricas protegidas |
+| Stress local read-only | 120 requests / 12 workers; p50 18,5 ms; p95 41,2 ms; máximo 104,0 ms; erro 0% |
+| Deployment/stress HTTPS temporário | `https://3022-i54sxpgl15gk7uuptg0z2-85761c05.us1.manus.computer` aprovado; 40 requests / 4 workers; p50 11,3 ms; p95 38,7 ms; máximo 129,4 ms; erro 0% |
+
+A instrução técnica está em `docs/INSTRUCAO_FASE_PAGINACAO_CURSOR_PR7.md`. A fase não implementa full-text/ranking, cache/CDN, migração de listagens administrativas ou presign em lote sem contrato real do Forge/storage. Permanecem externos PSP/PIX/CNPJ, credenciais/homologação e webhook real, OAuth, Expo Push/receipts, e-mail/SMS, storage/Forge, observabilidade/backup contínuos, scheduler/hosting definitivo, domínio/staging/produção, GPS/background físico, Android/iOS reais e publicação nas lojas; portanto o Go-Live comercial e o PR #7 permanecem bloqueados e não READY.
+
+---
+# 50. Unificação Pediu 2.0 + PR #7 — 04/10/2026
+
+Esta fatia incorporou no cliente Expo oficial a direção visual do workspace Pediu 2.0 sem substituir a fonte de verdade do PR #7. O shell passou a usar a paleta creme/vermelho/preto/amarelo, com hero local, atalhos Pediu Agora, Radar Flash, central de avisos, CTA de busca e estados responsivos. A camada nova usa somente contratos reais do backend: produtos do marketplace, notificações persistidas, mutação de leitura e navegação para busca por cursor; não foram portados mocks, banco, `.grok`, infraestrutura web ou assets sem origem/licença verificável.
+
+Também foram alinhados os tokens NativeWind, manifest Expo, splash, ícone adaptativo, mascote e páginas compartilhadas. Um guard portátil nos quatro workers preserva `unref()` em Node e elimina a incompatibilidade de tipagem com o ambiente Expo/DOM.
+
+## Evidências executadas
+
+| Validação | Resultado |
+| --- | --- |
+| TypeScript | `pnpm check` aprovado |
+| Testes | 46 arquivos, 225 testes aprovados |
+| Build/lint | `pnpm build` e `pnpm lint` aprovados |
+| Formatação | Prettier nos arquivos tocados e `git diff --check` aprovados |
+| Export Expo Web | 52 rotas estáticas exportadas; bundle de 11 MB |
+| Visual mobile | Chromium em 390×844 sem overflow horizontal ou clipping observado |
+| Console/API | Console sem erros; health/readiness 200; marketplace 200 |
+| Deployment local | Smoke aprovado em `127.0.0.1:3000` |
+| Stress local | 120 requests / 12 workers; p50 22,0 ms; p95 60,5 ms; máximo 96,7 ms; erro 0% |
+| HTTPS temporário | Smoke aprovado; 40 requests / 4 workers; p50 14,7 ms; p95 46,3 ms; máximo 130,0 ms; erro 0% |
+
+A instrução técnica está em `docs/INSTRUCAO_FASE_UNIFICACAO_V2_PR7.md`. O catálogo vazio no preview é o estado real do banco limpo de validação, não dado simulado. Permanecem externos e bloqueadores do Go-Live comercial: API/staging/produção HTTPS estável, OAuth público, `EXPO_TOKEN`/EAS autenticado e projeto configurado, aparelho físico Android/iOS, Expo Push/receipts, storage, domínio, credenciais e homologação PSP/PIX/Mercado Pago real/CNPJ, geocodificação/GPS em background, observabilidade/backup definitivo e publicação nas lojas. Portanto, o PR #7 permanece não READY para operação comercial.

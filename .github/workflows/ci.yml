@@ -22,3 +22,7 @@ jobs:
       - run: pnpm check
       - run: pnpm test
       - run: pnpm build
+      - name: Bundle Expo for Android
+        run: pnpm exec expo export --platform android --output-dir /tmp/pediu-export-android --max-workers 2
+      - name: Bundle Expo for iOS
+        run: pnpm exec expo export --platform ios --output-dir /tmp/pediu-export-ios --max-workers 2

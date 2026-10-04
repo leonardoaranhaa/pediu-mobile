@@ -2,7 +2,7 @@
 
 Aplicativo de delivery local construído com Expo, React Native, Expo Router e um backend Express com tRPC. O projeto atende os papéis de cliente, lojista e entregador em uma experiência compartilhada. O fluxo principal cobre descoberta de produtos, carrinho, cotação server-side, checkout com PIX ou dinheiro, pedidos idempotentes, acompanhamento, chat, suporte, avaliações, fiado, notificações e personalização por tema.
 
-> **Estado atual:** o branch `feat/core-marketplace-flow` contém as correções da auditoria de delivery e está associado ao [PR #3](https://github.com/leonardoaranhaa/pediu-mobile/pull/3). O CI e a validação operacional passam no commit mais recente.
+> **Estado atual:** a base de delivery e as correções da auditoria estão integradas em `main`. Esta frente incremental usa uma branch `feat/**`, preserva a separação por pull request e passa pelo CI antes de ser incorporada.
 
 ## Stack
 
@@ -17,6 +17,10 @@ Aplicativo de delivery local construído com Expo, React Native, Expo Router e u
 O cliente pode pesquisar o marketplace, filtrar categorias, consultar produtos, montar o carrinho e enviar pedidos com chave de idempotência. O total do pedido é recalculado no servidor a partir do catálogo persistido. Endereços podem ser cadastrados com coordenadas, e a localização do dispositivo pode ser geocodificada e salva como endereço padrão.
 
 O lojista pode criar a primeira loja por meio do onboarding, publicar produtos, acompanhar pedidos, registrar vendas, consultar clientes e fiado, gerenciar entregas e alternar entre os temas do aplicativo. A criação da loja promove a conta para `merchant` na mesma transação que persiste o estabelecimento.
+
+Na aba **Personalizar o Pediu**, cliente e lojista podem ajustar a paleta, escolher a personalidade visual do mascote, ativar ou ocultar suas reações, controlar o movimento e restaurar a experiência padrão. O mascote é um protótipo nativo em React Native: acompanha a interface com movimento suave, comunica expectativa/fome e reage com alegria quando o cliente adiciona um item ao carrinho.
+
+O **Estúdio de anúncios** transforma um produto real do catálogo em um criativo revisável: a IA sugere headline, descrição, CTA e direção visual, e a infraestrutura interna gera a imagem promocional. O lojista escolhe o tom e informa apenas vantagens que realmente pretende cumprir; o anúncio só entra no marketplace depois da publicação explícita. A home do cliente prioriza criativos publicados e oferece a área **Pediu Vantagens**, com cupons ativos validados no servidor e aplicáveis ao checkout.
 
 O acompanhamento de entregas possui atribuição, localização, ETA, eventos operacionais e transições condicionais. Chat, notificações, suporte, avaliações, privacidade e exportação de dados são protegidos por autenticação e autorização no backend.
 
@@ -52,12 +56,12 @@ Para habilitar autenticação e integrações, configure também, conforme o rec
 - `OAUTH_SERVER_URL`, `EXPO_PUBLIC_OAUTH_PORTAL_URL`, `EXPO_PUBLIC_OAUTH_SERVER_URL`, `EXPO_PUBLIC_APP_ID` e, quando necessário, `EXPO_PUBLIC_API_BASE_URL`.
 - `OWNER_OPEN_ID` para o usuário proprietário do ambiente.
 - `BUILT_IN_FORGE_API_URL` e `BUILT_IN_FORGE_API_KEY` para os recursos de dados, LLM, storage, transcrição e notificações oferecidos pelo ambiente.
-- `PIX_PROVIDER`, `PIX_API_URL` e `PIX_API_KEY` para um provedor PIX real.
-- `PAYMENT_WEBHOOK_SECRET` para validar o HMAC do endpoint `POST /api/webhooks/payments`.
+- `PIX_PROVIDER=mercado_pago`, `MERCADO_PAGO_ACCESS_TOKEN` e `MERCADO_PAGO_NOTIFICATION_URL` para criar cobranças PIX no Mercado Pago. A URL deve ser o endpoint HTTPS público real `POST /api/webhooks/payments` do ambiente implantado; não a exponha ao cliente.
+- `MERCADO_PAGO_WEBHOOK_SECRET` para validar `x-signature` no endpoint `POST /api/webhooks/payments`. Configure a mesma URL e o segredo correspondente no painel de Webhooks da aplicação Mercado Pago.
 - `EMAIL_WEBHOOK_URL`, `EMAIL_WEBHOOK_SECRET` e `EMAIL_VERIFICATION_BASE_URL` para o envio de links de verificação de e-mail.
 - `COOKIE_DOMAIN` quando o cookie web precisar de um domínio explícito.
 
-Variáveis com prefixo `EXPO_PUBLIC_` são incorporadas ao cliente. Não coloque segredos, tokens privados ou chaves de gateway nessas variáveis.
+Variáveis com prefixo `EXPO_PUBLIC_` são incorporadas ao cliente. Não coloque segredos, tokens privados ou chaves de gateway nessas variáveis. O Access Token e o segredo de webhook do Mercado Pago devem existir apenas no ambiente do servidor.
 
 ## Banco de dados e migrations
 
@@ -69,7 +73,7 @@ DATABASE_URL='mysql://usuario:senha@127.0.0.1:3306/pediu' pnpm exec drizzle-kit 
 
 O comando `pnpm db:push` executa a geração de migration e a aplicação. Use-o apenas quando uma alteração intencional de schema tiver sido revisada, pois ele pode criar novos arquivos no histórico. O CI aplica as migrations comprometidas em um banco MySQL limpo e verifica as tabelas essenciais.
 
-As migrations atuais incluem o domínio de marketplace, pedidos e pagamentos, comunicação, entregas, suporte, preferências de conta, tema por usuário, tokens de verificação de e-mail e chaves estrangeiras dos domínios centrais.
+As migrations atuais incluem o domínio de marketplace, pedidos e pagamentos, comunicação, entregas, suporte, preferências de conta, tema por usuário, tokens de verificação de e-mail, chaves estrangeiras dos domínios centrais e créditos/anúncios gerados por IA (`0024_ai_ads.sql`).
 
 ## Desenvolvimento
 
@@ -104,18 +108,18 @@ Os testes cobrem contratos de autenticação e papel, marketplace, carrinho, che
 
 ## Estrutura do repositório
 
-| Diretório | Responsabilidade |
-|---|---|
-| `app/` | Rotas Expo Router, telas de cliente, conta, lojista, entrega e suporte |
-| `components/` | Componentes visuais, layout e controles compartilhados |
-| `providers/` | Estado global do carrinho |
-| `hooks/` | Hooks de autenticação e comportamento de interface |
-| `lib/` | Preferências, localização, API, sessão e utilitários do cliente |
-| `server/` | Express, tRPC, autorização, domínio, persistência e integrações |
-| `drizzle/` | Schema, relações, migrations e journal do banco |
-| `tests/` | Testes Vitest de contratos e boundaries HTTP |
-| `docs/` | Arquitetura, máquinas de estado, roadmap, auditoria e validações |
-| `.github/workflows/` | CI e validação operacional com MySQL e API |
+| Diretório            | Responsabilidade                                                       |
+| -------------------- | ---------------------------------------------------------------------- |
+| `app/`               | Rotas Expo Router, telas de cliente, conta, lojista, entrega e suporte |
+| `components/`        | Componentes visuais, layout e controles compartilhados                 |
+| `providers/`         | Estado global do carrinho                                              |
+| `hooks/`             | Hooks de autenticação e comportamento de interface                     |
+| `lib/`               | Preferências, localização, API, sessão e utilitários do cliente        |
+| `server/`            | Express, tRPC, autorização, domínio, persistência e integrações        |
+| `drizzle/`           | Schema, relações, migrations e journal do banco                        |
+| `tests/`             | Testes Vitest de contratos e boundaries HTTP                           |
+| `docs/`              | Arquitetura, máquinas de estado, roadmap, auditoria e validações       |
+| `.github/workflows/` | CI e validação operacional com MySQL e API                             |
 
 ## Segurança e operação
 
@@ -132,6 +136,8 @@ Os limites de taxa e concorrência são locais ao processo. Antes de escalar hor
 - [Matriz de implementação](docs/IMPLEMENTATION_MATRIX.md)
 - [Auditoria completa e resolução F-001–F-016](docs/RELATORIO_AUDITORIA_COMPLETA_DELIVERY_2026-09-22.md)
 - [Instrução técnica de correção](docs/INSTRUCAO_CORRECAO_15_ACHADOS_2026-09-22.md)
+- [Instrução técnica da fase cliente e anúncios com IA](docs/INSTRUCAO_FASE_CLIENTE_ANUNCIOS_IA.md)
+- [Instrução técnica da fase de personalização e mascote](docs/INSTRUCAO_FASE_MASCOTE_CUSTOMIZACAO.md)
 - [QA Android e iOS](QA_ANDROID_IOS.md)
 
 ## Contribuição

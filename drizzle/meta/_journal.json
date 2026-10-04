@@ -165,9 +165,72 @@
     },
     {
       "idx": 23,
-      "version": "5",
+      "version": 5,
       "when": 1790080100000,
       "tag": "0023_core_foreign_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "5",
+      "when": 1790246100000,
+      "tag": "0024_ai_ads",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1790080200000,
+      "tag": "0025_courier_flow",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "5",
+      "when": 1790638202256,
+      "tag": "0026_mercado_pago_pix_details",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "5",
+      "when": 1790628745029,
+      "tag": "0027_payment_reconciliation",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "5",
+      "when": 1790760052415,
+      "tag": "0028_inventory_reservation",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "5",
+      "when": 1790760052416,
+      "tag": "0029_serviceability_pickup",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "5",
+      "when": 1790901000000,
+      "tag": "0030_notification_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "5",
+      "when": 1791025200000,
+      "tag": "0031_tracking_captured_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "5",
+      "when": 1791111600000,
+      "tag": "0032_distributed_rate_limit",
       "breakpoints": true
     }
   ]

@@ -1,6 +1,9 @@
 // Load environment variables with proper priority (system > .env)
 import "./scripts/load-env.js";
 import type { ExpoConfig } from "expo/config";
+import { assertProductionApiBaseUrl } from "./scripts/production-build-config.js";
+
+assertProductionApiBaseUrl(process.env);
 
 // Expo evaluates app.config.ts through a CommonJS loader that cannot resolve
 // extensionless imports of TypeScript files. Keep this build-time value local;
@@ -23,10 +26,14 @@ const config: ExpoConfig = {
   scheme: PEDIU_OAUTH_SCHEME,
   userInterfaceStyle: "light",
   newArchEnabled: true,
-  ios: { supportsTablet: true, bundleIdentifier: bundleId, infoPlist: { ITSAppUsesNonExemptEncryption: false } },
+  ios: {
+    supportsTablet: true,
+    bundleIdentifier: bundleId,
+    infoPlist: { ITSAppUsesNonExemptEncryption: false },
+  },
   android: {
     adaptiveIcon: {
-      backgroundColor: "#FF5A4F",
+      backgroundColor: "#E20D2A",
       foregroundImage: "./assets/images/android-icon-foreground.png",
       backgroundImage: "./assets/images/android-icon-background.png",
       monochromeImage: "./assets/images/android-icon-monochrome.png",
@@ -35,17 +42,62 @@ const config: ExpoConfig = {
     predictiveBackGestureEnabled: false,
     package: bundleId,
     permissions: ["POST_NOTIFICATIONS"],
-    intentFilters: [{ action: "VIEW", autoVerify: true, data: [{ scheme: PEDIU_OAUTH_SCHEME, host: "*" }], category: ["BROWSABLE", "DEFAULT"] }],
+    intentFilters: [
+      {
+        action: "VIEW",
+        autoVerify: true,
+        data: [{ scheme: PEDIU_OAUTH_SCHEME, host: "*" }],
+        category: ["BROWSABLE", "DEFAULT"],
+      },
+    ],
   },
-  web: { bundler: "metro", output: "static", favicon: "./assets/images/favicon.png" },
+  web: {
+    bundler: "metro",
+    output: "static",
+    favicon: "./assets/images/favicon.png",
+  },
   plugins: [
     "expo-router",
-    ["expo-audio", { microphonePermission: "Permita que o Pediu use seu microfone para fazer pedidos por voz." }],
-    ["expo-location", { locationWhenInUsePermission: "Permita que o Pediu use sua localização para encontrar lojas e acompanhar entregas." }],
-    ["expo-notifications", { color: "#FF5A4F" }],
-    ["expo-video", { supportsBackgroundPlayback: true, supportsPictureInPicture: true }],
-    ["expo-splash-screen", { image: "./assets/images/splash-icon.png", imageWidth: 200, resizeMode: "contain", backgroundColor: "#FFF8F1" }],
-    ["expo-build-properties", { android: { buildArchs: ["armeabi-v7a", "arm64-v8a"], minSdkVersion: 24 } }],
+    "expo-asset",
+    [
+      "expo-audio",
+      {
+        microphonePermission:
+          "Permita que o Pediu use seu microfone para fazer pedidos por voz.",
+      },
+    ],
+    [
+      "expo-location",
+      {
+        locationWhenInUsePermission:
+          "Permita que o Pediu use sua localização para encontrar lojas e acompanhar entregas.",
+      },
+    ],
+    ["expo-notifications", { color: "#E20D2A" }],
+    "expo-font",
+    [
+      "expo-video",
+      { supportsBackgroundPlayback: true, supportsPictureInPicture: true },
+    ],
+    "expo-web-browser",
+    [
+      "expo-splash-screen",
+      {
+        image: "./assets/images/splash-icon.png",
+        imageWidth: 200,
+        resizeMode: "contain",
+        backgroundColor: "#FFF4E8",
+      },
+    ],
+    [
+      "expo-build-properties",
+      {
+        android: {
+          buildArchs: ["armeabi-v7a", "arm64-v8a"],
+          minSdkVersion: 24,
+        },
+      },
+    ],
   ],
   experiments: { typedRoutes: true, reactCompiler: true },
 };
