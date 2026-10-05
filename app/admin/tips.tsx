@@ -1,5 +1,11 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { EmptyState } from "@/components/pediu/empty-state";
 import { Card, Page, PEDIU, Row, s } from "@/components/pediu-page";
@@ -32,11 +38,10 @@ function Chip({
   onPress: () => void;
 }) {
   return (
-    <Pressable
-      onPress={onPress}
-      style={[styles.chip, active && styles.chipOn]}
-    >
-      <Text style={[styles.chipText, active && styles.chipTextOn]}>{label}</Text>
+    <Pressable onPress={onPress} style={[styles.chip, active && styles.chipOn]}>
+      <Text style={[styles.chipText, active && styles.chipTextOn]}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -46,15 +51,20 @@ export default function AdminTipsPage() {
   const { user, loading } = useAuth();
   const allowed = user?.role === "admin";
   const [status, setStatus] = useState<TipStatus | undefined>(undefined);
-  const [destination, setDestination] = useState<TipDestination | undefined>(undefined);
+  const [destination, setDestination] = useState<TipDestination | undefined>(
+    undefined,
+  );
 
   const query = trpc.admin.tips.useQuery(
     { limit: 50, offset: 0, status, destination },
     { enabled: allowed },
   );
-  const overview = trpc.admin.overview.useQuery(undefined, { enabled: allowed, staleTime: 15_000 });
+  const overview = trpc.admin.overview.useQuery(undefined, {
+    enabled: allowed,
+    staleTime: 15_000,
+  });
 
-  const rows = query.data ?? [];
+  const rows = useMemo(() => query.data ?? [], [query.data]);
   const settledSum = useMemo(() => {
     return rows
       .filter((row) => row.status === "settled")
@@ -89,7 +99,8 @@ export default function AdminTipsPage() {
         <Text style={styles.heroEyebrow}>TIP OPS</Text>
         <Text style={styles.heroTitle}>Settlements de gorjeta</Text>
         <Text style={styles.heroBody}>
-          Visibilidade contábil pós-entrega. Payout via provider fica para a próxima onda.
+          Visibilidade contábil pós-entrega. Payout via provider fica para a
+          próxima onda.
         </Text>
       </View>
 
@@ -100,8 +111,13 @@ export default function AdminTipsPage() {
             <Text style={styles.metricLabel}>Liquidadas</Text>
           </View>
           <View style={[styles.metric, styles.metricAccent]}>
-            <Text style={[styles.metricValue, { color: PEDIU_TOKENS.accentFg }]}>
-              R$ {Number(overview.data.tipsSettledAmount).toFixed(2).replace(".", ",")}
+            <Text
+              style={[styles.metricValue, { color: PEDIU_TOKENS.accentFg }]}
+            >
+              R${" "}
+              {Number(overview.data.tipsSettledAmount)
+                .toFixed(2)
+                .replace(".", ",")}
             </Text>
             <Text style={styles.metricLabel}>Volume liquidado</Text>
           </View>
@@ -118,21 +134,54 @@ export default function AdminTipsPage() {
         <Text style={s.sectionTitle}>Filtros</Text>
         <Text style={s.label}>STATUS</Text>
         <View style={styles.chips}>
-          <Chip label="Todos" active={status === undefined} onPress={() => setStatus(undefined)} />
-          <Chip label="Liquidada" active={status === "settled"} onPress={() => setStatus("settled")} />
-          <Chip label="Pendente" active={status === "pending"} onPress={() => setStatus("pending")} />
-          <Chip label="Estornada" active={status === "reversed"} onPress={() => setStatus("reversed")} />
+          <Chip
+            label="Todos"
+            active={status === undefined}
+            onPress={() => setStatus(undefined)}
+          />
+          <Chip
+            label="Liquidada"
+            active={status === "settled"}
+            onPress={() => setStatus("settled")}
+          />
+          <Chip
+            label="Pendente"
+            active={status === "pending"}
+            onPress={() => setStatus("pending")}
+          />
+          <Chip
+            label="Estornada"
+            active={status === "reversed"}
+            onPress={() => setStatus("reversed")}
+          />
         </View>
         <Text style={s.label}>DESTINO</Text>
         <View style={styles.chips}>
-          <Chip label="Todos" active={destination === undefined} onPress={() => setDestination(undefined)} />
-          <Chip label="Entregador" active={destination === "courier"} onPress={() => setDestination("courier")} />
-          <Chip label="Loja" active={destination === "store"} onPress={() => setDestination("store")} />
-          <Chip label="Pool" active={destination === "platform_pool"} onPress={() => setDestination("platform_pool")} />
+          <Chip
+            label="Todos"
+            active={destination === undefined}
+            onPress={() => setDestination(undefined)}
+          />
+          <Chip
+            label="Entregador"
+            active={destination === "courier"}
+            onPress={() => setDestination("courier")}
+          />
+          <Chip
+            label="Loja"
+            active={destination === "store"}
+            onPress={() => setDestination("store")}
+          />
+          <Chip
+            label="Pool"
+            active={destination === "platform_pool"}
+            onPress={() => setDestination("platform_pool")}
+          />
         </View>
         {rows.length ? (
           <Text style={s.muted}>
-            Nesta página: {rows.length} registro(s) · liquidadas R$ {settledSum.toFixed(2).replace(".", ",")}
+            Nesta página: {rows.length} registro(s) · liquidadas R${" "}
+            {settledSum.toFixed(2).replace(".", ",")}
           </Text>
         ) : null}
       </Card>
@@ -158,7 +207,13 @@ export default function AdminTipsPage() {
       {rows.map((tip) => (
         <Row
           key={tip.id}
-          icon={tip.destination === "courier" ? "two-wheeler" : tip.destination === "store" ? "storefront" : "account-balance"}
+          icon={
+            tip.destination === "courier"
+              ? "two-wheeler"
+              : tip.destination === "store"
+                ? "storefront"
+                : "account-balance"
+          }
           title={`#${tip.id} · ${STATUS_LABEL[tip.status] ?? tip.status} · R$ ${Number(tip.amount).toFixed(2).replace(".", ",")}`}
           subtitle={`Pedido #${tip.orderId} · loja #${tip.storeId} · ${DEST_LABEL[tip.destination] ?? tip.destination}${tip.recipientUserId ? ` · user #${tip.recipientUserId}` : " · sem destinatário"}${tip.note ? ` · ${tip.note}` : ""}`}
         />

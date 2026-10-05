@@ -40,6 +40,10 @@ describe("Pediu seller onboarding", () => {
       deliveryRadiusKm: "10.00",
       latitude: undefined,
       longitude: undefined,
+      kind: "restaurant",
+      flashEnabled: 0,
+      flashEtaMaxMinutes: 30,
+      flashFeeOverride: undefined,
     });
   });
 

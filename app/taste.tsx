@@ -1,6 +1,12 @@
 import { router } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { EmptyState } from "@/components/pediu/empty-state";
 import { ProductCard } from "@/components/pediu/product-card";
 import { Page, PEDIU, s } from "@/components/pediu-page";
@@ -9,7 +15,9 @@ import { trpc } from "@/lib/trpc";
 
 export default function TasteScreen() {
   const [moodId, setMoodId] = useState<string | null>(null);
-  const moodsQuery = trpc.pediu.marketplace.moods.useQuery(undefined, { staleTime: 60_000 });
+  const moodsQuery = trpc.pediu.marketplace.moods.useQuery(undefined, {
+    staleTime: 60_000,
+  });
   const moods = moodsQuery.data ?? [];
   const selected = moods.find((m) => m.id === moodId);
 
@@ -23,7 +31,9 @@ export default function TasteScreen() {
     name: item.name,
     store: item.storeName ?? "Loja",
     price: `R$ ${Number(item.price).toFixed(2).replace(".", ",")}`,
-    distance: item.flashEnabled ? `Flash ${item.flashEtaMaxMinutes} min` : "perto",
+    distance: item.flashEnabled
+      ? `Flash ${item.flashEtaMaxMinutes} min`
+      : "perto",
     category: item.category,
     description: item.description,
     available: Boolean(item.available),
@@ -32,22 +42,43 @@ export default function TasteScreen() {
 
   return (
     <Page title="Sabor do momento" eyebrow="DESCOBERTA">
-      <Text style={s.muted}>Humor → query canônica no servidor (`marketplace.taste`). Sem personalização invasiva na v1.</Text>
+      <Text style={s.muted}>
+        Humor → query canônica no servidor (`marketplace.taste`). Sem
+        personalização invasiva na v1.
+      </Text>
 
       <View style={styles.grid}>
         {moods.map((mood, index) => {
           const active = mood.id === moodId;
-          const tones = [PEDIU_TOKENS.ink, PEDIU_TOKENS.accent, PEDIU_TOKENS.primary, PEDIU_TOKENS.ink] as const;
-          const bg = active ? PEDIU_TOKENS.primary : tones[index % tones.length];
-          const fg = !active && tones[index % tones.length] === PEDIU_TOKENS.accent ? PEDIU_TOKENS.accentFg : PEDIU_TOKENS.white;
+          const tones = [
+            PEDIU_TOKENS.ink,
+            PEDIU_TOKENS.accent,
+            PEDIU_TOKENS.primary,
+            PEDIU_TOKENS.ink,
+          ] as const;
+          const bg = active
+            ? PEDIU_TOKENS.primary
+            : tones[index % tones.length];
+          const fg =
+            !active && tones[index % tones.length] === PEDIU_TOKENS.accent
+              ? PEDIU_TOKENS.accentFg
+              : PEDIU_TOKENS.white;
           return (
             <Pressable
               key={mood.id}
               onPress={() => setMoodId(mood.id)}
-              style={({ pressed }) => [styles.mood, { backgroundColor: bg }, pressed && { transform: [{ scale: 0.97 }] }]}
+              style={({ pressed }) => [
+                styles.mood,
+                { backgroundColor: bg },
+                pressed && { transform: [{ scale: 0.97 }] },
+              ]}
             >
-              <Text style={[styles.moodTitle, { color: fg }]}>{mood.title}</Text>
-              <Text style={[styles.moodSub, { color: fg, opacity: 0.8 }]}>{mood.subtitle}</Text>
+              <Text style={[styles.moodTitle, { color: fg }]}>
+                {mood.title}
+              </Text>
+              <Text style={[styles.moodSub, { color: fg, opacity: 0.8 }]}>
+                {mood.subtitle}
+              </Text>
             </Pressable>
           );
         })}
@@ -63,7 +94,12 @@ export default function TasteScreen() {
               <ProductCard
                 key={product.id}
                 product={product}
-                onPress={() => router.push({ pathname: "/product/[id]", params: { id: String(product.id) } })}
+                onPress={() =>
+                  router.push({
+                    pathname: "/product/[id]",
+                    params: { id: String(product.id) },
+                  })
+                }
               />
             ))
           ) : (

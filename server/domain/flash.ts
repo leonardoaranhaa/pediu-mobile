@@ -40,7 +40,8 @@ export function resolveFlashFulfillment(
   }
 
   const override = store.flashFeeOverride;
-  const fee = override == null || override === "" ? standardFee : Number(override);
+  const fee =
+    override == null || override === "" ? standardFee : Number(override);
   if (!Number.isFinite(fee) || fee < 0) {
     return { ...base, reason: "Taxa Flash inválida na loja" };
   }
@@ -53,9 +54,13 @@ export function resolveFlashFulfillment(
   };
 }
 
-export function clampTipAmount(tipAmount: number | undefined, subtotal: number): string {
+export function clampTipAmount(
+  tipAmount: number | undefined,
+  subtotal: number,
+): string {
   const tip = tipAmount ?? 0;
   if (!Number.isFinite(tip) || tip < 0) throw new Error("Gorjeta inválida");
-  if (tip > Math.max(subtotal * 0.3, 50)) throw new Error("Gorjeta acima do limite permitido");
+  if (tip > Math.max(subtotal * 0.3, 50))
+    throw new Error("Gorjeta acima do limite permitido");
   return tip.toFixed(2);
 }

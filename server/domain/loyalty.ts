@@ -25,14 +25,22 @@ export function loyaltyEarnMultiplier(tier: LoyaltyTier): number {
 }
 
 /** 1 point per R$ 1 eligible spend, multiplied by tier. */
-export function calculateEarnPoints(eligibleSpendBrl: number, tier: LoyaltyTier): number {
+export function calculateEarnPoints(
+  eligibleSpendBrl: number,
+  tier: LoyaltyTier,
+): number {
   if (!Number.isFinite(eligibleSpendBrl) || eligibleSpendBrl <= 0) return 0;
   return Math.floor(eligibleSpendBrl * loyaltyEarnMultiplier(tier));
 }
 
-export function pointsToNextTier(lifetimePoints: number): { nextTier: LoyaltyTier | null; pointsNeeded: number } {
-  if (lifetimePoints < 500) return { nextTier: "prata", pointsNeeded: 500 - lifetimePoints };
-  if (lifetimePoints < 1500) return { nextTier: "flash99", pointsNeeded: 1500 - lifetimePoints };
+export function pointsToNextTier(lifetimePoints: number): {
+  nextTier: LoyaltyTier | null;
+  pointsNeeded: number;
+} {
+  if (lifetimePoints < 500)
+    return { nextTier: "prata", pointsNeeded: 500 - lifetimePoints };
+  if (lifetimePoints < 1500)
+    return { nextTier: "flash99", pointsNeeded: 1500 - lifetimePoints };
   return { nextTier: null, pointsNeeded: 0 };
 }
 

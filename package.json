@@ -28,6 +28,7 @@
     "go-live:concurrency": "tsx scripts/go-live-concurrency.ts",
     "go-live:fiado-concurrency": "tsx scripts/go-live-fiado-concurrency.ts",
     "go-live:finance": "tsx scripts/go-live-finance.ts",
+    "go-live:flash-loyalty": "tsx scripts/go-live-flash-loyalty.ts",
     "go-live:cors-security": "tsx scripts/go-live-cors-security.ts",
     "go-live:storage-security": "tsx scripts/go-live-storage-security.ts",
     "go-live:limits-security": "tsx scripts/go-live-limits-security.ts",
