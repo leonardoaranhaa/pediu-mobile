@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
-import { protectedProcedure, router } from "./_core/trpc";
+import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { getDb } from "./db";
 import * as data from "./db";
 import { sendPushToUser } from "./push";
@@ -96,6 +96,15 @@ function assertReviewReplayMatches(
 }
 
 export const experienceRouter = router({
+  flags: publicProcedure.query(() => ({
+    flash: true,
+    club: true,
+    market: true,
+    taste: true,
+    tip: true,
+    pediuJunto: false,
+    tipDestination: "courier" as const,
+  })),
   coupons: router({
     validate: protectedProcedure.input(z.object({ code: z.string().trim().min(1).max(40), subtotal: z.number().nonnegative() })).query(async ({ input }) => {
       const db = await getDb(); if (!db) throw new Error("Database unavailable");

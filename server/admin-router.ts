@@ -9,6 +9,8 @@ const pagination = z.object({
 });
 
 export const adminRouter = router({
+  overview: adminProcedure.query(() => db.getAdminOverview()),
+
   users: adminProcedure
     .input(pagination)
     .query(({ input }) => db.listAdminUsers(input.limit, input.offset)),
@@ -16,6 +18,63 @@ export const adminRouter = router({
   stores: adminProcedure
     .input(pagination)
     .query(({ input }) => db.listAdminStores(input.limit, input.offset)),
+
+  storeUpdate: adminProcedure
+    .input(
+      z
+        .object({
+          storeId: z.number().int().positive(),
+          isOpen: z.boolean().optional(),
+          flashEnabled: z.boolean().optional(),
+          flashEtaMaxMinutes: z.number().int().min(5).max(120).optional(),
+          flashFeeOverride: z
+            .string()
+            .regex(/^\d+(\.\d{1,2})?$/)
+            .nullable()
+            .optional(),
+          kind: z.enum(["restaurant", "market", "service"]).optional(),
+        })
+        .refine(
+          (input) =>
+            Object.entries(input).some(
+              ([key, value]) => key !== "storeId" && value !== undefined,
+            ),
+          "Informe ao menos uma alteração",
+        ),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const {
+        storeId,
+        isOpen,
+        flashEnabled,
+        flashEtaMaxMinutes,
+        flashFeeOverride,
+        kind,
+      } = input;
+      const store = await db.adminUpdateStore(storeId, {
+        ...(isOpen === undefined ? {} : { isOpen: isOpen ? 1 : 0 }),
+        ...(flashEnabled === undefined
+          ? {}
+          : { flashEnabled: flashEnabled ? 1 : 0 }),
+        ...(flashEtaMaxMinutes === undefined ? {} : { flashEtaMaxMinutes }),
+        ...(flashFeeOverride === undefined ? {} : { flashFeeOverride }),
+        ...(kind === undefined ? {} : { kind }),
+      });
+      await db.createAdminAuditLog({
+        actorId: ctx.user.id,
+        action: "store_updated",
+        entityType: "store",
+        entityId: storeId,
+        metadata: JSON.stringify({
+          isOpen,
+          flashEnabled,
+          flashEtaMaxMinutes,
+          flashFeeOverride,
+          kind,
+        }),
+      });
+      return store;
+    }),
 
   orders: adminProcedure
     .input(pagination)

@@ -19,6 +19,19 @@ describe("Pediu admin authorization and contracts", () => {
   afterEach(() => vi.restoreAllMocks());
 
   it("allows an admin to read users, stores, orders, payments, credit, ledger and audit", async () => {
+    vi.spyOn(db, "getAdminOverview").mockResolvedValue({
+      users: 10,
+      stores: 4,
+      openStores: 3,
+      flashStores: 1,
+      orders: 20,
+      pendingOrders: 2,
+      payments: 18,
+      pendingPayments: 1,
+      failedPayments: 0,
+      openSupportTickets: 1,
+      creditAccounts: 5,
+    });
     vi.spyOn(db, "listAdminUsers").mockResolvedValue([{ id: 10, name: "User", email: "user@test.local", role: "user", loginMethod: "test", createdAt: new Date(), lastSignedIn: new Date() }] as any);
     vi.spyOn(db, "listAdminStores").mockResolvedValue([{ id: 7, name: "Loja", ownerId: 10 }] as any);
     vi.spyOn(db, "listAdminOrders").mockResolvedValue([{ id: 101, storeId: 7, customerId: 10, total: "25.00", status: "Pendente" }] as any);
@@ -29,10 +42,12 @@ describe("Pediu admin authorization and contracts", () => {
     vi.spyOn(db, "listAdminSupportTickets").mockResolvedValue([{ id: 601, userId: 10, subject: "Ajuda", body: "Preciso de ajuda", status: "open", createdAt: new Date(), updatedAt: new Date() }] as any);
     vi.spyOn(db, "updateSupportTicketStatus").mockResolvedValue(undefined);
     vi.spyOn(db, "createAdminAuditLog").mockResolvedValue(701);
+    vi.spyOn(db, "adminUpdateStore").mockResolvedValue({ id: 7, name: "Loja", flashEnabled: 1, kind: "market", isOpen: 1 } as any);
 
     const caller = appRouter.createCaller({ user: admin } as any);
     const input = { limit: 20, offset: 0 };
 
+    await expect(caller.admin.overview()).resolves.toMatchObject({ pendingOrders: 2, flashStores: 1 });
     await expect(caller.admin.users(input)).resolves.toHaveLength(1);
     await expect(caller.admin.stores(input)).resolves.toHaveLength(1);
     await expect(caller.admin.orders(input)).resolves.toHaveLength(1);
@@ -42,6 +57,7 @@ describe("Pediu admin authorization and contracts", () => {
     await expect(caller.admin.audit(input)).resolves.toHaveLength(1);
     await expect(caller.admin.support(input)).resolves.toHaveLength(1);
     await expect(caller.admin.supportStatus({ ticketId: 601, status: "in_progress" })).resolves.toEqual({ success: true });
+    await expect(caller.admin.storeUpdate({ storeId: 7, flashEnabled: true, kind: "market" })).resolves.toMatchObject({ flashEnabled: 1, kind: "market" });
   });
 
   it("rejects merchant access to every administrative contract", async () => {

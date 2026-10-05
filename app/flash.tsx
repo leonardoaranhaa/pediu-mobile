@@ -9,23 +9,21 @@ import { trpc } from "@/lib/trpc";
 
 export default function FlashScreen() {
   const marketplaceQuery = trpc.pediu.marketplace.search.useQuery(
-    { category: "Tudo", limit: 40, offset: 0 },
+    { flash: true, limit: 40, offset: 0 },
     { staleTime: 30_000 },
   );
 
-  const products = (marketplaceQuery.data?.items ?? []).map((item, index) => ({
+  const products = (marketplaceQuery.data?.items ?? []).map((item) => ({
     id: item.id,
     name: item.name,
     store: item.storeName ?? "Loja",
     price: `R$ ${Number(item.price).toFixed(2).replace(".", ",")}`,
-    distance: "perto",
+    distance: item.flashEtaMaxMinutes ? `${item.flashEtaMaxMinutes} min` : "Flash",
     category: item.category,
     description: item.description,
     available: Boolean(item.available),
-    flash: index % 3 !== 2,
+    flash: true,
   }));
-
-  const flashItems = products.filter((p) => p.flash);
 
   return (
     <Page title="Flash" eyebrow="ENTREGA RÁPIDA" action={
@@ -38,15 +36,15 @@ export default function FlashScreen() {
         <MaterialIcons name="bolt" size={22} color={PEDIU_TOKENS.accent} />
         <Text style={styles.heroTitle}>Pedidos que pulam a fila</Text>
         <Text style={styles.heroBody}>
-          Superfície portada do Pediu 2.0. Na Fase 1 listamos o catálogo real; elegibilidade Flash completa chega com o domínio (flag de loja + cotação).
+          Só lojas com Flash ligado no servidor. A cotação valida `fulfillment: flash` — o badge não é cosmético.
         </Text>
       </View>
 
       {marketplaceQuery.isLoading ? (
         <ActivityIndicator color={PEDIU.coral} />
-      ) : flashItems.length ? (
+      ) : products.length ? (
         <View style={{ gap: 12 }}>
-          {flashItems.map((product) => (
+          {products.map((product) => (
             <ProductCard
               key={product.id}
               product={product}
@@ -59,7 +57,7 @@ export default function FlashScreen() {
         <EmptyState
           icon="bolt"
           title="Nada em Flash agora"
-          body="Quando lojas abrirem com entrega rápida, elas aparecem aqui."
+          body="Quando ops ou lojistas ligarem Flash na loja, os produtos elegíveis aparecem aqui."
           actionLabel="Voltar ao início"
           onAction={() => router.replace("/")}
         />

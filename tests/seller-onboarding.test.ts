@@ -58,6 +58,10 @@ describe("Pediu seller onboarding", () => {
       latitude: null,
       longitude: null,
       isOpen: 0,
+      kind: "restaurant",
+      flashEnabled: 0,
+      flashEtaMaxMinutes: 30,
+      flashFeeOverride: null,
       createdAt: new Date(),
     });
     const caller = appRouter.createCaller({

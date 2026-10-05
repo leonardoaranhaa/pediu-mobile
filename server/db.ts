@@ -10,6 +10,7 @@ import {
   or,
   sql,
 } from "drizzle-orm";
+import crypto from "node:crypto";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   AdCredit,
@@ -44,6 +45,8 @@ import {
   InsertSupportTicketMessage,
   InsertUser,
   LedgerEntry,
+  LoyaltyAccount,
+  LoyaltyLedgerEntry,
   Notification,
   NotificationOutbox,
   NotificationPreferences,
@@ -76,6 +79,8 @@ import {
   emailVerificationTokens,
   generatedAds,
   ledgerEntries,
+  loyaltyAccounts,
+  loyaltyLedger,
   commissionEntries,
   commissionRules,
   financialLedger,
@@ -139,6 +144,15 @@ import {
   encodeMarketplaceCursor,
   marketplaceFilterKey,
 } from "./domain/marketplace-cursor";
+import {
+  calculateEarnPoints,
+  LOYALTY_TIER_LABELS,
+  planLoyaltyRedeem,
+  pointsToNextTier,
+  progressToNextTier,
+  resolveLoyaltyTier,
+  type LoyaltyTier,
+} from "./domain/loyalty";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -808,6 +822,115 @@ export async function listAdminAuditLogs(
   return db.select().from(adminAuditLogs).limit(limit).offset(offset);
 }
 
+export async function getAdminOverview() {
+  const db = await getDb();
+  if (!db) {
+    return {
+      users: 0,
+      stores: 0,
+      openStores: 0,
+      flashStores: 0,
+      orders: 0,
+      pendingOrders: 0,
+      payments: 0,
+      pendingPayments: 0,
+      failedPayments: 0,
+      openSupportTickets: 0,
+      creditAccounts: 0,
+    };
+  }
+
+  const [usersCount] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(users);
+  const [storesCount] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(stores);
+  const [openStores] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(stores)
+    .where(eq(stores.isOpen, 1));
+  const [flashStores] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(stores)
+    .where(and(eq(stores.flashEnabled, 1), eq(stores.isOpen, 1)));
+  const [ordersCount] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(orders);
+  const [pendingOrders] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(orders)
+    .where(eq(orders.status, "Pendente"));
+  const [paymentsCount] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(payments);
+  const [pendingPayments] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(payments)
+    .where(eq(payments.status, "pending"));
+  const [failedPayments] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(payments)
+    .where(eq(payments.status, "failed"));
+  const [openSupportTickets] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(supportTickets)
+    .where(sql`${supportTickets.status} in ('open','in_progress')`);
+  const [creditAccounts] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(customers);
+
+  return {
+    users: Number(usersCount?.value ?? 0),
+    stores: Number(storesCount?.value ?? 0),
+    openStores: Number(openStores?.value ?? 0),
+    flashStores: Number(flashStores?.value ?? 0),
+    orders: Number(ordersCount?.value ?? 0),
+    pendingOrders: Number(pendingOrders?.value ?? 0),
+    payments: Number(paymentsCount?.value ?? 0),
+    pendingPayments: Number(pendingPayments?.value ?? 0),
+    failedPayments: Number(failedPayments?.value ?? 0),
+    openSupportTickets: Number(openSupportTickets?.value ?? 0),
+    creditAccounts: Number(creditAccounts?.value ?? 0),
+  };
+}
+
+export async function adminUpdateStore(
+  storeId: number,
+  input: Partial<
+    Pick<
+      Store,
+      | "isOpen"
+      | "flashEnabled"
+      | "flashEtaMaxMinutes"
+      | "flashFeeOverride"
+      | "kind"
+    >
+  >,
+): Promise<Store> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const current = await db
+    .select()
+    .from(stores)
+    .where(eq(stores.id, storeId))
+    .limit(1);
+  if (!current[0]) throw new Error("Estabelecimento não encontrado");
+  const changes = Object.fromEntries(
+    Object.entries(input).filter(([, value]) => value !== undefined),
+  );
+  if (!Object.keys(changes).length) return current[0];
+  await db.update(stores).set(changes).where(eq(stores.id, storeId));
+  const updated = await db
+    .select()
+    .from(stores)
+    .where(eq(stores.id, storeId))
+    .limit(1);
+  if (!updated[0])
+    throw new Error("Estabelecimento não encontrado após atualização");
+  return updated[0];
+}
+
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
   if (!db) return undefined;
@@ -1207,6 +1330,10 @@ export type UpdateStoreInput = Partial<
     | "latitude"
     | "longitude"
     | "isOpen"
+    | "kind"
+    | "flashEnabled"
+    | "flashEtaMaxMinutes"
+    | "flashFeeOverride"
   >
 >;
 
@@ -1480,6 +1607,9 @@ export type MarketplaceProduct = Omit<
   adDescription: string | null;
   adOfferLabel: string | null;
   adImageKey: string | null;
+  storeKind: Store["kind"];
+  flashEnabled: number;
+  flashEtaMaxMinutes: number;
 };
 
 export type MarketplaceSearchInput = {
@@ -1487,6 +1617,8 @@ export type MarketplaceSearchInput = {
   query?: string;
   minPrice?: number;
   maxPrice?: number;
+  flash?: boolean;
+  vertical?: Store["kind"];
   limit?: number;
   cursor?: string;
   offset?: number;
@@ -1518,6 +1650,8 @@ export async function searchAvailableProducts(
     filters.push(sql`${products.price} >= ${input.minPrice.toFixed(2)}`);
   if (input.maxPrice !== undefined)
     filters.push(sql`${products.price} <= ${input.maxPrice.toFixed(2)}`);
+  if (input.flash) filters.push(eq(stores.flashEnabled, 1));
+  if (input.vertical) filters.push(eq(stores.kind, input.vertical));
   const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
   const filterKey = marketplaceFilterKey(input);
   const cursor = input.cursor ? decodeMarketplaceCursor(input.cursor) : null;
@@ -1572,6 +1706,9 @@ export async function searchAvailableProducts(
       adDescription: generatedAds.description,
       adOfferLabel: generatedAds.offerLabel,
       adImageKey: generatedAds.imageKey,
+      storeKind: stores.kind,
+      flashEnabled: stores.flashEnabled,
+      flashEtaMaxMinutes: stores.flashEtaMaxMinutes,
     })
     .from(products)
     .innerJoin(stores, eq(products.storeId, stores.id))
@@ -2404,7 +2541,7 @@ export async function completeDelivery(
 ): Promise<{ changed: boolean; status: Order["status"] }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  return db.transaction(async (tx) => {
+  const outcome = await db.transaction(async (tx) => {
     const result = await tx
       .update(orders)
       .set({ status: "Entregue", updatedAt: new Date() })
@@ -2430,6 +2567,17 @@ export async function completeDelivery(
       return { changed: false, status: "Entregue" as const };
     throw new Error("A entrega não está pronta para ser encerrada");
   });
+  if (outcome.changed) {
+    try {
+      await creditLoyaltyForDeliveredOrder(orderId);
+    } catch (error) {
+      console.warn(
+        "[Loyalty] Failed to credit points for delivered order:",
+        error,
+      );
+    }
+  }
+  return outcome;
 }
 
 async function reofferDeliveryWithinTransaction(
@@ -4248,4 +4396,245 @@ export async function updateNotificationPreferences(
   if (!updated[0])
     throw new Error("Notification preferences not found after update");
   return updated[0];
+}
+
+export async function ensureLoyaltyAccount(
+  userId: number,
+): Promise<LoyaltyAccount> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await db
+    .select()
+    .from(loyaltyAccounts)
+    .where(eq(loyaltyAccounts.userId, userId))
+    .limit(1);
+  if (existing[0]) return existing[0];
+  await db
+    .insert(loyaltyAccounts)
+    .values({ userId })
+    .onDuplicateKeyUpdate({ set: { userId } });
+  const created = await db
+    .select()
+    .from(loyaltyAccounts)
+    .where(eq(loyaltyAccounts.userId, userId))
+    .limit(1);
+  if (!created[0]) throw new Error("Conta de fidelidade não encontrada");
+  return created[0];
+}
+
+export async function getLoyaltySummary(userId: number) {
+  const account = await ensureLoyaltyAccount(userId);
+  const next = pointsToNextTier(account.lifetimePoints);
+  return {
+    points: account.points,
+    lifetimePoints: account.lifetimePoints,
+    tier: account.tier as LoyaltyTier,
+    tierLabel: LOYALTY_TIER_LABELS[account.tier as LoyaltyTier],
+    progress: progressToNextTier(account.lifetimePoints),
+    nextTier: next.nextTier,
+    nextTierLabel: next.nextTier ? LOYALTY_TIER_LABELS[next.nextTier] : null,
+    pointsToNextTier: next.pointsNeeded,
+    redeemBlockPoints: 100,
+    redeemCreditBrl: "5.00",
+  };
+}
+
+export async function listLoyaltyHistory(
+  userId: number,
+  limit = 50,
+  offset = 0,
+): Promise<LoyaltyLedgerEntry[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(loyaltyLedger)
+    .where(eq(loyaltyLedger.userId, userId))
+    .orderBy(desc(loyaltyLedger.createdAt), desc(loyaltyLedger.id))
+    .limit(Math.min(limit, 100))
+    .offset(Math.max(offset, 0));
+}
+
+export async function redeemLoyaltyPoints(
+  userId: number,
+  blocks = 1,
+  idempotencyKey: string,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const duplicateResult = (existing: LoyaltyLedgerEntry, balance: number) => ({
+    duplicate: true as const,
+    pointsSpent: existing.points,
+    creditAmount: ((existing.points / 100) * 5).toFixed(2),
+    couponCode: existing.note?.replace("coupon:", "") ?? null,
+    balance,
+  });
+
+  try {
+    return await db.transaction(async (tx) => {
+      // Upsert locks the unique user key; FOR UPDATE serializes concurrent
+      // redemptions against the same balance.
+      await tx
+        .insert(loyaltyAccounts)
+        .values({ userId })
+        .onDuplicateKeyUpdate({ set: { userId } });
+      const account = (
+        await tx
+          .select()
+          .from(loyaltyAccounts)
+          .where(eq(loyaltyAccounts.userId, userId))
+          .for("update")
+          .limit(1)
+      )[0];
+      if (!account) throw new Error("Conta de fidelidade não encontrada");
+
+      const existing = (
+        await tx
+          .select()
+          .from(loyaltyLedger)
+          .where(eq(loyaltyLedger.idempotencyKey, idempotencyKey))
+          .for("update")
+          .limit(1)
+      )[0];
+      if (existing) {
+        if (existing.userId !== userId)
+          throw new Error("Chave de idempotência já usada por outro usuário");
+        return duplicateResult(existing, account.points);
+      }
+
+      const plan = planLoyaltyRedeem(account.points, blocks);
+      if (!plan.ok) throw new Error(plan.reason);
+      const couponCode = `CLUBE${userId}${crypto
+        .randomBytes(12)
+        .toString("hex")}`.slice(0, 40);
+      await tx.insert(coupons).values({
+        code: couponCode,
+        type: "fixed",
+        value: plan.creditAmount,
+        minSubtotal: "0.00",
+        maxDiscount: plan.creditAmount,
+        active: 1,
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60_000),
+      });
+
+      const newPoints = account.points - plan.pointsSpent;
+      await tx
+        .update(loyaltyAccounts)
+        .set({ points: newPoints, updatedAt: new Date() })
+        .where(eq(loyaltyAccounts.id, account.id));
+      await tx.insert(loyaltyLedger).values({
+        accountId: account.id,
+        userId,
+        direction: "debit",
+        points: plan.pointsSpent,
+        reason: "redeem",
+        note: `coupon:${couponCode}`,
+        idempotencyKey,
+      });
+
+      return {
+        duplicate: false as const,
+        pointsSpent: plan.pointsSpent,
+        creditAmount: plan.creditAmount,
+        couponCode,
+        balance: newPoints,
+      };
+    });
+  } catch (error) {
+    // A concurrent request can win the unique ledger constraint after this
+    // transaction started. Resolve that retry only for the same user.
+    if (isUniqueConstraintError(error)) {
+      const existing = await db
+        .select()
+        .from(loyaltyLedger)
+        .where(eq(loyaltyLedger.idempotencyKey, idempotencyKey))
+        .limit(1);
+      if (existing[0]) {
+        if (existing[0].userId !== userId)
+          throw new Error("Chave de idempotência já usada por outro usuário");
+        const account = await ensureLoyaltyAccount(userId);
+        return duplicateResult(existing[0], account.points);
+      }
+    }
+    throw error;
+  }
+}
+
+/** Credits Club points after a delivered order. Tip is excluded from eligible spend. */
+export async function creditLoyaltyForDeliveredOrder(
+  orderId: number,
+): Promise<{ credited: boolean; points: number }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const idempotencyKey = `loyalty-earn-order-${orderId}`;
+  const existing = await db
+    .select()
+    .from(loyaltyLedger)
+    .where(eq(loyaltyLedger.idempotencyKey, idempotencyKey))
+    .limit(1);
+  if (existing[0]) return { credited: false, points: existing[0].points };
+
+  const orderRows = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.id, orderId))
+    .limit(1);
+  const order = orderRows[0];
+  if (!order || order.status !== "Entregue")
+    return { credited: false, points: 0 };
+  const eligible = Math.max(
+    0,
+    Number(order.total) - Number(order.tipAmount ?? 0),
+  );
+
+  return db.transaction(async (tx) => {
+    const concurrent = await tx
+      .select()
+      .from(loyaltyLedger)
+      .where(eq(loyaltyLedger.idempotencyKey, idempotencyKey))
+      .for("update")
+      .limit(1);
+    if (concurrent[0]) return { credited: false, points: concurrent[0].points };
+
+    // The unique-key upsert plus row lock prevents two delivered orders from
+    // losing points while creating or updating the same account.
+    await tx
+      .insert(loyaltyAccounts)
+      .values({ userId: order.customerId })
+      .onDuplicateKeyUpdate({ set: { userId: order.customerId } });
+    const account = (
+      await tx
+        .select()
+        .from(loyaltyAccounts)
+        .where(eq(loyaltyAccounts.userId, order.customerId))
+        .for("update")
+        .limit(1)
+    )[0];
+    if (!account) throw new Error("Conta de fidelidade não encontrada");
+
+    const points = calculateEarnPoints(eligible, account.tier as LoyaltyTier);
+    if (points <= 0) return { credited: false, points: 0 };
+    const lifetimePoints = account.lifetimePoints + points;
+    const tier = resolveLoyaltyTier(lifetimePoints);
+    await tx
+      .update(loyaltyAccounts)
+      .set({
+        points: account.points + points,
+        lifetimePoints,
+        tier,
+        updatedAt: new Date(),
+      })
+      .where(eq(loyaltyAccounts.id, account.id));
+    await tx.insert(loyaltyLedger).values({
+      accountId: account.id,
+      userId: order.customerId,
+      orderId,
+      direction: "credit",
+      points,
+      reason: "order_delivered",
+      note: `Pedido #${orderId}`,
+      idempotencyKey,
+    });
+    return { credited: true, points };
+  });
 }

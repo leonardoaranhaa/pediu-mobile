@@ -5,39 +5,55 @@ import { Card, Page, PEDIU, PrimaryButton, s } from "@/components/pediu-page";
 import { useAuth } from "@/hooks/use-auth";
 import { PEDIU_TOKENS } from "@/lib/pediu-tokens";
 import { router } from "expo-router";
+import { trpc } from "@/lib/trpc";
 
 const PERKS = [
-  { title: "Pontos em todo pedido", body: "R$ 1 vira 1 ponto. No Prata, 1,2×." },
+  { title: "Pontos em todo pedido", body: "R$ 1 vira 1 ponto após entrega. No Prata, 1,2×." },
   { title: "Flash na frente", body: "Pedidos Flash elegíveis ganham prioridade na moto." },
-  { title: "Cupom de aniversário", body: "FOME20 no mês do seu Pediu." },
-  { title: "Mercado relâmpago", body: "Taxa menor no Mercado depois das 22h." },
+  { title: "Resgate em cupom", body: "100 pts → R$ 5 de crédito em cupom interno do servidor." },
+  { title: "Mercado relâmpago", body: "Vertical Mercado com SLA próprio no schema." },
 ];
 
 export default function ClubScreen() {
   const { isAuthenticated } = useAuth();
+  const loyalty = trpc.pediu.loyalty.me.useQuery(undefined, { enabled: isAuthenticated, staleTime: 20_000 });
+  const redeem = trpc.pediu.loyalty.redeem.useMutation({
+    onSuccess: async () => {
+      await loyalty.refetch();
+    },
+  });
+
+  const points = loyalty.data?.points ?? 0;
+  const tierLabel = loyalty.data?.tierLabel ?? "Bronze";
+  const progress = Math.round((loyalty.data?.progress ?? 0) * 100);
+  const nextHint = loyalty.data?.nextTierLabel
+    ? `Faltam ${loyalty.data.pointsToNextTier} pts para ${loyalty.data.nextTierLabel}`
+    : "Você está no topo do Clube";
 
   return (
     <Page title="Clube Pediu" eyebrow="FIDELIDADE">
       <View style={styles.hero}>
         <Text style={styles.kicker}>
-          <MaterialIcons name="bolt" size={14} color={PEDIU_TOKENS.accent} /> Clube Pediu · Bronze
+          <MaterialIcons name="bolt" size={14} color={PEDIU_TOKENS.accent} /> Clube Pediu · {tierLabel}
         </Text>
-        <Text style={styles.points}>0</Text>
-        <Text style={styles.pointsLabel}>pontos · saldo local até o ledger de loyalty</Text>
+        <Text style={styles.points}>{isAuthenticated ? points : "—"}</Text>
+        <Text style={styles.pointsLabel}>
+          {isAuthenticated ? "pontos · saldo no ledger de loyalty" : "entre para ver seu saldo real"}
+        </Text>
         <View style={styles.track}>
-          <View style={[styles.fill, { width: "8%" }]} />
+          <View style={[styles.fill, { width: `${isAuthenticated ? Math.max(8, progress) : 8}%` }]} />
         </View>
-        <Text style={styles.progressHint}>Faltam pontos para o Prata — domínio na Fase 3c</Text>
+        <Text style={styles.progressHint}>{isAuthenticated ? nextHint : "Domínio loyalty_* no servidor"}</Text>
       </View>
 
       <View style={styles.stats}>
         <Card style={styles.stat}>
-          <Text style={styles.statLabel}>Pedidos</Text>
-          <Text style={styles.statValue}>—</Text>
+          <Text style={styles.statLabel}>Lifetime</Text>
+          <Text style={styles.statValue}>{loyalty.data?.lifetimePoints ?? "—"}</Text>
         </Card>
         <Card style={styles.stat}>
-          <Text style={styles.statLabel}>Já pediu</Text>
-          <Text style={styles.statValue}>R$ —</Text>
+          <Text style={styles.statLabel}>Resgate</Text>
+          <Text style={styles.statValue}>100→R$5</Text>
         </Card>
       </View>
 
@@ -53,17 +69,32 @@ export default function ClubScreen() {
         <EmptyState
           icon="workspace-premium"
           title="Entre para acumular pontos"
-          body="O Clube usa sua conta Pediu. Resgate e tiers entram com o ledger de loyalty — sem checkout fake."
+          body="O Clube usa sua conta Pediu. Pontos só creditam após entrega confirmada no servidor."
           actionLabel="Ir ao perfil"
           onAction={() => router.replace("/")}
         />
       ) : (
-        <PrimaryButton title="Ver Mercado Flash" onPress={() => router.push("/market")} />
+        <>
+          <PrimaryButton
+            title={redeem.isPending ? "Resgatando…" : "Resgatar 100 pts (R$ 5)"}
+            disabled={redeem.isPending || points < 100}
+            onPress={() =>
+              redeem.mutate({
+                blocks: 1,
+                idempotencyKey: `redeem-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              })
+            }
+          />
+          {redeem.data?.couponCode ? (
+            <Card>
+              <Text style={s.rowTitle}>Cupom gerado</Text>
+              <Text style={s.muted}>Use {redeem.data.couponCode} no checkout · R$ {redeem.data.creditAmount}</Text>
+            </Card>
+          ) : null}
+          {redeem.error ? <Text style={{ color: PEDIU.coral, fontWeight: "700" }}>{redeem.error.message}</Text> : null}
+          <PrimaryButton title="Ver Mercado Flash" onPress={() => router.push("/market")} />
+        </>
       )}
-
-      <Text style={[s.muted, { textAlign: "center" }]}>
-        Resgate e crédito de pontos só após API `loyalty_*` (ver roadmap de domínio). Cor de destaque: {PEDIU.coral}.
-      </Text>
     </Page>
   );
 }

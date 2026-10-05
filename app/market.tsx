@@ -10,7 +10,7 @@ import { trpc } from "@/lib/trpc";
 export default function MarketScreen() {
   const [cat, setCat] = useState("Tudo");
   const marketplaceQuery = trpc.pediu.marketplace.search.useQuery(
-    { category: cat === "Tudo" ? "Tudo" : cat, query: cat === "Tudo" ? "mercado" : undefined, limit: 40, offset: 0 },
+    { category: cat === "Tudo" ? undefined : cat, vertical: "market", limit: 40, offset: 0 },
     { staleTime: 30_000 },
   );
 
@@ -30,7 +30,7 @@ export default function MarketScreen() {
         </View>
         <Text style={styles.heroTitle}>Mercado Pediu</Text>
         <Text style={styles.heroBody}>
-          Hortifruti e mercearia com a mesma operação de entrega. Fase 1 usa o marketplace real; vertical `market` no schema vem na Fase 3a.
+          Hortifruti e mercearia filtrados por vertical `market` no servidor. Ops marca a loja no master management.
         </Text>
         <Image source={FOOD_ASSETS.feijoada} style={styles.heroImg} />
       </View>

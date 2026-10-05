@@ -73,6 +73,15 @@ export const stores = mysqlTable(
     latitude: decimal("latitude", { precision: 10, scale: 7 }),
     longitude: decimal("longitude", { precision: 10, scale: 7 }),
     isOpen: int("isOpen").default(1).notNull(),
+    kind: mysqlEnum("kind", ["restaurant", "market", "service"])
+      .default("restaurant")
+      .notNull(),
+    flashEnabled: int("flashEnabled").default(0).notNull(),
+    flashEtaMaxMinutes: int("flashEtaMaxMinutes").default(30).notNull(),
+    flashFeeOverride: decimal("flashFeeOverride", {
+      precision: 10,
+      scale: 2,
+    }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (table) => ({
@@ -144,6 +153,13 @@ export const orders = mysqlTable(
       .default("0.00")
       .notNull(),
     idempotencyKey: varchar("idempotencyKey", { length: 160 }),
+    isFlash: int("isFlash").default(0).notNull(),
+    tipAmount: decimal("tipAmount", { precision: 10, scale: 2 })
+      .default("0.00")
+      .notNull(),
+    fulfillment: varchar("fulfillment", { length: 16 })
+      .default("standard")
+      .notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
@@ -608,8 +624,8 @@ export const customerAddresses = mysqlTable("pediu_customer_addresses", {
   state: varchar("state", { length: 2 }).notNull(),
   postalCode: varchar("postalCode", { length: 8 }).notNull(),
   latitude: decimal("latitude", { precision: 10, scale: 7 }),
-  longitude: decimal("longitude", { precision: 10, scale: 7 }),
-  isDefault: int("isDefault").default(0).notNull(),
+    longitude: decimal("longitude", { precision: 10, scale: 7 }),
+    isDefault: int("isDefault").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -1120,6 +1136,56 @@ export const generatedAds = mysqlTable(
   }),
 );
 
+export const loyaltyAccounts = mysqlTable(
+  "pediu_loyalty_accounts",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    points: int("points").default(0).notNull(),
+    lifetimePoints: int("lifetimePoints").default(0).notNull(),
+    tier: mysqlEnum("tier", ["bronze", "prata", "flash99"])
+      .default("bronze")
+      .notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => ({
+    userUnique: unique("pediu_loyalty_accounts_user_unique").on(table.userId),
+  }),
+);
+
+export const loyaltyLedger = mysqlTable(
+  "pediu_loyalty_ledger",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    accountId: int("accountId")
+      .notNull()
+      .references(() => loyaltyAccounts.id, { onDelete: "cascade" }),
+    userId: int("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    orderId: int("orderId"),
+    direction: mysqlEnum("direction", ["credit", "debit"]).notNull(),
+    points: int("points").notNull(),
+    reason: varchar("reason", { length: 80 }).notNull(),
+    note: varchar("note", { length: 255 }),
+    idempotencyKey: varchar("idempotencyKey", { length: 160 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => ({
+    idempotencyUnique: unique(
+      "pediu_loyalty_ledger_idempotency_unique",
+    ).on(table.idempotencyKey),
+    userCreatedIdx: index("pediu_loyalty_ledger_user_created_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
+    orderIdx: index("pediu_loyalty_ledger_order_idx").on(table.orderId),
+  }),
+);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type EmailVerificationToken =
@@ -1201,3 +1267,7 @@ export type AdCredit = typeof adCredits.$inferSelect;
 export type InsertAdCredit = typeof adCredits.$inferInsert;
 export type GeneratedAd = typeof generatedAds.$inferSelect;
 export type InsertGeneratedAd = typeof generatedAds.$inferInsert;
+export type LoyaltyAccount = typeof loyaltyAccounts.$inferSelect;
+export type InsertLoyaltyAccount = typeof loyaltyAccounts.$inferInsert;
+export type LoyaltyLedgerEntry = typeof loyaltyLedger.$inferSelect;
+export type InsertLoyaltyLedgerEntry = typeof loyaltyLedger.$inferInsert;
