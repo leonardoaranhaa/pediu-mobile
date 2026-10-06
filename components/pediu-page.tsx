@@ -2,7 +2,6 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import type { ComponentProps, ReactNode } from "react";
 import {
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,6 +9,7 @@ import {
   View,
   type TextInputProps,
 } from "react-native";
+import { PediuPressable } from "@/components/pediu-motion";
 import { useAppPreferences } from "@/lib/app-preferences";
 
 export const PEDIU = {
@@ -57,9 +57,9 @@ export function Page({
       >
         <View style={s.header}>
           {back ? (
-            <Pressable onPress={() => router.back()} style={s.back}>
+            <PediuPressable onPress={() => router.back()} style={s.back}>
               <MaterialIcons name="arrow-back" size={21} color={PEDIU.ink} />
-            </Pressable>
+            </PediuPressable>
           ) : (
             <View style={s.backPlaceholder} />
           )}
@@ -144,20 +144,18 @@ export function PrimaryButton({
 }) {
   const { theme } = useAppPreferences();
   return (
-    <Pressable
+    <PediuPressable
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [
+      style={[
         s.primary,
         { backgroundColor: theme.primary, shadowColor: theme.primary },
         style,
-        pressed && s.pressed,
-        disabled && s.disabled,
       ]}
     >
       <Text style={s.primaryText}>{title}</Text>
       <MaterialIcons name="arrow-forward" size={18} color={PEDIU.white} />
-    </Pressable>
+    </PediuPressable>
   );
 }
 
@@ -174,19 +172,13 @@ export function OutlineButton({
 }) {
   const { theme } = useAppPreferences();
   return (
-    <Pressable
+    <PediuPressable
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [
-        s.outline,
-        { borderColor: theme.primary },
-        style,
-        pressed && s.pressed,
-        disabled && s.disabled,
-      ]}
+      style={[s.outline, { borderColor: theme.primary }, style]}
     >
       <Text style={[s.outlineText, { color: theme.primary }]}>{title}</Text>
-    </Pressable>
+    </PediuPressable>
   );
 }
 
@@ -204,10 +196,7 @@ export function Row({
   right?: ReactNode;
 }) {
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [s.row, pressed && s.rowPressed]}
-    >
+    <PediuPressable onPress={onPress} style={s.row}>
       <View style={s.icon}>
         <MaterialIcons name={icon} size={20} color={PEDIU.ink} />
       </View>
@@ -218,7 +207,7 @@ export function Row({
       {right ?? (
         <MaterialIcons name="chevron-right" size={21} color={PEDIU.muted} />
       )}
-    </Pressable>
+    </PediuPressable>
   );
 }
 
@@ -241,12 +230,12 @@ export function ToggleRow({
       title={title}
       subtitle={subtitle}
       right={
-        <Pressable
+        <PediuPressable
           onPress={() => onChange(!value)}
           style={[s.toggle, value && s.toggleOn]}
         >
           <View style={[s.knob, value && s.knobOn]} />
-        </Pressable>
+        </PediuPressable>
       }
     />
   );
@@ -307,16 +296,16 @@ export const s = StyleSheet.create({
   },
   card: {
     backgroundColor: "rgba(255,255,255,0.92)",
-    borderRadius: 24,
+    borderRadius: 28,
     padding: 17,
     borderWidth: 1,
     borderColor: "rgba(240,233,227,0.9)",
     gap: 13,
     shadowColor: PEDIU.ink,
-    shadowOpacity: 0.045,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 2,
+    shadowOpacity: 0.07,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
   },
   section: { gap: 10 },
   sectionTitle: { fontSize: 15, fontWeight: "900", color: PEDIU.ink },
@@ -339,7 +328,7 @@ export const s = StyleSheet.create({
   },
   primary: {
     minHeight: 54,
-    borderRadius: 18,
+    borderRadius: 20,
     backgroundColor: PEDIU.coral,
     flexDirection: "row",
     alignItems: "center",
@@ -369,7 +358,7 @@ export const s = StyleSheet.create({
     gap: 12,
     paddingVertical: 14,
     backgroundColor: "rgba(255,255,255,0.9)",
-    borderRadius: 19,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: PEDIU.line,
     paddingHorizontal: 14,

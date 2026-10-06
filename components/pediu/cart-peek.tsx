@@ -1,5 +1,10 @@
 import { MaterialIcons } from "@expo/vector-icons";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import {
+  PediuPressable,
+  PediuPulse,
+  PediuReveal,
+} from "@/components/pediu-motion";
 import { PEDIU_TOKENS } from "@/lib/pediu-tokens";
 
 type Props = {
@@ -12,23 +17,35 @@ type Props = {
 export function CartPeek({ itemCount, subtitle, totalLabel, onPress }: Props) {
   if (itemCount <= 0) return null;
   return (
-    <View style={styles.wrap} pointerEvents="box-none">
-      <Pressable style={({ pressed }) => [styles.bar, pressed && { transform: [{ scale: 0.97 }] }]} onPress={onPress}>
-        <View style={styles.left}>
-          <View style={styles.count}>
-            <Text style={styles.countText}>{itemCount}</Text>
+    <PediuReveal variant="slideUp" style={styles.wrap}>
+      <View pointerEvents="box-none">
+        <PediuPressable style={styles.bar} onPress={onPress}>
+          <View style={styles.left}>
+            <PediuPulse>
+              <View style={styles.count}>
+                <Text style={styles.countText}>{itemCount}</Text>
+              </View>
+            </PediuPulse>
+            <View style={styles.copy}>
+              <Text style={styles.title}>Ver sacola</Text>
+              {subtitle ? (
+                <Text style={styles.sub} numberOfLines={1}>
+                  {subtitle}
+                </Text>
+              ) : null}
+            </View>
           </View>
-          <View>
-            <Text style={styles.title}>Ver sacola</Text>
-            {subtitle ? <Text style={styles.sub} numberOfLines={1}>{subtitle}</Text> : null}
+          <View style={styles.right}>
+            <Text style={styles.total}>{totalLabel}</Text>
+            <MaterialIcons
+              name="arrow-forward"
+              size={18}
+              color={PEDIU_TOKENS.primaryFg}
+            />
           </View>
-        </View>
-        <View style={styles.right}>
-          <Text style={styles.total}>{totalLabel}</Text>
-          <MaterialIcons name="arrow-forward" size={18} color={PEDIU_TOKENS.primaryFg} />
-        </View>
-      </Pressable>
-    </View>
+        </PediuPressable>
+      </View>
+    </PediuReveal>
   );
 }
 
@@ -43,9 +60,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     shadowColor: PEDIU_TOKENS.primary,
-    shadowOpacity: 0.4,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: PEDIU_TOKENS.shadow.primary.shadowOpacity,
+    shadowRadius: PEDIU_TOKENS.shadow.primary.shadowRadius,
+    shadowOffset: { width: 0, height: PEDIU_TOKENS.shadow.primary.y },
     elevation: 6,
   },
   left: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
@@ -58,8 +75,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   countText: { color: PEDIU_TOKENS.primaryFg, fontSize: 14, fontWeight: "800" },
+  copy: { flex: 1 },
   title: { color: PEDIU_TOKENS.primaryFg, fontSize: 14, fontWeight: "800" },
-  sub: { color: "rgba(255,247,245,0.8)", fontSize: 11, marginTop: 2, maxWidth: 160 },
+  sub: {
+    color: "rgba(255,247,245,0.8)",
+    fontSize: 11,
+    marginTop: 2,
+    maxWidth: 160,
+  },
   right: { flexDirection: "row", alignItems: "center", gap: 6 },
   total: { color: PEDIU_TOKENS.primaryFg, fontSize: 14, fontWeight: "800" },
 });

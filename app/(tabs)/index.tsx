@@ -33,6 +33,12 @@ import {
 
 import { ScreenContainer } from "@/components/screen-container";
 import { PediuMascot, type MascotReaction } from "@/components/pediu-mascot";
+import { CartPeek } from "@/components/pediu/cart-peek";
+import {
+  PediuPressable,
+  PediuPulse,
+  PediuReveal,
+} from "@/components/pediu-motion";
 import { PediuV2Discovery } from "@/components/pediu-v2-discovery";
 import { ThemePicker } from "@/components/theme-picker";
 import { trpc } from "@/lib/trpc";
@@ -74,6 +80,7 @@ type Product = {
   deliveryFee?: string;
   storeKind?: "restaurant" | "market" | "service";
   flashEnabled?: boolean;
+  flash?: boolean;
 };
 
 type SavedAddress = {
@@ -584,6 +591,7 @@ export default function HomeScreen() {
         deliveryFee: product.deliveryFee,
         storeKind: product.storeKind,
         flashEnabled: Boolean(product.flashEnabled),
+        flash: Boolean(product.flashEnabled),
       })),
     [marketplaceQuery.data],
   );
@@ -594,6 +602,13 @@ export default function HomeScreen() {
         (product) => category === "Tudo" || product.category === category,
       ),
     [category, liveProducts],
+  );
+  const activeCustomerOrder = useMemo(
+    () =>
+      (customerOrdersQuery.data ?? []).find(
+        (order) => !["Entregue", "Cancelado"].includes(order.status),
+      ),
+    [customerOrdersQuery.data],
   );
 
   const notify = (message: string) => {
@@ -961,7 +976,16 @@ export default function HomeScreen() {
                   onAssistant={() => openVoiceAssistant("customer")}
                   onOrders={() => changeCustomerTab("orders")}
                   onBenefits={() => router.push("/coupons")}
+                  onMarket={() => router.push("/market")}
                   onSearch={() => router.push("/search")}
+                  activeOrder={activeCustomerOrder}
+                  onActiveOrder={() => {
+                    if (!activeCustomerOrder) return;
+                    router.push({
+                      pathname: "/order/track",
+                      params: { orderId: String(activeCustomerOrder.id) },
+                    });
+                  }}
                   notifications={notificationsQuery.data ?? []}
                   onReadNotification={(id) =>
                     markNotificationMutation.mutate({ notificationId: id })
@@ -1007,6 +1031,14 @@ export default function HomeScreen() {
                 </>
               )}
             </ScrollView>
+            <CartPeek
+              itemCount={globalCartCount}
+              subtitle={globalCartItems[0]?.storeName}
+              totalLabel={`R$ ${cartTotal(cart.map((item) => item.price))
+                .toFixed(2)
+                .replace(".", ",")}`}
+              onPress={() => router.push("/cart")}
+            />
             <CustomerNav
               active={customerTab}
               onChange={changeCustomerTab}
@@ -1559,7 +1591,10 @@ function CustomerDiscover({
   onAssistant,
   onOrders,
   onBenefits,
+  onMarket,
   onSearch,
+  activeOrder,
+  onActiveOrder,
   notifications,
   onReadNotification,
   theme,
@@ -1584,7 +1619,10 @@ function CustomerDiscover({
   onAssistant: () => void;
   onOrders: () => void;
   onBenefits: () => void;
+  onMarket: () => void;
   onSearch: () => void;
+  activeOrder?: { id: number; status: string };
+  onActiveOrder: () => void;
   notifications: {
     id: number;
     title: string;
@@ -1606,7 +1644,7 @@ function CustomerDiscover({
         </View>
         <View style={styles.topActions}>
           <Animated.View style={{ transform: [{ scale: cartScale }] }}>
-            <Pressable style={styles.iconButton} onPress={onCartPress}>
+            <PediuPressable style={styles.iconButton} onPress={onCartPress}>
               <MaterialIcons name="shopping-bag" size={21} color={COLORS.ink} />
               {cartCount ? (
                 <View
@@ -1618,11 +1656,11 @@ function CustomerDiscover({
                   <Text style={styles.badgeText}>{cartCount}</Text>
                 </View>
               ) : null}
-            </Pressable>
+            </PediuPressable>
           </Animated.View>
-          <Pressable style={styles.iconButton} onPress={onOrders}>
+          <PediuPressable style={styles.iconButton} onPress={onOrders}>
             <MaterialIcons name="receipt-long" size={21} color={COLORS.ink} />
-          </Pressable>
+          </PediuPressable>
         </View>
       </View>
       <View style={styles.greetingRow}>
@@ -1670,11 +1708,10 @@ function CustomerDiscover({
           <Text style={styles.heroOrbEmoji}>✦</Text>
         </View>
       </View>
-      <Pressable
-        style={({ pressed }) => [
+      <PediuPressable
+        style={[
           locationStyles.locationCard,
           { borderColor: theme.line, backgroundColor: theme.card },
-          pressed && styles.cardPressed,
         ]}
         onPress={onLocationPress}
       >
@@ -1728,12 +1765,11 @@ function CustomerDiscover({
         >
           <MaterialIcons name="my-location" size={16} color={theme.highlight} />
         </View>
-      </Pressable>
-      <Pressable
-        style={({ pressed }) => [
+      </PediuPressable>
+      <PediuPressable
+        style={[
           styles.voiceCard,
           { backgroundColor: theme.primarySoft, borderColor: theme.line },
-          pressed && styles.pressed,
         ]}
         onPress={onAssistant}
       >
@@ -1749,7 +1785,7 @@ function CustomerDiscover({
           </Text>
         </View>
         <MaterialIcons name="arrow-forward" size={20} color={theme.ink} />
-      </Pressable>
+      </PediuPressable>
       <View
         style={[
           styles.searchBox,
@@ -1776,6 +1812,9 @@ function CustomerDiscover({
         onAssistant={onAssistant}
         onOrders={onOrders}
         onBenefits={onBenefits}
+        onMarket={onMarket}
+        activeOrder={activeOrder}
+        onActiveOrder={onActiveOrder}
       />
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Categorias</Text>
@@ -1787,7 +1826,7 @@ function CustomerDiscover({
         contentContainerStyle={styles.categoryRow}
       >
         {CATEGORIES.map((item) => (
-          <Pressable
+          <PediuPressable
             key={item.label}
             style={[
               styles.categoryChip,
@@ -1809,10 +1848,10 @@ function CustomerDiscover({
             >
               {item.label}
             </Text>
-          </Pressable>
+          </PediuPressable>
         ))}
       </ScrollView>
-      <Pressable
+      <PediuPressable
         style={[
           styles.benefitCard,
           { backgroundColor: theme.primarySoft, borderColor: theme.line },
@@ -1832,7 +1871,7 @@ function CustomerDiscover({
           </Text>
         </View>
         <MaterialIcons name="chevron-right" size={20} color={theme.ink} />
-      </Pressable>
+      </PediuPressable>
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Boas opções para pedir agora</Text>
         <Text style={styles.link}>Ver tudo</Text>
@@ -1854,78 +1893,76 @@ function CustomerDiscover({
           </Text>
         </View>
       ) : products.length ? (
-        products.map((product) => (
-          <Pressable
-            key={product.id}
-            style={({ pressed }) => [
-              styles.productCard,
-              pressed && styles.cardPressed,
-            ]}
-            onPress={() => onProductPress(product)}
-          >
-            <View style={styles.productImage}>
-              {product.imageUrl ? (
-                <Image
-                  source={{ uri: product.imageUrl }}
-                  style={styles.productImageAsset}
-                  resizeMode="cover"
-                />
-              ) : (
-                <Text style={styles.productEmoji}>{product.emoji}</Text>
-              )}
-              <View style={styles.availablePill}>
-                <View
-                  style={[
-                    styles.dot,
-                    product.adId ? { backgroundColor: COLORS.orange } : null,
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.availableText,
-                    product.adId ? { color: COLORS.orange } : null,
-                  ]}
-                >
-                  {product.adId ? "OFERTA PEDIU" : "DISPONÍVEL"}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.productInfo}>
-              <View style={{ flex: 1 }}>
-                <View style={styles.ratingRow}>
-                  <Text style={styles.rating}>
-                    {product.adOfferLabel || "Disponível agora"}
-                  </Text>
-                  <Text style={styles.distance}>{product.distance}</Text>
-                </View>
-                <Text style={styles.productName}>
-                  {product.adHeadline || product.name}
-                </Text>
-                {product.adHeadline ? (
-                  <Text style={styles.storeName}>
-                    {product.name} · {product.store}
-                  </Text>
+        products.map((product, index) => (
+          <PediuReveal key={product.id} delay={index * 65}>
+            <PediuPressable
+              style={styles.productCard}
+              onPress={() => onProductPress(product)}
+            >
+              <View style={styles.productImage}>
+                {product.imageUrl ? (
+                  <Image
+                    source={{ uri: product.imageUrl }}
+                    style={styles.productImageAsset}
+                    resizeMode="cover"
+                  />
                 ) : (
-                  <Text style={styles.storeName}>{product.store}</Text>
+                  <Text style={styles.productEmoji}>{product.emoji}</Text>
                 )}
+                <View style={styles.availablePill}>
+                  <View
+                    style={[
+                      styles.dot,
+                      product.adId ? { backgroundColor: COLORS.orange } : null,
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.availableText,
+                      product.adId ? { color: COLORS.orange } : null,
+                    ]}
+                  >
+                    {product.adId ? "OFERTA PEDIU" : "DISPONÍVEL"}
+                  </Text>
+                </View>
               </View>
-              <Text style={styles.productPrice}>{product.price}</Text>
-            </View>
-            <View style={styles.productFooter}>
-              <Text style={styles.localText}>
-                {product.adDescription ||
-                  product.description ||
-                  "Publicado pela loja no catálogo do Pediu"}
-              </Text>
-              <View style={styles.arrowCircle}>
-                <MaterialIcons
-                  name="arrow-forward"
-                  size={17}
-                  color={COLORS.white}
-                />
+              <View style={styles.productInfo}>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.ratingRow}>
+                    <Text style={styles.rating}>
+                      {product.adOfferLabel || "Disponível agora"}
+                    </Text>
+                    <Text style={styles.distance}>{product.distance}</Text>
+                  </View>
+                  <Text style={styles.productName}>
+                    {product.adHeadline || product.name}
+                  </Text>
+                  {product.adHeadline ? (
+                    <Text style={styles.storeName}>
+                      {product.name} · {product.store}
+                    </Text>
+                  ) : (
+                    <Text style={styles.storeName}>{product.store}</Text>
+                  )}
+                </View>
+                <Text style={styles.productPrice}>{product.price}</Text>
               </View>
-            </View>
-          </Pressable>
+              <View style={styles.productFooter}>
+                <Text style={styles.localText}>
+                  {product.adDescription ||
+                    product.description ||
+                    "Publicado pela loja no catálogo do Pediu"}
+                </Text>
+                <View style={styles.arrowCircle}>
+                  <MaterialIcons
+                    name="arrow-forward"
+                    size={17}
+                    color={COLORS.white}
+                  />
+                </View>
+              </View>
+            </PediuPressable>
+          </PediuReveal>
         ))
       ) : (
         <View style={styles.emptyState}>
@@ -2008,11 +2045,10 @@ function ProductModal({
             <Text style={styles.totalLabel}>Preço</Text>
             <Text style={styles.totalValue}>{product.price}</Text>
           </View>
-          <Pressable
+          <PediuPressable
             disabled={!product.available}
-            style={({ pressed }) => [
+            style={[
               styles.primaryButton,
-              pressed && styles.pressed,
               !product.available && styles.disabledButton,
             ]}
             onPress={onAdd}
@@ -2023,10 +2059,10 @@ function ProductModal({
                 : "Produto indisponível"}
             </Text>
             <MaterialIcons name="add" size={19} color={COLORS.white} />
-          </Pressable>
-          <Pressable style={styles.textButton} onPress={onClose}>
+          </PediuPressable>
+          <PediuPressable style={styles.textButton} onPress={onClose}>
             <Text style={styles.textButtonLabel}>Voltar</Text>
-          </Pressable>
+          </PediuPressable>
         </ScrollView>
       </View>
     </View>
@@ -3068,30 +3104,9 @@ function PulsingAssistantButton({
   theme: AppTheme;
   compact?: boolean;
 }) {
-  const pulse = useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1.09,
-          duration: 850,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 850,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [pulse]);
   return (
-    <Animated.View style={{ transform: [{ scale: pulse }] }}>
-      <Pressable
+    <PediuPulse>
+      <PediuPressable
         accessibilityLabel="Abrir assistente do Pediu"
         style={[
           compact ? voiceStyles.launcherIcon : styles.fabNav,
@@ -3104,8 +3119,8 @@ function PulsingAssistantButton({
           size={compact ? 18 : 22}
           color={COLORS.white}
         />
-      </Pressable>
-    </Animated.View>
+      </PediuPressable>
+    </PediuPulse>
   );
 }
 
@@ -3124,13 +3139,13 @@ function CustomerNav({
     <View
       style={[
         styles.bottomNav,
-        { borderColor: theme.line, backgroundColor: theme.card },
+        { borderColor: theme.ink, backgroundColor: theme.ink },
       ]}
     >
-      <Pressable
+      <PediuPressable
         style={[
           styles.navItem,
-          active === "discover" && { backgroundColor: theme.ink },
+          active === "discover" && { backgroundColor: theme.primary },
         ]}
         onPress={() => onChange("discover")}
       >
@@ -3147,11 +3162,11 @@ function CustomerNav({
         >
           {"Descobrir"}
         </Text>
-      </Pressable>
-      <Pressable
+      </PediuPressable>
+      <PediuPressable
         style={[
           styles.navItem,
-          active === "orders" && { backgroundColor: theme.ink },
+          active === "orders" && { backgroundColor: theme.primary },
         ]}
         onPress={() => onChange("orders")}
       >
@@ -3168,12 +3183,12 @@ function CustomerNav({
         >
           Pedidos
         </Text>
-      </Pressable>
+      </PediuPressable>
       <PulsingAssistantButton onPress={onAssistant} theme={theme} />
-      <Pressable
+      <PediuPressable
         style={[
           styles.navItem,
-          active === "profile" && { backgroundColor: theme.ink },
+          active === "profile" && { backgroundColor: theme.primary },
         ]}
         onPress={() => onChange("profile")}
       >
@@ -3190,7 +3205,7 @@ function CustomerNav({
         >
           Perfil
         </Text>
-      </Pressable>
+      </PediuPressable>
     </View>
   );
 }
@@ -3210,7 +3225,7 @@ function SellerNav({
     <View
       style={[
         styles.bottomNav,
-        { borderColor: theme.line, backgroundColor: theme.card },
+        { borderColor: theme.ink, backgroundColor: theme.ink },
       ]}
     >
       {[
@@ -3220,11 +3235,11 @@ function SellerNav({
         ["clients", "people", "Clientes"],
         ["settings", "tune", "Ajustes"],
       ].map(([key, icon, label]) => (
-        <Pressable
+        <PediuPressable
           key={key}
           style={[
             styles.navItem,
-            active === key && { backgroundColor: theme.ink },
+            active === key && { backgroundColor: theme.primary },
           ]}
           onPress={() =>
             onChange(
@@ -3242,7 +3257,7 @@ function SellerNav({
           >
             {label}
           </Text>
-        </Pressable>
+        </PediuPressable>
       ))}
     </View>
   );
@@ -3584,18 +3599,18 @@ const styles = StyleSheet.create({
     bottom: 14,
     left: 16,
     right: 16,
-    height: 68,
-    backgroundColor: "rgba(255,255,255,0.96)",
+    height: 64,
+    backgroundColor: COLORS.ink,
     borderWidth: 1,
     borderColor: "rgba(240,233,227,0.95)",
-    borderRadius: 25,
+    borderRadius: 28,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-around",
     paddingHorizontal: 10,
     shadowColor: COLORS.ink,
-    shadowOpacity: 0.13,
-    shadowRadius: 22,
+    shadowOpacity: 0.24,
+    shadowRadius: 20,
     shadowOffset: { width: 0, height: 10 },
     elevation: 8,
   },
@@ -3603,9 +3618,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 3,
-    minWidth: 72,
-    height: 50,
-    borderRadius: 17,
+    minWidth: 64,
+    height: 48,
+    borderRadius: 20,
   },
   navItemActive: { backgroundColor: COLORS.ink },
   navLabel: { color: COLORS.muted, fontSize: 10, fontWeight: "800" },

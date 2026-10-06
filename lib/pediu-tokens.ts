@@ -14,6 +14,8 @@ export const PEDIU_TOKENS = {
   canvasDeep: "#FFE2C4",
   surface: "#FFFDF9",
   surface2: "#FFF7EE",
+  surfaceElevated: "#FFFFFF",
+  surfaceMuted: "#FFF0D7",
   text: "#1A120C",
   muted: "#6E635A",
   subtle: "#9A8E84",
@@ -22,8 +24,14 @@ export const PEDIU_TOKENS = {
   warning: "#FF8A3D",
   error: "#C81E1E",
   white: "#FFFFFF",
+  inkFg: "#FFF4E8",
   coralLegacy: "#FF5A4F",
   radius: { sm: 8, md: 12, lg: 16, xl: 24, xxl: 28, pill: 999 },
+  shadow: {
+    card: { shadowOpacity: 0.07, shadowRadius: 16, y: 8 },
+    float: { shadowOpacity: 0.22, shadowRadius: 20, y: 10 },
+    primary: { shadowOpacity: 0.34, shadowRadius: 18, y: 10 },
+  },
 } as const;
 
 export type FoodAssetKey =
@@ -67,7 +75,8 @@ const CATEGORY_ASSET: Record<string, FoodAssetKey> = {
 };
 
 export function assetForCategory(category?: string | null, seed = 0): number {
-  if (category && CATEGORY_ASSET[category]) return FOOD_ASSETS[CATEGORY_ASSET[category]];
+  if (category && CATEGORY_ASSET[category])
+    return FOOD_ASSETS[CATEGORY_ASSET[category]];
   const keys = Object.keys(FOOD_ASSETS) as FoodAssetKey[];
   return FOOD_ASSETS[keys[Math.abs(seed) % keys.length]];
 }
