@@ -3,6 +3,8 @@
  * Keep in sync with theme.config.js and APP_THEMES.classic.
  */
 export const PEDIU_TOKENS = {
+  fontDisplay: "Fredoka",
+  fontBody: "Nunito",
   primary: "#E20D2A",
   primarySoft: "#FFE8EB",
   primaryFg: "#FFF7F5",

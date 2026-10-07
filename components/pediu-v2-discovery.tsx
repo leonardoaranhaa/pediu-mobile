@@ -9,6 +9,7 @@ import {
   PediuReveal,
 } from "@/components/pediu-motion";
 import type { AppTheme } from "@/lib/app-preferences";
+import { FOOD_ASSETS } from "@/lib/pediu-tokens";
 
 type DiscoveryProduct = {
   id: number;
@@ -36,6 +37,14 @@ type DiscoveryNotification = {
 };
 
 const STORY_GRADIENTS = ["#E20D2A", "#FFC400", "#111111", "#0B8A5C"];
+const DISCOVERY_CATEGORIES = [
+  { label: "Flash", query: "__flash__", image: FOOD_ASSETS.burger },
+  { label: "Pizza", query: "Pizza", image: FOOD_ASSETS.pizza },
+  { label: "Burger", query: "Lanches", image: FOOD_ASSETS.burger },
+  { label: "Japonesa", query: "Japonesa", image: FOOD_ASSETS.sushi },
+  { label: "Brasileira", query: "Brasileira", image: FOOD_ASSETS.feijoada },
+  { label: "Saudável", query: "Saudável", image: FOOD_ASSETS.acai },
+];
 
 export function PediuV2Discovery({
   theme,
@@ -48,6 +57,7 @@ export function PediuV2Discovery({
   onOrders,
   onBenefits,
   onMarket,
+  onCategory,
   activeOrder,
   onActiveOrder,
 }: {
@@ -61,10 +71,10 @@ export function PediuV2Discovery({
   onOrders: () => void;
   onBenefits: () => void;
   onMarket: () => void;
+  onCategory: (value: string) => void;
   activeOrder?: { id: number; status: string };
   onActiveOrder: () => void;
 }) {
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [storyIndex, setStoryIndex] = useState<number | null>(null);
   const [promoIndex, setPromoIndex] = useState(0);
   const stories = useMemo(() => products.slice(0, 6), [products]);
@@ -87,103 +97,90 @@ export function PediuV2Discovery({
       {activeOrder ? (
         <LiveBanner order={activeOrder} theme={theme} onPress={onActiveOrder} />
       ) : null}
-      <View style={styles.sectionHeader}>
-        <View>
-          <Text style={[styles.kicker, { color: theme.primary }]}>
-            PARA VOCÊ
-          </Text>
-          <Text style={[styles.sectionTitle, { color: theme.ink }]}>
-            Escolha o seu próximo pedido
-          </Text>
-        </View>
-        <PediuPressable
-          accessibilityLabel="Abrir avisos"
-          onPress={() => setNotificationsOpen(true)}
-          style={[
-            styles.notificationButton,
-            { backgroundColor: theme.card, borderColor: theme.line },
-          ]}
-        >
-          <MaterialIcons
-            name="notifications-none"
-            size={21}
-            color={theme.ink}
-          />
-          {notifications.some((notification) => !notification.readAt) ? (
-            <View
-              style={[
-                styles.notificationDot,
-                { backgroundColor: theme.primary },
-              ]}
-            />
-          ) : null}
-        </PediuPressable>
-      </View>
-
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.storyRail}
       >
-        {stories.length ? (
-          stories.map((product, index) => (
-            <PediuReveal key={product.id} delay={index * 55}>
-              <PediuPressable
-                onPress={() => setStoryIndex(index)}
-                style={styles.storyItem}
-              >
-                <View
-                  style={[
-                    styles.storyRing,
-                    {
-                      backgroundColor:
-                        STORY_GRADIENTS[index % STORY_GRADIENTS.length],
-                    },
-                  ]}
+        {stories.length
+          ? stories.map((product, index) => (
+              <PediuReveal key={product.id} delay={index * 55}>
+                <PediuPressable
+                  onPress={() => setStoryIndex(index)}
+                  style={styles.storyItem}
                 >
                   <View
                     style={[
-                      styles.storyImage,
-                      { backgroundColor: theme.canvas },
+                      styles.storyRing,
+                      {
+                        backgroundColor:
+                          STORY_GRADIENTS[index % STORY_GRADIENTS.length],
+                      },
                     ]}
                   >
-                    {product.imageUrl ? (
+                    <View
+                      style={[
+                        styles.storyImage,
+                        { backgroundColor: theme.canvas },
+                      ]}
+                    >
+                      {product.imageUrl ? (
+                        <Image
+                          source={{ uri: product.imageUrl }}
+                          style={styles.storyImageAsset}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <Text style={styles.storyEmoji}>{product.emoji}</Text>
+                      )}
+                    </View>
+                  </View>
+                  <Text
+                    numberOfLines={1}
+                    style={[styles.storyLabel, { color: theme.text }]}
+                  >
+                    {product.store}
+                  </Text>
+                </PediuPressable>
+              </PediuReveal>
+            ))
+          : DISCOVERY_CATEGORIES.map((category, index) => (
+              <PediuReveal key={category.label} delay={index * 55}>
+                <PediuPressable
+                  onPress={() => onCategory(category.query)}
+                  style={styles.storyItem}
+                >
+                  <View
+                    style={[
+                      styles.storyRing,
+                      {
+                        backgroundColor:
+                          STORY_GRADIENTS[index % STORY_GRADIENTS.length],
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.storyImage,
+                        { backgroundColor: theme.canvas },
+                      ]}
+                    >
                       <Image
-                        source={{ uri: product.imageUrl }}
+                        source={category.image}
                         style={styles.storyImageAsset}
                         resizeMode="cover"
                       />
-                    ) : (
-                      <Text style={styles.storyEmoji}>{product.emoji}</Text>
-                    )}
+                    </View>
                   </View>
-                </View>
-                <Text
-                  numberOfLines={1}
-                  style={[styles.storyLabel, { color: theme.text }]}
-                >
-                  {product.store}
-                </Text>
-              </PediuPressable>
-            </PediuReveal>
-          ))
-        ) : (
-          <View
-            style={[
-              styles.emptyStory,
-              { backgroundColor: theme.card, borderColor: theme.line },
-            ]}
-          >
-            <MaterialIcons
-              name="auto-awesome"
-              size={18}
-              color={theme.primary}
-            />
-            <Text style={[styles.emptyStoryText, { color: theme.muted }]}>
-              As novidades da sua região aparecem aqui.
-            </Text>
-          </View>
-        )}
+                  <Text
+                    numberOfLines={1}
+                    style={[styles.storyLabel, { color: theme.text }]}
+                  >
+                    {category.label}
+                  </Text>
+                </PediuPressable>
+              </PediuReveal>
+            ))}
       </ScrollView>
 
       <PromoReel
@@ -203,6 +200,8 @@ export function PediuV2Discovery({
         products={flashProducts}
         onProductPress={onProductPress}
       />
+
+      <FeatureTiles theme={theme} onTaste={onAssistant} onMarket={onMarket} />
 
       <FlashRadar
         theme={theme}
@@ -228,13 +227,6 @@ export function PediuV2Discovery({
         <MaterialIcons name="arrow-forward" size={18} color={theme.highlight} />
       </PediuPressable>
 
-      <NotificationSheet
-        open={notificationsOpen}
-        notifications={notifications}
-        theme={theme}
-        onClose={() => setNotificationsOpen(false)}
-        onRead={onReadNotification}
-      />
       {storyIndex !== null && stories[storyIndex] ? (
         <StoryViewer
           stories={stories}
@@ -353,30 +345,34 @@ function PromoReel({
   const firstProduct = products[0];
   const cards = [
     {
-      tone: "accent" as const,
+      tone: "primary" as const,
       icon: "bolt" as const,
+      image: FOOD_ASSETS.pizza,
       title: firstProduct?.name || "Chega mais rápido",
       subtitle:
         firstProduct?.adOfferLabel || "Lojas Flash ligadas no servidor.",
       action: onSearch,
     },
     {
-      tone: "primary" as const,
+      tone: "ink" as const,
       icon: "auto-awesome" as const,
+      image: FOOD_ASSETS.acai,
       title: "Sabor do momento",
       subtitle: "Fale ou digite e encontre uma boa ideia.",
       action: onAssistant,
     },
     {
-      tone: "ink" as const,
+      tone: "primary" as const,
       icon: "local-offer" as const,
+      image: FOOD_ASSETS.burger,
       title: "Pediu Vantagens",
       subtitle: "Cupons reais e condições dos lojistas.",
       action: onBenefits,
     },
     {
-      tone: "primary" as const,
+      tone: "ink" as const,
       icon: "store" as const,
+      image: FOOD_ASSETS.feijoada,
       title: "Mercado Pediu",
       subtitle: "Hortifruti e mercearia por unidade.",
       action: onMarket,
@@ -384,6 +380,7 @@ function PromoReel({
     {
       tone: "accent" as const,
       icon: "receipt-long" as const,
+      image: FOOD_ASSETS.sushi,
       title: "Acompanhe de perto",
       subtitle: "Veja seus pedidos e o status atualizado.",
       action: onOrders,
@@ -393,7 +390,7 @@ function PromoReel({
   useEffect(() => {
     const timer = setInterval(() => {
       const next = (index + 1) % cards.length;
-      railRef.current?.scrollTo({ x: next * 212, animated: true });
+      railRef.current?.scrollTo({ x: next * 360, animated: true });
       onIndexChange(next);
     }, 4200);
     return () => clearInterval(timer);
@@ -406,7 +403,7 @@ function PromoReel({
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.promoRail}
-        snapToInterval={212}
+        snapToInterval={360}
         decelerationRate="fast"
       >
         {cards.map((card, cardIndex) => (
@@ -418,6 +415,7 @@ function PromoReel({
               title={card.title}
               subtitle={card.subtitle}
               action={card.action}
+              image={card.image}
             />
           </View>
         ))}
@@ -631,6 +629,7 @@ function PromoCard({
   theme,
   tone,
   icon,
+  image,
   title,
   subtitle,
   action,
@@ -638,6 +637,7 @@ function PromoCard({
   theme: AppTheme;
   tone: "primary" | "ink" | "accent";
   icon: React.ComponentProps<typeof MaterialIcons>["name"];
+  image: number;
   title: string;
   subtitle: string;
   action: () => void;
@@ -657,6 +657,8 @@ function PromoCard({
         { backgroundColor, shadowColor: backgroundColor },
       ]}
     >
+      <Image source={image} style={styles.promoImage} resizeMode="cover" />
+      <View style={styles.promoImageScrim} pointerEvents="none" />
       <View
         style={[
           styles.promoIcon,
@@ -686,6 +688,37 @@ function PromoCard({
         {subtitle}
       </Text>
     </PediuPressable>
+  );
+}
+
+function FeatureTiles({
+  theme,
+  onTaste,
+  onMarket,
+}: {
+  theme: AppTheme;
+  onTaste: () => void;
+  onMarket: () => void;
+}) {
+  return (
+    <View style={styles.featureTiles}>
+      <PediuPressable
+        onPress={onTaste}
+        style={[styles.featureTile, { backgroundColor: theme.primary }]}
+      >
+        <MaterialIcons name="auto-awesome" size={22} color="#FFFDF9" />
+        <Text style={styles.featureTileTitle}>O que pedir?</Text>
+        <Text style={styles.featureTileSubtitle}>Sabor do momento</Text>
+      </PediuPressable>
+      <PediuPressable
+        onPress={onMarket}
+        style={[styles.featureTile, { backgroundColor: theme.ink }]}
+      >
+        <MaterialIcons name="storefront" size={22} color={theme.highlight} />
+        <Text style={styles.featureTileTitle}>Mercado Flash</Text>
+        <Text style={styles.featureTileSubtitle}>Até 25 min</Text>
+      </PediuPressable>
+    </View>
   );
 }
 
@@ -754,147 +787,6 @@ function FlashRadar({
   );
 }
 
-function NotificationSheet({
-  open,
-  notifications,
-  theme,
-  onClose,
-  onRead,
-}: {
-  open: boolean;
-  notifications: DiscoveryNotification[];
-  theme: AppTheme;
-  onClose: () => void;
-  onRead: (notificationId: number) => void;
-}) {
-  return (
-    <Modal
-      visible={open}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <View style={styles.modalBackdrop}>
-        <View
-          style={[styles.notificationSheet, { backgroundColor: theme.canvas }]}
-        >
-          <View style={[styles.sheetHandle, { backgroundColor: theme.line }]} />
-          <View style={styles.notificationHeader}>
-            <View>
-              <Text style={[styles.kicker, { color: theme.primary }]}>
-                CENTRAL DO PEDIU
-              </Text>
-              <Text style={[styles.notificationTitle, { color: theme.ink }]}>
-                Avisos
-              </Text>
-            </View>
-            <PediuPressable
-              onPress={onClose}
-              style={[
-                styles.closeButton,
-                { backgroundColor: theme.card, borderColor: theme.line },
-              ]}
-            >
-              <MaterialIcons name="close" size={19} color={theme.ink} />
-            </PediuPressable>
-          </View>
-          <ScrollView
-            contentContainerStyle={styles.notificationList}
-            showsVerticalScrollIndicator={false}
-          >
-            {notifications.length ? (
-              notifications.map((notification) => (
-                <PediuPressable
-                  key={notification.id}
-                  onPress={() => onRead(notification.id)}
-                  style={[
-                    styles.notificationItem,
-                    {
-                      backgroundColor: theme.card,
-                      borderColor: theme.line,
-                      opacity: notification.readAt ? 0.66 : 1,
-                    },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.notificationIcon,
-                      {
-                        backgroundColor: notification.readAt
-                          ? theme.canvas
-                          : theme.primarySoft,
-                      },
-                    ]}
-                  >
-                    <MaterialIcons
-                      name={
-                        notification.readAt ? "done" : "notifications-active"
-                      }
-                      size={18}
-                      color={notification.readAt ? theme.muted : theme.primary}
-                    />
-                  </View>
-                  <View style={styles.notificationBody}>
-                    <Text
-                      style={[
-                        styles.notificationItemTitle,
-                        { color: theme.ink },
-                      ]}
-                    >
-                      {notification.title}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.notificationItemText,
-                        { color: theme.muted },
-                      ]}
-                    >
-                      {notification.body}
-                    </Text>
-                    {!notification.readAt ? (
-                      <Text
-                        style={[
-                          styles.notificationHint,
-                          { color: theme.primary },
-                        ]}
-                      >
-                        Toque para marcar como lido
-                      </Text>
-                    ) : null}
-                  </View>
-                </PediuPressable>
-              ))
-            ) : (
-              <View
-                style={[
-                  styles.emptyNotifications,
-                  { backgroundColor: theme.card, borderColor: theme.line },
-                ]}
-              >
-                <MaterialIcons
-                  name="notifications-none"
-                  size={28}
-                  color={theme.muted}
-                />
-                <Text
-                  style={[styles.notificationItemTitle, { color: theme.ink }]}
-                >
-                  Nada por agora
-                </Text>
-                <Text
-                  style={[styles.notificationItemText, { color: theme.muted }]}
-                >
-                  Confirmações, pedidos e novidades aparecerão aqui.
-                </Text>
-              </View>
-            )}
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
 const styles = StyleSheet.create({
   root: { gap: 14, marginTop: 18 },
   liveTicker: {
@@ -908,7 +800,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 10,
   },
-  liveTickerText: { flex: 1, fontSize: 11, fontWeight: "800" },
+  liveTickerText: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: "800",
+    fontFamily: "Nunito",
+  },
   liveBanner: {
     minHeight: 66,
     borderRadius: 22,
@@ -932,20 +829,35 @@ const styles = StyleSheet.create({
   },
   liveBannerDot: { width: 10, height: 10, borderRadius: 5 },
   liveBannerCopy: { flex: 1, gap: 3 },
-  liveBannerTitle: { color: "#FFF4E8", fontSize: 13, fontWeight: "900" },
-  liveBannerSubtitle: { color: "rgba(255,244,232,0.65)", fontSize: 11 },
+  liveBannerTitle: {
+    color: "#FFF4E8",
+    fontSize: 13,
+    fontWeight: "900",
+    fontFamily: "Fredoka",
+  },
+  liveBannerSubtitle: {
+    color: "rgba(255,244,232,0.65)",
+    fontSize: 11,
+    fontFamily: "Nunito",
+  },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
   },
-  kicker: { fontSize: 10, fontWeight: "900", letterSpacing: 1.1 },
+  kicker: {
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 1.1,
+    fontFamily: "Nunito",
+  },
   sectionTitle: {
     fontSize: 19,
     fontWeight: "900",
     letterSpacing: -0.35,
     marginTop: 3,
+    fontFamily: "Fredoka",
   },
   notificationButton: {
     width: 44,
@@ -993,6 +905,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 10,
     fontWeight: "800",
+    fontFamily: "Nunito",
   },
   emptyStory: {
     minHeight: 60,
@@ -1007,7 +920,7 @@ const styles = StyleSheet.create({
   emptyStoryText: { flex: 1, fontSize: 12, lineHeight: 17 },
   promoWrap: { gap: 9 },
   promoRail: { gap: 10, paddingRight: 12 },
-  promoSlot: { width: 202 },
+  promoSlot: { width: 350 },
   promoDots: {
     flexDirection: "row",
     alignItems: "center",
@@ -1022,15 +935,26 @@ const styles = StyleSheet.create({
   },
   promoDotActive: { width: 20, backgroundColor: "#E20D2A" },
   promoCard: {
-    width: 202,
-    minHeight: 138,
+    width: 350,
+    minHeight: 166,
     borderRadius: 26,
     padding: 15,
     gap: 5,
+    overflow: "hidden",
     shadowOpacity: 0.2,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 7 },
     elevation: 3,
+  },
+  promoImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: "100%",
+    height: "100%",
+    opacity: 0.34,
+  },
+  promoImageScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(17,17,17,0.22)",
   },
   promoIcon: {
     width: 34,
@@ -1040,9 +964,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 2,
   },
-  promoKicker: { fontSize: 9, fontWeight: "900", letterSpacing: 1.1 },
-  promoTitle: { fontSize: 17, fontWeight: "900", lineHeight: 21 },
-  promoSubtitle: { fontSize: 11, lineHeight: 15 },
+  promoKicker: {
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 1.1,
+    fontFamily: "Nunito",
+  },
+  promoTitle: {
+    fontSize: 19,
+    fontWeight: "900",
+    lineHeight: 23,
+    fontFamily: "Fredoka",
+  },
+  promoSubtitle: { fontSize: 12, lineHeight: 16, fontFamily: "Nunito" },
   dealsSection: { gap: 10 },
   dealsHeader: {
     flexDirection: "row",
@@ -1051,8 +985,18 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   dealsKickerRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  dealsKicker: { fontSize: 10, fontWeight: "900", letterSpacing: 1.1 },
-  dealsTitle: { fontSize: 19, fontWeight: "900", marginTop: 2 },
+  dealsKicker: {
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 1.1,
+    fontFamily: "Nunito",
+  },
+  dealsTitle: {
+    fontSize: 19,
+    fontWeight: "900",
+    marginTop: 2,
+    fontFamily: "Fredoka",
+  },
   dealsStatus: {
     flexDirection: "row",
     alignItems: "center",
@@ -1096,9 +1040,36 @@ const styles = StyleSheet.create({
   },
   dealBadgeText: { color: "#FFF7F5", fontSize: 10, fontWeight: "900" },
   dealCopy: { padding: 11, gap: 3 },
-  dealName: { fontSize: 14, fontWeight: "900" },
-  dealSubtitle: { fontSize: 11 },
-  dealFooter: { fontSize: 11, fontWeight: "800", marginTop: 3 },
+  dealName: { fontSize: 14, fontWeight: "900", fontFamily: "Fredoka" },
+  dealSubtitle: { fontSize: 11, fontFamily: "Nunito" },
+  dealFooter: {
+    fontSize: 11,
+    fontWeight: "800",
+    marginTop: 3,
+    fontFamily: "Nunito",
+  },
+  featureTiles: { flexDirection: "row", gap: 10 },
+  featureTile: {
+    flex: 1,
+    minHeight: 154,
+    borderRadius: 26,
+    padding: 17,
+    justifyContent: "flex-end",
+    gap: 4,
+    overflow: "hidden",
+  },
+  featureTileTitle: {
+    color: "#FFFDF9",
+    fontFamily: "Fredoka",
+    fontSize: 20,
+    fontWeight: "800",
+    marginTop: 17,
+  },
+  featureTileSubtitle: {
+    color: "rgba(255,253,249,0.78)",
+    fontFamily: "Nunito",
+    fontSize: 13,
+  },
   radar: {
     minHeight: 134,
     borderRadius: 26,
@@ -1170,17 +1141,24 @@ const styles = StyleSheet.create({
   radarPinTwo: { right: 15, bottom: 19 },
   radarCopy: { flex: 1, gap: 4 },
   radarKickerRow: { flexDirection: "row", alignItems: "center", gap: 5 },
-  radarKicker: { fontSize: 10, fontWeight: "900", letterSpacing: 1 },
+  radarKicker: {
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 1,
+    fontFamily: "Nunito",
+  },
   radarTitle: {
     color: "#FFF4E8",
     fontSize: 16,
     fontWeight: "900",
     lineHeight: 20,
+    fontFamily: "Fredoka",
   },
   radarSubtitle: {
     color: "rgba(255,244,232,0.68)",
     fontSize: 11,
     lineHeight: 15,
+    fontFamily: "Nunito",
   },
   searchAction: {
     minHeight: 48,
@@ -1191,7 +1169,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 9,
   },
-  searchActionText: { flex: 1, fontSize: 12, fontWeight: "900" },
+  searchActionText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "900",
+    fontFamily: "Nunito",
+  },
   pressed: { opacity: 0.82, transform: [{ scale: 0.98 }] },
   modalBackdrop: {
     flex: 1,

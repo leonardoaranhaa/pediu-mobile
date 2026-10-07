@@ -1,6 +1,7 @@
 import "@/global.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack, usePathname } from "expo-router";
+import { useFonts } from "expo-font";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -49,6 +50,10 @@ function MascotNavigationBridge() {
 export default function RootLayout() {
   const initialInsets = initialWindowMetrics?.insets ?? DEFAULT_WEB_INSETS;
   const initialFrame = initialWindowMetrics?.frame ?? DEFAULT_WEB_FRAME;
+  const [fontsLoaded] = useFonts({
+    Fredoka: require("../assets/fonts/Fredoka.ttf"),
+    Nunito: require("../assets/fonts/Nunito.ttf"),
+  });
 
   const [insets, setInsets] = useState<EdgeInsets>(initialInsets);
   const [frame, setFrame] = useState<Rect>(initialFrame);
@@ -122,6 +127,8 @@ export default function RootLayout() {
       </trpc.Provider>
     </GestureHandlerRootView>
   );
+
+  if (!fontsLoaded) return null;
 
   const shouldOverrideSafeArea = Platform.OS === "web";
 

@@ -32,7 +32,7 @@ A branch de trabalho é `cursor/phase1-hybrid-ux-a9df`, baseada em `origin/main`
 
 ### Experiência do cliente
 
-- Home: header de localização/avisos, busca pill, rail de stories, promo cards, Radar Flash, categorias, coleção em destaque, filtros e cards reais do marketplace.
+- Home: header de localização/avisos, busca pill, rail fotográfico, promo cards, Radar Flash, categorias, coleção em destaque, filtros e cards reais do marketplace.
 - Busca, loja, produto, Mercado, Flash, Sabor, Club, cupons e perfil: mesma hierarquia visual, badges, sheets e estados de dados reais.
 - Carrinho, checkout, pedidos e tracking: cards e transições mais sofisticados sem alterar quote, fulfillment, tip, cupom, pagamento ou idempotência.
 
@@ -46,11 +46,20 @@ A branch de trabalho é `cursor/phase1-hybrid-ux-a9df`, baseada em `origin/main`
 A home Expo agora usa a composição nativa equivalente aos blocos visuais do Pediu3, sem importar dados estáticos do repositório-fonte:
 
 - `PediuMotion`, `PediuPressable`, `PediuPulse`, `PediuReveal`, `PediuCard` e tokens compartilhados para o movimento e superfícies.
-- Shell com dock flutuante, assistente pulsante e `CartPeek` alimentado por `CartProvider` persistido; o peek não aparece sem itens e navega para `/cart`.
+- Shell com dock flutuante e `CartPeek` alimentado por `CartProvider` persistido; o peek não aparece sem itens e navega para `/cart`. O mascote continua disponível na personalização e em fluxos reativos, mas não é sobreposto à home fiel do Pediu3, que não o exibe nos prints de referência.
 - Ticker Flash alimentado pela resposta `marketplace.search`, banner de pedido ativo alimentado por `orders.mine` e CTA direto para `/order/track`.
 - Promo reel com autoavanço e ações reais para assistente, cupons, Mercado, pedidos e busca; rail “Ofertas que correm” filtrado por `flashEnabled`/anúncio persistido e com preço vindo do backend.
 - Stories com progresso, toque anterior/próximo, timeout determinístico e CTA “Pedir agora” para o produto real; o viewer é full-screen e não usa o catálogo mockado do Pediu3.
 - Estados vazios, loading, erro, cards de produto e tiles de descoberta usam o mesmo tratamento visual, mantendo os handlers e temas persistidos do app atual.
+
+## Rodada de fidelidade visual — 07/10/2026
+
+- A home foi ajustada para a hierarquia dos prints: localização, saudação, busca pill, ticker, rail fotográfico, promo reel vermelho/ink, tiles “O que pedir?”/“Mercado Flash”, Radar Flash, CTA de busca, categorias e dock inferior.
+- O perfil da aba passou a reproduzir a composição do Pediu3 com cabeçalho do usuário, Club, Pediu Pay sem saldo inventado, nome, endereços, cupons, favoritos, ajuda e ações de autenticação/lojista. Club, endereços e cupons continuam alimentados por tRPC; quando não há dado real, a UI mostra estado vazio ou `—`.
+- O rail visual vazio usa somente assets locais e rótulos de categoria, e cada toque chama o filtro real da home (`__flash__` ou categoria persistida); não cria lojas, preços, ratings ou cupons falsos.
+- O preview Web confirmou a nova tela de perfil sem overflow horizontal (`scrollWidth` não excede o viewport) e a home sem overlay do mascote. O console permaneceu sem erros de runtime.
+- Gates finais executados em 07/10/2026: `pnpm check`, `pnpm test` (**51 arquivos / 254 testes**), `pnpm build`, `pnpm lint`, Prettier e `git diff --check` aprovados; export Web Expo aprovado com **115 arquivos**.
+- Deployment smoke aprovado localmente e por HTTPS temporário (`health=200`, `readyz=200`, marketplace `200`, CORS exato). Stress read-only **120/12** aprovado localmente (p95 **63,7 ms**, 0% erro) e por HTTPS (p95 **94,6 ms**, 0% erro).
 
 Em 06/10/2026, o preview público revelou que o banco usado pelo servidor ainda estava em 33 migrations; a chamada de marketplace retornava HTTP 500 por causa das colunas Mercado ausentes. As migrations aditivas 0034/0035 foram aplicadas nesse banco de preview, que passou a reportar 36 migrations e o endpoint público voltou a responder HTTP 200. O catálogo vazio atual é um estado real do banco, não um mock de fallback.
 

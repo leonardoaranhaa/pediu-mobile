@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { PediuPressable } from "@/components/pediu-motion";
 import { useAppPreferences } from "@/lib/app-preferences";
+import { PEDIU_TOKENS } from "@/lib/pediu-tokens";
 
 export const PEDIU = {
   coral: "#E20D2A",
@@ -286,6 +287,7 @@ export const s = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 1.3,
     color: PEDIU.coral,
+    fontFamily: PEDIU_TOKENS.fontBody,
   },
   title: {
     fontSize: 28,
@@ -293,6 +295,7 @@ export const s = StyleSheet.create({
     color: PEDIU.ink,
     letterSpacing: -0.8,
     marginTop: 2,
+    fontFamily: PEDIU_TOKENS.fontDisplay,
   },
   card: {
     backgroundColor: "rgba(255,255,255,0.92)",
@@ -308,13 +311,24 @@ export const s = StyleSheet.create({
     elevation: 3,
   },
   section: { gap: 10 },
-  sectionTitle: { fontSize: 15, fontWeight: "900", color: PEDIU.ink },
-  body: { fontSize: 14, lineHeight: 21, color: PEDIU.text },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: "900",
+    color: PEDIU.ink,
+    fontFamily: PEDIU_TOKENS.fontDisplay,
+  },
+  body: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: PEDIU.text,
+    fontFamily: PEDIU_TOKENS.fontBody,
+  },
   label: {
     fontSize: 10,
     fontWeight: "900",
     letterSpacing: 1.1,
     color: PEDIU.muted,
+    fontFamily: PEDIU_TOKENS.fontBody,
   },
   input: {
     backgroundColor: PEDIU.canvas,
@@ -341,7 +355,12 @@ export const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 3,
   },
-  primaryText: { color: PEDIU.white, fontSize: 14, fontWeight: "900" },
+  primaryText: {
+    color: PEDIU.white,
+    fontSize: 14,
+    fontWeight: "900",
+    fontFamily: PEDIU_TOKENS.fontDisplay,
+  },
   outline: {
     minHeight: 44,
     borderRadius: 14,
@@ -351,7 +370,12 @@ export const s = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 15,
   },
-  outlineText: { color: PEDIU.coral, fontSize: 12, fontWeight: "900" },
+  outlineText: {
+    color: PEDIU.coral,
+    fontSize: 12,
+    fontWeight: "900",
+    fontFamily: PEDIU_TOKENS.fontDisplay,
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -377,8 +401,18 @@ export const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  rowTitle: { fontSize: 13, fontWeight: "900", color: PEDIU.ink },
-  muted: { fontSize: 12, lineHeight: 18, color: PEDIU.muted },
+  rowTitle: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: PEDIU.ink,
+    fontFamily: PEDIU_TOKENS.fontDisplay,
+  },
+  muted: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: PEDIU.muted,
+    fontFamily: PEDIU_TOKENS.fontBody,
+  },
   toggle: {
     width: 42,
     height: 25,
