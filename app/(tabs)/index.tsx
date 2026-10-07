@@ -34,6 +34,7 @@ import {
 import { ScreenContainer } from "@/components/screen-container";
 import type { MascotReaction } from "@/components/pediu-mascot";
 import { CartPeek } from "@/components/pediu/cart-peek";
+import { PediuCompanion } from "@/components/pediu-companion";
 import { PediuPressable, PediuReveal } from "@/components/pediu-motion";
 import { PediuV2Discovery } from "@/components/pediu-v2-discovery";
 import { ThemePicker } from "@/components/theme-picker";
@@ -137,7 +138,8 @@ const CATEGORIES = [
 
 export default function HomeScreen() {
   const { user, isAuthenticated, logout, refresh: refreshAuth } = useAuth();
-  const { theme, setMascotMoment } = useAppPreferences();
+  const { theme, customization, mascotMoment, setMascotMoment } =
+    useAppPreferences();
   const params = useLocalSearchParams<{ assistant?: string }>();
   const {
     items: globalCartItems,
@@ -197,6 +199,13 @@ export default function HomeScreen() {
   const couponsQuery = trpc.pediu.coupons.available.useQuery();
   const showMascotMoment = (nextReaction: MascotReaction) => {
     setMascotMoment(nextReaction);
+    if (mascotResetTimer.current) clearTimeout(mascotResetTimer.current);
+    mascotResetTimer.current = setTimeout(
+      () => {
+        setMascotMoment("hungry");
+      },
+      nextReaction === "full" ? 7_600 : 3_800,
+    );
   };
   const changeCustomerTab = (nextTab: "discover" | "orders" | "profile") => {
     setCustomerTab(nextTab);
@@ -427,9 +436,17 @@ export default function HomeScreen() {
   const [locationLoading, setLocationLoading] = useState(false);
   const screenOpacity = useRef(new Animated.Value(1)).current;
   const cartScale = useRef(new Animated.Value(1)).current;
+  const mascotResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const assistantAutoOpened = useRef(false);
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(audioRecorder);
+
+  useEffect(
+    () => () => {
+      if (mascotResetTimer.current) clearTimeout(mascotResetTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (
@@ -1131,7 +1148,37 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
-        {/* O shell fiel do Pediu3 não sobrepõe o conteúdo com o mascote; ele continua disponível nas telas de personalização. */}
+        {role === "customer" &&
+        customerTab !== "profile" &&
+        !showVoice &&
+        !selectedProduct &&
+        !showCart &&
+        !showCheckout &&
+        !showAddProduct &&
+        !showSaleModal &&
+        !showSellerOnboarding ? (
+          <PediuCompanion
+            theme={theme}
+            mascotStyle={customization.mascotStyle}
+            mascotEnabled={customization.mascotEnabled}
+            motionEnabled={customization.motionEnabled}
+            showHints={customization.showHints}
+            reaction={mascotMoment?.reaction ?? "hungry"}
+            bottom={globalCartCount > 0 ? 164 : 84}
+            onAssistant={() => openVoiceAssistant("customer")}
+            onMascotPress={() =>
+              notify(
+                (mascotMoment?.reaction ?? "hungry") === "happy"
+                  ? "O mascote adorou essa escolha"
+                  : (mascotMoment?.reaction ?? "hungry") === "full"
+                    ? "Barriguinha cheia, coração tranquilo"
+                    : globalCartCount
+                      ? "Mais um pouquinho e fechamos seu pedido"
+                      : "Estou com fome de uma boa escolha",
+              )
+            }
+          />
+        ) : null}
 
         <Modal
           visible={!!selectedProduct}
