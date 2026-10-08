@@ -19,7 +19,7 @@ A branch de trabalho permanece `cursor/phase1-hybrid-ux-a9df`, baseada em `origi
 
 ### Assistente
 
-- Reativar launcher flutuante compacto, visualmente coerente com o shell Pediu3.
+- Manter o launcher como item persistente da barra de navegação inferior, visualmente coerente com o shell Pediu3; ele não deve ficar agrupado ao mascote em posição absoluta.
 - Abrir bottom sheet/modal de assistente sem overflow, com campo de texto, microfone quando disponível, estado de escuta, interpretação, resposta e erro.
 - Reutilizar a interpretação server-side e as ações allowlistadas já existentes.
 - Permitir atalhos reais para buscar produtos, abrir pedidos, abrir carrinho, consultar suporte e ações permitidas por perfil.
@@ -27,7 +27,7 @@ A branch de trabalho permanece `cursor/phase1-hybrid-ux-a9df`, baseada em `origi
 
 ### Mascote
 
-- Reintegrar `PediuMascot` em posição contextual, sem cobrir header, cards, dock ou teclado.
+- Reintegrar `PediuMascot` em posição contextual, sem cobrir header, cards, dock ou teclado; o mascote não hospeda o botão do assistente.
 - Reutilizar cenas e falas de `mascot-scenes` com cooldown/debounce para evitar disparos rápidos.
 - Reações mínimas obrigatórias: saudação/espera, produto adicionado ao carrinho, erro/atenção, checkout concluído e pedido em acompanhamento.
 - Animações unificadas: olhos fechando, mãos cobrindo o rosto, pulso/respiração, felicidade e fome; todas interrompíveis e desligáveis.
@@ -67,10 +67,17 @@ Esta fase reintegra capacidades já existentes. Não cria um novo provedor de IA
 ## Implementação desta rodada
 
 - O modal `VoiceAssistantModal`, interpretação server-side, transcrição nativa/Web e ações allowlistadas existentes foram preservados.
-- Foi criado `components/pediu-companion.tsx`, com uma única camada visual acima do dock para o mascote contextual e o launcher do assistente.
+- Foi criado `components/pediu-companion.tsx` como camada única do mascote contextual; o launcher do assistente foi movido para os docks `CustomerNav` e `SellerNav`.
 - O home voltou a usar as preferências persistidas de `mascotEnabled`, `motionEnabled`, `showHints` e `mascotStyle`.
 - As reações de carrinho e pedido usam os eventos reais já existentes; o retorno para fome/estado ambiente tem cooldown determinístico e cleanup no unmount.
 - O companion é ocultado durante sheets/modais e no perfil, evitando duplicação, teclado coberto e colisão com checkout/carrinho.
+
+## Ajuste desta rodada — assistente no dock
+
+- `PediuMascotDock` agora renderiza somente o mascote, com pulso/flutuação controlados por `mascotEnabled`, `motionEnabled` e `showHints`.
+- `CustomerNav` recebeu o item **Assistente**, que abre `VoiceAssistantModal` no modo cliente.
+- `SellerNav` recebeu o item **Assistente**, que abre o mesmo modal no modo loja; os itens de início, pedidos, catálogo, clientes e ajustes continuam acessíveis.
+- O assistente deixou de ser renderizado pelo companion absoluto. Não há dois launchers concorrentes: o dock é a única ação persistente de abertura, enquanto os CTAs contextuais existentes continuam apontando para o mesmo handler real.
 
 ## Evidências da rodada
 
@@ -86,3 +93,12 @@ Esta fase reintegra capacidades já existentes. Não cria um novo provedor de IA
 - Stress read-only local: 120 requisições, concorrência 12, erro `0`, p95 `33,5 ms`.
 - Deployment smoke HTTPS público autorizado: health 200, readyz 200, marketplace 200 e CORS exato.
 - Stress read-only HTTPS público autorizado: 120 requisições, concorrência 12, erro `0`, p95 `80,5 ms`.
+
+## Evidências da migração do assistente para o dock
+
+- `PediuMascotDock` agora renderiza somente o mascote; o launcher não é mais filho do companion absoluto.
+- O dock da home apresentou exatamente um botão com `aria-label="Abrir assistente do Pediu"` e texto `Assistente`.
+- O botão abriu o `VoiceAssistantModal` real no modo cliente, exibindo microfone, campo de comando, resposta e os três atalhos rápidos existentes.
+- O fechamento pelo botão `Fechar assistente` funcionou e deixou novamente um único launcher no dock.
+- Viewport verificado: `scrollWidth=1280`, `innerWidth=1280`, overflow horizontal `false`.
+- `pnpm check`, `pnpm lint`, `pnpm test` (**51 arquivos / 254 testes**), `pnpm build` e export Expo Web passaram.

@@ -34,8 +34,12 @@ import {
 import { ScreenContainer } from "@/components/screen-container";
 import type { MascotReaction } from "@/components/pediu-mascot";
 import { CartPeek } from "@/components/pediu/cart-peek";
-import { PediuCompanion } from "@/components/pediu-companion";
-import { PediuPressable, PediuReveal } from "@/components/pediu-motion";
+import { PediuMascotDock } from "@/components/pediu-companion";
+import {
+  PediuPressable,
+  PediuPulse,
+  PediuReveal,
+} from "@/components/pediu-motion";
 import { PediuV2Discovery } from "@/components/pediu-v2-discovery";
 import { ThemePicker } from "@/components/theme-picker";
 import { trpc } from "@/lib/trpc";
@@ -1051,6 +1055,8 @@ export default function HomeScreen() {
               active={customerTab}
               onChange={changeCustomerTab}
               onSearch={() => router.push("/search")}
+              onAssistant={() => openVoiceAssistant("customer")}
+              motionEnabled={customization.motionEnabled}
               theme={theme}
             />
           </>
@@ -1136,6 +1142,8 @@ export default function HomeScreen() {
             <SellerNav
               active={sellerTab}
               onChange={changeSellerTab}
+              onAssistant={() => openVoiceAssistant("seller")}
+              motionEnabled={customization.motionEnabled}
               theme={theme}
             />
           </>
@@ -1157,7 +1165,7 @@ export default function HomeScreen() {
         !showAddProduct &&
         !showSaleModal &&
         !showSellerOnboarding ? (
-          <PediuCompanion
+          <PediuMascotDock
             theme={theme}
             mascotStyle={customization.mascotStyle}
             mascotEnabled={customization.mascotEnabled}
@@ -1165,7 +1173,6 @@ export default function HomeScreen() {
             showHints={customization.showHints}
             reaction={mascotMoment?.reaction ?? "hungry"}
             bottom={globalCartCount > 0 ? 164 : 84}
-            onAssistant={() => openVoiceAssistant("customer")}
             onMascotPress={() =>
               notify(
                 (mascotMoment?.reaction ?? "hungry") === "happy"
@@ -3135,15 +3142,47 @@ function SellerSettings({
   );
 }
 
+function AssistantNavItem({
+  motionEnabled,
+  onPress,
+  theme,
+}: {
+  motionEnabled: boolean;
+  onPress: () => void;
+  theme: AppTheme;
+}) {
+  return (
+    <PediuPulse enabled={motionEnabled} style={styles.assistantNavPulse}>
+      <PediuPressable
+        accessibilityRole="button"
+        accessibilityLabel="Abrir assistente do Pediu"
+        style={[
+          styles.navItem,
+          styles.assistantNavItem,
+          { backgroundColor: theme.primary },
+        ]}
+        onPress={onPress}
+      >
+        <MaterialIcons name="auto-awesome" size={20} color={COLORS.white} />
+        <Text style={[styles.navLabel, styles.navLabelActive]}>Assistente</Text>
+      </PediuPressable>
+    </PediuPulse>
+  );
+}
+
 function CustomerNav({
   active,
   onChange,
   onSearch,
+  onAssistant,
+  motionEnabled,
   theme,
 }: {
   active: string;
   onChange: (value: "discover" | "orders" | "profile") => void;
   onSearch: () => void;
+  onAssistant: () => void;
+  motionEnabled: boolean;
   theme: AppTheme;
 }) {
   return (
@@ -3174,11 +3213,23 @@ function CustomerNav({
           {"Descobrir"}
         </Text>
       </PediuPressable>
-      <PediuPressable style={styles.navItem} onPress={onSearch}>
+      <PediuPressable
+        accessibilityRole="button"
+        accessibilityLabel="Abrir busca"
+        style={styles.navItem}
+        onPress={onSearch}
+      >
         <MaterialIcons name="search" size={21} color={theme.muted} />
         <Text style={styles.navLabel}>Busca</Text>
       </PediuPressable>
+      <AssistantNavItem
+        motionEnabled={motionEnabled}
+        onPress={onAssistant}
+        theme={theme}
+      />
       <PediuPressable
+        accessibilityRole="button"
+        accessibilityLabel="Abrir pedidos"
         style={[
           styles.navItem,
           active === "orders" && { backgroundColor: theme.primary },
@@ -3200,6 +3251,8 @@ function CustomerNav({
         </Text>
       </PediuPressable>
       <PediuPressable
+        accessibilityRole="button"
+        accessibilityLabel="Abrir perfil"
         style={[
           styles.navItem,
           active === "profile" && { backgroundColor: theme.primary },
@@ -3227,12 +3280,16 @@ function CustomerNav({
 function SellerNav({
   active,
   onChange,
+  onAssistant,
+  motionEnabled,
   theme,
 }: {
   active: string;
   onChange: (
     value: "home" | "orders" | "catalog" | "clients" | "settings",
   ) => void;
+  onAssistant: () => void;
+  motionEnabled: boolean;
   theme: AppTheme;
 }) {
   return (
@@ -3248,31 +3305,46 @@ function SellerNav({
         ["catalog", "inventory-2", "Catálogo"],
         ["clients", "people", "Clientes"],
         ["settings", "tune", "Ajustes"],
-      ].map(([key, icon, label]) => (
-        <PediuPressable
-          key={key}
-          style={[
-            styles.navItem,
-            active === key && { backgroundColor: theme.primary },
-          ]}
-          onPress={() =>
-            onChange(
-              key as "home" | "orders" | "catalog" | "clients" | "settings",
-            )
-          }
-        >
-          <MaterialIcons
-            name={icon as any}
-            size={22}
-            color={active === key ? COLORS.white : theme.muted}
-          />
-          <Text
-            style={[styles.navLabel, active === key && styles.navLabelActive]}
+      ].flatMap(([key, icon, label], index) => {
+        const item = (
+          <PediuPressable
+            key={key}
+            accessibilityRole="button"
+            accessibilityLabel={`Abrir ${label}`}
+            style={[
+              styles.navItem,
+              active === key && { backgroundColor: theme.primary },
+            ]}
+            onPress={() =>
+              onChange(
+                key as "home" | "orders" | "catalog" | "clients" | "settings",
+              )
+            }
           >
-            {label}
-          </Text>
-        </PediuPressable>
-      ))}
+            <MaterialIcons
+              name={icon as any}
+              size={22}
+              color={active === key ? COLORS.white : theme.muted}
+            />
+            <Text
+              style={[styles.navLabel, active === key && styles.navLabelActive]}
+            >
+              {label}
+            </Text>
+          </PediuPressable>
+        );
+        return index === 1
+          ? [
+              item,
+              <AssistantNavItem
+                key="assistant"
+                motionEnabled={motionEnabled}
+                onPress={onAssistant}
+                theme={theme}
+              />,
+            ]
+          : [item];
+      })}
     </View>
   );
 }
@@ -3726,9 +3798,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 3,
-    minWidth: 64,
+    minWidth: 52,
     height: 48,
     borderRadius: 20,
+  },
+  assistantNavPulse: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  assistantNavItem: {
+    minWidth: 62,
   },
   navItemActive: { backgroundColor: COLORS.ink },
   navLabel: { color: COLORS.muted, fontSize: 10, fontWeight: "800" },
