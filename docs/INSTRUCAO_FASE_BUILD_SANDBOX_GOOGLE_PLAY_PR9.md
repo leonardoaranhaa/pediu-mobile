@@ -8,7 +8,7 @@
 
 O Manus pode gerenciar o ciclo de versões e executar EAS CLI, mas a compilação local e a publicação têm limites diferentes:
 
-- **Android local no sandbox:** tecnicamente possível depois de instalar Android SDK, platform-tools, build-tools, NDK e Gradle. O sandbox atual possui Java 21, mas não possui `ANDROID_HOME`, `adb`, `sdkmanager`, Gradle ou diretórios nativos `android/`.
+- **Android local no sandbox:** configurado e validado. O ambiente possui JDK 21 completo, Android Command-line Tools, Platform Tools/ADB, API 35/36, Build Tools 35/36, NDK 27.1.12297006, CMake 3.22.1, Gradle Wrapper 8.14.3 e um AVD API 35.
 - **Android pelo EAS Cloud:** caminho recomendado para builds reproduzíveis. O perfil `preview` já gera APK instalável; o perfil `production` gera AAB apropriado para o Google Play.
 - **iOS Simulator:** possível pelo EAS Cloud com `ios.simulator: true`, sem Apple Developer Program. O artefato é para simulador, não para iPhone físico.
 - **iOS local no sandbox:** não é possível neste Linux porque exige Xcode, CocoaPods e ferramentas Apple. O EAS Cloud deve executar essa parte.
@@ -53,7 +53,25 @@ A criação/validação da conta Google Play Developer, aceite de declarações 
 
 ## Evidência de ambiente atual
 
-Em 2026-10-09, a auditoria local encontrou Java 21 e recursos suficientes de disco/memória, mas nenhum Android SDK/Gradle/ADB, nenhum diretório nativo gerado e nenhuma integração Expo/Google Play configurada no ambiente Manus. O preview Web/API continuam separados do build nativo e não devem ser usados como endpoint comercial permanente.
+Em 2026-10-09, o toolchain Android foi instalado em `/home/ubuntu/android-sdk` e o ambiente persistente foi registrado em `/home/ubuntu/.config/pediu/android-sdk.env`. O carregador é `/home/ubuntu/.config/pediu/load-android-sdk-env.sh`.
+
+O projeto nativo temporário foi gerado por `npx expo prebuild --platform android --no-install`; o diretório `android/` permanece ignorado pelo Git. O build local executado pelo Gradle foi concluído com sucesso:
+
+```text
+APK: android/app/build/outputs/apk/debug/app-debug.apk
+Tamanho: 95279969 bytes
+SHA-256: c0a3aed6d69a5f4c801ce76a483d937309a6ec55a3cbb96ce3b9a15c7768cf2f
+```
+
+Para repetir:
+
+```bash
+cd /home/ubuntu/pediu-mobile
+source ~/.config/pediu/load-android-sdk-env.sh
+pnpm build:android:local
+```
+
+O AVD `Pediu_API35` foi criado, mas a verificação do Emulator reporta `/dev/kvm` ausente. Assim, a inicialização do emulador pode não estar disponível ou pode operar sem aceleração; isso não impede a compilação do APK. O preview Web/API continuam separados do build nativo e não devem ser usados como endpoint comercial permanente.
 
 ## Referências oficiais
 

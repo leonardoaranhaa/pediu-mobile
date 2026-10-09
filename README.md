@@ -139,6 +139,7 @@ Os limites de taxa e concorrência são locais ao processo. Antes de escalar hor
 - [Instrução técnica da fase cliente e anúncios com IA](docs/INSTRUCAO_FASE_CLIENTE_ANUNCIOS_IA.md)
 - [Instrução técnica da fase de personalização e mascote](docs/INSTRUCAO_FASE_MASCOTE_CUSTOMIZACAO.md)
 - [QA Android e iOS](QA_ANDROID_IOS.md)
+- [Build local Android, EAS e Google Play](docs/INSTRUCAO_FASE_BUILD_SANDBOX_GOOGLE_PLAY_PR9.md)
 
 ## Contribuição
 
