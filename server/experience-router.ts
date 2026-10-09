@@ -332,6 +332,7 @@ export const experienceRouter = router({
           total: order.total,
           isFlash: order.isFlash === 1,
           fulfillment: order.fulfillment,
+          storeKind: store.kind,
           tipAmount: order.tipAmount,
           deliveryAddress: order.deliveryAddress,
           updatedAt: order.updatedAt,

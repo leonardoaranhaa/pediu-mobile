@@ -380,7 +380,7 @@ async function main() {
           customerToken,
           "query",
         ),
-      /Flash/i,
+      /Pediu Entregas/i,
     );
 
     const flashOrder = await callTrpc<any>(
@@ -470,6 +470,12 @@ async function main() {
       orderId: flashOrder.orderId,
     });
 
+    // Mercado é delivery-first; o caso pickup abaixo usa a mesma estrutura
+    // depois de convertê-la temporariamente em uma loja comum.
+    await connection.execute(
+      "UPDATE pediu_stores SET kind = 'restaurant' WHERE id = ?",
+      [storeId],
+    );
     const pickupTotal = "120.00";
     const pickupOrder = await callTrpc<any>(
       "pediu.orders.create",

@@ -48,6 +48,7 @@ export default function SellerDeliveryPage() {
     activeOrders.find((order) => order.id === selectedOrderId) ??
     activeOrders[0];
   const orderId = selectedOrder?.id ?? 0;
+  const isMarket = selectedOrder?.storeKind === "market";
   const current = trpc.pediu.experience.delivery.current.useQuery(
     { orderId },
     { enabled: orderId > 0, refetchInterval: 8_000 },
@@ -156,7 +157,11 @@ export default function SellerDeliveryPage() {
       <OpsHeader
         eyebrow="LOGÍSTICA"
         title="Entregas"
-        subtitle="Radar, atribuição e rastreio da cozinha"
+        subtitle={
+          isMarket
+            ? "Coleta do mercado e entrega ao endereço do cliente"
+            : "Radar, atribuição e rastreio da cozinha"
+        }
         status={
           queueQuery.data?.flashCount
             ? `${queueQuery.data.flashCount} Flash`
@@ -225,6 +230,9 @@ export default function SellerDeliveryPage() {
               ) : (
                 <OpsBadge tone="muted">PADRÃO</OpsBadge>
               )}
+              {isMarket ? (
+                <OpsBadge tone="success">MERCADO · COLETA</OpsBadge>
+              ) : null}
             </View>
             <OpsOrderLines
               lines={[
@@ -232,11 +240,15 @@ export default function SellerDeliveryPage() {
                 selectedOrder.isFlash
                   ? `ETA sugerido ${selectedOrder.suggestedEtaMinutes ?? queueQuery.data?.flashEtaMaxMinutes ?? 20} min`
                   : "Entrega da fila operacional",
+                isMarket
+                  ? "Mercado separado · confirme a retirada e siga para o endereço"
+                  : "Coleta na loja e atualização de posição pelo Pediu",
               ]}
             />
             <Text style={s.muted}>
-              O proprietário da loja é o operador autorizado nesta fase. A
-              atribuição fica registrada para o cliente.
+              {isMarket
+                ? "O mercado separa a sacola; atribua um entregador parceiro para retirar e entregar no endereço do cliente."
+                : "O proprietário da loja é o operador autorizado nesta fase. A atribuição fica registrada para o cliente."}
             </Text>
             <Field
               label="NOME DO ENTREGADOR"

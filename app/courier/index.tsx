@@ -368,7 +368,14 @@ export default function CourierHomePage() {
                 {offer.deliveryAddress ?? "Destino informado após o aceite"}
               </Text>
             </View>
-            <OpsBadge tone="accent">FLASH</OpsBadge>
+            <View
+              style={{ flexDirection: "row", gap: 6, alignItems: "center" }}
+            >
+              {offer.storeKind === "market" ? (
+                <OpsBadge tone="success">MERCADO</OpsBadge>
+              ) : null}
+              <OpsBadge tone="accent">FLASH</OpsBadge>
+            </View>
           </View>
           <Text
             style={{
@@ -385,7 +392,9 @@ export default function CourierHomePage() {
               offer.etaMinutes
                 ? `ETA sugerido: ${offer.etaMinutes} min`
                 : "ETA a combinar",
-              offer.message ?? "A loja enviou uma nova oportunidade",
+              offer.storeKind === "market"
+                ? "Sacola separada · retire no mercado e entregue na residência"
+                : (offer.message ?? "A loja enviou uma nova oportunidade"),
             ]}
           />
           <View style={{ flexDirection: "row", gap: 10 }}>

@@ -52,11 +52,14 @@ export default function CheckoutScreen() {
   const tipEnabled = flags.data?.tip !== false;
   const flashFlagOn = flags.data?.flash !== false;
   const flashEligibleLocal = cartFlashEligible(items);
+  const marketCart = items[0]?.storeKind === "market";
+  const effectiveFulfillmentMode = marketCart ? "delivery" : fulfillmentMode;
   const quoteInput = useMemo(
     () => ({
       storeId: items[0]?.storeId ?? 1,
-      addressId: fulfillmentMode === "delivery" ? addressId : undefined,
-      fulfillmentMode,
+      addressId:
+        effectiveFulfillmentMode === "delivery" ? addressId : undefined,
+      fulfillmentMode: effectiveFulfillmentMode,
       fulfillment,
       tipAmount: tipEnabled ? tipAmount : 0,
       items: items.map((item) => ({
@@ -69,8 +72,8 @@ export default function CheckoutScreen() {
     [
       addressId,
       appliedCouponCode,
+      effectiveFulfillmentMode,
       fulfillment,
-      fulfillmentMode,
       items,
       tipAmount,
       tipEnabled,
@@ -139,6 +142,12 @@ export default function CheckoutScreen() {
   }, [address, addresses.data]);
 
   useEffect(() => {
+    if (marketCart && fulfillmentMode !== "delivery") {
+      setFulfillmentMode("delivery");
+    }
+  }, [fulfillmentMode, marketCart]);
+
+  useEffect(() => {
     if (
       fulfillment !== "flash" ||
       fulfillmentMode !== "delivery" ||
@@ -161,7 +170,7 @@ export default function CheckoutScreen() {
   const submit = () => {
     if (
       !items.length ||
-      (fulfillmentMode === "delivery" && !addressId) ||
+      (effectiveFulfillmentMode === "delivery" && !addressId) ||
       !idempotencyKey ||
       !quote.data ||
       quote.isFetching
@@ -172,10 +181,10 @@ export default function CheckoutScreen() {
       storeId: quote.data.storeId,
       total: quote.data.total,
       paymentMethod,
-      fulfillmentMode,
+      fulfillmentMode: effectiveFulfillmentMode,
       fulfillment: quote.data.fulfillment,
       tipAmount: Number(quote.data.tipAmount),
-      ...(fulfillmentMode === "delivery"
+      ...(effectiveFulfillmentMode === "delivery"
         ? { addressId, deliveryAddress: address.trim() }
         : {}),
       couponCode: quote.data.couponCode,
@@ -346,8 +355,17 @@ export default function CheckoutScreen() {
       </Card>
       <Card>
         <Text style={s.sectionTitle}>Como receber?</Text>
+        {marketCart ? (
+          <Text style={s.muted}>
+            Compras de mercado entram na rota Pediu Entregas: o mercado separa e
+            um entregador parceiro leva até seu endereço.
+          </Text>
+        ) : null}
         <View style={{ flexDirection: "row", gap: 8 }}>
-          {(["delivery", "pickup"] as const).map((mode) => (
+          {(marketCart
+            ? (["delivery"] as const)
+            : (["delivery", "pickup"] as const)
+          ).map((mode) => (
             <Pressable
               key={mode}
               onPress={() => setFulfillmentMode(mode)}
@@ -377,7 +395,7 @@ export default function CheckoutScreen() {
             </Pressable>
           ))}
         </View>
-        {fulfillmentMode === "pickup" ? (
+        {!marketCart && effectiveFulfillmentMode === "pickup" ? (
           <Text style={s.muted}>
             Retirada sem taxa. A loja confirmará quando o pedido estiver pronto.
           </Text>

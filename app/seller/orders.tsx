@@ -47,6 +47,11 @@ export default function SellerOrdersPage() {
     enabled: user?.role === "merchant",
     refetchInterval: 8_000,
   });
+  const store = trpc.pediu.stores.mine.useQuery(undefined, {
+    enabled: user?.role === "merchant",
+    staleTime: 30_000,
+  });
+  const isMarket = store.data?.kind === "market";
   const updateStatus = trpc.pediu.orders.status.useMutation({
     onSuccess: () => void q.refetch(),
   });
@@ -197,6 +202,9 @@ export default function SellerOrdersPage() {
                           {isFlash ? (
                             <OpsBadge tone="accent">PRIORIDADE</OpsBadge>
                           ) : null}
+                          {isMarket ? (
+                            <OpsBadge tone="success">MERCADO</OpsBadge>
+                          ) : null}
                           {order.fulfillmentMode === "pickup" ? (
                             <OpsBadge tone="muted">RETIRADA</OpsBadge>
                           ) : null}
@@ -206,7 +214,9 @@ export default function SellerOrdersPage() {
                             order.tipAmount && Number(order.tipAmount) > 0
                               ? `Gorjeta: ${money(order.tipAmount)}`
                               : "Total recalculado pelo servidor",
-                            `Status operacional: ${order.status}`,
+                            isMarket
+                              ? "Separação de mercado · pronto para coleta Pediu Entregas"
+                              : `Status operacional: ${order.status}`,
                           ]}
                         />
                         {next ? (

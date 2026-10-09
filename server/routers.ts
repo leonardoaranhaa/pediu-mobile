@@ -358,6 +358,10 @@ export const appRouter = router({
           if (!store) throw new Error("Estabelecimento não encontrado");
           if (!store.isOpen)
             throw new Error("Estabelecimento fechado no momento");
+          if (store.kind === "market" && input.fulfillmentMode === "pickup")
+            throw new Error(
+              "Compras de mercado são entregues pelo Pediu Entregas; selecione um endereço.",
+            );
           const flash = resolveFlashFulfillment(store, input.fulfillment);
           if (
             input.fulfillment === "flash" &&
@@ -952,6 +956,10 @@ export const appRouter = router({
           if (!store) throw new Error("Estabelecimento não encontrado");
           if (!store.isOpen)
             throw new Error("Estabelecimento fechado no momento");
+          if (store.kind === "market" && input.fulfillmentMode === "pickup")
+            throw new Error(
+              "Compras de mercado são entregues pelo Pediu Entregas; selecione um endereço.",
+            );
           const flash = resolveFlashFulfillment(store, input.fulfillment);
           if (
             input.fulfillment === "flash" &&

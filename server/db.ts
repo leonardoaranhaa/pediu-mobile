@@ -2945,6 +2945,7 @@ export async function listPendingDeliveryOffers(courierUserId: number) {
       expiresAt: deliveryOffers.expiresAt,
       createdAt: deliveryOffers.createdAt,
       storeName: stores.name,
+      storeKind: stores.kind,
       deliveryAddress: orders.deliveryAddress,
       total: orders.total,
     })
