@@ -46,6 +46,11 @@ import { trpc } from "@/lib/trpc";
 import { canRegisterSale, cartTotal, pixPaymentLabel } from "@/lib/pediu-mvp";
 import { useCart } from "@/providers/cart-provider";
 import { useAppPreferences, type AppTheme } from "@/lib/app-preferences";
+import {
+  getHomeContext,
+  rankHomeProducts,
+  type HomeContext,
+} from "@/lib/home-context";
 import { resolveCurrentLocation } from "@/lib/location";
 import { FOOD_ASSETS } from "@/lib/pediu-tokens";
 
@@ -142,8 +147,13 @@ const CATEGORIES = [
 
 export default function HomeScreen() {
   const { user, isAuthenticated, logout, refresh: refreshAuth } = useAuth();
-  const { theme, customization, mascotMoment, setMascotMoment } =
-    useAppPreferences();
+  const {
+    theme,
+    customization,
+    mascotMoment,
+    setMascotMoment,
+    updateCustomization,
+  } = useAppPreferences();
   const params = useLocalSearchParams<{ assistant?: string }>();
   const {
     items: globalCartItems,
@@ -164,6 +174,33 @@ export default function HomeScreen() {
 
   const [category, setCategory] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [localHour, setLocalHour] = useState(() => new Date().getHours());
+  const homeContext = useMemo(
+    () => getHomeContext(new Date(2020, 0, 1, localHour)),
+    [localHour],
+  );
+  const effectiveHomeContext = useMemo(
+    () =>
+      customization.smartHomeEnabled
+        ? homeContext
+        : {
+            ...homeContext,
+            greeting: "Olá",
+            subtitle:
+              "Escolha seus favoritos e descubra o que está disponível.",
+            focusLabel: "Ofertas perto de você",
+            focusDescription:
+              "Mercado, restaurantes e Flash ficam sempre acessíveis.",
+          },
+    [customization.smartHomeEnabled, homeContext],
+  );
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const nextHour = new Date().getHours();
+      setLocalHour((current) => (current === nextHour ? current : nextHour));
+    }, 60_000);
+    return () => clearInterval(timer);
+  }, []);
   const marketplaceQuery = trpc.pediu.marketplace.search.useQuery(
     {
       category: category && category !== "__flash__" ? category : undefined,
@@ -553,6 +590,9 @@ export default function HomeScreen() {
       const resolved = await resolveCurrentLocation();
       setLocationLabel(resolved.shortAddress);
       setLocationAddress(resolved.address);
+      if (!customization.locationEnabled) {
+        updateCustomization({ locationEnabled: true });
+      }
       notify("Endereço atualizado automaticamente");
     } catch (error) {
       notifyWithHaptic(
@@ -568,6 +608,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     if (Platform.OS === "web") return;
+    if (!customization.locationEnabled) return;
     void Location.getForegroundPermissionsAsync().then((permission) => {
       if (!permission.granted) return;
       void resolveCurrentLocation()
@@ -577,7 +618,7 @@ export default function HomeScreen() {
         })
         .catch(() => undefined);
     });
-  }, []);
+  }, [customization.locationEnabled]);
 
   const liveProducts = useMemo(
     () =>
@@ -612,14 +653,25 @@ export default function HomeScreen() {
 
   const filteredProducts = useMemo(
     () =>
-      liveProducts.filter(
-        (product) =>
-          !category ||
-          (category === "__flash__"
-            ? product.flash
-            : product.category === category),
-      ),
-    [category, liveProducts],
+      customization.smartHomeEnabled
+        ? rankHomeProducts(
+            liveProducts.filter(
+              (product) =>
+                !category ||
+                (category === "__flash__"
+                  ? product.flash
+                  : product.category === category),
+            ),
+            homeContext,
+          )
+        : liveProducts.filter(
+            (product) =>
+              !category ||
+              (category === "__flash__"
+                ? product.flash
+                : product.category === category),
+          ),
+    [category, customization.smartHomeEnabled, homeContext, liveProducts],
   );
   const activeCustomerOrder = useMemo(
     () =>
@@ -975,6 +1027,8 @@ export default function HomeScreen() {
                   products={filteredProducts}
                   loading={marketplaceQuery.isLoading}
                   error={marketplaceQuery.isError}
+                  homeContext={effectiveHomeContext}
+                  motionEnabled={customization.motionEnabled}
                   userName={user?.name}
                   searchQuery={searchQuery}
                   setSearchQuery={setSearchQuery}
@@ -1587,6 +1641,8 @@ function CustomerDiscover({
   products,
   loading,
   error,
+  homeContext,
+  motionEnabled,
   userName,
   searchQuery,
   setSearchQuery,
@@ -1610,6 +1666,8 @@ function CustomerDiscover({
   products: Product[];
   loading: boolean;
   error: boolean;
+  homeContext: HomeContext;
+  motionEnabled: boolean;
   userName?: string | null;
   searchQuery: string;
   setSearchQuery: (value: string) => void;
@@ -1665,10 +1723,11 @@ function CustomerDiscover({
       <View style={styles.p3GreetingRow}>
         <View style={{ flex: 1 }}>
           <Text style={[styles.p3Greeting, { color: theme.ink }]}>
-            {firstName ? `Olá, ${firstName}.` : "Boa noite."}
+            {homeContext.greeting}
+            {firstName ? `, ${firstName}` : ""}.
           </Text>
           <Text style={[styles.p3GreetingSub, { color: theme.muted }]}>
-            Jantar sem fila, sem dúvida.
+            {homeContext.subtitle}
           </Text>
         </View>
         <PediuPressable
@@ -1706,6 +1765,8 @@ function CustomerDiscover({
       </View>
       <PediuV2Discovery
         theme={theme}
+        homeContext={homeContext}
+        motionEnabled={motionEnabled}
         products={products}
         notifications={notifications}
         onProductPress={onProductPress}
@@ -1765,7 +1826,7 @@ function CustomerDiscover({
         <MaterialIcons name="chevron-right" size={20} color={theme.ink} />
       </PediuPressable>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Boas opções para pedir agora</Text>
+        <Text style={styles.sectionTitle}>{homeContext.focusLabel}</Text>
         <Text style={styles.link}>Ver tudo</Text>
       </View>
       {loading ? (

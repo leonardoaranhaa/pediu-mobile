@@ -9,6 +9,7 @@ import {
   PediuReveal,
 } from "@/components/pediu-motion";
 import type { AppTheme } from "@/lib/app-preferences";
+import type { HomeContext } from "@/lib/home-context";
 import { FOOD_ASSETS } from "@/lib/pediu-tokens";
 
 type DiscoveryProduct = {
@@ -48,6 +49,8 @@ const DISCOVERY_CATEGORIES = [
 
 export function PediuV2Discovery({
   theme,
+  homeContext,
+  motionEnabled,
   products,
   notifications,
   onProductPress,
@@ -62,6 +65,8 @@ export function PediuV2Discovery({
   onActiveOrder,
 }: {
   theme: AppTheme;
+  homeContext: HomeContext;
+  motionEnabled: boolean;
   products: DiscoveryProduct[];
   notifications: DiscoveryNotification[];
   onProductPress: (product: DiscoveryProduct) => void;
@@ -90,9 +95,16 @@ export function PediuV2Discovery({
     <View style={styles.root}>
       <LiveTicker
         theme={theme}
+        context={homeContext}
         locationLabel={"perto de você"}
         flashCount={flashProducts.length}
         onPress={onSearch}
+      />
+      <ContextFocus
+        theme={theme}
+        context={homeContext}
+        onMarket={onMarket}
+        onSearch={onSearch}
       />
       {activeOrder ? (
         <LiveBanner order={activeOrder} theme={theme} onPress={onActiveOrder} />
@@ -104,7 +116,11 @@ export function PediuV2Discovery({
       >
         {stories.length
           ? stories.map((product, index) => (
-              <PediuReveal key={product.id} delay={index * 55}>
+              <PediuReveal
+                key={product.id}
+                delay={index * 55}
+                enabled={motionEnabled}
+              >
                 <PediuPressable
                   onPress={() => setStoryIndex(index)}
                   style={styles.storyItem}
@@ -145,7 +161,11 @@ export function PediuV2Discovery({
               </PediuReveal>
             ))
           : DISCOVERY_CATEGORIES.map((category, index) => (
-              <PediuReveal key={category.label} delay={index * 55}>
+              <PediuReveal
+                key={category.label}
+                delay={index * 55}
+                enabled={motionEnabled}
+              >
                 <PediuPressable
                   onPress={() => onCategory(category.query)}
                   style={styles.storyItem}
@@ -197,6 +217,7 @@ export function PediuV2Discovery({
 
       <DealsStrip
         theme={theme}
+        motionEnabled={motionEnabled}
         products={flashProducts}
         onProductPress={onProductPress}
       />
@@ -253,11 +274,13 @@ export function PediuV2Discovery({
 
 function LiveTicker({
   theme,
+  context,
   locationLabel,
   flashCount,
   onPress,
 }: {
   theme: AppTheme;
+  context: HomeContext;
   locationLabel: string;
   flashCount: number;
   onPress: () => void;
@@ -270,14 +293,60 @@ function LiveTicker({
     >
       <Text style={[styles.liveTickerText, { color: theme.highlightText }]}>
         {flashCount
-          ? `Flash ativo · ${flashCount} oferta(s) · ${locationLabel}`
-          : `Catálogo atualizado · ${locationLabel}`}
+          ? `${context.focusLabel} · ${flashCount} oferta(s) · ${locationLabel}`
+          : `${context.focusLabel} · ${locationLabel}`}
       </Text>
       <MaterialIcons
         name="arrow-forward"
         size={16}
         color={theme.highlightText}
       />
+    </PediuPressable>
+  );
+}
+
+function ContextFocus({
+  theme,
+  context,
+  onMarket,
+  onSearch,
+}: {
+  theme: AppTheme;
+  context: HomeContext;
+  onMarket: () => void;
+  onSearch: () => void;
+}) {
+  const marketWindow = ["morning", "lunch", "afternoon"].includes(
+    context.period,
+  );
+  return (
+    <PediuPressable
+      onPress={marketWindow ? onMarket : onSearch}
+      style={[
+        styles.contextFocus,
+        { backgroundColor: theme.card, borderColor: theme.line },
+      ]}
+    >
+      <View
+        style={[
+          styles.contextFocusIcon,
+          { backgroundColor: theme.primarySoft },
+        ]}
+      >
+        <MaterialIcons name="schedule" size={18} color={theme.primary} />
+      </View>
+      <View style={styles.contextFocusCopy}>
+        <Text style={[styles.contextFocusTitle, { color: theme.ink }]}>
+          Agora: {context.focusLabel}
+        </Text>
+        <Text
+          style={[styles.contextFocusSubtitle, { color: theme.muted }]}
+          numberOfLines={2}
+        >
+          {context.focusDescription} Mercado fica sempre a um toque.
+        </Text>
+      </View>
+      <MaterialIcons name="chevron-right" size={20} color={theme.muted} />
     </PediuPressable>
   );
 }
@@ -437,10 +506,12 @@ function PromoReel({
 
 function DealsStrip({
   theme,
+  motionEnabled,
   products,
   onProductPress,
 }: {
   theme: AppTheme;
+  motionEnabled: boolean;
   products: DiscoveryProduct[];
   onProductPress: (product: DiscoveryProduct) => void;
 }) {
@@ -470,7 +541,11 @@ function DealsStrip({
         contentContainerStyle={styles.dealsRail}
       >
         {products.map((product, index) => (
-          <PediuReveal key={product.id} delay={index * 50}>
+          <PediuReveal
+            key={product.id}
+            delay={index * 50}
+            enabled={motionEnabled}
+          >
             <PediuPressable
               onPress={() => onProductPress(product)}
               style={[styles.dealCard, { backgroundColor: theme.card }]}
@@ -806,6 +881,30 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontFamily: "Nunito",
   },
+  contextFocus: {
+    minHeight: 64,
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  contextFocusIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  contextFocusCopy: { flex: 1, minWidth: 0, gap: 2 },
+  contextFocusTitle: {
+    fontSize: 13,
+    fontWeight: "900",
+    fontFamily: "Fredoka",
+  },
+  contextFocusSubtitle: { fontSize: 10, lineHeight: 14, fontFamily: "Nunito" },
   liveBanner: {
     minHeight: 66,
     borderRadius: 22,

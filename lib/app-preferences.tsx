@@ -33,6 +33,10 @@ export type AppCustomization = {
   mascotEnabled: boolean;
   motionEnabled: boolean;
   showHints: boolean;
+  smartHomeEnabled: boolean;
+  analyticsEnabled: boolean;
+  locationEnabled: boolean;
+  diagnosticsEnabled: boolean;
 };
 
 export type AppTheme = {
@@ -111,6 +115,10 @@ export const DEFAULT_CUSTOMIZATION: AppCustomization = {
   mascotEnabled: true,
   motionEnabled: true,
   showHints: true,
+  smartHomeEnabled: true,
+  analyticsEnabled: true,
+  locationEnabled: false,
+  diagnosticsEnabled: false,
 };
 
 function storageKeyForUser(userId?: number | null) {
@@ -136,6 +144,10 @@ function normalizeCustomization(value: unknown): AppCustomization {
     mascotEnabled: candidate.mascotEnabled !== false,
     motionEnabled: candidate.motionEnabled !== false,
     showHints: candidate.showHints !== false,
+    smartHomeEnabled: candidate.smartHomeEnabled !== false,
+    analyticsEnabled: candidate.analyticsEnabled !== false,
+    locationEnabled: candidate.locationEnabled === true,
+    diagnosticsEnabled: candidate.diagnosticsEnabled === true,
   };
 }
 
