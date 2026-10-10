@@ -14,7 +14,7 @@ export default function SettingsPage() {
     <Page title="Configurações" eyebrow="PREFERÊNCIAS">
       <View
         style={{
-          backgroundColor: theme.ink,
+          backgroundColor: theme.deep,
           borderRadius: 26,
           padding: 19,
           gap: 8,
@@ -39,7 +39,7 @@ export default function SettingsPage() {
         </View>
         <Text
           style={{
-            color: "#FFFFFF",
+            color: theme.onDeep,
             fontSize: 22,
             lineHeight: 27,
             fontWeight: "900",
@@ -48,7 +48,7 @@ export default function SettingsPage() {
         >
           O app de delivery de sempre, só que do seu jeito.
         </Text>
-        <Text style={{ color: "#BCD0D1", fontSize: 12, lineHeight: 18 }}>
+        <Text style={{ color: theme.muted, fontSize: 12, lineHeight: 18 }}>
           Escolha uma identidade, ajuste seus avisos e deixe o Pediu entender
           melhor o seu momento.
         </Text>
@@ -68,7 +68,7 @@ export default function SettingsPage() {
               backgroundColor: theme.highlight,
             }}
           />
-          <Text style={{ color: "#E8F2F1", fontSize: 11, fontWeight: "800" }}>
+          <Text style={{ color: theme.onDeep, fontSize: 11, fontWeight: "800" }}>
             {theme.label} · {customization.mascotEnabled ? "mascote ativo" : "modo discreto"}
           </Text>
         </View>

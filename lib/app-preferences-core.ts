@@ -1,5 +1,6 @@
 export type AppThemeId = "classic" | "ocean" | "sunset";
 export type AppMascotStyle = "classic" | "ocean" | "sunset";
+export type AppColorScheme = "light" | "dark";
 export type MascotMomentReaction =
   | "idle"
   | "hungry"
@@ -38,6 +39,8 @@ export type AppTheme = {
   muted: string;
   line: string;
   card: string;
+  deep: string;
+  onDeep: string;
   highlight: string;
   highlightText: string;
   iconBackground: string;
@@ -56,6 +59,8 @@ export const APP_THEMES: AppTheme[] = [
     muted: "#6E635A",
     line: "#E9DED3",
     card: "#FFFDF9",
+    deep: "#111111",
+    onDeep: "#FFFDF9",
     highlight: "#FFC400",
     highlightText: "#1A120C",
     iconBackground: "#FFE7E7",
@@ -72,6 +77,8 @@ export const APP_THEMES: AppTheme[] = [
     muted: "#68858A",
     line: "#D8ECEB",
     card: "#FFFFFF",
+    deep: "#073B4C",
+    onDeep: "#FFFFFF",
     highlight: "#7BDFF2",
     highlightText: "#073B4C",
     iconBackground: "#E2F7F5",
@@ -88,11 +95,70 @@ export const APP_THEMES: AppTheme[] = [
     muted: "#92788D",
     line: "#F2DDE8",
     card: "#FFFFFF",
+    deep: "#44213B",
+    onDeep: "#FFF8FC",
     highlight: "#FFCB77",
     highlightText: "#44213B",
     iconBackground: "#FFF0F5",
   },
 ];
+
+const DARK_THEME_OVERRIDES: Record<
+  AppThemeId,
+  Omit<
+    AppTheme,
+    "id" | "label" | "tagline" | "primary" | "highlight"
+  > & {
+    primary: string;
+    highlight: string;
+  }
+> = {
+  classic: {
+    primary: "#FF5268",
+    primarySoft: "#4A2026",
+    canvas: "#1A120C",
+    ink: "#FFF4E8",
+    text: "#FFF4E8",
+    muted: "#CDBFB4",
+    line: "#5A493D",
+    card: "#2B2018",
+    deep: "#100B08",
+    onDeep: "#FFF4E8",
+    highlight: "#FFD85C",
+    highlightText: "#2B2018",
+    iconBackground: "#4A2026",
+  },
+  ocean: {
+    primary: "#4FD1D9",
+    primarySoft: "#163C41",
+    canvas: "#071C20",
+    ink: "#E9FFFF",
+    text: "#E9FFFF",
+    muted: "#A7C7C9",
+    line: "#31575C",
+    card: "#102D32",
+    deep: "#061418",
+    onDeep: "#E9FFFF",
+    highlight: "#9BEAF0",
+    highlightText: "#073B4C",
+    iconBackground: "#163C41",
+  },
+  sunset: {
+    primary: "#FF7DA5",
+    primarySoft: "#4C2435",
+    canvas: "#21101A",
+    ink: "#FFF0F6",
+    text: "#FFF0F6",
+    muted: "#D2A9B8",
+    line: "#593547",
+    card: "#321A26",
+    deep: "#190C13",
+    onDeep: "#FFF0F6",
+    highlight: "#FFD38D",
+    highlightText: "#44213B",
+    iconBackground: "#4C2435",
+  },
+};
 
 export const DEFAULT_CUSTOMIZATION: AppCustomization = {
   mascotStyle: "classic",
@@ -104,6 +170,18 @@ export const DEFAULT_CUSTOMIZATION: AppCustomization = {
   locationEnabled: false,
   diagnosticsEnabled: false,
 };
+
+export function themeForMode(
+  theme: AppTheme,
+  mode: AppColorScheme,
+): AppTheme {
+  if (mode === "light") return theme;
+  const overrides = DARK_THEME_OVERRIDES[theme.id];
+  return {
+    ...theme,
+    ...overrides,
+  };
+}
 
 export function normalizeCustomization(value: unknown): AppCustomization {
   if (!value || typeof value !== "object") return DEFAULT_CUSTOMIZATION;

@@ -10,12 +10,15 @@ import {
 } from "react";
 import * as Auth from "@/lib/_core/auth";
 import { mascotReactionForPath } from "@/lib/mascot-scenes";
+import { useThemeContext } from "@/lib/theme-provider";
 import {
   APP_THEMES,
   DEFAULT_CUSTOMIZATION,
   isAppThemeId,
   normalizeCustomization,
+  themeForMode,
   type AppCustomization,
+  type AppColorScheme,
   type AppMascotStyle,
   type AppTheme,
   type AppThemeId,
@@ -31,6 +34,7 @@ export {
 };
 export type {
   AppCustomization,
+  AppColorScheme,
   AppMascotStyle,
   AppTheme,
   AppThemeId,
@@ -54,6 +58,8 @@ function customizationStorageKeyForUser(userId?: number | null) {
 type AppPreferencesValue = {
   themeId: AppThemeId;
   theme: AppTheme;
+  colorScheme: AppColorScheme;
+  setColorScheme: (scheme: AppColorScheme) => void;
   setTheme: (themeId: AppThemeId) => void;
   setThemeForUser: (userId: number, themeId: AppThemeId) => void;
   customization: AppCustomization;
@@ -67,6 +73,7 @@ type AppPreferencesValue = {
 const AppPreferencesContext = createContext<AppPreferencesValue | null>(null);
 
 export function AppPreferencesProvider({ children }: { children: ReactNode }) {
+  const { colorScheme, setColorScheme } = useThemeContext();
   const [themeId, setThemeId] = useState<AppThemeId>("classic");
   const [customization, setCustomization] = useState<AppCustomization>(
     DEFAULT_CUSTOMIZATION,
@@ -197,7 +204,12 @@ export function AppPreferencesProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       themeId,
-      theme: APP_THEMES.find((item) => item.id === themeId) ?? APP_THEMES[0],
+      theme: themeForMode(
+        APP_THEMES.find((item) => item.id === themeId) ?? APP_THEMES[0],
+        colorScheme,
+      ),
+      colorScheme,
+      setColorScheme,
       setTheme,
       setThemeForUser,
       customization,
@@ -208,11 +220,13 @@ export function AppPreferencesProvider({ children }: { children: ReactNode }) {
       ready,
     }),
     [
+      colorScheme,
       customization,
       mascotMoment,
       ready,
       resetCustomization,
       setMascotMoment,
+      setColorScheme,
       setTheme,
       setThemeForUser,
       themeId,
