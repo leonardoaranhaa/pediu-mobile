@@ -232,6 +232,27 @@
       "when": 1791111600000,
       "tag": "0032_distributed_rate_limit",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "5",
+      "when": 1791200000000,
+      "tag": "0033_domain_flash_loyalty",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "5",
+      "when": 1791200100000,
+      "tag": "0034_market_units_tip_settlement",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "5",
+      "when": 1791200200000,
+      "tag": "0035_order_shares_junto",
+      "breakpoints": true
     }
   ]
 }

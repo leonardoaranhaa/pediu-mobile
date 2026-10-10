@@ -1,10 +1,12 @@
 import { Text } from "react-native";
-import { Page, Card, ToggleRow, PEDIU, s } from "@/components/pediu-page";
+import { Page, Card, ToggleRow, s } from "@/components/pediu-page";
 import { useAuth } from "@/hooks/use-auth";
+import { useAppPreferences } from "@/lib/app-preferences";
 import { trpc } from "@/lib/trpc";
 
 export default function PaymentMethodsPage() {
   const { isAuthenticated } = useAuth();
+  const { theme } = useAppPreferences();
   const preferences = trpc.pediu.account.paymentPreferences.mine.useQuery(undefined, { enabled: isAuthenticated });
   const update = trpc.pediu.account.paymentPreferences.update.useMutation({ onSuccess: () => void preferences.refetch() });
   if (!isAuthenticated) return <Page title="Pagamentos" eyebrow="COMO VOCÊ PAGA"><Card><Text style={s.sectionTitle}>Entre para gerenciar suas preferências</Text><Text style={s.muted}>Nenhum dado de cartão é armazenado nesta tela.</Text></Card></Page>;
@@ -19,7 +21,7 @@ export default function PaymentMethodsPage() {
         <ToggleRow icon="credit-card" title="Cartão" subtitle="Preferência de pagamento" value={pref.cardEnabled === 1} onChange={(value) => update.mutate({ cardEnabled: value })} />
         <ToggleRow icon="payments" title="Dinheiro" subtitle="Pagamento na entrega" value={pref.cashEnabled === 1} onChange={(value) => update.mutate({ cashEnabled: value })} />
       </> : null}
-      {update.error ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{update.error.message}</Text> : null}
+      {update.error ? <Text style={{ color: theme.primary, fontSize: 12 }}>{update.error.message}</Text> : null}
     </Card>
     <Card><Text style={s.sectionTitle}>Fiado</Text><Text style={s.muted}>Disponível apenas quando uma loja habilitar seu crédito. A aprovação fica registrada no servidor.</Text></Card>
   </Page>;

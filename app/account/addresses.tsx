@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { Alert, Pressable, Text, View } from "react-native";
-import { Page, Card, Field, OutlineButton, PrimaryButton, PEDIU, s } from "@/components/pediu-page";
+import { Page, Card, Field, OutlineButton, PrimaryButton, s } from "@/components/pediu-page";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/hooks/use-auth";
+import { useAppPreferences } from "@/lib/app-preferences";
 
 type AddressForm = {
   label: string;
@@ -34,6 +35,7 @@ function formatAddress(address: { street: string; number: string; complement: st
 
 export default function AddressesPage() {
   const { isAuthenticated } = useAuth();
+  const { theme } = useAppPreferences();
   const addresses = trpc.pediu.addresses.list.useQuery(undefined, { enabled: isAuthenticated });
   const create = trpc.pediu.addresses.create.useMutation({ onSuccess: () => { setForm(EMPTY_FORM); void addresses.refetch(); } });
   const update = trpc.pediu.addresses.update.useMutation({ onSuccess: () => { setEditingId(null); setForm(EMPTY_FORM); void addresses.refetch(); } });
@@ -98,7 +100,7 @@ export default function AddressesPage() {
         <View style={{ width: 74 }}><Field label="UF" value={form.state} onChangeText={(value) => setField("state", value.slice(0, 2))} placeholder="SP" autoCapitalize="characters" /></View>
       </View>
       <Field label="CEP" value={form.postalCode} onChangeText={(value) => setField("postalCode", value.replace(/\D/g, "").slice(0, 8))} placeholder="01001000" keyboardType="number-pad" />
-      {error ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{error.message}</Text> : null}
+      {error ? <Text style={{ color: theme.primary, fontSize: 12 }}>{error.message}</Text> : null}
       <PrimaryButton title={isSaving ? "Salvando..." : editingId ? "Salvar endereço" : "Adicionar endereço"} onPress={submit} disabled={isSaving || !hasFormChanges} />
       {editingId ? <OutlineButton title="Cancelar edição" onPress={() => { setEditingId(null); setForm(EMPTY_FORM); }} /> : null}
     </Card>
@@ -107,18 +109,18 @@ export default function AddressesPage() {
       <Text style={s.sectionTitle}>Endereços salvos</Text>
       {addresses.isLoading ? <Text style={s.muted}>Carregando seus endereços...</Text> : null}
       {!addresses.isLoading && !addresses.data?.length ? <Text style={s.muted}>Você ainda não salvou um endereço.</Text> : null}
-      {(addresses.data ?? []).map((address) => <View key={address.id} style={{ gap: 9, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: PEDIU.line }}>
+      {(addresses.data ?? []).map((address) => <View key={address.id} style={{ gap: 9, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: theme.line }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Text style={{ flex: 1, color: PEDIU.ink, fontWeight: "900" }}>{address.label}</Text>
-          {address.isDefault ? <Text style={{ color: PEDIU.green, fontSize: 11, fontWeight: "900" }}>PADRÃO</Text> : null}
+          <Text style={{ flex: 1, color: theme.ink, fontWeight: "900" }}>{address.label}</Text>
+          {address.isDefault ? <Text style={{ color: theme.primary, fontSize: 11, fontWeight: "900" }}>PADRÃO</Text> : null}
         </View>
         <Text style={s.muted}>{address.recipientName}</Text>
         <Text style={s.muted}>{formatAddress(address)}</Text>
         <Text style={s.muted}>{address.neighborhood} · {address.city}/{address.state} · {address.postalCode}</Text>
         <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
           <OutlineButton title="Editar" onPress={() => startEdit(address)} />
-          {!address.isDefault ? <Pressable onPress={() => setDefault.mutate({ addressId: address.id })}><Text style={{ color: PEDIU.ink, fontWeight: "900", padding: 12 }}>Definir padrão</Text></Pressable> : null}
-          <Pressable onPress={() => confirmDelete(address.id)}><Text style={{ color: PEDIU.coral, fontWeight: "900", padding: 12 }}>Excluir</Text></Pressable>
+          {!address.isDefault ? <Pressable onPress={() => setDefault.mutate({ addressId: address.id })}><Text style={{ color: theme.ink, fontWeight: "900", padding: 12 }}>Definir padrão</Text></Pressable> : null}
+          <Pressable onPress={() => confirmDelete(address.id)}><Text style={{ color: theme.primary, fontWeight: "900", padding: 12 }}>Excluir</Text></Pressable>
         </View>
       </View>)}
     </Card>

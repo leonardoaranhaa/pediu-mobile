@@ -20,12 +20,12 @@ export default function ProfilePage() {
     <Page title="Perfil" eyebrow="SUA CONTA">
       <View
         style={{
-          backgroundColor: theme.ink,
+          backgroundColor: theme.deep,
           borderRadius: 28,
           padding: 21,
           alignItems: "center",
           gap: 6,
-          shadowColor: theme.ink,
+          shadowColor: theme.deep,
           shadowOpacity: 0.18,
           shadowRadius: 18,
           shadowOffset: { width: 0, height: 8 },
@@ -53,10 +53,10 @@ export default function ProfilePage() {
             {(user?.name ?? "A").slice(0, 1).toUpperCase()}
           </Text>
         </View>
-        <Text style={{ color: PEDIU.white, fontSize: 18, fontWeight: "800" }}>
+        <Text style={{ color: theme.onDeep, fontSize: 18, fontWeight: "800" }}>
           {user?.name ?? "Sua conta"}
         </Text>
-        <Text style={{ color: "#BCD0D1", fontSize: 12 }}>
+        <Text style={{ color: theme.muted, fontSize: 12 }}>
           {user?.email ?? "Entre para sincronizar seus dados"}
         </Text>
         <View
@@ -101,7 +101,7 @@ export default function ProfilePage() {
               backgroundColor: "rgba(255,255,255,0.12)",
             }}
           >
-            <MaterialIcons name="favorite" size={13} color={PEDIU.coral} />
+            <MaterialIcons name="favorite" size={13} color={theme.primary} />
             <Text
               style={{ color: PEDIU.white, fontSize: 10, fontWeight: "800" }}
             >

@@ -4,6 +4,7 @@ import { useLocalSearchParams, router } from "expo-router";
 import { Page, Card, PrimaryButton, PEDIU, s } from "@/components/pediu-page";
 import { trpc } from "@/lib/trpc";
 import { useCart } from "@/providers/cart-provider";
+import { formatCatalogPrice, unitSubtitle } from "@/shared/market-units";
 
 export default function ProductDetailPage() {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -28,7 +29,11 @@ export default function ProductDetailPage() {
       description: product.description,
       price: String(product.price),
       deliveryFee: String(product.deliveryFee ?? "0.00"),
-      emoji: product.category === "Lanches" ? "🍔" : product.category === "Doces" ? "🍰" : "🛠️",
+      storeKind: product.storeKind,
+      flashEnabled: Boolean(product.flashEnabled),
+      saleUnit: product.saleUnit,
+      packSize: product.packSize,
+      emoji: product.category === "Lanches" ? "🍔" : product.category === "Doces" ? "🍰" : product.storeKind === "market" ? "🛒" : "🛠️",
     }, quantity);
     if (!result.ok) {
       setNotice(result.error ?? "Não foi possível adicionar o produto.");
@@ -44,8 +49,13 @@ export default function ProductDetailPage() {
       </View>
       <Text style={s.sectionTitle}>{product.name}</Text>
       <Text style={s.muted}>{product.description || "Produto disponível para pedido."}</Text>
-      <Text style={{ color: PEDIU.coral, fontSize: 22, fontWeight: "900" }}>R$ {Number(product.price).toFixed(2).replace(".", ",")}</Text>
-      <Text style={s.muted}>{product.available ? "Disponível agora" : "Indisponível"} · {product.category}</Text>
+      <Text style={{ color: PEDIU.coral, fontSize: 22, fontWeight: "900" }}>
+        {formatCatalogPrice(product.price, product.saleUnit, product.packSize)}
+      </Text>
+      {unitSubtitle(product.saleUnit, product.packSize) ? (
+        <Text style={s.muted}>{unitSubtitle(product.saleUnit, product.packSize)}</Text>
+      ) : null}
+      <Text style={s.muted}>{product.available ? "Disponível agora" : "Indisponível"} · {product.category}{product.storeKind === "market" ? " · Mercado" : ""}</Text>
     </Card>
     <Card>
       <Text style={s.sectionTitle}>Quantidade</Text>

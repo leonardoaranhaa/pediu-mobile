@@ -19,6 +19,10 @@ import { adminRouter } from "./admin-router";
 import { experienceRouter } from "./experience-router";
 import { enforceDistributedRateLimit } from "./_core/distributed-rate-limit";
 import { calculateCouponDiscount } from "./domain/coupons";
+import { clampTipAmount, resolveFlashFulfillment } from "./domain/flash";
+import { DEFAULT_TIP_DESTINATION } from "./domain/tips";
+import { normalizeSaleUnit, SALE_UNITS } from "./domain/market-units";
+import { getTasteMood, TASTE_MOODS } from "./domain/taste";
 import {
   calculateServiceability,
   serviceabilityMessage,
@@ -228,6 +232,8 @@ export const appRouter = router({
             category: z.string().optional(),
             minPrice: z.number().nonnegative().optional(),
             maxPrice: z.number().nonnegative().optional(),
+            flash: z.boolean().optional(),
+            vertical: z.enum(["restaurant", "market", "service"]).optional(),
             limit: z.number().int().min(1).max(50).default(20),
             cursor: z.string().trim().min(1).max(2_000).optional(),
             offset: z.number().int().min(0).default(0),
@@ -259,6 +265,72 @@ export const appRouter = router({
           );
           return { ...result, items };
         }),
+      taste: publicProcedure
+        .input(
+          z.object({
+            moodId: z.string().trim().min(1).max(40),
+            limit: z.number().int().min(1).max(50).default(20),
+            offset: z.number().int().min(0).default(0),
+          }),
+        )
+        .query(async ({ input }) => {
+          const mood = getTasteMood(input.moodId);
+          if (!mood)
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Humor de Sabor não encontrado",
+            });
+          const result = await db.searchAvailableProducts({
+            query: mood.query,
+            limit: input.limit,
+            offset: input.offset,
+          });
+          const items = await Promise.all(
+            result.items.map(async (item) => ({
+              ...item,
+              adImageUrl: item.adImageKey
+                ? await storageGetSignedUrl(item.adImageKey).catch(() => null)
+                : null,
+            })),
+          );
+          return { mood, moods: TASTE_MOODS, ...result, items };
+        }),
+      moods: publicProcedure.query(() => TASTE_MOODS),
+    }),
+    loyalty: router({
+      me: protectedProcedure.query(({ ctx }) =>
+        db.getLoyaltySummary(ctx.user.id),
+      ),
+      history: protectedProcedure
+        .input(
+          z
+            .object({
+              limit: z.number().int().min(1).max(100).default(50),
+              offset: z.number().int().min(0).default(0),
+            })
+            .optional(),
+        )
+        .query(({ ctx, input }) =>
+          db.listLoyaltyHistory(
+            ctx.user.id,
+            input?.limit ?? 50,
+            input?.offset ?? 0,
+          ),
+        ),
+      redeem: protectedProcedure
+        .input(
+          z.object({
+            blocks: z.number().int().min(1).max(20).default(1),
+            idempotencyKey: z.string().trim().min(8).max(160),
+          }),
+        )
+        .mutation(({ ctx, input }) =>
+          db.redeemLoyaltyPoints(
+            ctx.user.id,
+            input.blocks,
+            input.idempotencyKey,
+          ),
+        ),
     }),
     checkout: router({
       quote: protectedProcedure
@@ -277,6 +349,8 @@ export const appRouter = router({
               )
               .min(1),
             couponCode: z.string().trim().min(1).max(40).optional(),
+            fulfillment: z.enum(["standard", "flash"]).default("standard"),
+            tipAmount: z.number().nonnegative().max(500).optional(),
           }),
         )
         .query(async ({ ctx, input }) => {
@@ -284,6 +358,19 @@ export const appRouter = router({
           if (!store) throw new Error("Estabelecimento não encontrado");
           if (!store.isOpen)
             throw new Error("Estabelecimento fechado no momento");
+          if (store.kind === "market" && input.fulfillmentMode === "pickup")
+            throw new Error(
+              "Compras de mercado são entregues pelo Pediu Entregas; selecione um endereço.",
+            );
+          const flash = resolveFlashFulfillment(store, input.fulfillment);
+          if (
+            input.fulfillment === "flash" &&
+            (input.fulfillmentMode !== "delivery" || !flash.isFlash)
+          )
+            throw new Error(flash.reason ?? "Flash indisponível");
+          const pricingStore = flash.isFlash
+            ? { ...store, deliveryFee: flash.deliveryFee }
+            : store;
           const address = input.addressId
             ? await db.getCustomerAddress(ctx.user.id, input.addressId)
             : undefined;
@@ -291,7 +378,7 @@ export const appRouter = router({
             throw new Error("Endereço não encontrado ou não autorizado");
           const serviceability = calculateServiceability(
             input.fulfillmentMode,
-            store,
+            pricingStore,
             address,
           );
           if (!serviceability.serviceable)
@@ -321,6 +408,7 @@ export const appRouter = router({
             (sum, item) => sum + Number(item.lineTotal),
             0,
           );
+          const tipAmount = clampTipAmount(input.tipAmount, subtotal);
           const deliveryFee = Number(serviceability.deliveryFee);
           let couponCode: string | undefined;
           let discount = "0.00";
@@ -340,11 +428,23 @@ export const appRouter = router({
             subtotal: subtotal.toFixed(2),
             deliveryFee: deliveryFee.toFixed(2),
             fulfillmentMode: serviceability.mode,
+            fulfillment: input.fulfillment,
+            isFlash: flash.isFlash,
+            flashEligible: resolveFlashFulfillment(store, "flash").isFlash,
+            flashEtaMaxMinutes: flash.etaMaxMinutes,
+            storeKind: store.kind,
+            tipAmount,
+            tipDestination: DEFAULT_TIP_DESTINATION,
             distanceKm: serviceability.distanceKm,
             serviceabilityReason: serviceability.reason,
             couponCode,
             discount,
-            total: (subtotal + deliveryFee - Number(discount)).toFixed(2),
+            total: (
+              subtotal +
+              deliveryFee -
+              Number(discount) +
+              Number(tipAmount)
+            ).toFixed(2),
           };
         }),
     }),
@@ -375,16 +475,32 @@ export const appRouter = router({
               .default("10.00"),
             latitude: z.number().min(-90).max(90).optional().nullable(),
             longitude: z.number().min(-180).max(180).optional().nullable(),
+            kind: z
+              .enum(["restaurant", "market", "service"])
+              .default("restaurant"),
+            flashEnabled: z.boolean().default(false),
+            flashEtaMaxMinutes: z.number().int().min(5).max(120).default(30),
+            flashFeeOverride: z
+              .string()
+              .regex(/^\d+(\.\d{1,2})?$/)
+              .optional()
+              .nullable(),
           }),
         )
         .mutation(async ({ ctx, input }) => {
           if (await db.getStoreForOwner(ctx.user.id))
             throw new Error("Este usuário já possui uma loja");
-          const { deliveryEnabled, pickupEnabled, ...storeInput } = input;
+          const {
+            deliveryEnabled,
+            pickupEnabled,
+            flashEnabled,
+            ...storeInput
+          } = input;
           return db.createStore({
             ...storeInput,
             deliveryEnabled: deliveryEnabled ? 1 : 0,
             pickupEnabled: pickupEnabled ? 1 : 0,
+            flashEnabled: flashEnabled ? 1 : 0,
             latitude:
               storeInput.latitude === null || storeInput.latitude === undefined
                 ? storeInput.latitude
@@ -421,6 +537,14 @@ export const appRouter = router({
                 .optional(),
               latitude: z.number().min(-90).max(90).optional().nullable(),
               longitude: z.number().min(-180).max(180).optional().nullable(),
+              kind: z.enum(["restaurant", "market", "service"]).optional(),
+              flashEnabled: z.boolean().optional(),
+              flashEtaMaxMinutes: z.number().int().min(5).max(120).optional(),
+              flashFeeOverride: z
+                .string()
+                .regex(/^\d+(\.\d{1,2})?$/)
+                .optional()
+                .nullable(),
               isOpen: z.boolean().optional(),
             })
             .refine(
@@ -430,7 +554,13 @@ export const appRouter = router({
             ),
         )
         .mutation(({ ctx, input }) => {
-          const { isOpen, deliveryEnabled, pickupEnabled, ...changes } = input;
+          const {
+            isOpen,
+            deliveryEnabled,
+            pickupEnabled,
+            flashEnabled,
+            ...changes
+          } = input;
           return db.updateStoreForOwner(ctx.user.id, {
             ...changes,
             latitude:
@@ -447,6 +577,9 @@ export const appRouter = router({
             ...(pickupEnabled === undefined
               ? {}
               : { pickupEnabled: pickupEnabled ? 1 : 0 }),
+            ...(flashEnabled === undefined
+              ? {}
+              : { flashEnabled: flashEnabled ? 1 : 0 }),
             ...(isOpen === undefined ? {} : { isOpen: isOpen ? 1 : 0 }),
           });
         }),
@@ -633,6 +766,12 @@ export const appRouter = router({
             category: z.string().min(2).max(80),
             description: z.string().max(1000).optional(),
             price: z.string().regex(/^\d+(\.\d{1,2})?$/),
+            saleUnit: z.enum(SALE_UNITS).optional(),
+            packSize: z
+              .string()
+              .regex(/^\d+(\.\d{1,3})?$/)
+              .nullable()
+              .optional(),
             inventoryTracked: z.boolean().default(false),
             stockQuantity: z.number().int().min(0).max(1_000_000).default(0),
           }),
@@ -643,6 +782,10 @@ export const appRouter = router({
             throw new Error("Loja não autorizada");
           return db.createProduct({
             ...input,
+            saleUnit: normalizeSaleUnit(
+              input.saleUnit ?? (store.kind === "market" ? "unit" : "unit"),
+            ),
+            packSize: input.packSize ?? null,
             available: 1,
             inventoryTracked: input.inventoryTracked ? 1 : 0,
           });
@@ -748,6 +891,8 @@ export const appRouter = router({
             total: z.string().regex(/^\d+(\.\d{1,2})?$/),
             paymentMethod: z.enum(["pix", "cash", "fiado"]).default("pix"),
             fulfillmentMode: z.enum(["delivery", "pickup"]).default("delivery"),
+            fulfillment: z.enum(["standard", "flash"]).default("standard"),
+            tipAmount: z.number().nonnegative().max(500).optional(),
             addressId: z.number().int().positive().optional(),
             deliveryAddress: z.string().trim().max(255).optional(),
             couponCode: z.string().trim().min(1).max(40).optional(),
@@ -776,7 +921,9 @@ export const appRouter = router({
               (existing.total !== undefined &&
                 Number(existing.total) !== Number(input.total)) ||
               (existing.fulfillmentMode !== undefined &&
-                existing.fulfillmentMode !== input.fulfillmentMode)
+                existing.fulfillmentMode !== input.fulfillmentMode) ||
+              (existing.fulfillment !== undefined &&
+                existing.fulfillment !== input.fulfillment)
             )
               throw new Error(
                 "A chave de idempotência já foi usada para outro pedido",
@@ -809,6 +956,19 @@ export const appRouter = router({
           if (!store) throw new Error("Estabelecimento não encontrado");
           if (!store.isOpen)
             throw new Error("Estabelecimento fechado no momento");
+          if (store.kind === "market" && input.fulfillmentMode === "pickup")
+            throw new Error(
+              "Compras de mercado são entregues pelo Pediu Entregas; selecione um endereço.",
+            );
+          const flash = resolveFlashFulfillment(store, input.fulfillment);
+          if (
+            input.fulfillment === "flash" &&
+            (input.fulfillmentMode !== "delivery" || !flash.isFlash)
+          )
+            throw new Error(flash.reason ?? "Flash indisponível");
+          const pricingStore = flash.isFlash
+            ? { ...store, deliveryFee: flash.deliveryFee }
+            : store;
 
           const savedAddress = input.addressId
             ? await db.getCustomerAddress(ctx.user.id, input.addressId)
@@ -822,7 +982,7 @@ export const appRouter = router({
 
           const serviceability = calculateServiceability(
             input.fulfillmentMode,
-            store,
+            pricingStore,
             savedAddress,
           );
           if (!serviceability.serviceable)
@@ -857,6 +1017,7 @@ export const appRouter = router({
             (sum, item, i) => sum + Number(products[i]!.price) * item.quantity,
             0,
           );
+          const tipAmount = clampTipAmount(input.tipAmount, subtotal);
           let couponCode: string | undefined;
           let discount = "0.00";
           if (input.couponCode) {
@@ -870,7 +1031,10 @@ export const appRouter = router({
             discount = calculation.discount;
           }
           const calculated =
-            subtotal + Number(serviceability.deliveryFee) - Number(discount);
+            subtotal +
+            Number(serviceability.deliveryFee) -
+            Number(discount) +
+            Number(tipAmount);
           if (Math.abs(calculated - Number(input.total)) > 0.01)
             throw new Error("Total do pedido inválido");
           const serverTotal = calculated.toFixed(2);
@@ -921,6 +1085,10 @@ export const appRouter = router({
                   deliveryAddress,
                   fulfillmentMode: input.fulfillmentMode,
                   deliveryFeeSnapshot: serviceability.deliveryFee,
+                  isFlash: flash.isFlash ? 1 : 0,
+                  tipAmount,
+                  tipDestination: DEFAULT_TIP_DESTINATION,
+                  fulfillment: input.fulfillment,
                   idempotencyKey,
                 },
                 input.items.map((item, i) => ({
@@ -969,6 +1137,10 @@ export const appRouter = router({
                 deliveryAddress,
                 fulfillmentMode: input.fulfillmentMode,
                 deliveryFeeSnapshot: serviceability.deliveryFee,
+                isFlash: flash.isFlash ? 1 : 0,
+                tipAmount,
+                tipDestination: DEFAULT_TIP_DESTINATION,
+                fulfillment: input.fulfillment,
                 idempotencyKey,
               },
               input.items.map((item, i) => ({
@@ -1070,6 +1242,16 @@ export const appRouter = router({
             if (updated.status !== input.status)
               throw new Error("O pedido mudou durante a atualização");
             return { success: true as const };
+          }
+          if (input.status === "Entregue") {
+            try {
+              await db.creditLoyaltyForDeliveredOrder(input.orderId);
+            } catch (error) {
+              console.warn(
+                "[Loyalty] Failed to credit points for pickup order:",
+                error,
+              );
+            }
           }
           try {
             await sendPushToUser(
