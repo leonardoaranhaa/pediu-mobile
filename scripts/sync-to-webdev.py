@@ -17,20 +17,13 @@ EXCLUDED_NAMES = {
     ".config",
 }
 
-EXCLUDED_SUFFIXES = (
-    ".env",
-    ".env.local",
-    ".env.production",
-    ".env.development",
-)
-
 def should_exclude(name, rel_path):
     if name in EXCLUDED_NAMES:
         return True
     for part in rel_path.split(os.sep):
         if part in EXCLUDED_NAMES:
             return True
-    if any(name.endswith(suffix) for suffix in EXCLUDED_SUFFIXES):
+    if name == ".env" or name.startswith(".env."):
         return True
     return False
 

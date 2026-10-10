@@ -6,13 +6,12 @@ import {
   Page,
   Row,
   ToggleRow,
-  PEDIU,
   s,
 } from "@/components/pediu-page";
 import { useAppPreferences } from "@/lib/app-preferences";
 
 export default function AdvancedSettingsPage() {
-  const { customization, updateCustomization, resetCustomization } =
+  const { theme, customization, updateCustomization, resetCustomization } =
     useAppPreferences();
 
   return (
@@ -48,7 +47,7 @@ export default function AdvancedSettingsPage() {
         />
       </Card>
       <Card>
-        <Text style={{ fontSize: 14, fontWeight: "900", color: PEDIU.ink }}>
+        <Text style={{ fontSize: 14, fontWeight: "900", color: theme.ink }}>
           Privacidade e funcionamento
         </Text>
         <ToggleRow
@@ -86,7 +85,7 @@ export default function AdvancedSettingsPage() {
         </Text>
       </Card>
       <Card>
-        <Text style={{ fontSize: 14, fontWeight: "900", color: PEDIU.ink }}>
+        <Text style={{ fontSize: 14, fontWeight: "900", color: theme.ink }}>
           Restaurar preferências
         </Text>
         <Text style={s.muted}>

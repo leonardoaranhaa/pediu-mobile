@@ -1,8 +1,10 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { Text, View } from "react-native";
+
 import { Card, Page, Row, s } from "@/components/pediu-page";
 import { ThemePicker } from "@/components/theme-picker";
+import { ACCOUNT_PREFERENCE_SECTIONS } from "@/lib/account-preferences";
 import { useAppPreferences } from "@/lib/app-preferences";
 
 export default function SettingsPage() {
@@ -47,52 +49,69 @@ export default function SettingsPage() {
           O app de delivery de sempre, só que do seu jeito.
         </Text>
         <Text style={{ color: "#BCD0D1", fontSize: 12, lineHeight: 18 }}>
-          Escolha uma identidade e deixe o Pediu entender melhor o seu momento.
+          Escolha uma identidade, ajuste seus avisos e deixe o Pediu entender
+          melhor o seu momento.
         </Text>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 7,
+            marginTop: 4,
+          }}
+        >
+          <View
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: theme.highlight,
+            }}
+          />
+          <Text style={{ color: "#E8F2F1", fontSize: 11, fontWeight: "800" }}>
+            {theme.label} · {customization.mascotEnabled ? "mascote ativo" : "modo discreto"}
+          </Text>
+        </View>
       </View>
+
       <Card>
         <ThemePicker />
       </Card>
+
       <Card>
+        <Text style={s.label}>IDENTIDADE DO APLICATIVO</Text>
         <Row
-          icon="tune"
-          title="Casa inteligente e mascote"
-          subtitle={`${customization.smartHomeEnabled ? "Horário inteligente" : "Casa neutra"} · ${customization.mascotEnabled ? "mascote ativo" : "mascote discreto"}`}
-          onPress={() => router.push("/account/settings/advanced")}
-        />
-        <Row
-          icon="notifications"
-          title="Notificações"
-          subtitle="Avisos de pedidos e novidades"
-          onPress={() => router.push("/account/notifications")}
-        />
-        <Row
-          icon="location-on"
-          title="Endereços e localização"
-          subtitle="Casa, trabalho e endereço automático"
-          onPress={() => router.push("/account/addresses")}
-        />
-        <Row
-          icon="account-balance-wallet"
-          title="Pagamento e Pediu Pay"
-          subtitle="Métodos disponíveis e carteira"
-          onPress={() => router.push("/account/payment-methods")}
-        />
-        <Row
-          icon="security"
-          title="Segurança e privacidade"
-          subtitle="Sessão, consentimentos e LGPD"
-          onPress={() => router.push("/account/privacy")}
+          icon="language"
+          title="Idioma"
+          subtitle="Português (Brasil)"
+          right={
+            <Text style={[s.muted, { color: theme.primary, fontWeight: "900" }]}>
+              PT-BR
+            </Text>
+          }
         />
       </Card>
-      <Card>
-        <Row
-          icon="help-outline"
-          title="Ajuda e assistente"
-          subtitle="Tire dúvidas com o suporte do Pediu"
-          onPress={() => router.push("/account/support-chat")}
-        />
-      </Card>
+
+      {ACCOUNT_PREFERENCE_SECTIONS.map((section) => (
+        <Card key={section.key}>
+          <Text style={[s.label, { color: theme.muted }]}>{section.label}</Text>
+          {section.links.map((link) => (
+            <Row
+              key={link.key}
+              icon={link.icon}
+              title={link.title}
+              subtitle={link.subtitle}
+              onPress={() => router.push(link.path as never)}
+            />
+          ))}
+        </Card>
+      ))}
+
+      <Text style={s.muted}>
+        Temas, mascote e preferências de experiência ficam separados por conta
+        quando você está conectado; no modo visitante, ficam apenas neste
+        dispositivo.
+      </Text>
       <Text style={s.muted}>Versão do aplicativo: MVP · Pediu</Text>
     </Page>
   );

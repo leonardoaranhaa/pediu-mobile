@@ -58,8 +58,11 @@ export function Page({
       >
         <View style={s.header}>
           {back ? (
-            <PediuPressable onPress={() => router.back()} style={s.back}>
-              <MaterialIcons name="arrow-back" size={21} color={PEDIU.ink} />
+            <PediuPressable
+              onPress={() => router.back()}
+              style={[s.back, { backgroundColor: theme.card, borderColor: theme.line }]}
+            >
+              <MaterialIcons name="arrow-back" size={21} color={theme.ink} />
             </PediuPressable>
           ) : (
             <View style={s.backPlaceholder} />
@@ -108,23 +111,26 @@ export function Section({
   title: string;
   children: ReactNode;
 }) {
+  const { theme } = useAppPreferences();
   return (
     <View style={s.section}>
-      <Text style={s.sectionTitle}>{title}</Text>
+      <Text style={[s.sectionTitle, { color: theme.ink }]}>{title}</Text>
       {children}
     </View>
   );
 }
 
 export function Field({ label, ...props }: TextInputProps & { label: string }) {
+  const { theme } = useAppPreferences();
   return (
     <View style={{ gap: 7 }}>
       <Text style={s.label}>{label}</Text>
       <TextInput
         {...props}
-        placeholderTextColor={PEDIU.muted}
+        placeholderTextColor={theme.muted}
         style={[
           s.input,
+          { backgroundColor: theme.canvas, borderColor: theme.line, color: theme.ink },
           props.multiline && { minHeight: 86, textAlignVertical: "top" },
         ]}
       />
@@ -196,17 +202,21 @@ export function Row({
   onPress?: () => void;
   right?: ReactNode;
 }) {
+  const { theme } = useAppPreferences();
   return (
-    <PediuPressable onPress={onPress} style={s.row}>
-      <View style={s.icon}>
-        <MaterialIcons name={icon} size={20} color={PEDIU.ink} />
+    <PediuPressable
+      onPress={onPress}
+      style={[s.row, { backgroundColor: theme.card, borderColor: theme.line }]}
+    >
+      <View style={[s.icon, { backgroundColor: theme.primarySoft }]}>
+        <MaterialIcons name={icon} size={20} color={theme.ink} />
       </View>
       <View style={{ flex: 1, gap: 2 }}>
-        <Text style={s.rowTitle}>{title}</Text>
-        {subtitle ? <Text style={s.muted}>{subtitle}</Text> : null}
+        <Text style={[s.rowTitle, { color: theme.ink }]}>{title}</Text>
+        {subtitle ? <Text style={[s.muted, { color: theme.muted }]}>{subtitle}</Text> : null}
       </View>
       {right ?? (
-        <MaterialIcons name="chevron-right" size={21} color={PEDIU.muted} />
+        <MaterialIcons name="chevron-right" size={21} color={theme.muted} />
       )}
     </PediuPressable>
   );
@@ -225,6 +235,7 @@ export function ToggleRow({
   value: boolean;
   onChange: (value: boolean) => void;
 }) {
+  const { theme } = useAppPreferences();
   return (
     <Row
       icon={icon}
@@ -233,9 +244,11 @@ export function ToggleRow({
       right={
         <PediuPressable
           onPress={() => onChange(!value)}
-          style={[s.toggle, value && s.toggleOn]}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: value }}
+          style={[s.toggle, value && { backgroundColor: theme.primary }]}
         >
-          <View style={[s.knob, value && s.knobOn]} />
+          <View style={[s.knob, value && s.knobOn, { backgroundColor: theme.card }]} />
         </PediuPressable>
       }
     />

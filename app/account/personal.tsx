@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Alert, Text } from "react-native";
-import { Page, Card, Field, PEDIU, PrimaryButton, OutlineButton, s } from "@/components/pediu-page";
+import { Page, Card, Field, PrimaryButton, OutlineButton, s } from "@/components/pediu-page";
 import { useAuth } from "@/hooks/use-auth";
+import { useAppPreferences } from "@/lib/app-preferences";
 import { trpc } from "@/lib/trpc";
 
 export default function PersonalDataPage() {
   const { isAuthenticated, refresh } = useAuth();
+  const { theme } = useAppPreferences();
   const profile = trpc.pediu.account.profile.mine.useQuery(undefined, { enabled: isAuthenticated });
   const update = trpc.pediu.account.profile.update.useMutation({ onSuccess: async () => { await profile.refetch(); await refresh(); Alert.alert("Perfil atualizado", "Seu nome foi salvo."); } });
   const requestEmailChange = trpc.pediu.account.profile.requestEmailChange.useMutation({
@@ -35,7 +37,7 @@ export default function PersonalDataPage() {
       <Text style={s.sectionTitle}>Trocar e-mail</Text>
       <Text style={s.muted}>O novo endereço só será aplicado depois que você confirmar o link enviado.</Text>
       <Field label="NOVO E-MAIL" value={email} onChangeText={setEmail} placeholder="seu@email.com" keyboardType="email-address" autoCapitalize="none" />
-      {requestEmailChange.error ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{requestEmailChange.error.message}</Text> : null}
+      {requestEmailChange.error ? <Text style={{ color: theme.primary, fontSize: 12 }}>{requestEmailChange.error.message}</Text> : null}
       <OutlineButton title={requestEmailChange.isPending ? "Enviando..." : "Enviar confirmação"} onPress={() => requestEmailChange.mutate({ email: email.trim() })} disabled={requestEmailChange.isPending || !emailChanged || !email.includes("@")} />
     </Card>
   </Page>;

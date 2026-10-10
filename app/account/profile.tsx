@@ -101,7 +101,7 @@ export default function ProfilePage() {
               backgroundColor: "rgba(255,255,255,0.12)",
             }}
           >
-            <MaterialIcons name="favorite" size={13} color={PEDIU.coral} />
+            <MaterialIcons name="favorite" size={13} color={theme.primary} />
             <Text
               style={{ color: PEDIU.white, fontSize: 10, fontWeight: "800" }}
             >
