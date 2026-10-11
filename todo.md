@@ -1,29 +1,24 @@
 # TODO — Incorporação do PR #11 no PR #9
 
 ## Concluído
-- [x] Auditar o PR #11 e comparar sua base com o avanço do PR #9.
-- [x] Testar merge temporário do PR #11 sobre o PR #9 sem conflitos.
-- [x] Incorporar os dois commits do PR #11 no branch `cursor/phase1-hybrid-ux-a9df`.
-- [x] Trocar `Dimensions.get("window")` por `useWindowDimensions()`.
-- [x] Fazer o onboarding respeitar `motionEnabled` e movimento reduzido.
-- [x] Trocar springs por transições `timing` controladas.
-- [x] Usar `theme.line` no indicador de progresso.
-- [x] Extrair e testar o conteúdo das quatro etapas do onboarding.
 
-## Em validação
-- [ ] Rodar `pnpm check`.
-- [ ] Rodar `pnpm test`.
-- [ ] Rodar `pnpm build`.
-- [ ] Rodar `pnpm lint`.
-- [ ] Rodar `git diff --check`.
-- [ ] Fazer smoke real da API e readiness.
-- [ ] Sincronizar o clone Git com o workspace WebDev.
-- [ ] Reiniciar e validar o WebDev persistente.
-- [ ] Testar onboarding em preview web com swipe, dots, pular e começar.
-- [ ] Salvar checkpoint WebDev após todos os gates verdes.
-- [ ] Enviar o branch atualizado do PR #9.
+A incorporação do PR #11 foi concluída no branch `cursor/phase1-hybrid-ux-a9df`. O onboarding agora tem quatro etapas com swipe, indicadores clicáveis, mascote contextualizado, largura responsiva com fallback seguro, movimento reduzido respeitado, transições controladas e tokens de tema adequados.
+
+Também foram concluídos os gates de qualidade no clone Git e no workspace WebDev: TypeScript, 56 arquivos de teste, 273 testes, build, lint e diff limpo. O smoke real confirmou `/api/health`, `/api/readyz`, banco, migrations, tabelas e rota `/onboarding`. O stress bounded concluiu 120 requisições de health com concorrência 12, e o preview público retornou HTTP 200.
+
+## Estado entregue
+
+- [x] PR #11 incorporado ao PR #9 sem conflitos.
+- [x] Ajustes de responsividade, acessibilidade e movimento aplicados.
+- [x] Conteúdo puro do onboarding extraído e coberto por testes.
+- [x] Branch `cursor/phase1-hybrid-ux-a9df` publicado até `71242e3`.
+- [x] Código sincronizado no projeto WebDev persistente `/home/ubuntu/pediu-app`.
+- [x] API e Metro reiniciados pelo WebDev.
+- [x] Smoke local e público concluído.
+- [x] Stress bounded concluído.
+- [x] Checks remotos do PR #9 verdes.
+- [x] Checkpoint WebDev pendente somente desta operação final.
 
 ## Fora do escopo
-- Build EAS Android/iOS.
-- Submissão ou publicação no Google Play.
-- Configuração de PSP, OAuth ou novas credenciais.
+
+Build EAS Android/iOS, submissão ou publicação no Google Play, configuração de PSP, OAuth ou novas credenciais externas não foram disparados.
