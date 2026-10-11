@@ -31,6 +31,7 @@ export default function OnboardingScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const reducedMotion = useReducedMotion();
   const shouldAnimate = customization.motionEnabled && !reducedMotion;
+  const effectiveWidth = screenWidth || 375;
   const [index, setIndex] = useState(0);
   const listRef = useRef<FlatList<OnboardingSlide>>(null);
   const mascotScale = useRef(new Animated.Value(0.85)).current;
@@ -102,14 +103,14 @@ export default function OnboardingScreen() {
   const onMomentumScrollEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const next = Math.round(
-        event.nativeEvent.contentOffset.x / screenWidth,
+        event.nativeEvent.contentOffset.x / effectiveWidth,
       );
       if (next === index || next < 0 || next >= SLIDES.length) return;
       setIndex(next);
       animateProgress(next);
       pulseMascot();
     },
-    [animateProgress, index, pulseMascot, screenWidth],
+    [animateProgress, effectiveWidth, index, pulseMascot],
   );
 
   const onViewableItemsChanged = useRef(
@@ -126,7 +127,7 @@ export default function OnboardingScreen() {
 
   const renderItem = useCallback(
       ({ item }: ListRenderItemInfo<OnboardingSlide>) => (
-      <View style={[styles.slide, { width: screenWidth }]}>
+      <View style={[styles.slide, { width: effectiveWidth }]}>
         <View style={styles.slideInner}>
           <Text style={[styles.eyebrow, { color: theme.primary }]}>
             {item.eyebrow}
@@ -136,7 +137,7 @@ export default function OnboardingScreen() {
         </View>
       </View>
     ),
-    [screenWidth, theme.ink, theme.muted, theme.primary],
+    [effectiveWidth, theme.ink, theme.muted, theme.primary],
   );
 
   return (
@@ -184,8 +185,8 @@ export default function OnboardingScreen() {
           onViewableItemsChanged={onViewableItemsChanged}
           viewabilityConfig={viewabilityConfig}
           getItemLayout={(_, itemIndex) => ({
-            length: screenWidth,
-            offset: screenWidth * itemIndex,
+            length: effectiveWidth,
+            offset: effectiveWidth * itemIndex,
             index: itemIndex,
           })}
           style={styles.pager}

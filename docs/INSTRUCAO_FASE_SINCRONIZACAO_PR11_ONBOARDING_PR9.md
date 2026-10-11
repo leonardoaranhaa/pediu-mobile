@@ -48,6 +48,6 @@ A incorporação é **viável e de baixo risco técnico**. A aplicação real do
 
 ## Execução autorizada
 
-O usuário autorizou a incorporação. O PR #11 foi integrado no branch `cursor/phase1-hybrid-ux-a9df` por merge sem conflitos. Também foram aplicados os ajustes recomendados: `useWindowDimensions`, respeito a `motionEnabled` e movimento reduzido, troca de `spring` por `timing`, token `theme.line` para o indicador e extração/teste do conteúdo puro das quatro etapas.
+O usuário autorizou a incorporação. O PR #11 foi integrado no branch `cursor/phase1-hybrid-ux-a9df` por merge sem conflitos. Também foram aplicados os ajustes recomendados: `useWindowDimensions`, fallback de 375 px para o primeiro paint SSR/hidratação, respeito a `motionEnabled` e movimento reduzido, troca de `spring` por `timing`, token `theme.line` para o indicador e extração/teste do conteúdo puro das quatro etapas.
 
 A sincronização com o workspace WebDev e o checkpoint ficam condicionados à aprovação dos gates completos desta fase. EAS, Google Play e qualquer credencial externa permanecem fora do escopo.
