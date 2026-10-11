@@ -19,12 +19,23 @@ import {
   removeCartItem,
   updateCartNote,
   updateCartQuantity,
+  type AddToCartMode,
   type CartItem,
   type CartProduct,
 } from "@/lib/cart";
 
 const LEGACY_CART_STORAGE_KEY = "pediu:cart:v1";
 const userCartStorageKey = (userId: number) => `pediu:cart:user:${userId}:v1`;
+
+type AddItemResult = {
+  ok: boolean;
+  error?: string;
+  conflictStore?: {
+    currentStoreId: number;
+    currentStoreName: string;
+    nextStoreName: string;
+  };
+};
 
 type CartContextValue = {
   items: CartItem[];
@@ -37,7 +48,8 @@ type CartContextValue = {
   addItem: (
     product: CartProduct,
     quantity?: number,
-  ) => { ok: boolean; error?: string };
+    mode?: AddToCartMode,
+  ) => AddItemResult;
   updateQuantity: (productId: number, quantity: number) => void;
   updateNote: (productId: number, note: string) => void;
   removeItem: (productId: number) => void;
@@ -84,8 +96,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
         if (active) setSessionUserId(user?.id ?? null);
       });
     } else {
-      // On web, localStorage is only a hint. The server-authenticated useAuth
-      // flow emits the identity event after validating the HttpOnly cookie.
       setSessionUserId(null);
     }
     return () => {
@@ -145,17 +155,21 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [hydrated, items, sessionUserId]);
 
   const addItem = useCallback(
-    (product: CartProduct, quantity = 1) => {
+    (product: CartProduct, quantity = 1, mode: AddToCartMode = "reject") => {
       if (sessionUserId === undefined)
         return { ok: false, error: "Aguarde a sincronização da sua sessão." };
       if (sessionUserId === null)
         return { ok: false, error: "Entre para salvar itens no seu carrinho." };
       if (!hydrated)
         return { ok: false, error: "Aguarde o carrinho terminar de carregar." };
-      const result = addProductToCart(items, product, quantity);
+      const result = addProductToCart(items, product, quantity, mode);
       if (result.error) {
         setError(result.error);
-        return { ok: false, error: result.error };
+        return {
+          ok: false,
+          error: result.error,
+          conflictStore: result.conflictStore,
+        };
       }
       setError(null);
       setItems(result.items);
