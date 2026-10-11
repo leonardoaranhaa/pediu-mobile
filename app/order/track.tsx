@@ -1,7 +1,14 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { Image, Linking, Pressable, Text, View } from "react-native";
-import { Page, Card, OutlineButton, PEDIU, s } from "@/components/pediu-page";
+import {
+  Page,
+  Card,
+  OutlineButton,
+  PrimaryButton,
+  PEDIU,
+  s,
+} from "@/components/pediu-page";
 import { trpc } from "@/lib/trpc";
 
 const states = [
@@ -13,6 +20,29 @@ const states = [
   "Entregue",
 ] as const;
 
+type OrderStatusLabel = (typeof states)[number] | "Cancelado";
+
+function statusHint(status: string): string {
+  switch (status as OrderStatusLabel) {
+    case "Pendente":
+      return "Aguardando a loja aceitar o pedido.";
+    case "Aceito":
+      return "A loja confirmou e vai preparar seu pedido.";
+    case "Preparando":
+      return "Seu pedido está sendo preparado agora.";
+    case "Pronto":
+      return "Pedido pronto. Em breve sai para entrega ou retirada.";
+    case "A caminho":
+      return "O entregador está a caminho. Acompanhe a posição e o chat.";
+    case "Entregue":
+      return "Pedido entregue. Você já pode avaliar a experiência.";
+    case "Cancelado":
+      return "Este pedido foi cancelado.";
+    default:
+      return "Status atualizado pelo servidor.";
+  }
+}
+
 export default function TrackOrderPage() {
   const params = useLocalSearchParams<{
     orderId?: string;
@@ -22,12 +52,11 @@ export default function TrackOrderPage() {
   const orderId = Number(params.orderId);
   const paymentId = Number(params.paymentId);
   const pixUrl = typeof params.pixUrl === "string" ? params.pixUrl : "";
+  const enabled = Number.isInteger(orderId) && orderId > 0;
+
   const query = trpc.pediu.orders.get.useQuery(
     { orderId },
-    {
-      enabled: Number.isInteger(orderId) && orderId > 0,
-      refetchInterval: 5000,
-    },
+    { enabled, refetchInterval: 5000 },
   );
   const paymentQuery = trpc.pediu.payments.get.useQuery(
     { paymentId },
@@ -36,14 +65,23 @@ export default function TrackOrderPage() {
       refetchInterval: 5000,
     },
   );
+  const deliveryQuery = trpc.pediu.experience.delivery.current.useQuery(
+    { orderId },
+    {
+      enabled,
+      refetchInterval: 8000,
+      retry: 1,
+    },
+  );
 
-  if (!Number.isInteger(orderId) || orderId <= 0) {
+  if (!enabled) {
     return (
       <Page title="Acompanhar pedido" eyebrow="PEDIDO">
         <Card>
           <Text style={s.sectionTitle}>Pedido inválido</Text>
           <Text style={s.muted}>
-            Abra o acompanhamento a partir de um pedido válido.
+            Abra o acompanhamento a partir de um pedido válido na lista Meus
+            pedidos ou na confirmação do checkout.
           </Text>
         </Card>
       </Page>
@@ -55,7 +93,9 @@ export default function TrackOrderPage() {
       <Page title="Acompanhar pedido" eyebrow={`PEDIDO #${orderId}`}>
         <Card>
           <Text style={s.sectionTitle}>Carregando pedido...</Text>
-          <Text style={s.muted}>Buscando o status mais recente.</Text>
+          <Text style={s.muted}>
+            Buscando status, pagamento e entrega no servidor.
+          </Text>
         </Card>
       </Page>
     );
@@ -69,18 +109,33 @@ export default function TrackOrderPage() {
           <Text style={s.muted}>
             Este pedido não existe ou não está disponível para sua conta.
           </Text>
+          <OutlineButton
+            title="Ver meus pedidos"
+            onPress={() => router.push("/orders" as never)}
+          />
         </Card>
       </Page>
     );
   }
 
+  const order = query.data;
   const active =
-    query.data.status === "Cancelado"
+    order.status === "Cancelado"
       ? -1
-      : states.indexOf(query.data.status as (typeof states)[number]);
+      : states.indexOf(order.status as (typeof states)[number]);
   const paymentLink = paymentQuery.data?.pixTicketUrl || pixUrl;
+  const assignment = deliveryQuery.data?.assignment;
+  const freshness = deliveryQuery.data?.locationFreshness ?? "unavailable";
+  const showDeliveryActions =
+    order.status !== "Cancelado" && order.status !== "Pendente";
+  const showMap =
+    order.status === "Pronto" ||
+    order.status === "A caminho" ||
+    order.status === "Entregue";
+  const showFeedback = order.status === "Entregue";
+
   return (
-    <Page title="Acompanhar pedido" eyebrow={`PEDIDO #${query.data.id}`}>
+    <Page title="Acompanhar pedido" eyebrow={`PEDIDO #${order.id}`}>
       <Card>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           <View
@@ -95,32 +150,85 @@ export default function TrackOrderPage() {
           >
             <MaterialIcons
               name={
-                query.data.status === "Entregue"
+                order.status === "Entregue"
                   ? "check-circle"
-                  : query.data.status === "Cancelado"
+                  : order.status === "Cancelado"
                     ? "cancel"
                     : "delivery-dining"
               }
               size={22}
               color={
-                query.data.status === "Cancelado" ? PEDIU.muted : PEDIU.coral
+                order.status === "Cancelado" ? PEDIU.muted : PEDIU.coral
               }
             />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={s.sectionTitle}>Pedido #{query.data.id}</Text>
-            <Text style={s.muted}>Status atual: {query.data.status}</Text>
+            <Text style={s.sectionTitle}>Pedido #{order.id}</Text>
+            <Text style={s.muted}>Status: {order.status}</Text>
           </View>
         </View>
-        <Text style={[s.muted, { marginTop: 2 }]}>
-          Total: R$ {Number(query.data.total).toFixed(2).replace(".", ",")}
+
+        <Text style={[s.body, { marginTop: 4 }]}>{statusHint(order.status)}</Text>
+
+        <Text style={[s.muted, { marginTop: 6 }]}>
+          Total: R$ {Number(order.total).toFixed(2).replace(".", ",")}
         </Text>
-        {query.data.deliveryAddress ? (
-          <Text style={s.muted}>Entrega: {query.data.deliveryAddress}</Text>
+        {order.deliveryAddress ? (
+          <Text style={s.muted}>Entrega: {order.deliveryAddress}</Text>
         ) : null}
+
+        {assignment ? (
+          <View
+            style={{
+              marginTop: 8,
+              backgroundColor: PEDIU.peach,
+              borderRadius: 14,
+              padding: 12,
+              gap: 4,
+            }}
+          >
+            <Text style={s.sectionTitle}>Entrega</Text>
+            <Text style={s.muted}>
+              {assignment.courierName}
+              {assignment.courierPhone ? ` · ${assignment.courierPhone}` : ""}
+            </Text>
+            {assignment.etaMinutes != null ? (
+              <Text style={{ color: PEDIU.coral, fontWeight: "900", fontSize: 13 }}>
+                ETA estimado: {assignment.etaMinutes} min
+              </Text>
+            ) : null}
+            {deliveryQuery.data?.latestLocation ? (
+              <Text style={s.muted}>
+                Posição:{" "}
+                {Number(deliveryQuery.data.latestLocation.latitude).toFixed(5)},{" "}
+                {Number(deliveryQuery.data.latestLocation.longitude).toFixed(5)}
+                {" · "}
+                {freshness === "fresh"
+                  ? "atualizada"
+                  : freshness === "stale"
+                    ? "desatualizada"
+                    : "indisponível"}
+              </Text>
+            ) : (
+              <Text style={s.muted}>Aguardando posição do entregador.</Text>
+            )}
+            {deliveryQuery.isError ? (
+              <Text style={{ color: PEDIU.coral, fontSize: 12 }}>
+                Não foi possível atualizar a entrega. O status do pedido acima
+                continua válido.
+              </Text>
+            ) : null}
+          </View>
+        ) : order.status === "Pronto" || order.status === "A caminho" ? (
+          <Text style={[s.muted, { marginTop: 8 }]}>
+            Aguardando atribuição do entregador pela loja.
+          </Text>
+        ) : null}
+
         {paymentQuery.data ? (
           <View
             style={{
+              marginTop: 10,
               backgroundColor:
                 paymentQuery.data.status === "paid" ? "#EAF9F1" : PEDIU.peach,
               borderRadius: 15,
@@ -192,6 +300,7 @@ export default function TrackOrderPage() {
             ) : null}
           </View>
         ) : null}
+
         {states.map((state, i) => (
           <View
             key={state}
@@ -221,28 +330,57 @@ export default function TrackOrderPage() {
                 {state}
               </Text>
               {i === active ? (
-                <Text style={s.muted}>
-                  Acompanhe a atualização em tempo real.
-                </Text>
+                <Text style={s.muted}>{statusHint(state)}</Text>
               ) : null}
             </View>
           </View>
         ))}
-        {query.data.status === "Cancelado" ? (
+
+        {order.status === "Cancelado" ? (
           <Text style={s.muted}>Este pedido foi cancelado.</Text>
         ) : null}
-        {query.data.status !== "Cancelado" ? (
+      </Card>
+
+      {showDeliveryActions ? (
+        <Card>
+          <Text style={s.sectionTitle}>Ações do pedido</Text>
+          <Text style={s.muted}>
+            Dados vindos do servidor (pedido, entrega e chat). Atualização
+            automática a cada poucos segundos.
+          </Text>
+          {showMap ? (
+            <OutlineButton
+              title="Ver entregador e posição"
+              onPress={() =>
+                router.push({
+                  pathname: "/order/[orderId]/tracking-map",
+                  params: { orderId: String(order.id) },
+                })
+              }
+            />
+          ) : null}
           <OutlineButton
-            title="Ver entregador e posição"
+            title="Chat do pedido"
             onPress={() =>
               router.push({
-                pathname: "/order/[orderId]/tracking-map",
-                params: { orderId: String(query.data.id) },
+                pathname: "/order/[orderId]/chat",
+                params: { orderId: String(order.id) },
               })
             }
           />
-        ) : null}
-      </Card>
+          {showFeedback ? (
+            <PrimaryButton
+              title="Avaliar experiência"
+              onPress={() =>
+                router.push({
+                  pathname: "/feedback/[orderId]",
+                  params: { orderId: String(order.id) },
+                })
+              }
+            />
+          ) : null}
+        </Card>
+      ) : null}
     </Page>
   );
 }
