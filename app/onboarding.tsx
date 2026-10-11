@@ -3,7 +3,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
-  Dimensions,
   Easing,
   FlatList,
   NativeScrollEvent,
@@ -12,64 +11,28 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
   type ListRenderItemInfo,
   type ViewToken,
 } from "react-native";
 import { PediuMascot } from "@/components/pediu-mascot";
-import { PrimaryButton, PEDIU } from "@/components/pediu-page";
+import { PrimaryButton } from "@/components/pediu-page";
 import { useAppPreferences } from "@/lib/app-preferences";
-import type { MascotReaction } from "@/lib/mascot-scenes";
+import {
+  ONBOARDING_SLIDES,
+  type OnboardingSlide,
+} from "@/lib/onboarding-content";
+import { useReducedMotion } from "react-native-reanimated";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-
-type Slide = {
-  id: string;
-  eyebrow: string;
-  title: string;
-  body: string;
-  reaction: MascotReaction;
-  speech: string;
-};
-
-const SLIDES: Slide[] = [
-  {
-    id: "peca",
-    eyebrow: "PEÇA",
-    title: "Tudo o que você precisa, em um só lugar.",
-    body: "Restaurantes, mercados, farmácias e serviços perto de você. Com um toque, o pedido sai.",
-    reaction: "hungry",
-    speech: "Snif, snif… já tô com fome! Vamos pedir algo gostoso?",
-  },
-  {
-    id: "acompanhe",
-    eyebrow: "ACOMPANHE",
-    title: "Seu pedido do começo ao fim.",
-    body: "Atualizações em tempo real, mapa ao vivo e chat com o entregador. Sem surpresa na porta.",
-    reaction: "curious",
-    speech: "Estou de olho no caminho. Já já chega quentinho!",
-  },
-  {
-    id: "venda",
-    eyebrow: "VENDA",
-    title: "Seu negócio também cabe no Pediu.",
-    body: "Catálogo, pedidos, clientes e anúncios com IA. Tudo em uma operação simples e local.",
-    reaction: "happy",
-    speech: "Obaaa! Hora de vender e brilhar com o seu negócio!",
-  },
-  {
-    id: "seu-pediu",
-    eyebrow: "SEU PEDIU",
-    title: "O Pediu se adapta a você.",
-    body: "Escolha temas, personalize o mascote e descubra vantagens exclusivas. É o seu jeito de pedir.",
-    reaction: "celebrate",
-    speech: "Estou dançando porque você chegou! Bora começar?",
-  },
-];
+const SLIDES = ONBOARDING_SLIDES;
 
 export default function OnboardingScreen() {
   const { theme, customization } = useAppPreferences();
+  const { width: screenWidth } = useWindowDimensions();
+  const reducedMotion = useReducedMotion();
+  const shouldAnimate = customization.motionEnabled && !reducedMotion;
   const [index, setIndex] = useState(0);
-  const listRef = useRef<FlatList<Slide>>(null);
+  const listRef = useRef<FlatList<OnboardingSlide>>(null);
   const mascotScale = useRef(new Animated.Value(0.85)).current;
   const progressAnims = useRef(
     SLIDES.map((_, i) => new Animated.Value(i === 0 ? 1 : 0)),
@@ -79,37 +42,38 @@ export default function OnboardingScreen() {
   const activeSlide = SLIDES[index];
 
   useEffect(() => {
-    Animated.spring(mascotScale, {
+    Animated.timing(mascotScale, {
       toValue: 1,
-      friction: 6,
-      tension: 80,
+      duration: shouldAnimate ? 280 : 0,
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
-  }, [mascotScale]);
+  }, [mascotScale, shouldAnimate]);
 
   const animateProgress = useCallback(
     (nextIndex: number) => {
       progressAnims.forEach((anim, i) => {
         Animated.timing(anim, {
           toValue: i === nextIndex ? 1 : 0,
-          duration: 280,
+          duration: shouldAnimate ? 280 : 0,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: false,
         }).start();
       });
     },
-    [progressAnims],
+    [progressAnims, shouldAnimate],
   );
 
   const pulseMascot = useCallback(() => {
-    mascotScale.setValue(0.9);
-    Animated.spring(mascotScale, {
+    mascotScale.stopAnimation();
+    mascotScale.setValue(shouldAnimate ? 0.94 : 1);
+    Animated.timing(mascotScale, {
       toValue: 1,
-      friction: 6,
-      tension: 90,
+      duration: shouldAnimate ? 220 : 0,
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
-  }, [mascotScale]);
+  }, [mascotScale, shouldAnimate]);
 
   const goToIndex = useCallback(
     (nextIndex: number) => {
@@ -138,14 +102,14 @@ export default function OnboardingScreen() {
   const onMomentumScrollEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const next = Math.round(
-        event.nativeEvent.contentOffset.x / SCREEN_WIDTH,
+        event.nativeEvent.contentOffset.x / screenWidth,
       );
       if (next === index || next < 0 || next >= SLIDES.length) return;
       setIndex(next);
       animateProgress(next);
       pulseMascot();
     },
-    [animateProgress, index, pulseMascot],
+    [animateProgress, index, pulseMascot, screenWidth],
   );
 
   const onViewableItemsChanged = useRef(
@@ -153,7 +117,6 @@ export default function OnboardingScreen() {
       const first = viewableItems[0];
       if (first?.index == null) return;
       setIndex(first.index);
-      animateProgress(first.index);
     },
   ).current;
 
@@ -162,8 +125,8 @@ export default function OnboardingScreen() {
   }).current;
 
   const renderItem = useCallback(
-    ({ item }: ListRenderItemInfo<Slide>) => (
-      <View style={[styles.slide, { width: SCREEN_WIDTH }]}>
+      ({ item }: ListRenderItemInfo<OnboardingSlide>) => (
+      <View style={[styles.slide, { width: screenWidth }]}>
         <View style={styles.slideInner}>
           <Text style={[styles.eyebrow, { color: theme.primary }]}>
             {item.eyebrow}
@@ -173,7 +136,7 @@ export default function OnboardingScreen() {
         </View>
       </View>
     ),
-    [theme.ink, theme.muted, theme.primary],
+    [screenWidth, theme.ink, theme.muted, theme.primary],
   );
 
   return (
@@ -221,8 +184,8 @@ export default function OnboardingScreen() {
           onViewableItemsChanged={onViewableItemsChanged}
           viewabilityConfig={viewabilityConfig}
           getItemLayout={(_, itemIndex) => ({
-            length: SCREEN_WIDTH,
-            offset: SCREEN_WIDTH * itemIndex,
+            length: screenWidth,
+            offset: screenWidth * itemIndex,
             index: itemIndex,
           })}
           style={styles.pager}
@@ -237,7 +200,7 @@ export default function OnboardingScreen() {
               });
               const backgroundColor = progressAnims[i].interpolate({
                 inputRange: [0, 1],
-                outputRange: [PEDIU.line, theme.primary],
+                outputRange: [theme.line, theme.primary],
               });
               return (
                 <Pressable

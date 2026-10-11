@@ -46,6 +46,8 @@ A incorporação é **viável e de baixo risco técnico**. A aplicação real do
 6. Reiniciar o WebDev, validar Metro/API, testar onboarding em web e mobile viewport, salvar checkpoint somente após a validação.
 7. Manter EAS/Play separados; este PR não autoriza build, submissão ou publicação.
 
-## Decisão registrada
+## Execução autorizada
 
-A sincronização é tecnicamente recomendada. Contudo, nesta fase de **análise**, nenhum merge, push do código do PR #11, sincronização do WebDev ou checkpoint WebDev foi executado. O próximo passo seguro é obter autorização para incorporar o PR #11 no PR #9 ou manter os PRs separados e aguardar o merge de #11 em `main`.
+O usuário autorizou a incorporação. O PR #11 foi integrado no branch `cursor/phase1-hybrid-ux-a9df` por merge sem conflitos. Também foram aplicados os ajustes recomendados: `useWindowDimensions`, respeito a `motionEnabled` e movimento reduzido, troca de `spring` por `timing`, token `theme.line` para o indicador e extração/teste do conteúdo puro das quatro etapas.
+
+A sincronização com o workspace WebDev e o checkpoint ficam condicionados à aprovação dos gates completos desta fase. EAS, Google Play e qualquer credencial externa permanecem fora do escopo.
