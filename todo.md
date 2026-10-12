@@ -26,7 +26,11 @@ Também foram concluídos os gates de qualidade no clone Git e no workspace WebD
 - [x] Jornada automatizada: cliente cria → prestador aceita/prepara → prestador oferta → motoboy aceita → motoboy envia tracking → motoboy conclui → cliente avalia.
 - [x] Suíte relacionada aprovada: 9 arquivos e 58 testes.
 - [x] Matriz completa aprovada: 57 arquivos e 274 testes, TypeScript, build, lint e diff.
-- [ ] Executar smoke WebDev e stress bounded após sincronização antes do checkpoint desta fase.
+- [x] Smoke WebDev aprovado: home, prestador e motoboy HTTP 200.
+- [x] API health/readiness aprovado com database, migrations e tabelas verdes.
+- [x] Stress bounded aprovado: 120 requests de health com concorrência 12.
+- [x] Preview público respondeu HTTP 200 e o PR #9 permaneceu com CI/Operational Validation verdes.
+- [ ] Salvar o checkpoint WebDev desta fase.
 
 ## Fora do escopo
 
