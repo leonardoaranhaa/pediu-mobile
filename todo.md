@@ -19,6 +19,15 @@ Também foram concluídos os gates de qualidade no clone Git e no workspace WebD
 - [x] Checks remotos do PR #9 verdes.
 - [x] Checkpoint WebDev pendente somente desta operação final.
 
+## Nova fase — Jornadas integradas
+
+- [x] Instrução técnica criada para cliente, prestador e motoboy.
+- [x] Teste vertical criado em `tests/journey-vertical.test.ts`.
+- [x] Jornada automatizada: cliente cria → prestador aceita/prepara → prestador oferta → motoboy aceita → motoboy envia tracking → motoboy conclui → cliente avalia.
+- [x] Suíte relacionada aprovada: 9 arquivos e 58 testes.
+- [x] Matriz completa aprovada: 57 arquivos e 274 testes, TypeScript, build, lint e diff.
+- [ ] Executar smoke WebDev e stress bounded após sincronização antes do checkpoint desta fase.
+
 ## Fora do escopo
 
 Build EAS Android/iOS, submissão ou publicação no Google Play, configuração de PSP, OAuth ou novas credenciais externas não foram disparados.
