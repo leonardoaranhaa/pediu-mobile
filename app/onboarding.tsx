@@ -36,6 +36,8 @@ export default function OnboardingScreen() {
   const [index, setIndex] = useState(0);
   const listRef = useRef<FlatList<OnboardingSlide>>(null);
   const mascotScale = useRef(new Animated.Value(0.85)).current;
+  const slideOpacity = useRef(new Animated.Value(1)).current;
+  const slideOffset = useRef(new Animated.Value(0)).current;
   const progressAnims = useRef(
     SLIDES.map((_, i) => new Animated.Value(i === 0 ? 1 : 0)),
   ).current;
@@ -77,15 +79,44 @@ export default function OnboardingScreen() {
     }).start();
   }, [mascotScale, shouldAnimate]);
 
+  const transitionSlideContent = useCallback(() => {
+    slideOpacity.stopAnimation();
+    slideOffset.stopAnimation();
+
+    if (!shouldAnimate) {
+      slideOpacity.setValue(1);
+      slideOffset.setValue(0);
+      return;
+    }
+
+    slideOpacity.setValue(0);
+    slideOffset.setValue(14);
+    Animated.parallel([
+      Animated.timing(slideOpacity, {
+        toValue: 1,
+        duration: 260,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideOffset, {
+        toValue: 0,
+        duration: 300,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [shouldAnimate, slideOffset, slideOpacity]);
+
   const goToIndex = useCallback(
     (nextIndex: number) => {
       if (nextIndex < 0 || nextIndex >= SLIDES.length) return;
       listRef.current?.scrollToIndex({ index: nextIndex, animated: true });
       setIndex(nextIndex);
       animateProgress(nextIndex);
+      transitionSlideContent();
       pulseMascot();
     },
-    [animateProgress, pulseMascot],
+    [animateProgress, pulseMascot, transitionSlideContent],
   );
 
   const finish = useCallback(async () => {
@@ -109,9 +140,16 @@ export default function OnboardingScreen() {
       if (next === index || next < 0 || next >= SLIDES.length) return;
       setIndex(next);
       animateProgress(next);
+      transitionSlideContent();
       pulseMascot();
     },
-    [animateProgress, effectiveWidth, index, pulseMascot],
+    [
+      animateProgress,
+      effectiveWidth,
+      index,
+      pulseMascot,
+      transitionSlideContent,
+    ],
   );
 
   const onViewableItemsChanged = useRef(
@@ -172,26 +210,36 @@ export default function OnboardingScreen() {
           />
         </Animated.View>
 
-        <FlatList
-          ref={listRef}
-          data={SLIDES}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          bounces={false}
-          decelerationRate="fast"
-          onMomentumScrollEnd={onMomentumScrollEnd}
-          onViewableItemsChanged={onViewableItemsChanged}
-          viewabilityConfig={viewabilityConfig}
-          getItemLayout={(_, itemIndex) => ({
-            length: effectiveWidth,
-            offset: effectiveWidth * itemIndex,
-            index: itemIndex,
-          })}
-          style={styles.pager}
-        />
+        <Animated.View
+          style={[
+            styles.pagerTransition,
+            {
+              opacity: slideOpacity,
+              transform: [{ translateX: slideOffset }],
+            },
+          ]}
+        >
+          <FlatList
+            ref={listRef}
+            data={SLIDES}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            bounces={false}
+            decelerationRate="fast"
+            onMomentumScrollEnd={onMomentumScrollEnd}
+            onViewableItemsChanged={onViewableItemsChanged}
+            viewabilityConfig={viewabilityConfig}
+            getItemLayout={(_, itemIndex) => ({
+              length: effectiveWidth,
+              offset: effectiveWidth * itemIndex,
+              index: itemIndex,
+            })}
+            style={styles.pager}
+          />
+        </Animated.View>
 
         <View style={styles.footer}>
           <View style={styles.dots}>
@@ -275,6 +323,10 @@ const styles = StyleSheet.create({
   },
   pager: {
     flexGrow: 0,
+  },
+  pagerTransition: {
+    width: "100%",
+    overflow: "hidden",
   },
   slide: {
     paddingHorizontal: 24,

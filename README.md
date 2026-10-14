@@ -147,6 +147,7 @@ Os limites de taxa e concorrência são locais ao processo. Antes de escalar hor
 - [Instrução técnica dos cards de confirmação do checkout](docs/INSTRUCAO_FASE_CARDS_CHECKOUT_CONFIRMADO_PR9.md)
 - [Instrução técnica de Google OAuth e persistência no APK](docs/INSTRUCAO_FASE_GOOGLE_OAUTH_APK_PERSISTENCIA_PR9.md)
 - [Instrução técnica da auditoria de PRs abertos e paridade](docs/INSTRUCAO_FASE_AUDITORIA_PRS_ABERTOS_PR9.md)
+- [Instrução técnica das transições do onboarding](docs/INSTRUCAO_FASE_ANIMACAO_ONBOARDING_PR9.md)
 - [QA Android e iOS](QA_ANDROID_IOS.md)
 - [Build local Android, EAS e Google Play](docs/INSTRUCAO_FASE_BUILD_SANDBOX_GOOGLE_PLAY_PR9.md)
 

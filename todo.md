@@ -83,3 +83,11 @@ Build EAS Android/iOS, submissão ou publicação no Google Play, configuração
 - [x] PR #10 classificado como referência documental, sem importar Docker para o runtime WebDev.
 - [x] PR #4 mantido como cliente Flutter separado.
 - [ ] Rodar testes, build, lint, smoke WebDev, screenshot e checkpoint após o gate.
+
+## Nova fase — Transições suaves do onboarding
+
+- [x] Instrução técnica criada em `docs/INSTRUCAO_FASE_ANIMACAO_ONBOARDING_PR9.md`.
+- [x] Transição combinada de fade e deslocamento horizontal discreto adicionada ao conteúdo dos slides.
+- [x] Swipe, botão Continuar e indicadores clicáveis compartilham a mesma animação.
+- [x] Movimento reduzido e preferência de movimento continuam respeitados.
+- [ ] Rodar matriz completa, sincronizar WebDev, capturar screenshot e salvar checkpoint.
