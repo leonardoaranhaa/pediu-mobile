@@ -43,3 +43,13 @@ Build EAS Android/iOS, submissão ou publicação no Google Play, configuração
 - [x] Copy administrativa de pagamentos, MFA, login e créditos de anúncios corrigida para estados reais.
 - [x] Teste de regressão criado em `tests/ui-copy.test.ts`.
 - [ ] Rodar matriz completa, sincronizar WebDev, validar screenshots e salvar checkpoint.
+
+## Nova fase — Catálogo, pedido e políticas
+
+- [x] Instrução técnica criada para catálogo, busca, pedido, rastreamento, entrega e fiado.
+- [x] Categorias locais, placeholders, contagem de itens e estado vazio do catálogo revisados.
+- [x] Busca com atalhos locais, faixa de preço e estados vazios revisados.
+- [x] Status/eventos do pedido traduzidos para copy amigável sem alterar valores persistidos.
+- [x] Checkout passou a explicar taxa, prazo condicionado, retirada, Flash e Mercado.
+- [x] Fiado passou a mostrar limite, saldo, disponível e regra de bloqueio.
+- [ ] Rodar matriz completa, sincronizar WebDev, validar screenshots e salvar checkpoint.

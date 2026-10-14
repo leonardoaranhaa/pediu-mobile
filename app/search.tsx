@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { EmptyState } from "@/components/pediu/empty-state";
 import { Page, PEDIU, s } from "@/components/pediu-page";
+import { SEARCH_QUICK_CATEGORIES } from "@/lib/catalog-copy";
 import { assetForCategory, PEDIU_TOKENS } from "@/lib/pediu-tokens";
 import { trpc } from "@/lib/trpc";
 import { formatCatalogPrice } from "@/shared/market-units";
@@ -22,7 +23,7 @@ const VERTICALS = [
   { id: "market", label: "Mercado" },
   { id: "service", label: "Serviços" },
 ] as const;
-const QUICK = ["Flash", "Pizza", "Hortifruti", "Açaí", "Lanches"];
+const QUICK = SEARCH_QUICK_CATEGORIES;
 
 function parsePrice(value: string) {
   const parsed = Number(value.replace(",", "."));
@@ -98,7 +99,7 @@ export default function SearchScreen() {
             value={query}
             onChangeText={setQuery}
             onSubmitEditing={() => applyFilters()}
-            placeholder="O que você quer pedir?"
+            placeholder="Busque por prato, produto ou loja"
             returnKeyType="search"
             autoFocus
             placeholderTextColor={PEDIU_TOKENS.subtle}
@@ -161,13 +162,14 @@ export default function SearchScreen() {
 
       {showPrice ? (
         <View style={styles.priceCard}>
-          <Text style={styles.priceTitle}>Filtrar por preço</Text>
+          <Text style={styles.priceTitle}>Faixa de preço</Text>
+          <Text style={s.muted}>Use valores em reais. Deixe um campo vazio para não limitar aquele lado.</Text>
           <View style={{ flexDirection: "row", gap: 8 }}>
             <TextInput
               value={minPrice}
               onChangeText={setMinPrice}
               keyboardType="decimal-pad"
-              placeholder="Mínimo"
+              placeholder="De (R$)"
               placeholderTextColor={PEDIU_TOKENS.subtle}
               style={[s.input, { flex: 1 }]}
             />
@@ -175,7 +177,7 @@ export default function SearchScreen() {
               value={maxPrice}
               onChangeText={setMaxPrice}
               keyboardType="decimal-pad"
-              placeholder="Máximo"
+              placeholder="Até (R$)"
               placeholderTextColor={PEDIU_TOKENS.subtle}
               style={[s.input, { flex: 1 }]}
             />
@@ -210,7 +212,7 @@ export default function SearchScreen() {
         <View style={styles.flashBanner}>
           <MaterialIcons name="bolt" size={16} color={PEDIU_TOKENS.accentFg} />
           <Text style={styles.flashBannerText}>
-            Flash — lojas com entrega rápida no servidor.
+            Flash — lojas com entrega rápida perto de você.
           </Text>
         </View>
       ) : null}
@@ -232,15 +234,15 @@ export default function SearchScreen() {
       {!productsQuery.isLoading && !products.length && hasQuery ? (
         <EmptyState
           icon="search-off"
-          title="Nada por aqui"
-          body="Ajuste o termo, troque a vertical ou limpe o filtro de preço."
+          title="Não encontramos esse pedido"
+          body="Tente outro nome, escolha uma categoria ou limpe o filtro de preço."
           actionLabel="Limpar busca"
           onAction={clearSearch}
         />
       ) : null}
 
       {!productsQuery.isLoading && !products.length && !hasQuery ? (
-        <Text style={s.muted}>Digite ou escolha um atalho para começar.</Text>
+        <Text style={s.muted}>Busque um prato, produto ou loja — ou escolha uma categoria local.</Text>
       ) : null}
 
       {products.map((item) => (

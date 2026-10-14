@@ -361,6 +361,23 @@ export default function CheckoutScreen() {
             um entregador parceiro leva até seu endereço.
           </Text>
         ) : null}
+        <Text style={s.muted}>
+          {effectiveFulfillmentMode === "delivery"
+            ? "A disponibilidade e a taxa são recalculadas pelo servidor conforme o endereço escolhido. O acompanhamento mostra as próximas atualizações depois que a loja aceitar o pedido."
+            : "A retirada não tem taxa de entrega. A loja avisa quando o pedido estiver pronto para você buscar."}
+        </Text>
+        {quote.data && effectiveFulfillmentMode === "delivery" ? (
+          <View style={{ backgroundColor: PEDIU.peach, borderRadius: 13, padding: 11, gap: 3 }}>
+            <Text style={{ color: PEDIU.ink, fontWeight: "900" }}>
+              Taxa de entrega: {money(quote.data.deliveryFee)}
+            </Text>
+            <Text style={s.muted}>
+              {quote.data.isFlash && quote.data.flashEtaMaxMinutes
+                ? `Flash: previsão de até ${quote.data.flashEtaMaxMinutes} min após a confirmação.`
+                : "O prazo final depende do preparo da loja e da disponibilidade de um entregador."}
+            </Text>
+          </View>
+        ) : null}
         <View style={{ flexDirection: "row", gap: 8 }}>
           {(marketCart
             ? (["delivery"] as const)
@@ -396,9 +413,7 @@ export default function CheckoutScreen() {
           ))}
         </View>
         {!marketCart && effectiveFulfillmentMode === "pickup" ? (
-          <Text style={s.muted}>
-            Retirada sem taxa. A loja confirmará quando o pedido estiver pronto.
-          </Text>
+          <Text style={s.muted}>Você receberá a confirmação quando o pedido estiver pronto para retirada.</Text>
         ) : null}
       </Card>
       {flashFlagOn ? (

@@ -238,7 +238,7 @@ export default function SellerDeliveryPage() {
               lines={[
                 `${selectedOrder.status} · ${money(selectedOrder.total)}`,
                 selectedOrder.isFlash
-                  ? `ETA sugerido ${selectedOrder.suggestedEtaMinutes ?? queueQuery.data?.flashEtaMaxMinutes ?? 20} min`
+                  ? `Previsão sugerida: ${selectedOrder.suggestedEtaMinutes ?? queueQuery.data?.flashEtaMaxMinutes ?? 20} min`
                   : "Entrega da fila operacional",
                 isMarket
                   ? "Mercado separado · confirme a retirada e siga para o endereço"
@@ -264,7 +264,7 @@ export default function SellerDeliveryPage() {
               keyboardType="phone-pad"
             />
             <Field
-              label="ETA EM MINUTOS"
+              label="PREVISÃO EM MINUTOS"
               value={eta}
               onChangeText={setEta}
               placeholder="Ex.: 25"
@@ -290,8 +290,7 @@ export default function SellerDeliveryPage() {
           <OpsCard>
             <OpsSectionTitle title="Posição atual" />
             <Text style={s.muted}>
-              Use o GPS no dispositivo ou informe coordenadas manualmente no
-              preview web.
+              Use o GPS do dispositivo ou informe a posição manualmente quando necessário.
             </Text>
             <Field
               label="LATITUDE"

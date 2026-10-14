@@ -1,11 +1,16 @@
 import { MaterialIcons } from "@expo/vector-icons";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, Share, StyleSheet, Text, View } from "react-native";
 import { EmptyState } from "@/components/pediu/empty-state";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
 import { Card, Field, Page, PrimaryButton, Row, s } from "@/components/pediu-page";
 import { PEDIU_TOKENS } from "@/lib/pediu-tokens";
+import {
+  MARKET_CATEGORY_SUGGESTIONS,
+  MERCHANT_CATEGORY_SUGGESTIONS,
+  catalogPlaceholder,
+} from "@/lib/catalog-copy";
 import { formatCatalogPrice, SALE_UNITS, SALE_UNIT_LABELS, suggestedSaleUnitForCategory, type SaleUnit } from "@/shared/market-units";
 
 export default function SellerCatalogPage() {
@@ -14,18 +19,24 @@ export default function SellerCatalogPage() {
   const products = trpc.pediu.products.mine.useQuery({ storeId: store.data?.id ?? 0 }, { enabled: Boolean(store.data?.id), refetchInterval: 15_000 });
   const isMarket = store.data?.kind === "market";
   const [name, setName] = useState("");
-  const [category, setCategory] = useState(isMarket ? "Hortifruti" : "Geral");
+  const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
   const [saleUnit, setSaleUnit] = useState<SaleUnit>("unit");
   const [packSize, setPackSize] = useState("");
 
   const unitOptions = useMemo(() => SALE_UNITS, []);
+  const categorySuggestions = isMarket ? MARKET_CATEGORY_SUGGESTIONS : MERCHANT_CATEGORY_SUGGESTIONS;
+  const defaultCategory = categorySuggestions[0];
+
+  useEffect(() => {
+    if (store.data?.id && !category.trim()) setCategory(defaultCategory);
+  }, [category, defaultCategory, store.data?.id]);
 
   const create = trpc.pediu.products.create.useMutation({
     onSuccess: () => {
       setName("");
-      setCategory(isMarket ? "Hortifruti" : "Geral");
+      setCategory(defaultCategory);
       setDescription("");
       setPrice("");
       setSaleUnit(suggestedSaleUnitForCategory(isMarket ? "Hortifruti" : "Geral", store.data?.kind));
@@ -57,7 +68,7 @@ export default function SellerCatalogPage() {
       </View>
       <Card>
         <Text style={s.sectionTitle}>Novo produto</Text>
-        <Field label="NOME" value={name} onChangeText={setName} placeholder={isMarket ? "Ex.: Banana prata" : "Ex.: Combo X-Bacon"} />
+        <Field label="NOME DO PRODUTO" value={name} onChangeText={setName} placeholder={isMarket ? catalogPlaceholder.marketName : catalogPlaceholder.productName} />
         <Field
           label="CATEGORIA"
           value={category}
@@ -65,10 +76,40 @@ export default function SellerCatalogPage() {
             setCategory(value);
             if (isMarket) setSaleUnit(suggestedSaleUnitForCategory(value, "market"));
           }}
-          placeholder={isMarket ? "Ex.: Hortifruti" : "Ex.: Lanches"}
+          placeholder={catalogPlaceholder.category}
         />
-        <Field label="DESCRIÇÃO" value={description} onChangeText={setDescription} placeholder="Detalhes para o cliente" multiline />
-        <Field label="PREÇO" value={price} onChangeText={setPrice} placeholder="35.00" keyboardType="decimal-pad" />
+        <View style={{ gap: 8 }}>
+          <Text style={s.label}>CATEGORIAS LOCAIS</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {categorySuggestions.map((suggestion) => {
+              const selected = category.trim().toLowerCase() === suggestion.toLowerCase();
+              return (
+                <Pressable
+                  key={suggestion}
+                  onPress={() => {
+                    setCategory(suggestion);
+                    if (isMarket) setSaleUnit(suggestedSaleUnitForCategory(suggestion, "market"));
+                  }}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: selected ? PEDIU_TOKENS.primary : PEDIU_TOKENS.line,
+                    backgroundColor: selected ? PEDIU_TOKENS.primary : PEDIU_TOKENS.surface,
+                    borderRadius: 999,
+                    paddingHorizontal: 11,
+                    paddingVertical: 8,
+                  }}
+                >
+                  <Text style={{ color: selected ? PEDIU_TOKENS.white : PEDIU_TOKENS.muted, fontSize: 11, fontWeight: "800" }}>
+                    {suggestion}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={s.muted}>Você também pode digitar uma categoria própria.</Text>
+        </View>
+        <Field label="DESCRIÇÃO" value={description} onChangeText={setDescription} placeholder={catalogPlaceholder.description} multiline />
+        <Field label="PREÇO (R$)" value={price} onChangeText={setPrice} placeholder={catalogPlaceholder.price} keyboardType="decimal-pad" />
         {isMarket ? (
           <>
             <Text style={s.label}>UNIDADE DE VENDA</Text>
@@ -98,10 +139,10 @@ export default function SellerCatalogPage() {
               })}
             </View>
             <Field
-              label="TAMANHO DO PACOTE (opcional)"
+              label="TAMANHO DO PACOTE (OPCIONAL)"
               value={packSize}
               onChangeText={setPackSize}
-              placeholder={saleUnit === "pack" ? "Ex.: 12" : saleUnit === "kg" ? "Ex.: 0.5" : "Ex.: 1"}
+              placeholder={saleUnit === "pack" ? "Ex.: 12 unidades" : saleUnit === "kg" ? "Ex.: 0,5 kg" : "Ex.: 1 unidade"}
               keyboardType="decimal-pad"
             />
           </>
@@ -130,15 +171,15 @@ export default function SellerCatalogPage() {
       <Card>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <Text style={s.sectionTitle}>Produtos publicados</Text>
-          <Text style={s.muted}>{products.data?.length ?? 0}</Text>
+          <Text style={s.muted}>{products.data?.length ?? 0} {(products.data?.length ?? 0) === 1 ? "item" : "itens"}</Text>
         </View>
         {products.isLoading ? <Text style={s.muted}>Carregando catálogo...</Text> : null}
         {products.isError ? <Text style={{ color: "#E20D2A", fontSize: 12 }}>{products.error.message}</Text> : null}
         {!products.isLoading && !products.data?.length ? (
           <EmptyState
             icon="inventory-2"
-            title="Catálogo vazio"
-            body={isMarket ? "Adicione o primeiro item com unidade de venda." : "Adicione o primeiro produto da sua vitrine."}
+            title="Sua vitrine ainda está vazia"
+            body={isMarket ? "Cadastre o primeiro item e informe se a venda é por unidade, quilo ou pacote." : "Cadastre o primeiro produto para começar a receber pedidos."}
           />
         ) : null}
         {products.data?.map((product) => (
