@@ -13,9 +13,13 @@ describe("onboarding first-access gate", () => {
     expect(hasCompletedOnboarding("true")).toBe(false);
   });
 
-  it("keeps onboarding and OAuth callback routes accessible", () => {
+  it("keeps onboarding, OAuth and authentication routes accessible", () => {
     expect(isOnboardingExemptPath("/onboarding")).toBe(true);
     expect(isOnboardingExemptPath("/oauth/callback")).toBe(true);
+    expect(isOnboardingExemptPath("/login")).toBe(true);
+    expect(isOnboardingExemptPath("/register")).toBe(true);
+    expect(isOnboardingExemptPath("/forgot-password")).toBe(true);
+    expect(isOnboardingExemptPath("/auth/mfa")).toBe(true);
     expect(isOnboardingExemptPath("/(tabs)")).toBe(false);
   });
 
@@ -31,6 +35,9 @@ describe("onboarding first-access gate", () => {
     ).toBe(false);
     expect(
       shouldRedirectToOnboarding({ hydrated: true, completed: false, pathname: "/login" }),
+    ).toBe(false);
+    expect(
+      shouldRedirectToOnboarding({ hydrated: true, completed: false, pathname: "/market" }),
     ).toBe(true);
   });
 });

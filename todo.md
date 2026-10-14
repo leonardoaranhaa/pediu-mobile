@@ -91,3 +91,11 @@ Build EAS Android/iOS, submissão ou publicação no Google Play, configuração
 - [x] Swipe, botão Continuar e indicadores clicáveis compartilham a mesma animação.
 - [x] Movimento reduzido e preferência de movimento continuam respeitados.
 - [ ] Rodar matriz completa, sincronizar WebDev, capturar screenshot e salvar checkpoint.
+
+## Nova fase — Correção do encerramento e balão do mascote
+
+- [x] Instrução técnica criada em `docs/INSTRUCAO_FASE_CORRECAO_ONBOARDING_MASCOTE_PR9.md`.
+- [x] Rotas de autenticação ficaram isentas do gate para evitar o loop após `Começar`.
+- [x] Testes do gate cobrem `/login`, `/register`, recuperação e MFA.
+- [x] Balão do mascote recebeu posição vertical acima do desenho, preservando a cauda e o modo compacto.
+- [ ] Rodar matriz completa, sincronizar WebDev, validar screenshot e salvar checkpoint.
