@@ -149,6 +149,7 @@ Os limites de taxa e concorrência são locais ao processo. Antes de escalar hor
 - [Instrução técnica da auditoria de PRs abertos e paridade](docs/INSTRUCAO_FASE_AUDITORIA_PRS_ABERTOS_PR9.md)
 - [Instrução técnica das transições do onboarding](docs/INSTRUCAO_FASE_ANIMACAO_ONBOARDING_PR9.md)
 - [Instrução técnica da correção do onboarding e do mascote](docs/INSTRUCAO_FASE_CORRECAO_ONBOARDING_MASCOTE_PR9.md)
+- [Relatório de auditoria Go Live público do PR #9 — 14/10/2026](docs/RELATORIO_AUDITORIA_GO_LIVE_PUBLICO_PR9_2026-10-14.md)
 - [QA Android e iOS](QA_ANDROID_IOS.md)
 - [Build local Android, EAS e Google Play](docs/INSTRUCAO_FASE_BUILD_SANDBOX_GOOGLE_PLAY_PR9.md)
 

@@ -99,3 +99,17 @@ Build EAS Android/iOS, submissão ou publicação no Google Play, configuração
 - [x] Testes do gate cobrem `/login`, `/register`, recuperação e MFA.
 - [x] Balão do mascote recebeu posição vertical acima do desenho, preservando a cauda e o modo compacto.
 - [ ] Rodar matriz completa, sincronizar WebDev, validar screenshot e salvar checkpoint.
+
+## Nova fase — Auditoria Go Live público
+
+- [x] Auditoria completa do PR #9 registrada em `docs/RELATORIO_AUDITORIA_GO_LIVE_PUBLICO_PR9_2026-10-14.md`.
+- [x] Fluxos cliente, prestador, motoboy, checkout, estoque, autorização, webhook e CI revisados.
+- [x] Bloqueadores P0/P1 separados de lacunas externas e itens P2 de manutenção.
+- [x] Confirmado que a base técnica não equivale à homologação comercial de PSP, refund, chargeback, domínio, backup, push, EAS ou lojas.
+- [x] Gates finais aprovados: TypeScript, 61 arquivos/286 testes, build, lint e diff.
+- [x] `pnpm go-live:check`: 5 PASS, 0 BLOCKED, 8 NOT_CONFIGURED; não é liberação comercial.
+- [ ] Fechar ciclo financeiro real: refund/chargeback/reversão de ledger, comissão e payout.
+- [ ] Endurecer OAuth com state/nonce correlacionado, allowlist de redirect e revogação de sessão.
+- [ ] Definir topologia confiável para workers (Reserved, cron protegido ou worker dedicado) e monitorar backlog.
+- [ ] Paginar reconciliação e substituir soma limitada a 100 refunds por agregação transacional.
+- [ ] Unificar o gate de prontidão comercial e corrigir N+1 de assets/limites locais antes da escala.
