@@ -3,7 +3,9 @@ import { Text, View } from "react-native";
 import { router } from "expo-router";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
+import { EmptyState } from "@/components/pediu/empty-state";
 import { Page, Card, PrimaryButton, Row, PEDIU, s } from "@/components/pediu-page";
+import { orderStatusCopy } from "@/lib/order-copy";
 
 export default function OrdersPage() {
   const { isAuthenticated } = useAuth();
@@ -29,13 +31,19 @@ export default function OrdersPage() {
               key={order.id}
               icon="receipt-long"
               title={`Pedido #${order.id} · R$ ${Number(order.total).toFixed(2).replace(".", ",")}`}
-              subtitle={`${order.status} · ${order.deliveryAddress ?? "Endereço não informado"}`}
+              subtitle={`${orderStatusCopy(order.status).label} · ${order.deliveryAddress ?? "Endereço não informado"}`}
               onPress={() => router.push({ pathname: "/order/track", params: { orderId: String(order.id) } })}
             />
           ))}
         </Card>
       ) : (
-        <Card><Text style={s.muted}>Você ainda não fez pedidos.</Text></Card>
+        <EmptyState
+          icon="receipt-long"
+          title="Nenhum pedido ainda"
+          body="Quando você fizer um pedido, acompanhe aqui o preparo, a entrega e o histórico da loja."
+          actionLabel="Explorar início"
+          onAction={() => router.replace("/")}
+        />
       )}
     </Page>
   );

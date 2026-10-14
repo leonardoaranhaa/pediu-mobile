@@ -1,21 +1,190 @@
-import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useState } from "react";
-import { Text, View } from "react-native";
-import { useAuth } from "@/hooks/use-auth";
+import { useMemo, useState } from "react";
+import { ActivityIndicator, Text, View } from "react-native";
 import { startOAuthLogin } from "@/constants/oauth";
+import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
+import { useAppPreferences } from "@/lib/app-preferences";
 import {
-  Page,
   Card,
   Field,
-  Row,
-  PrimaryButton,
   OutlineButton,
-  PEDIU,
+  Page,
+  PrimaryButton,
   s,
 } from "@/components/pediu-page";
-import { useAppPreferences } from "@/lib/app-preferences";
+import {
+  OpsBadge,
+  OpsButton,
+  OpsCard,
+  OpsDock,
+  OpsHeader,
+  OpsMetric,
+  OpsOrderLines,
+  OpsSectionTitle,
+  OpsShell,
+} from "@/components/pediu-ops-ui";
+
+const nextStatus: Record<
+  string,
+  "Aceito" | "Preparando" | "Pronto" | "A caminho" | "Entregue" | undefined
+> = {
+  Pendente: "Aceito",
+  Aceito: "Preparando",
+  Preparando: "Pronto",
+  Pronto: "A caminho",
+  "A caminho": "Entregue",
+};
+
+function money(value: unknown) {
+  return `R$ ${Number(value ?? 0)
+    .toFixed(2)
+    .replace(".", ",")}`;
+}
+
+function SellerOrderCard({
+  order,
+  onUpdate,
+  onCancel,
+  busy,
+}: {
+  order: {
+    id: number;
+    status: string;
+    total: string;
+    deliveryAddress: string | null;
+    isFlash: number;
+    tipAmount: string | null;
+    fulfillmentMode: string | null;
+  };
+  onUpdate: (status: NonNullable<(typeof nextStatus)[string]>) => void;
+  onCancel: () => void;
+  busy: boolean;
+}) {
+  const next = nextStatus[order.status];
+  const isFlash = order.isFlash === 1;
+  const isReady = order.status === "Pronto";
+  return (
+    <OpsCard
+      style={isFlash ? { borderColor: "#E20D2A", borderWidth: 1.5 } : undefined}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: 12,
+        }}
+      >
+        <View style={{ flex: 1, gap: 3 }}>
+          <Text
+            style={{
+              fontFamily: "Fredoka",
+              fontSize: 23,
+              fontWeight: "900",
+              color: "#111111",
+            }}
+          >
+            Pedido #{order.id}
+          </Text>
+          <Text
+            style={{ fontFamily: "Nunito", fontSize: 17, color: "#6E635A" }}
+          >
+            {order.deliveryAddress ?? "Endereço informado no checkout"}
+          </Text>
+        </View>
+        <Text
+          style={{
+            fontFamily: "Fredoka",
+            fontSize: 19,
+            fontWeight: "900",
+            color: "#111111",
+          }}
+        >
+          {money(order.total)}
+        </Text>
+      </View>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+          flexWrap: "wrap",
+        }}
+      >
+        {isFlash ? <OpsBadge tone="primary">FLASH</OpsBadge> : null}
+        <OpsBadge tone={isReady ? "accent" : "muted"}>{order.status}</OpsBadge>
+        {order.fulfillmentMode === "pickup" ? (
+          <OpsBadge tone="muted">RETIRADA</OpsBadge>
+        ) : null}
+      </View>
+      <OpsOrderLines
+        lines={[
+          order.tipAmount && Number(order.tipAmount) > 0
+            ? `Gorjeta congelada: ${money(order.tipAmount)}`
+            : "Itens e totais calculados pelo servidor",
+          isFlash ? "Prioridade Flash operacional" : "Entrega padrão da loja",
+        ]}
+      />
+      {next ? (
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          <OpsButton
+            title={
+              order.status === "Pendente"
+                ? "Aceitar"
+                : order.status === "Preparando"
+                  ? "Pronto pra retirada"
+                  : order.status === "Pronto"
+                    ? "Enviar para entrega"
+                    : order.status === "A caminho"
+                      ? "Confirmar entrega"
+                      : "Avançar"
+            }
+            onPress={() => onUpdate(next)}
+            disabled={busy}
+            style={{ flex: 1 }}
+          />
+          {order.status === "Pendente" ? (
+            <OpsButton
+              title="Recusar"
+              variant="outline"
+              onPress={onCancel}
+              disabled={busy}
+              style={{ flex: 1 }}
+            />
+          ) : null}
+        </View>
+      ) : null}
+      <View style={{ flexDirection: "row", gap: 10 }}>
+        <OpsButton
+          title="Acompanhar"
+          variant="ghost"
+          onPress={() =>
+            router.push({
+              pathname: "/order/track",
+              params: { orderId: String(order.id) },
+            })
+          }
+          style={{ flex: 1 }}
+        />
+        {order.status === "Pronto" || order.status === "A caminho" ? (
+          <OpsButton
+            title="Operar entrega"
+            variant="ghost"
+            onPress={() =>
+              router.push({
+                pathname: "/seller/delivery",
+                params: { orderId: String(order.id) },
+              } as never)
+            }
+            style={{ flex: 1 }}
+          />
+        ) : null}
+      </View>
+    </OpsCard>
+  );
+}
+
 export default function SellerHomePage() {
   const { user, isAuthenticated, refresh } = useAuth();
   const { theme } = useAppPreferences();
@@ -25,9 +194,11 @@ export default function SellerHomePage() {
   const [pixKey, setPixKey] = useState("");
   const store = trpc.pediu.stores.mine.useQuery(undefined, {
     enabled: isAuthenticated,
+    refetchInterval: 15_000,
   });
   const orders = trpc.pediu.orders.storeMine.useQuery(undefined, {
     enabled: Boolean(store.data?.id),
+    refetchInterval: 8_000,
   });
   const createStore = trpc.pediu.stores.create.useMutation({
     onSuccess: async () => {
@@ -35,12 +206,41 @@ export default function SellerHomePage() {
       await store.refetch();
     },
   });
+  const updateStore = trpc.pediu.stores.update.useMutation({
+    onSuccess: () => void store.refetch(),
+  });
+  const updateOrderStatus = trpc.pediu.orders.status.useMutation({
+    onSuccess: () => void orders.refetch(),
+  });
+  const orderRows = useMemo(() => orders.data ?? [], [orders.data]);
+  const pending = useMemo(
+    () =>
+      orderRows.filter((order) =>
+        ["Pendente", "Aceito"].includes(order.status),
+      ),
+    [orderRows],
+  );
+  const cooking = useMemo(
+    () => orderRows.filter((order) => order.status === "Preparando"),
+    [orderRows],
+  );
+  const counter = useMemo(
+    () =>
+      orderRows.filter((order) =>
+        ["Pronto", "A caminho"].includes(order.status),
+      ),
+    [orderRows],
+  );
+  const sales = useMemo(
+    () =>
+      orderRows.reduce((total, order) => total + Number(order.total ?? 0), 0),
+    [orderRows],
+  );
 
   if (!isAuthenticated) {
     return (
       <Page title="Minha loja" eyebrow="PAINEL DA LOJA">
         <Card>
-          <MaterialIcons name="lock" size={24} color={theme.primary} />
           <Text style={s.sectionTitle}>Entre para começar a vender</Text>
           <Text style={s.muted}>
             A criação da loja e os pedidos ficam vinculados à sua conta segura.
@@ -54,6 +254,14 @@ export default function SellerHomePage() {
             onPress={() => router.push("/register")}
           />
         </Card>
+      </Page>
+    );
+  }
+
+  if (store.isLoading) {
+    return (
+      <Page title="Minha loja" eyebrow="PAINEL DA LOJA">
+        <ActivityIndicator color={theme.primary} />
       </Page>
     );
   }
@@ -116,100 +324,148 @@ export default function SellerHomePage() {
   }
 
   return (
-    <Page title="Minha loja" eyebrow="PAINEL DA LOJA">
-      <View
-        style={{
-          backgroundColor: theme.ink,
-          borderRadius: 24,
-          padding: 20,
-          gap: 4,
-        }}
-      >
-        <Text
-          style={{
-            color: theme.highlight,
-            fontSize: 10,
-            fontWeight: "900",
-            letterSpacing: 1.2,
-          }}
-        >
-          PAINEL DA LOJA
-        </Text>
-        <Text style={{ color: PEDIU.white, fontSize: 23, fontWeight: "800" }}>
-          {store.data.name}
-        </Text>
-        <Text style={{ color: "#BCD0D1", fontSize: 12 }}>
-          {store.data.isOpen
-            ? "Loja aberta para receber pedidos"
-            : "Loja fechada ou pausada"}
-        </Text>
-        <View style={{ marginTop: 12 }}>
-          <PrimaryButton
-            title="Abrir pedidos"
-            onPress={() => router.push("/seller/orders")}
-          />
-        </View>
-      </View>
+    <OpsShell
+      dock={
+        <OpsDock
+          items={[
+            {
+              label: "Cozinha",
+              icon: "restaurant",
+              to: "/seller",
+              active: true,
+            },
+            {
+              label: "Cardápio",
+              icon: "restaurant-menu",
+              to: "/seller/catalog",
+            },
+            { label: "Cliente", icon: "home", to: "/" },
+          ]}
+        />
+      }
+    >
+      <OpsHeader
+        eyebrow="LOJISTA"
+        title={store.data.name}
+        subtitle={`Cozinha · ${store.data.address ?? "operação local"}`}
+        status={store.data.isOpen ? "Aberta" : "Fechada"}
+        statusIcon="storefront"
+        statusTone={store.data.isOpen ? "success" : "neutral"}
+        onStatusPress={() =>
+          updateStore.mutate({ isOpen: !Boolean(store.data?.isOpen) })
+        }
+      />
       <View style={{ flexDirection: "row", gap: 12 }}>
-        <Card style={{ flex: 1 }}>
-          <Text style={{ color: theme.ink, fontSize: 22, fontWeight: "900" }}>
-            {orders.data?.length ?? 0}
-          </Text>
-          <Text style={s.muted}>Pedidos</Text>
-        </Card>
-        <Card style={{ flex: 1 }}>
-          <MaterialIcons name="storefront" size={22} color={theme.primary} />
-          <Text style={s.muted}>
-            {store.data.isOpen ? "Recebendo" : "Pausada"}
-          </Text>
-        </Card>
+        <OpsMetric value={pending.length} label="na fila" />
+        <OpsMetric value={cooking.length} label="no fogo" />
+        <OpsMetric value={money(sales)} label="vendas" dark />
       </View>
-      <Card>
-        <Row
-          icon="inventory-2"
-          title="Catálogo"
-          subtitle="Produtos, preços e disponibilidade"
+      <OpsSectionTitle title="Na fila" count={pending.length} />
+      {pending.length ? (
+        pending.map((order) => (
+          <SellerOrderCard
+            key={order.id}
+            order={order}
+            busy={updateOrderStatus.isPending}
+            onUpdate={(status) =>
+              updateOrderStatus.mutate({ orderId: order.id, status })
+            }
+            onCancel={() =>
+              updateOrderStatus.mutate({
+                orderId: order.id,
+                status: "Cancelado",
+              })
+            }
+          />
+        ))
+      ) : (
+        <OpsCard>
+          <Text style={s.muted}>Nenhum pedido aguardando aceite.</Text>
+          <OpsButton
+            title="Abrir catálogo"
+            onPress={() => router.push("/seller/catalog")}
+          />
+        </OpsCard>
+      )}
+      <OpsSectionTitle title="No fogo" count={cooking.length} />
+      {cooking.length ? (
+        cooking.map((order) => (
+          <SellerOrderCard
+            key={order.id}
+            order={order}
+            busy={updateOrderStatus.isPending}
+            onUpdate={(status) =>
+              updateOrderStatus.mutate({ orderId: order.id, status })
+            }
+            onCancel={() =>
+              updateOrderStatus.mutate({
+                orderId: order.id,
+                status: "Cancelado",
+              })
+            }
+          />
+        ))
+      ) : (
+        <OpsCard>
+          <Text style={s.muted}>A cozinha está livre neste momento.</Text>
+        </OpsCard>
+      )}
+      <OpsSectionTitle title="Na bancada" count={counter.length} />
+      {counter.length ? (
+        counter.map((order) => (
+          <SellerOrderCard
+            key={order.id}
+            order={order}
+            busy={updateOrderStatus.isPending}
+            onUpdate={(status) =>
+              updateOrderStatus.mutate({ orderId: order.id, status })
+            }
+            onCancel={() =>
+              updateOrderStatus.mutate({
+                orderId: order.id,
+                status: "Cancelado",
+              })
+            }
+          />
+        ))
+      ) : (
+        <OpsCard>
+          <Text style={s.muted}>
+            Pedidos prontos para retirada ou entrega aparecem aqui.
+          </Text>
+        </OpsCard>
+      )}
+      {orders.isError ? (
+        <Text style={{ color: theme.primary, fontFamily: "Nunito" }}>
+          {orders.error.message}
+        </Text>
+      ) : null}
+      <OpsSectionTitle title="Mais operação" />
+      <OpsCard>
+        <OpsButton
+          title="Gerenciar catálogo"
+          variant="ghost"
           onPress={() => router.push("/seller/catalog")}
         />
-        <Row
-          icon="auto-awesome"
-          title="Anúncios com IA"
-          subtitle="Crie imagens e copy para vender mais"
-          onPress={() => router.push("/seller/ads")}
-        />
-        <Row
-          icon="people"
-          title="Clientes e fiado"
-          subtitle="Crédito e histórico por cliente"
-          onPress={() => router.push("/seller/clients")}
-        />
-        <Row
-          icon="receipt-long"
-          title="Vendas"
-          subtitle="Histórico e formas de pagamento"
-          onPress={() => router.push("/seller/sales")}
-        />
-        <Row
-          icon="two-wheeler"
-          title="Entregas"
-          subtitle="Atribuição, GPS, ETA e conclusão"
+        <OpsButton
+          title="Gerenciar entregas"
+          variant="ghost"
           onPress={() => router.push("/seller/delivery")}
         />
-        <Row
-          icon="groups"
-          title="Equipe de entregadores"
-          subtitle="Vincular e acompanhar couriers aprovados"
-          onPress={() => router.push("/seller/couriers")}
+        <OpsButton
+          title="Anúncios com IA"
+          variant="ghost"
+          onPress={() => router.push("/seller/ads")}
         />
-        <Row
-          icon="settings"
+        <OpsButton
           title="Configurações da loja"
+          variant="ghost"
           onPress={() => router.push("/seller/settings")}
         />
-      </Card>
-      {user?.role !== "merchant" ? (
-        <Text style={s.muted}>Atualizando permissões da conta...</Text>
-      ) : null}
-    </Page>
+        {user?.role !== "merchant" ? (
+          <Text style={s.muted}>Atualizando permissões da conta...</Text>
+        ) : null}
+      </OpsCard>
+    </OpsShell>
   );
 }

@@ -15,6 +15,17 @@ import {
   Row,
   s,
 } from "@/components/pediu-page";
+import {
+  OpsBadge,
+  OpsButton,
+  OpsCard,
+  OpsDock,
+  OpsHeader,
+  OpsMetric,
+  OpsOrderLines,
+  OpsSectionTitle,
+  OpsShell,
+} from "@/components/pediu-ops-ui";
 
 type VehicleType = "bike" | "moto" | "car";
 const vehicleLabels: Record<VehicleType, string> = {
@@ -65,6 +76,7 @@ export default function CourierHomePage() {
     onSuccess: async () => {
       await offers.refetch();
       await active.refetch();
+      await profile.refetch();
     },
   });
   const reject = trpc.pediu.courier.rejectOffer.useMutation({
@@ -88,16 +100,14 @@ export default function CourierHomePage() {
     watcher.current = null;
     setTracking(false);
   }, []);
-
   useEffect(() => () => stopTracking(), [stopTracking]);
 
   const startTracking = async () => {
     const current = active.data?.[0];
     if (!current) return;
     setLocationError("");
-    if (!profile.data?.locationConsentAt) {
+    if (!profile.data?.locationConsentAt)
       await consent.mutateAsync({ accepted: true });
-    }
     const permission = await Location.requestForegroundPermissionsAsync();
     if (permission.status !== "granted") {
       setLocationError(
@@ -130,13 +140,12 @@ export default function CourierHomePage() {
     setTracking(true);
   };
 
-  const submitApplication = () => {
+  const submitApplication = () =>
     apply.mutate({
       vehicleType,
       vehiclePlate: vehiclePlate.trim() || undefined,
       phone: phone.trim() || undefined,
     });
-  };
 
   if (!isAuthenticated) {
     return (
@@ -274,179 +283,216 @@ export default function CourierHomePage() {
 
   const approvedProfile = profile.data;
   const current = active.data?.[0];
-  return (
-    <Page title="Central do entregador" eyebrow="PEDIU LOGÍSTICA">
-      <Card style={{ backgroundColor: PEDIU.ink }}>
-        <Text
-          style={{
-            color: PEDIU.yellow,
-            fontSize: 10,
-            fontWeight: "900",
-            letterSpacing: 1.2,
-          }}
-        >
-          ENTREGADOR APROVADO
-        </Text>
-        <Text
-          style={{
-            color: PEDIU.white,
-            fontSize: 22,
-            fontWeight: "900",
-            marginTop: 5,
-          }}
-        >
-          {user?.name ?? "Entregador"}
-        </Text>
-        <Text style={{ color: "#BCD0D1", marginTop: 3 }}>
-          {vehicleLabels[approvedProfile.vehicleType]} ·{" "}
-          {approvedProfile.phone ?? "Telefone não informado"}
-        </Text>
-        <View
-          style={{
-            flexDirection: "row",
-            flexWrap: "wrap",
-            gap: 8,
-            marginTop: 14,
-          }}
-        >
-          <OutlineButton
-            title={
-              approvedProfile.availability === "available"
-                ? "Disponível"
-                : approvedProfile.availability === "busy"
-                  ? "Em entrega"
-                  : "Offline"
-            }
-            onPress={() =>
-              availability.mutate({
-                value:
-                  approvedProfile.availability === "available"
-                    ? "offline"
-                    : "available",
-              })
-            }
-            disabled={
-              availability.isPending || approvedProfile.availability === "busy"
-            }
-            style={{
-              borderColor: PEDIU.yellow,
-              backgroundColor: "rgba(255,255,255,0.08)",
-            }}
-          />
-        </View>
-      </Card>
+  const availabilityLabel =
+    approvedProfile.availability === "available"
+      ? "Online"
+      : approvedProfile.availability === "busy"
+        ? "Em rota"
+        : "Offline";
+  const availabilityTone =
+    approvedProfile.availability === "available"
+      ? "accent"
+      : approvedProfile.availability === "busy"
+        ? "success"
+        : "neutral";
 
-      <Card>
-        <Text style={s.sectionTitle}>Ofertas da loja</Text>
-        {offers.isLoading ? <ActivityIndicator color={PEDIU.coral} /> : null}
-        {!offers.data?.length ? (
-          <Text style={s.muted}>
-            Nenhuma oferta disponível agora. Fique disponível para receber novas
-            oportunidades.
-          </Text>
-        ) : null}
-        {offers.data?.map((offer) => (
+  return (
+    <OpsShell
+      dock={
+        <OpsDock
+          items={[
+            {
+              label: "Radar",
+              icon: "two-wheeler",
+              to: "/courier",
+              active: true,
+            },
+            { label: "Cliente", icon: "home", to: "/" },
+          ]}
+        />
+      }
+    >
+      <OpsHeader
+        eyebrow="MOTOBOY"
+        title={user?.name ?? "Entregador"}
+        subtitle={`${vehicleLabels[approvedProfile.vehicleType]} · operação Pediu`}
+        status={availabilityLabel}
+        statusTone={availabilityTone}
+        statusIcon="two-wheeler"
+        onStatusPress={() =>
+          availability.mutate({
+            value:
+              approvedProfile.availability === "available"
+                ? "offline"
+                : "available",
+          })
+        }
+      />
+      <View style={{ flexDirection: "row", gap: 12 }}>
+        <OpsMetric value={offers.data?.length ?? 0} label="no radar" dark />
+        <OpsMetric value={active.data?.length ?? 0} label="em rota" />
+      </View>
+      <OpsSectionTitle title="Radar" count={offers.data?.length ?? 0} />
+      {offers.isLoading ? (
+        <OpsCard>
+          <ActivityIndicator color={PEDIU.coral} />
+        </OpsCard>
+      ) : null}
+      {offers.data?.map((offer) => (
+        <OpsCard
+          key={offer.id}
+          style={{ borderColor: "#E20D2A", borderWidth: 1.5 }}
+        >
           <View
-            key={offer.id}
             style={{
-              borderTopWidth: 1,
-              borderTopColor: PEDIU.line,
-              paddingVertical: 12,
-              gap: 5,
+              flexDirection: "row",
+              justifyContent: "space-between",
+              gap: 12,
+              alignItems: "flex-start",
             }}
           >
-            <Text style={s.rowTitle}>
-              {offer.storeName} · Pedido #{offer.orderId}
-            </Text>
-            <Text style={s.muted}>
-              {offer.deliveryAddress ?? "Endereço informado após o aceite"} ·{" "}
-              {money(offer.total)}
-            </Text>
-            <Text style={s.muted}>
-              {offer.etaMinutes
-                ? `ETA sugerido: ${offer.etaMinutes} min`
-                : "ETA a combinar"}
-              {offer.message ? ` · ${offer.message}` : ""}
-            </Text>
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <PrimaryButton
-                title={accept.isPending ? "Aceitando..." : "Aceitar oferta"}
-                onPress={() => accept.mutate({ offerId: offer.id })}
-                disabled={accept.isPending || reject.isPending}
-              />
-              <OutlineButton
-                title="Recusar"
-                onPress={() => reject.mutate({ offerId: offer.id })}
-                disabled={accept.isPending || reject.isPending}
-              />
+            <View style={{ flex: 1, gap: 3 }}>
+              <Text
+                style={{
+                  fontFamily: "Fredoka",
+                  fontSize: 23,
+                  fontWeight: "900",
+                  color: "#111111",
+                }}
+              >
+                {offer.storeName}
+              </Text>
+              <Text
+                style={{ fontFamily: "Nunito", fontSize: 17, color: "#6E635A" }}
+              >
+                {offer.deliveryAddress ?? "Destino informado após o aceite"}
+              </Text>
+            </View>
+            <View
+              style={{ flexDirection: "row", gap: 6, alignItems: "center" }}
+            >
+              {offer.storeKind === "market" ? (
+                <OpsBadge tone="success">MERCADO</OpsBadge>
+              ) : null}
+              <OpsBadge tone="accent">FLASH</OpsBadge>
             </View>
           </View>
-        ))}
-      </Card>
-
-      {current ? (
-        <Card>
-          <Text style={s.sectionTitle}>
-            Entrega ativa · Pedido #{current.order.id}
-          </Text>
-          <Text style={s.rowTitle}>{current.store.name}</Text>
-          <Text style={s.muted}>
-            Retirada:{" "}
-            {current.store.address ?? "Endereço da loja não informado"}
-          </Text>
-          <Text style={s.muted}>
-            Destino: {current.order.deliveryAddress ?? "Endereço do cliente"}
-          </Text>
           <Text
-            style={[
-              s.muted,
-              {
-                color:
-                  current.order.status === "A caminho"
-                    ? PEDIU.coral
-                    : PEDIU.ink,
-                fontWeight: "800",
-              },
-            ]}
+            style={{
+              fontFamily: "Fredoka",
+              fontSize: 22,
+              fontWeight: "900",
+              color: "#111111",
+            }}
           >
-            {current.order.status} · {money(current.order.total)}
+            Pedido {money(offer.total)}
           </Text>
-          <View style={{ gap: 8, marginTop: 10 }}>
-            {!tracking && current.assignment.status === "assigned" ? (
-              <PrimaryButton
-                title="Iniciar rota e compartilhar GPS"
-                onPress={() => void startTracking()}
-                disabled={sendLocation.isPending || consent.isPending}
-              />
-            ) : null}
-            {tracking ? (
-              <OutlineButton
-                title="GPS compartilhado durante esta entrega"
-                onPress={() => stopTracking()}
-              />
-            ) : null}
-            {current.order.status === "A caminho" ? (
-              <PrimaryButton
-                title={
-                  complete.isPending ? "Finalizando..." : "Confirmar entrega"
-                }
-                onPress={() => complete.mutate({ orderId: current.order.id })}
-                disabled={complete.isPending}
-              />
-            ) : null}
+          <OpsOrderLines
+            lines={[
+              offer.etaMinutes
+                ? `ETA sugerido: ${offer.etaMinutes} min`
+                : "ETA a combinar",
+              offer.storeKind === "market"
+                ? "Sacola separada · retire no mercado e entregue na residência"
+                : (offer.message ?? "A loja enviou uma nova oportunidade"),
+            ]}
+          />
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <OpsButton
+              title={accept.isPending ? "Aceitando..." : "Aceitar"}
+              onPress={() => accept.mutate({ offerId: offer.id })}
+              disabled={accept.isPending || reject.isPending}
+              style={{ flex: 1 }}
+            />
+            <OpsButton
+              title="Recusar"
+              variant="outline"
+              onPress={() => reject.mutate({ offerId: offer.id })}
+              disabled={accept.isPending || reject.isPending}
+              style={{ flex: 1 }}
+            />
           </View>
+        </OpsCard>
+      ))}
+      {!offers.isLoading && !offers.data?.length ? (
+        <OpsCard>
+          <Text style={s.muted}>
+            Nenhuma oferta agora. Fique online para receber novas oportunidades.
+          </Text>
+        </OpsCard>
+      ) : null}
+      {offers.isError ? (
+        <Text style={{ color: PEDIU.coral, fontFamily: "Nunito" }}>
+          {offers.error.message}
+        </Text>
+      ) : null}
+
+      <OpsSectionTitle title="Entrega ativa" count={active.data?.length ?? 0} />
+      {current ? (
+        <OpsCard>
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              gap: 10,
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: "Fredoka",
+                fontSize: 22,
+                fontWeight: "900",
+                color: "#111111",
+              }}
+            >
+              {current.store.name}
+            </Text>
+            <OpsBadge tone={current.order.isFlash === 1 ? "primary" : "muted"}>
+              {current.order.isFlash === 1 ? "FLASH" : current.order.status}
+            </OpsBadge>
+          </View>
+          <OpsOrderLines
+            lines={[
+              `Retirada: ${current.store.address ?? "Endereço da loja não informado"}`,
+              `Destino: ${current.order.deliveryAddress ?? "Endereço do cliente"}`,
+              `${current.order.status} · ${money(current.order.total)}`,
+            ]}
+          />
+          {!tracking && current.assignment.status === "assigned" ? (
+            <OpsButton
+              title="Iniciar rota e compartilhar GPS"
+              onPress={() => void startTracking()}
+              disabled={sendLocation.isPending || consent.isPending}
+            />
+          ) : null}
+          {tracking ? (
+            <OpsButton
+              title="GPS compartilhado durante esta entrega"
+              variant="accent"
+              onPress={stopTracking}
+            />
+          ) : null}
+          {current.order.status === "A caminho" ? (
+            <OpsButton
+              title={
+                complete.isPending ? "Finalizando..." : "Confirmar entrega"
+              }
+              onPress={() => complete.mutate({ orderId: current.order.id })}
+              disabled={complete.isPending}
+            />
+          ) : null}
           {locationError ? (
-            <Text style={{ color: PEDIU.coral, marginTop: 8 }}>
+            <Text style={{ color: PEDIU.coral, fontFamily: "Nunito" }}>
               {locationError}
             </Text>
           ) : null}
           {sendLocation.error ? (
-            <Text style={{ color: PEDIU.coral, marginTop: 8 }}>
+            <Text style={{ color: PEDIU.coral, fontFamily: "Nunito" }}>
               {sendLocation.error.message}
             </Text>
           ) : null}
           {complete.error ? (
-            <Text style={{ color: PEDIU.coral, marginTop: 8 }}>
+            <Text style={{ color: PEDIU.coral, fontFamily: "Nunito" }}>
               {complete.error.message}
             </Text>
           ) : null}
@@ -454,18 +500,19 @@ export default function CourierHomePage() {
             A localização só é enviada durante uma entrega ativa e com sua
             autorização.
           </Text>
-        </Card>
-      ) : null}
-
-      <Card>
-        <Text style={s.sectionTitle}>Extrato informativo</Text>
-        <Text style={s.muted}>
-          Nesta fase, o Pediu registra o valor do pedido e a operação da
-          entrega, mas não processa pagamento, saque ou repasse. O PSP e as
-          regras de taxa serão ativados somente após a configuração empresarial.
-        </Text>
-      </Card>
-      <OutlineButton title="Voltar ao perfil" onPress={() => router.back()} />
-    </Page>
+        </OpsCard>
+      ) : (
+        <OpsCard>
+          <Text style={s.muted}>
+            Quando você aceitar uma oferta, a rota ativa aparece aqui.
+          </Text>
+        </OpsCard>
+      )}
+      <OpsButton
+        title="Voltar ao perfil"
+        variant="ghost"
+        onPress={() => router.back()}
+      />
+    </OpsShell>
   );
 }

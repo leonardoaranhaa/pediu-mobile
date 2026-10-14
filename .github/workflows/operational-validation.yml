@@ -85,7 +85,12 @@ jobs:
               'pediu_store_couriers',
               'pediu_delivery_offers',
               'pediu_notification_outbox',
-              'pediu_rate_limit_buckets'
+              'pediu_rate_limit_buckets',
+              'pediu_loyalty_accounts',
+              'pediu_loyalty_ledger',
+              'pediu_tip_settlements',
+              'pediu_order_shares',
+              'pediu_order_share_participants'
             ];
             const missing = required.filter(name => !names.includes(name));
             if (missing.length) throw new Error(`Missing migrated tables: ${missing.join(', ')}`);
@@ -101,7 +106,7 @@ jobs:
             if (missingRefundColumns.length) throw new Error(`Missing refund columns: ${missingRefundColumns.join(', ')}`);
             const [productColumns] = await c.query('SHOW COLUMNS FROM pediu_products');
             const productColumnNames = productColumns.map(row => row.Field);
-            const requiredProductColumns = ['inventoryTracked', 'stockQuantity', 'reservedQuantity'];
+            const requiredProductColumns = ['inventoryTracked', 'stockQuantity', 'reservedQuantity', 'saleUnit', 'packSize'];
             const missingProductColumns = requiredProductColumns.filter(name => !productColumnNames.includes(name));
             if (missingProductColumns.length) throw new Error(`Missing inventory columns: ${missingProductColumns.join(', ')}`);
             const [storeColumns] = await c.query('SHOW COLUMNS FROM pediu_stores');
@@ -111,7 +116,7 @@ jobs:
             if (missingStoreColumns.length) throw new Error(`Missing serviceability store columns: ${missingStoreColumns.join(', ')}`);
             const [orderColumns] = await c.query('SHOW COLUMNS FROM pediu_orders');
             const orderColumnNames = orderColumns.map(row => row.Field);
-            const requiredOrderColumns = ['fulfillmentMode', 'deliveryFeeSnapshot'];
+            const requiredOrderColumns = ['fulfillmentMode', 'deliveryFeeSnapshot', 'isFlash', 'tipAmount', 'tipDestination', 'fulfillment'];
             const missingOrderColumns = requiredOrderColumns.filter(name => !orderColumnNames.includes(name));
             if (missingOrderColumns.length) throw new Error(`Missing fulfillment order columns: ${missingOrderColumns.join(', ')}`);
             const [locationColumns] = await c.query('SHOW COLUMNS FROM pediu_delivery_locations');
@@ -162,6 +167,8 @@ jobs:
           exit 1
       - name: Run Go-Live readiness baseline
         run: pnpm go-live:check
+      - name: Run Go-Live Flash, Market, Club and tip settlement smoke
+        run: pnpm go-live:flash-loyalty
       - name: Run Go-Live device preflight
         run: pnpm go-live:device-preflight
       - name: Run Go-Live client E2E smoke

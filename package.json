@@ -1,5 +1,5 @@
 {
-  "name": "app-template",
+  "name": "pediu",
   "version": "1.0.0",
   "private": true,
   "main": "expo-router/entry",
@@ -7,6 +7,7 @@
     "dev": "concurrently -k \"pnpm dev:server\" \"pnpm dev:metro\"",
     "dev:server": "cross-env NODE_ENV=development tsx watch server/_core/index.ts",
     "dev:metro": "cross-env EXPO_USE_METRO_WORKSPACE_ROOT=1 npx expo start --web --port ${EXPO_PORT:-8081}",
+    "preview:sandbox": "bash scripts/start-sandbox-preview.sh",
     "build": "esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc --noEmit",
@@ -28,6 +29,7 @@
     "go-live:concurrency": "tsx scripts/go-live-concurrency.ts",
     "go-live:fiado-concurrency": "tsx scripts/go-live-fiado-concurrency.ts",
     "go-live:finance": "tsx scripts/go-live-finance.ts",
+    "go-live:flash-loyalty": "tsx scripts/go-live-flash-loyalty.ts",
     "go-live:cors-security": "tsx scripts/go-live-cors-security.ts",
     "go-live:storage-security": "tsx scripts/go-live-storage-security.ts",
     "go-live:limits-security": "tsx scripts/go-live-limits-security.ts",
@@ -36,12 +38,15 @@
     "go-live:stress": "tsx scripts/go-live-stress.ts",
     "go-live:deployment": "tsx scripts/go-live-deployment.ts",
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "qr": "node scripts/generate_qr.mjs",
     "build:dev": "npx eas-cli build --profile development",
     "build:preview": "npx eas-cli build --profile preview --platform android",
-    "build:production": "npx eas-cli build --profile production"
+    "build:preview:ios": "npx eas-cli build --profile preview --platform ios",
+    "build:android:local": "bash scripts/build-android-local.sh",
+    "build:production": "npx eas-cli build --profile production --platform android",
+    "submit:internal:android": "npx eas-cli submit --platform android --profile production --latest --non-interactive"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

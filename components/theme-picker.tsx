@@ -13,35 +13,40 @@ import {
 } from "react-native";
 
 import { PediuMascot } from "@/components/pediu-mascot";
-import { PEDIU, s } from "@/components/pediu-page";
+import { s } from "@/components/pediu-page";
 import { useAuth } from "@/hooks/use-auth";
 import {
   APP_THEMES,
   useAppPreferences,
+  type AppColorScheme,
   type AppMascotStyle,
   type AppTheme,
 } from "@/lib/app-preferences";
 import { trpc } from "@/lib/trpc";
+import { useReducedMotion } from "react-native-reanimated";
 
 function ThemeOption({
   theme,
   selected,
+  motionEnabled,
   onPress,
 }: {
   theme: AppTheme;
   selected: boolean;
+  motionEnabled: boolean;
   onPress: () => void;
 }) {
   const progress = useRef(new Animated.Value(selected ? 1 : 0)).current;
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
     Animated.timing(progress, {
       toValue: selected ? 1 : 0,
-      duration: 230,
+      duration: motionEnabled && !reducedMotion ? 230 : 0,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
-  }, [progress, selected]);
+  }, [motionEnabled, progress, reducedMotion, selected]);
 
   return (
     <Pressable
@@ -82,7 +87,7 @@ function ThemeOption({
               width: 48,
               height: 48,
               borderRadius: 16,
-              backgroundColor: theme.ink,
+              backgroundColor: theme.deep,
               alignItems: "center",
               justifyContent: "center",
             }}
@@ -169,7 +174,7 @@ function ThemeOption({
               width: 28,
               height: 9,
               borderRadius: 5,
-              backgroundColor: theme.ink,
+              backgroundColor: theme.deep,
             }}
           />
         </View>
@@ -182,13 +187,25 @@ function MascotStyleOption({
   id,
   selected,
   theme,
+  motionEnabled,
   onPress,
 }: {
   id: AppMascotStyle;
   selected: boolean;
   theme: AppTheme;
+  motionEnabled: boolean;
   onPress: () => void;
 }) {
+  const progress = useRef(new Animated.Value(selected ? 1 : 0)).current;
+  const reducedMotion = useReducedMotion();
+  useEffect(() => {
+    Animated.timing(progress, {
+      toValue: selected ? 1 : 0,
+      duration: motionEnabled && !reducedMotion ? 220 : 0,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [motionEnabled, progress, reducedMotion, selected]);
   const labels: Record<
     AppMascotStyle,
     {
@@ -217,38 +234,115 @@ function MascotStyleOption({
   return (
     <Pressable
       onPress={onPress}
-      style={{
-        width: "31%",
-        flexGrow: 0,
-        flexShrink: 1,
-        minWidth: 0,
-        borderWidth: 1.5,
-        borderColor: selected ? theme.primary : theme.line,
-        backgroundColor: selected ? theme.primarySoft : theme.card,
-        borderRadius: 16,
-        padding: 10,
-        gap: 7,
-      }}
+      style={{ width: "31%", flexGrow: 0, flexShrink: 1, minWidth: 0 }}
     >
-      <MaterialIcons
-        name={option.icon}
-        size={18}
-        color={selected ? theme.primary : theme.muted}
-      />
-      <Text
-        numberOfLines={2}
-        ellipsizeMode="tail"
-        style={{ color: theme.ink, fontSize: 11, fontWeight: "900" }}
+      <Animated.View
+        style={{
+          width: "100%",
+          minWidth: 0,
+          borderWidth: 1.5,
+          borderColor: selected ? theme.primary : theme.line,
+          backgroundColor: selected ? theme.primarySoft : theme.card,
+          borderRadius: 16,
+          padding: 10,
+          gap: 7,
+          transform: [
+            {
+              scale: progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.985, 1],
+              }),
+            },
+          ],
+        }}
       >
-        {option.title}
-      </Text>
-      <Text
-        numberOfLines={2}
-        ellipsizeMode="tail"
-        style={{ color: theme.muted, fontSize: 10, lineHeight: 14 }}
+        <MaterialIcons
+          name={option.icon}
+          size={18}
+          color={selected ? theme.primary : theme.muted}
+        />
+        <Text
+          numberOfLines={2}
+          ellipsizeMode="tail"
+          style={{ color: theme.ink, fontSize: 11, fontWeight: "900" }}
+        >
+          {option.title}
+        </Text>
+        <Text
+          numberOfLines={2}
+          ellipsizeMode="tail"
+          style={{ color: theme.muted, fontSize: 10, lineHeight: 14 }}
+        >
+          {option.subtitle}
+        </Text>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+function AppearanceOption({
+  mode,
+  selected,
+  theme,
+  motionEnabled,
+  onPress,
+}: {
+  mode: AppColorScheme;
+  selected: boolean;
+  theme: AppTheme;
+  motionEnabled: boolean;
+  onPress: () => void;
+}) {
+  const progress = useRef(new Animated.Value(selected ? 1 : 0)).current;
+  const reducedMotion = useReducedMotion();
+  useEffect(() => {
+    Animated.timing(progress, {
+      toValue: selected ? 1 : 0,
+      duration: motionEnabled && !reducedMotion ? 220 : 0,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [motionEnabled, progress, reducedMotion, selected]);
+  const isDark = mode === "dark";
+
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={{ flex: 1, minWidth: 0 }}
+    >
+      <Animated.View
+        style={{
+          minHeight: 74,
+          borderRadius: 16,
+          padding: 11,
+          gap: 5,
+          borderWidth: 1.5,
+          borderColor: selected ? theme.primary : theme.line,
+          backgroundColor: selected ? theme.primarySoft : theme.card,
+          transform: [
+            {
+              scale: progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.985, 1],
+              }),
+            },
+          ],
+        }}
       >
-        {option.subtitle}
-      </Text>
+        <MaterialIcons
+          name={isDark ? "dark-mode" : "light-mode"}
+          size={19}
+          color={selected ? theme.primary : theme.muted}
+        />
+        <Text style={{ color: theme.ink, fontSize: 12, fontWeight: "900" }}>
+          {isDark ? "Escuro" : "Claro"}
+        </Text>
+        <Text style={{ color: theme.muted, fontSize: 10 }}>
+          {isDark ? "Mais confortável à noite" : "Leve e luminoso"}
+        </Text>
+      </Animated.View>
     </Pressable>
   );
 }
@@ -323,7 +417,7 @@ function PreferenceToggle({
             width: 21,
             height: 21,
             borderRadius: 11,
-            backgroundColor: PEDIU.white,
+            backgroundColor: theme.card,
             alignSelf: value ? "flex-end" : "flex-start",
           }}
         />
@@ -343,6 +437,8 @@ export function ThemePicker({
   const {
     themeId,
     theme,
+    colorScheme,
+    setColorScheme,
     setTheme,
     setThemeForUser,
     customization,
@@ -415,8 +511,8 @@ export function ThemePicker({
           <MaterialIcons name="tune" size={22} color={theme.primary} />
         </View>
         <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-          <Text style={s.sectionTitle}>{title}</Text>
-          <Text style={s.muted}>{description}</Text>
+        <Text style={[s.sectionTitle, { color: theme.ink }]}>{title}</Text>
+          <Text style={[s.muted, { color: theme.muted }]}>{description}</Text>
         </View>
         <View
           style={{
@@ -449,7 +545,7 @@ export function ThemePicker({
           <Text style={{ color: theme.ink, fontSize: 13, fontWeight: "900" }}>
             {theme.label}
           </Text>
-          <Text style={s.muted} numberOfLines={2} ellipsizeMode="tail">
+          <Text style={[s.muted, { color: theme.muted }]} numberOfLines={2} ellipsizeMode="tail">
             {customization.mascotEnabled ? "Mascote ativo" : "Mascote discreto"}{" "}
             · toque para ajustar
           </Text>
@@ -457,13 +553,13 @@ export function ThemePicker({
         <Pressable
           onPress={() => setVisible(true)}
           style={{
-            backgroundColor: theme.ink,
+            backgroundColor: theme.deep,
             borderRadius: 12,
             paddingHorizontal: 11,
             paddingVertical: 9,
           }}
         >
-          <Text style={{ color: PEDIU.white, fontSize: 11, fontWeight: "900" }}>
+          <Text style={{ color: theme.onDeep, fontSize: 11, fontWeight: "900" }}>
             Abrir
           </Text>
         </Pressable>
@@ -577,7 +673,7 @@ export function ThemePicker({
                   minWidth: 0,
                   flexDirection: "row",
                   alignItems: "center",
-                  backgroundColor: theme.ink,
+                  backgroundColor: theme.deep,
                   borderRadius: 21,
                   padding: 13,
                   gap: 10,
@@ -610,7 +706,7 @@ export function ThemePicker({
                   <Text
                     numberOfLines={3}
                     style={{
-                      color: PEDIU.white,
+                      color: theme.onDeep,
                       fontSize: 16,
                       lineHeight: 20,
                       fontWeight: "900",
@@ -623,7 +719,7 @@ export function ThemePicker({
                   </Text>
                   <Text
                     numberOfLines={3}
-                    style={{ color: "#BCD0D1", fontSize: 11, lineHeight: 16 }}
+                    style={{ color: theme.muted, fontSize: 11, lineHeight: 16 }}
                   >
                     {customization.mascotEnabled
                       ? "Ele reage quando você escolhe seus itens."
@@ -632,18 +728,35 @@ export function ThemePicker({
                 </View>
               </View>
               <View style={{ width: "100%", gap: 9 }}>
-                <Text style={s.sectionTitle}>Paleta do aplicativo</Text>
+                <Text style={[s.sectionTitle, { color: theme.ink }]}>Modo de aparência</Text>
+                <Text style={[s.muted, { color: theme.muted }]}>Alterne entre claro e escuro com uma transição suave.</Text>
+                <View style={{ width: "100%", flexDirection: "row", gap: 8 }}>
+                  {(["light", "dark"] as AppColorScheme[]).map((mode) => (
+                    <AppearanceOption
+                      key={mode}
+                      mode={mode}
+                      theme={theme}
+                      motionEnabled={customization.motionEnabled}
+                      selected={colorScheme === mode}
+                      onPress={() => setColorScheme(mode)}
+                    />
+                  ))}
+                </View>
+              </View>
+              <View style={{ width: "100%", gap: 9 }}>
+                <Text style={[s.sectionTitle, { color: theme.ink }]}>Paleta do aplicativo</Text>
                 {APP_THEMES.map((item) => (
                   <ThemeOption
                     key={item.id}
                     theme={item}
                     selected={item.id === themeId}
+                    motionEnabled={customization.motionEnabled}
                     onPress={() => chooseTheme(item.id)}
                   />
                 ))}
               </View>
               <View style={{ width: "100%", gap: 9 }}>
-                <Text style={s.sectionTitle}>Personalidade do mascote</Text>
+                <Text style={[s.sectionTitle, { color: theme.ink }]}>Personalidade do mascote</Text>
                 <View
                   style={{
                     width: "100%",
@@ -658,6 +771,7 @@ export function ThemePicker({
                         key={id}
                         id={id}
                         theme={theme}
+                        motionEnabled={customization.motionEnabled}
                         selected={customization.mascotStyle === id}
                         onPress={() => updateCustomization({ mascotStyle: id })}
                       />
