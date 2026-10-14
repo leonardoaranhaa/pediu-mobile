@@ -114,6 +114,48 @@ describe("OAuth callback security boundary", () => {
     expect(sdk.exchangeCodeForToken).toHaveBeenCalledTimes(1);
   });
 
+  it("persists and reuses the same Google identity on repeated mobile login", async () => {
+    vi.spyOn(sdk, "exchangeCodeForToken").mockResolvedValue({
+      accessToken: "google-provider-access-token",
+    } as any);
+    vi.spyOn(sdk, "getUserInfo").mockResolvedValue({
+      openId: oauthUser.openId,
+      name: oauthUser.name,
+      email: oauthUser.email,
+      loginMethod: "google",
+    } as any);
+    vi.spyOn(sdk, "createSessionToken")
+      .mockResolvedValueOnce("google-session-1")
+      .mockResolvedValueOnce("google-session-2");
+    const upsert = vi.spyOn(db, "upsertUser").mockResolvedValue(undefined as any);
+    vi.spyOn(db, "getUserByOpenId").mockResolvedValue(oauthUser as any);
+
+    const first = await request(
+      `/api/oauth/mobile?code=google-first&state=${encodeURIComponent(validState)}`,
+    );
+    const second = await request(
+      `/api/oauth/mobile?code=google-second&state=${encodeURIComponent(validState)}`,
+    );
+
+    expect(first.body).toMatchObject({
+      app_session_id: "google-session-1",
+      user: { id: oauthUser.id, openId: oauthUser.openId, loginMethod: "google" },
+    });
+    expect(second.body).toMatchObject({
+      app_session_id: "google-session-2",
+      user: { id: oauthUser.id, openId: oauthUser.openId, loginMethod: "google" },
+    });
+    expect(upsert).toHaveBeenCalledTimes(2);
+    expect(upsert).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ openId: oauthUser.openId, loginMethod: "google" }),
+    );
+    expect(upsert).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ openId: oauthUser.openId, loginMethod: "google" }),
+    );
+  });
+
   it("releases a failed exchange so a controlled retry can proceed", async () => {
     const exchange = vi
       .spyOn(sdk, "exchangeCodeForToken")

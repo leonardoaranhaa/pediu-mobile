@@ -62,3 +62,11 @@ Build EAS Android/iOS, submissão ou publicação no Google Play, configuração
 - [x] Card visual de cancelamento adicionado antes da confirmação.
 - [x] Testes unitários criados para evitar ETA inventado e promessas indevidas.
 - [ ] Rodar matriz completa, sincronizar WebDev, validar screenshot e salvar checkpoint.
+
+## Nova fase — Google OAuth e persistência de conta no APK
+
+- [x] Instrução técnica criada para Google, deep link nativo e persistência server-side.
+- [x] UI de login/cadastro explicita criação ou reutilização da conta Google.
+- [x] Teste de repetição confirma o mesmo `openId`/usuário após novo login mobile.
+- [ ] Solicitar/configurar URL HTTPS da API e valores públicos OAuth no WebDev/EAS.
+- [ ] Rodar matriz, validar WebDev e disparar APK preview somente com credenciais EAS seguras.
