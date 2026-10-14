@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { MaterialIcons } from "@expo/vector-icons";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import {
   Card,
@@ -11,6 +12,7 @@ import {
 } from "@/components/pediu-page";
 import { useAuth } from "@/hooks/use-auth";
 import { cartFlashEligible } from "@/lib/cart";
+import { cancellationPolicyCopy, deliverySummaryCopy } from "@/lib/checkout-copy";
 import { useCart } from "@/providers/cart-provider";
 import { trpc } from "@/lib/trpc";
 
@@ -231,6 +233,11 @@ export default function CheckoutScreen() {
     );
 
   const quotedTotal = quote.data ? Number(quote.data.total) : estimatedTotal;
+  const deliverySummary = deliverySummaryCopy({
+    mode: effectiveFulfillmentMode,
+    isFlash: quote.data?.isFlash,
+    flashEtaMaxMinutes: quote.data?.flashEtaMaxMinutes,
+  });
   const couponCanBeRemoved = Boolean(
     appliedCouponCode && normalizedCouponInput === appliedCouponCode,
   );
@@ -415,6 +422,50 @@ export default function CheckoutScreen() {
         {!marketCart && effectiveFulfillmentMode === "pickup" ? (
           <Text style={s.muted}>Você receberá a confirmação quando o pedido estiver pronto para retirada.</Text>
         ) : null}
+      </Card>
+      <Card>
+        <Text style={s.sectionTitle}>Antes de confirmar</Text>
+        <View
+          style={[
+            checkoutStyles.infoPanel,
+            { backgroundColor: PEDIU.peach, borderColor: PEDIU.line },
+          ]}
+        >
+          <View style={[checkoutStyles.infoIcon, { backgroundColor: PEDIU.white }]}>
+            <MaterialIcons name={deliverySummary.icon} size={21} color={PEDIU.coral} />
+          </View>
+          <View style={checkoutStyles.infoBody}>
+            <Text style={s.sectionTitle}>{deliverySummary.title}</Text>
+            <Text style={checkoutStyles.infoLabel}>{deliverySummary.label}</Text>
+            <Text style={s.muted}>
+              {quote.isLoading
+                ? "Conferindo as condições reais deste endereço..."
+                : deliverySummary.detail}
+            </Text>
+          </View>
+        </View>
+        <View
+          style={[
+            checkoutStyles.infoPanel,
+            { backgroundColor: PEDIU.coralSoft, borderColor: "#F6C5C5" },
+          ]}
+        >
+          <View style={[checkoutStyles.infoIcon, { backgroundColor: PEDIU.white }]}>
+            <MaterialIcons name="event-busy" size={21} color={PEDIU.coral} />
+          </View>
+          <View style={checkoutStyles.infoBody}>
+            <Text style={s.sectionTitle}>Cancelamento transparente</Text>
+            {cancellationPolicyCopy.map((policy) => (
+              <View key={policy.title} style={checkoutStyles.policyRow}>
+                <View style={[checkoutStyles.policyDot, { backgroundColor: PEDIU.coral }]} />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={checkoutStyles.policyTitle}>{policy.title}</Text>
+                  <Text style={s.muted}>{policy.detail}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
       </Card>
       {flashFlagOn ? (
         <Card>
@@ -640,3 +691,25 @@ const row = {
   justifyContent: "space-between" as const,
 };
 const value = { color: PEDIU.ink, fontWeight: "800" as const };
+const checkoutStyles = StyleSheet.create({
+  infoPanel: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 11,
+    borderWidth: 1,
+    borderRadius: 19,
+    padding: 13,
+  },
+  infoIcon: {
+    width: 39,
+    height: 39,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  infoBody: { flex: 1, gap: 5 },
+  infoLabel: { color: PEDIU.coral, fontSize: 13, fontWeight: "900" },
+  policyRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
+  policyDot: { width: 7, height: 7, borderRadius: 4, marginTop: 6 },
+  policyTitle: { color: PEDIU.ink, fontSize: 12, fontWeight: "900" },
+});

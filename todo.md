@@ -53,3 +53,12 @@ Build EAS Android/iOS, submissão ou publicação no Google Play, configuração
 - [x] Checkout passou a explicar taxa, prazo condicionado, retirada, Flash e Mercado.
 - [x] Fiado passou a mostrar limite, saldo, disponível e regra de bloqueio.
 - [ ] Rodar matriz completa, sincronizar WebDev, validar screenshots e salvar checkpoint.
+
+## Nova fase — Cards de confirmação no checkout
+
+- [x] Instrução técnica criada com as regras reais de prazo e cancelamento.
+- [x] Copy pura criada para delivery padrão, Flash e retirada.
+- [x] Card visual de prazo/recebimento adicionado ao checkout.
+- [x] Card visual de cancelamento adicionado antes da confirmação.
+- [x] Testes unitários criados para evitar ETA inventado e promessas indevidas.
+- [ ] Rodar matriz completa, sincronizar WebDev, validar screenshot e salvar checkpoint.
