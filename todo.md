@@ -70,3 +70,16 @@ Build EAS Android/iOS, submissão ou publicação no Google Play, configuração
 - [x] Teste de repetição confirma o mesmo `openId`/usuário após novo login mobile.
 - [ ] Solicitar/configurar URL HTTPS da API e valores públicos OAuth no WebDev/EAS.
 - [ ] Rodar matriz, validar WebDev e disparar APK preview somente com credenciais EAS seguras.
+
+## Nova fase — Auditoria dos PRs abertos
+
+- [x] PRs abertos #4, #8, #10 e #11 auditados contra o PR #9.
+- [x] Confirmado que o código principal do PR #11 já está no PR #9.
+- [x] Identificada a lacuna: o onboarding existia por rota direta, mas não tinha gate de primeiro acesso.
+- [x] Instrução técnica criada em `docs/INSTRUCAO_FASE_AUDITORIA_PRS_ABERTOS_PR9.md`.
+- [x] Gate persistente criado no layout raiz, com exceções para onboarding e OAuth.
+- [x] Matriz de implementação atualizada de onboarding ausente para onboarding parcial/funcional.
+- [x] PR #8 classificado como seletivo: não incorporar bypass/dev auth, Apple ou exclusão sem revisão independente.
+- [x] PR #10 classificado como referência documental, sem importar Docker para o runtime WebDev.
+- [x] PR #4 mantido como cliente Flutter separado.
+- [ ] Rodar testes, build, lint, smoke WebDev, screenshot e checkpoint após o gate.
