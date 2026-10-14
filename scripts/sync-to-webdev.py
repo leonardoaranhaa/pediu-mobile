@@ -32,13 +32,11 @@ def sync_dir(src, dest):
     print(f"Origem : {src}")
     print(f"Destino: {dest}")
 
-    # Coleta arquivos e pastas de origem
     for root, dirs, files in os.walk(src):
         rel_root = os.path.relpath(root, src)
         if rel_root == ".":
             rel_root = ""
 
-        # Filtra diretórios
         dirs[:] = [d for d in dirs if not should_exclude(d, os.path.join(rel_root, d))]
 
         dest_root = os.path.join(dest, rel_root)
@@ -51,6 +49,33 @@ def sync_dir(src, dest):
             src_file = os.path.join(root, f)
             dest_file = os.path.join(dest_root, f)
             shutil.copy2(src_file, dest_file)
+
+    track_prune = ["app", "components", "lib", "hooks", "constants", "server", "tests", "docs"]
+    for area in track_prune:
+        dest_area = os.path.join(dest, area)
+        src_area = os.path.join(src, area)
+        if not os.path.isdir(dest_area):
+            continue
+        for root, dirs, files in os.walk(dest_area, topdown=False):
+            rel_root = os.path.relpath(root, dest)
+            src_equiv_dir = os.path.join(src, rel_root)
+            for f in files:
+                rel_file = os.path.join(rel_root, f)
+                if should_exclude(f, rel_file):
+                    continue
+                src_file = os.path.join(src_equiv_dir, f)
+                if not os.path.exists(src_file):
+                    dest_file = os.path.join(root, f)
+                    try:
+                        os.remove(dest_file)
+                        print(f"Removido do WebDev: {rel_file}")
+                    except OSError:
+                        pass
+            if not os.path.exists(src_equiv_dir):
+                try:
+                    os.rmdir(root)
+                except OSError:
+                    pass
 
     print("=== Sincronização concluída com sucesso! ===")
 

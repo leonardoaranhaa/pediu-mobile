@@ -28,11 +28,11 @@ export default function AdminPaymentsPage() {
   }
 
   return (
-    <Page title="Pagamentos" eyebrow="MASTER MANAGEMENT">
-      <Card>
-        <Text style={s.sectionTitle}>Cobranças</Text>
-        <Text style={s.muted}>PIX e demais métodos via routers existentes. Reembolso completo fica para política futura.</Text>
-      </Card>
+      <Page title="Pagamentos" eyebrow="OPERAÇÃO FINANCEIRA">
+        <Card>
+          <Text style={s.sectionTitle}>Cobranças</Text>
+          <Text style={s.muted}>Acompanhe o status das cobranças e identifique falhas. Estornos devem seguir a política financeira aprovada e o fluxo do provedor.</Text>
+        </Card>
       {query.isLoading ? <ActivityIndicator color={PEDIU.coral} /> : null}
       {query.error ? <Text style={{ color: PEDIU.coral, fontWeight: "700" }}>Falha ao carregar pagamentos.</Text> : null}
       {!query.isLoading && !query.error && !(query.data?.length ?? 0) ? (

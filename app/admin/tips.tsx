@@ -94,7 +94,7 @@ export default function AdminTipsPage() {
   }
 
   return (
-    <Page title="Gorjetas" eyebrow="MASTER MANAGEMENT">
+    <Page title="Gorjetas" eyebrow="OPERAÇÃO">
       <View style={styles.hero}>
         <Text style={styles.heroEyebrow}>TIP OPS</Text>
         <Text style={styles.heroTitle}>Settlements de gorjeta</Text>

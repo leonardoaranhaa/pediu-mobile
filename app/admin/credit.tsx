@@ -21,7 +21,7 @@ export default function AdminCreditPage() {
   }
 
   return (
-    <Page title="Crédito / Fiado" eyebrow="MASTER MANAGEMENT">
+    <Page title="Crédito / Fiado" eyebrow="OPERAÇÃO">
       <Card>
         <Text style={s.sectionTitle}>Contas lojista</Text>
         <Text style={s.muted}>Ledger de fiado é separado do Clube Pediu (loyalty). Aqui só crédito mercante.</Text>

@@ -39,7 +39,7 @@ export default function AdminOrdersPage() {
   }
 
   return (
-    <Page title="Pedidos" eyebrow="MASTER MANAGEMENT">
+    <Page title="Pedidos" eyebrow="OPERAÇÃO">
       <Card>
         <Text style={s.sectionTitle}>Fila operacional</Text>
         <Text style={s.muted}>

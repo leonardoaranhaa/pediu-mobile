@@ -378,8 +378,8 @@ export default function SellerAdsPage() {
           <Text
             style={{ color: theme.primary, fontSize: 12, fontWeight: "800" }}
           >
-            Seus créditos acabaram. Em breve você poderá contratar novos pacotes
-            no Pediu.
+            Não há créditos disponíveis para gerar outro criativo. A geração fica
+            bloqueada até a plataforma liberar novos créditos para sua loja.
           </Text>
         ) : null}
       </Card>

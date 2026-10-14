@@ -35,3 +35,11 @@ Também foram concluídos os gates de qualidade no clone Git e no workspace WebD
 ## Fora do escopo
 
 Build EAS Android/iOS, submissão ou publicação no Google Play, configuração de PSP, OAuth ou novas credenciais externas não foram disparados.
+
+## Nova fase — Lapidação de UI e copy
+
+- [x] Auditoria de textos técnicos, template e orientações de desenvolvimento expostos nas telas.
+- [x] Rota de laboratório técnico de tema removida da superfície do produto.
+- [x] Copy administrativa de pagamentos, MFA, login e créditos de anúncios corrigida para estados reais.
+- [x] Teste de regressão criado em `tests/ui-copy.test.ts`.
+- [ ] Rodar matriz completa, sincronizar WebDev, validar screenshots e salvar checkpoint.

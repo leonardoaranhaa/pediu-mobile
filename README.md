@@ -142,6 +142,7 @@ Os limites de taxa e concorrência são locais ao processo. Antes de escalar hor
 - [Instrução técnica das transições de tema e mascote](docs/INSTRUCAO_FASE_ANIMACOES_TEMA_MASCOTE_PR9.md)
 - [Instrução técnica da sincronização do PR #11](docs/INSTRUCAO_FASE_SINCRONIZACAO_PR11_ONBOARDING_PR9.md)
 - [Instrução técnica das jornadas integradas cliente, prestador e motoboy](docs/INSTRUCAO_FASE_JORNADAS_CLIENTE_PRESTADOR_MOTOBOY_PR9.md)
+- [Instrução técnica da lapidação de UI e copy](docs/INSTRUCAO_FASE_LAPIDACAO_UI_COPY_PR9.md)
 - [QA Android e iOS](QA_ANDROID_IOS.md)
 - [Build local Android, EAS e Google Play](docs/INSTRUCAO_FASE_BUILD_SANDBOX_GOOGLE_PLAY_PR9.md)
 

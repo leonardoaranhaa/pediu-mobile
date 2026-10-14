@@ -35,7 +35,7 @@ export default function AdminStoresPage() {
   }
 
   return (
-    <Page title="Estabelecimentos" eyebrow="MASTER MANAGEMENT">
+    <Page title="Estabelecimentos" eyebrow="OPERAÇÃO">
       <Card>
         <Text style={s.sectionTitle}>Lojas · Flash · Vertical</Text>
         <Text style={s.muted}>Ligue Flash, marque Mercado ou suspenda abertura. Alterações geram auditoria.</Text>

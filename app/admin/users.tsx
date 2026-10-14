@@ -27,7 +27,7 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <Page title="Usuários" eyebrow="MASTER MANAGEMENT">
+    <Page title="Usuários" eyebrow="OPERAÇÃO">
       <Card>
         <Text style={s.sectionTitle}>Contas da plataforma</Text>
         <Text style={s.muted}>Leitura operacional. Impersonation não entra na v1.</Text>

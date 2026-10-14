@@ -30,7 +30,7 @@ export default function AdminDashboard() {
 
   if (!isAdmin) {
     return (
-      <Page title="Acesso restrito" eyebrow="MASTER MANAGEMENT">
+      <Page title="Acesso restrito" eyebrow="OPERAÇÃO">
         <EmptyState
           icon="lock-outline"
           title="Área exclusiva para administradores"
@@ -45,12 +45,12 @@ export default function AdminDashboard() {
   const data = overview.data;
 
   return (
-    <Page title="Master management" eyebrow="PEDIU · OPS" back={false}>
+      <Page title="Console de operação" eyebrow="PEDIU · OPERAÇÃO" back={false}>
       <View style={styles.hero}>
         <MaterialIcons name="dashboard" size={22} color={PEDIU_TOKENS.accent} />
         <Text style={styles.heroTitle}>Console operacional</Text>
         <Text style={styles.heroBody}>
-          Mesmo backend tRPC do app. Filas do dia, lojas Flash e ações ops — sem segundo servidor.
+          Acompanhe filas, lojas, pagamentos e suporte em um único painel de operação.
         </Text>
       </View>
 
