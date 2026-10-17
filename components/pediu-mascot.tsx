@@ -23,6 +23,7 @@ import {
   type MascotReaction,
   type MascotScene,
 } from "@/lib/mascot-scenes";
+import { useReducedMotion } from "react-native-reanimated";
 
 export { sceneForReaction } from "@/lib/mascot-scenes";
 export type { MascotReaction } from "@/lib/mascot-scenes";
@@ -61,6 +62,8 @@ export function PediuMascot({
   const wiggle = useRef(new Animated.Value(0)).current;
   const blink = useRef(new Animated.Value(0)).current;
   const sceneProgress = useRef(new Animated.Value(1)).current;
+  const styleProgress = useRef(new Animated.Value(1)).current;
+  const reducedMotion = useReducedMotion();
   const handsProgress = useRef(
     new Animated.Value(activeReaction === "avoid" ? 1 : 0),
   ).current;
@@ -95,6 +98,17 @@ export function PediuMascot({
     if (!scripted) return;
     setScene(AMBIENT_SCENES[sceneIndex]);
   }, [sceneIndex, scripted]);
+
+  useEffect(() => {
+    styleProgress.stopAnimation();
+    styleProgress.setValue(0.94);
+    Animated.timing(styleProgress, {
+      toValue: 1,
+      duration: motionEnabled && !reducedMotion ? 260 : 0,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [motionEnabled, reducedMotion, styleId, styleProgress]);
 
   useEffect(() => {
     sceneProgress.setValue(0);
@@ -266,8 +280,8 @@ export function PediuMascot({
           : "0deg";
   const bubblePosition =
     speechSide === "right"
-      ? { left: compact ? 34 : 76 }
-      : { right: compact ? 34 : 8 };
+      ? { left: compact ? 34 : 76, bottom: compact ? 50 : 72 }
+      : { right: compact ? 34 : 8, bottom: compact ? 50 : 72 };
   const bubbleTailStyle =
     speechSide === "right" ? styles.speechTailLeft : styles.speechTail;
   const eyeWidth = compact ? (eyesClosed ? 8 : 5) : eyesClosed ? 11 : 6;
@@ -314,6 +328,7 @@ export function PediuMascot({
               outputRange: [0.97, happy ? 1.04 : 1],
             }),
           },
+          { scale: styleProgress },
         ],
       }}
     >

@@ -97,11 +97,25 @@ export const stores = pgTable(
     latitude: numeric("latitude", { precision: 10, scale: 7 }),
     longitude: numeric("longitude", { precision: 10, scale: 7 }),
     isOpen: integer("isOpen").default(1).notNull(),
+    kind: varchar("kind", { length: 32 }).$type<"restaurant" | "market" | "service">()
+      .default("restaurant")
+      .notNull(),
+    flashEnabled: integer("flashEnabled").default(0).notNull(),
+    flashEtaMaxMinutes: integer("flashEtaMaxMinutes").default(30).notNull(),
+    flashFeeOverride: numeric("flashFeeOverride", {
+      precision: 10,
+      scale: 2,
+    }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (table) => ({
     ownerUnique: unique("pediu_stores_owner_unique").on(table.ownerId),
     openIdx: index("pediu_stores_open_idx").on(table.isOpen),
+    flashIdx: index("pediu_stores_flash_idx").on(
+      table.flashEnabled,
+      table.isOpen,
+    ),
+    kindIdx: index("pediu_stores_kind_idx").on(table.kind, table.isOpen),
   }),
 );
 
@@ -116,6 +130,10 @@ export const products = pgTable(
     category: varchar("category", { length: 80 }).notNull(),
     description: text("description"),
     price: numeric("price", { precision: 10, scale: 2 }).notNull(),
+    saleUnit: varchar("saleUnit", { length: 32 }).$type<"unit" | "kg" | "g" | "L" | "ml" | "pack">()
+      .default("unit")
+      .notNull(),
+    packSize: numeric("packSize", { precision: 10, scale: 3 }),
     available: integer("available").default(1).notNull(),
     inventoryTracked: integer("inventoryTracked").default(0).notNull(),
     stockQuantity: integer("stockQuantity").default(0).notNull(),
@@ -160,6 +178,16 @@ export const orders = pgTable(
       .default("0.00")
       .notNull(),
     idempotencyKey: varchar("idempotencyKey", { length: 160 }),
+    isFlash: integer("isFlash").default(0).notNull(),
+    tipAmount: numeric("tipAmount", { precision: 10, scale: 2 })
+      .default("0.00")
+      .notNull(),
+    tipDestination: varchar("tipDestination", { length: 32 }).$type<"courier" | "store" | "platform_pool">()
+      .default("courier")
+      .notNull(),
+    fulfillment: varchar("fulfillment", { length: 16 })
+      .default("standard")
+      .notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
@@ -334,7 +362,7 @@ export const financialLedger = pgTable("pediu_financial_ledger", {
   storeId: integer("storeId").notNull(),
   orderId: integer("orderId"),
   paymentId: integer("paymentId"),
-  type: varchar("type", { length: 32 }).$type<"sale" | "gateway_fee" | "commission" | "receivable" | "payout" | "refund" | "adjustment">().notNull(),
+  type: varchar("type", { length: 32 }).$type<"sale" | "gateway_fee" | "commission" | "receivable" | "payout" | "refund" | "adjustment" | "tip">().notNull(),
   direction: varchar("direction", { length: 32 }).$type<"credit" | "debit">().notNull(),
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
   currency: varchar("currency", { length: 3 }).default("BRL").notNull(),
@@ -342,6 +370,119 @@ export const financialLedger = pgTable("pediu_financial_ledger", {
   note: varchar("note", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
+
+export const tipSettlements = pgTable(
+  "pediu_tip_settlements",
+  {
+    id: serial("id").primaryKey(),
+    orderId: integer("orderId")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    storeId: integer("storeId")
+      .notNull()
+      .references(() => stores.id, { onDelete: "restrict" }),
+    amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+    destination: varchar("destination", { length: 32 }).$type<"courier" | "store" | "platform_pool">()
+      .default("courier")
+      .notNull(),
+    recipientUserId: integer("recipientUserId").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    status: varchar("status", { length: 32 }).$type<"pending" | "settled" | "reversed">()
+      .default("pending")
+      .notNull(),
+    idempotencyKey: varchar("idempotencyKey", { length: 160 }).notNull(),
+    note: varchar("note", { length: 255 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    settledAt: timestamp("settledAt"),
+  },
+  (table) => ({
+    idempotencyUnique: unique("pediu_tip_settlements_idempotency_unique").on(
+      table.idempotencyKey,
+    ),
+    orderUnique: unique("pediu_tip_settlements_order_unique").on(table.orderId),
+    storeCreatedIdx: index("pediu_tip_settlements_store_created_idx").on(
+      table.storeId,
+      table.createdAt,
+    ),
+    recipientIdx: index("pediu_tip_settlements_recipient_idx").on(
+      table.recipientUserId,
+      table.status,
+    ),
+  }),
+);
+
+/** Pediu Junto: estrutura persistida, ainda bloqueada pela feature flag. */
+export const orderShares = pgTable(
+  "pediu_order_shares",
+  {
+    id: serial("id").primaryKey(),
+    orderId: integer("orderId").references(() => orders.id, {
+      onDelete: "set null",
+    }),
+    hostUserId: integer("hostUserId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    storeId: integer("storeId")
+      .notNull()
+      .references(() => stores.id, { onDelete: "restrict" }),
+    status: varchar("status", { length: 32 }).$type<"draft" | "open" | "locked" | "paid" | "cancelled">()
+      .default("draft")
+      .notNull(),
+    inviteCode: varchar("inviteCode", { length: 32 }).notNull(),
+    maxParticipants: integer("maxParticipants").default(6).notNull(),
+    hostPaysAll: integer("hostPaysAll").default(1).notNull(),
+    note: varchar("note", { length: 255 }),
+    idempotencyKey: varchar("idempotencyKey", { length: 160 }).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
+  },
+  (table) => ({
+    inviteUnique: unique("pediu_order_shares_invite_unique").on(
+      table.inviteCode,
+    ),
+    idempotencyUnique: unique("pediu_order_shares_idempotency_unique").on(
+      table.idempotencyKey,
+    ),
+    hostCreatedIdx: index("pediu_order_shares_host_created_idx").on(
+      table.hostUserId,
+      table.createdAt,
+    ),
+    storeStatusIdx: index("pediu_order_shares_store_status_idx").on(
+      table.storeId,
+      table.status,
+    ),
+  }),
+);
+
+export const orderShareParticipants = pgTable(
+  "pediu_order_share_participants",
+  {
+    id: serial("id").primaryKey(),
+    shareId: integer("shareId")
+      .notNull()
+      .references(() => orderShares.id, { onDelete: "cascade" }),
+    userId: integer("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: varchar("role", { length: 32 }).$type<"host" | "guest">().default("guest").notNull(),
+    status: varchar("status", { length: 32 }).$type<"invited" | "joined" | "left">()
+      .default("invited")
+      .notNull(),
+    joinedAt: timestamp("joinedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => ({
+    shareUserUnique: unique("pediu_order_share_participants_unique").on(
+      table.shareId,
+      table.userId,
+    ),
+    userIdx: index("pediu_order_share_participants_user_idx").on(
+      table.userId,
+      table.status,
+    ),
+  }),
+);
 
 export const payouts = pgTable(
   "pediu_payouts",
@@ -1076,6 +1217,56 @@ export const generatedAds = pgTable(
   }),
 );
 
+export const loyaltyAccounts = pgTable(
+  "pediu_loyalty_accounts",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    points: integer("points").default(0).notNull(),
+    lifetimePoints: integer("lifetimePoints").default(0).notNull(),
+    tier: varchar("tier", { length: 32 }).$type<"bronze" | "prata" | "flash99">()
+      .default("bronze")
+      .notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
+  },
+  (table) => ({
+    userUnique: unique("pediu_loyalty_accounts_user_unique").on(table.userId),
+  }),
+);
+
+export const loyaltyLedger = pgTable(
+  "pediu_loyalty_ledger",
+  {
+    id: serial("id").primaryKey(),
+    accountId: integer("accountId")
+      .notNull()
+      .references(() => loyaltyAccounts.id, { onDelete: "cascade" }),
+    userId: integer("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    orderId: integer("orderId"),
+    direction: varchar("direction", { length: 32 }).$type<"credit" | "debit">().notNull(),
+    points: integer("points").notNull(),
+    reason: varchar("reason", { length: 80 }).notNull(),
+    note: varchar("note", { length: 255 }),
+    idempotencyKey: varchar("idempotencyKey", { length: 160 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => ({
+    idempotencyUnique: unique("pediu_loyalty_ledger_idempotency_unique").on(
+      table.idempotencyKey,
+    ),
+    userCreatedIdx: index("pediu_loyalty_ledger_user_created_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
+    orderIdx: index("pediu_loyalty_ledger_order_idx").on(table.orderId),
+  }),
+);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type EmailVerificationToken =
@@ -1157,3 +1348,14 @@ export type AdCredit = typeof adCredits.$inferSelect;
 export type InsertAdCredit = typeof adCredits.$inferInsert;
 export type GeneratedAd = typeof generatedAds.$inferSelect;
 export type InsertGeneratedAd = typeof generatedAds.$inferInsert;
+export type LoyaltyAccount = typeof loyaltyAccounts.$inferSelect;
+export type InsertLoyaltyAccount = typeof loyaltyAccounts.$inferInsert;
+export type LoyaltyLedgerEntry = typeof loyaltyLedger.$inferSelect;
+export type InsertLoyaltyLedgerEntry = typeof loyaltyLedger.$inferInsert;
+export type TipSettlement = typeof tipSettlements.$inferSelect;
+export type InsertTipSettlement = typeof tipSettlements.$inferInsert;
+export type OrderShare = typeof orderShares.$inferSelect;
+export type InsertOrderShare = typeof orderShares.$inferInsert;
+export type OrderShareParticipant = typeof orderShareParticipants.$inferSelect;
+export type InsertOrderShareParticipant =
+  typeof orderShareParticipants.$inferInsert;

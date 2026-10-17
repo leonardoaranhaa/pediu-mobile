@@ -16,6 +16,7 @@ import {
   cartItemCount,
   cartSubtotal,
   cartTotal,
+  normalizeStoreKind,
   removeCartItem,
   updateCartNote,
   updateCartQuantity,
@@ -51,14 +52,20 @@ function parseStoredCart(value: string | null): CartItem[] {
   try {
     const parsed = JSON.parse(value) as CartItem[];
     return Array.isArray(parsed)
-      ? parsed.filter(
-          (item) =>
-            item &&
-            Number.isInteger(item.id) &&
-            Number.isInteger(item.storeId) &&
-            Number.isInteger(item.quantity) &&
-            item.quantity > 0,
-        )
+      ? parsed
+          .filter(
+            (item) =>
+              item &&
+              Number.isInteger(item.id) &&
+              Number.isInteger(item.storeId) &&
+              Number.isInteger(item.quantity) &&
+              item.quantity > 0,
+          )
+          .map((item) => ({
+            ...item,
+            storeKind: normalizeStoreKind(item.storeKind),
+            flashEnabled: Boolean(item.flashEnabled),
+          }))
       : [];
   } catch {
     return [];

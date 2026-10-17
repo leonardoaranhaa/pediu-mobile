@@ -1,28 +1,37 @@
 import { useMemo, useState } from "react";
-import { useLocalSearchParams } from "expo-router";
-import { Text } from "react-native";
+import { useLocalSearchParams, router } from "expo-router";
+import { Text, View } from "react-native";
+import { EmptyState } from "@/components/pediu/empty-state";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
+import { s } from "@/components/pediu-page";
 import {
-  Card,
-  OutlineButton,
-  Page,
-  PrimaryButton,
-  PEDIU,
-  Row,
-  s,
-} from "@/components/pediu-page";
+  OpsBadge,
+  OpsButton,
+  OpsCard,
+  OpsDock,
+  OpsHeader,
+  OpsOrderLines,
+  OpsSectionTitle,
+  OpsShell,
+} from "@/components/pediu-ops-ui";
 
 function offerKey(orderId: number, courierUserId: number) {
   const hour = new Date().toISOString().slice(0, 13);
   return `offer-${orderId}-${courierUserId}-${hour}`;
 }
 
+function money(value: unknown) {
+  return `R$ ${Number(value ?? 0)
+    .toFixed(2)
+    .replace(".", ",")}`;
+}
+
 export default function SellerDeliveryPage() {
   const { user } = useAuth();
   const params = useLocalSearchParams<{ orderId?: string }>();
   const requestedOrderId = Number(params.orderId);
-  const orders = trpc.pediu.orders.storeMine.useQuery(undefined, {
+  const queueQuery = trpc.pediu.experience.delivery.queue.useQuery(undefined, {
     enabled: Boolean(user),
     refetchInterval: 10_000,
   });
@@ -30,14 +39,12 @@ export default function SellerDeliveryPage() {
     enabled: Boolean(user),
     refetchInterval: 15_000,
   });
-  const readyOrders = useMemo(
+  const activeOrders = useMemo(
     () =>
-      (orders.data ?? []).filter(
-        (order) =>
-          order.fulfillmentMode !== "pickup" &&
-          (order.status === "Pronto" || order.status === "A caminho"),
+      (queueQuery.data?.queue ?? []).filter(
+        (order) => order.fulfillmentMode !== "pickup",
       ),
-    [orders.data],
+    [queueQuery.data?.queue],
   );
   const [selectedOrderId, setSelectedOrderId] = useState<number>(
     Number.isInteger(requestedOrderId) && requestedOrderId > 0
@@ -45,8 +52,10 @@ export default function SellerDeliveryPage() {
       : 0,
   );
   const selectedOrder =
-    readyOrders.find((order) => order.id === selectedOrderId) ?? readyOrders[0];
+    activeOrders.find((order) => order.id === selectedOrderId) ??
+    activeOrders[0];
   const orderId = selectedOrder?.id ?? 0;
+  const isMarket = selectedOrder?.storeKind === "market";
   const current = trpc.pediu.experience.delivery.current.useQuery(
     { orderId },
     { enabled: orderId > 0, refetchInterval: 8_000 },
@@ -54,7 +63,7 @@ export default function SellerDeliveryPage() {
   const offer = trpc.pediu.experience.delivery.offer.useMutation({
     onSuccess: () => {
       void current.refetch();
-      void orders.refetch();
+      void queueQuery.refetch();
     },
   });
   const available = (couriers.data ?? []).filter(
@@ -75,109 +84,183 @@ export default function SellerDeliveryPage() {
   };
 
   return (
-    <Page title="Chamar motoboy" eyebrow="OPERAÇÃO DA LOJA">
-      <Card>
-        <Text style={s.sectionTitle}>Pedidos prontos para sair</Text>
-        <Text style={s.muted}>
-          O pedido continua em “Pronto” até o motoboy aceitar e enviar a
-          posição. Só então ele fica “A caminho”.
-        </Text>
-        {orders.isLoading ? <Text style={s.muted}>Carregando pedidos...</Text> : null}
-        {!orders.isLoading && !readyOrders.length ? (
-          <Text style={s.muted}>
-            Nenhum pedido de entrega está pronto. Marque o pedido como pronto
-            antes de chamar alguém.
-          </Text>
+    <OpsShell
+      dock={
+        <OpsDock
+          items={[
+            {
+              label: "Cozinha",
+              icon: "restaurant",
+              to: "/seller",
+              active: true,
+            },
+            {
+              label: "Cardápio",
+              icon: "restaurant-menu",
+              to: "/seller/catalog",
+            },
+            { label: "Cliente", icon: "home", to: "/" },
+          ]}
+        />
+      }
+    >
+      <OpsHeader
+        eyebrow="LOGÍSTICA"
+        title="Entregas"
+        subtitle={
+          isMarket
+            ? "Coleta do mercado e entrega ao endereço do cliente"
+            : "Fila Flash e chamada do motoboy"
+        }
+        status={
+          queueQuery.data?.flashCount
+            ? `${queueQuery.data.flashCount} Flash`
+            : "Fila normal"
+        }
+        statusTone={queueQuery.data?.flashCount ? "accent" : "neutral"}
+        statusIcon="two-wheeler"
+      />
+      <OpsSectionTitle title="Na fila" count={activeOrders.length} />
+      <OpsCard>
+        {queueQuery.isLoading ? (
+          <Text style={s.muted}>Carregando pedidos...</Text>
         ) : null}
-        {readyOrders.map((order) => (
-          <Row
-            key={order.id}
+        {!queueQuery.isLoading && !activeOrders.length ? (
+          <EmptyState
             icon="two-wheeler"
-            title={`Pedido #${order.id}`}
-            subtitle={`${order.status} · R$ ${Number(order.total).toFixed(2).replace(".", ",")}`}
+            title="Fila vazia no momento"
+            body="Quando um pedido de entrega estiver Pronto ou A caminho, ele aparece aqui com prioridade Flash."
+          />
+        ) : null}
+        {activeOrders.map((order) => (
+          <OpsButton
+            key={order.id}
+            title={`#${order.id}${order.isFlash ? " · FLASH" : ""} · ${order.status} · ${money(order.total)}`}
+            variant={order.id === orderId ? "accent" : "ghost"}
             onPress={() => setSelectedOrderId(order.id)}
-            right={
+          />
+        ))}
+      </OpsCard>
+
+      {selectedOrder ? (
+        <>
+          <OpsCard
+            style={
+              selectedOrder.isFlash
+                ? { borderColor: "#E20D2A", borderWidth: 1.5 }
+                : undefined
+            }
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                gap: 10,
+                flexWrap: "wrap",
+              }}
+            >
               <Text
                 style={{
-                  color: order.id === orderId ? PEDIU.coral : PEDIU.muted,
+                  color: "#111111",
+                  fontFamily: "Fredoka",
+                  fontSize: 23,
                   fontWeight: "900",
                 }}
               >
-                {order.id === orderId ? "Selecionado" : "Abrir"}
+                Pedido #{selectedOrder.id}
               </Text>
-            }
-          />
-        ))}
-      </Card>
-      {selectedOrder ? (
-        <Card>
-          <Text style={s.sectionTitle}>Pedido #{selectedOrder.id}</Text>
-          {current.data?.assignment ? (
-            <Text style={s.muted}>
-              Motoboy: {current.data.assignment.courierName}
-              {current.data.assignment.courierPhone
-                ? ` · ${current.data.assignment.courierPhone}`
-                : ""}
-              . Conta #{current.data.assignment.courierId}. Status do pedido:{" "}
-              {current.data.status}.
-            </Text>
-          ) : (
-            <Text style={s.muted}>
-              Ainda não há motoboy nesta corrida. Escolha alguém disponível da
-              sua equipe.
-            </Text>
-          )}
-          {current.data?.latestLocation ? (
-            <Text style={s.muted}>
-              Última posição recebida:{" "}
-              {Number(current.data.latestLocation.latitude).toFixed(5)},{" "}
-              {Number(current.data.latestLocation.longitude).toFixed(5)}
-            </Text>
-          ) : null}
-          {selectedOrder.status !== "Pronto" ? (
-            <Text style={s.muted}>
-              Este pedido já saiu para a rota ou mudou de etapa. Uma nova
-              oferta só vale enquanto ele está pronto.
-            </Text>
-          ) : null}
-          {offer.error ? (
-            <Text style={{ color: PEDIU.coral, fontSize: 12 }}>
-              {offer.error.message}
-            </Text>
-          ) : null}
-          {offer.data?.status === "pending" ? (
-            <Text style={{ color: PEDIU.green, fontWeight: "800" }}>
-              Oferta enviada. O motoboy vê a corrida na central dele.
-            </Text>
-          ) : null}
-          {!available.length ? (
-            <Text style={s.muted}>
-              Nenhum motoboy aprovado está disponível. Vincule a conta dele em
-              Entregadores e peça para ele ficar “Disponível”.
-            </Text>
-          ) : null}
-          {available.map((courier) => (
-            <PrimaryButton
-              key={courier.courierUserId}
-              title={
-                offer.isPending
-                  ? "Enviando..."
-                  : `Chamar ${courier.name ?? "motoboy"} · conta #${courier.courierUserId}`
-              }
-              onPress={() => callCourier(courier.courierUserId)}
-              disabled={offer.isPending || selectedOrder.status !== "Pronto"}
+              {selectedOrder.isFlash ? (
+                <OpsBadge tone="primary">FLASH</OpsBadge>
+              ) : (
+                <OpsBadge tone="muted">PADRÃO</OpsBadge>
+              )}
+              {isMarket ? (
+                <OpsBadge tone="success">MERCADO · COLETA</OpsBadge>
+              ) : null}
+            </View>
+            <OpsOrderLines
+              lines={[
+                `${selectedOrder.status} · ${money(selectedOrder.total)}`,
+                selectedOrder.isFlash
+                  ? `Previsão sugerida: ${selectedOrder.suggestedEtaMinutes ?? queueQuery.data?.flashEtaMaxMinutes ?? 20} min`
+                  : "Entrega da fila operacional",
+                selectedOrder.deliveryAddress ??
+                  "Endereço informado no pedido",
+              ]}
             />
-          ))}
-          <OutlineButton
-            title="Atualizar equipe e pedidos"
-            onPress={() => {
-              void couriers.refetch();
-              void orders.refetch();
-              void current.refetch();
-            }}
-          />
-        </Card>
+            <Text style={s.muted}>
+              O pedido continua em “Pronto” até o motoboy aceitar e enviar a
+              posição. Só então ele fica “A caminho”.
+            </Text>
+            {current.data?.assignment ? (
+              <Text style={s.muted}>
+                Motoboy: {current.data.assignment.courierName}
+                {current.data.latestLocation
+                  ? ` · última posição ${new Date(current.data.latestLocation.capturedAt).toLocaleString("pt-BR")}`
+                  : " · ainda sem posição"}
+              </Text>
+            ) : null}
+            {selectedOrder.status !== "Pronto" ? (
+              <Text style={s.muted}>
+                A oferta só vale enquanto o pedido está pronto.
+              </Text>
+            ) : null}
+            {offer.error ? (
+              <Text style={{ color: "#E20D2A", fontFamily: "Nunito" }}>
+                {offer.error.message}
+              </Text>
+            ) : null}
+            {offer.data?.status === "pending" ? (
+              <Text style={{ color: "#0E7A45", fontFamily: "Nunito" }}>
+                Oferta enviada. O motoboy vê a corrida na central dele.
+              </Text>
+            ) : null}
+            {!available.length ? (
+              <Text style={s.muted}>
+                Nenhum motoboy aprovado está disponível. Vincule a conta dele
+                em Entregadores e peça para ele ficar “Disponível”.
+              </Text>
+            ) : null}
+            {available.map((courier) => (
+              <OpsButton
+                key={courier.courierUserId}
+                title={
+                  offer.isPending
+                    ? "Enviando..."
+                    : `Chamar ${courier.name ?? "motoboy"} · conta #${courier.courierUserId}`
+                }
+                onPress={() => callCourier(courier.courierUserId)}
+                disabled={
+                  offer.isPending || selectedOrder.status !== "Pronto"
+                }
+              />
+            ))}
+            <OpsButton
+              title="Atualizar equipe e pedidos"
+              variant="outline"
+              onPress={() => {
+                void couriers.refetch();
+                void queueQuery.refetch();
+                void current.refetch();
+              }}
+            />
+          </OpsCard>
+          {selectedOrder.status === "A caminho" ? (
+            <OpsCard>
+              <OpsSectionTitle title="Em rota" />
+              <Text style={s.muted}>
+                O motoboy conclui esta entrega na central dele. A gorjeta, se
+                houver, liquida quando a entrega fecha.
+              </Text>
+            </OpsCard>
+          ) : null}
+        </>
       ) : null}
-    </Page>
+      <OpsButton
+        title="Voltar para a cozinha"
+        variant="ghost"
+        onPress={() => router.push("/seller")}
+      />
+    </OpsShell>
   );
 }

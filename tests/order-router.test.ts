@@ -123,6 +123,9 @@ describe("Pediu order operational contract", () => {
       changed: true,
       status: "Entregue",
     });
+    const loyalty = vi
+      .spyOn(db, "creditLoyaltyForDeliveredOrder")
+      .mockResolvedValue({ credited: true, points: 35 });
     vi.spyOn(push, "sendPushToUser").mockResolvedValue({ sent: 0 });
 
     await appRouter
@@ -130,6 +133,7 @@ describe("Pediu order operational contract", () => {
       .pediu.orders.status({ orderId: 101, status: "Entregue" });
 
     expect(transition).toHaveBeenCalledWith(101, "Entregue", "Pronto");
+    expect(loyalty).toHaveBeenCalledWith(101);
   });
 
   it("collapses two concurrent identical status changes into one event", async () => {
