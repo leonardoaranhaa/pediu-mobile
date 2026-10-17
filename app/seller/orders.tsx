@@ -4,26 +4,23 @@ import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
 import { Page, Card, PrimaryButton, OutlineButton, s, PEDIU } from "@/components/pediu-page";
 
-const nextStatus: Record<string, "Aceito" | "Preparando" | "Pronto" | "A caminho" | "Entregue" | undefined> = {
+const nextStatus: Record<string, "Aceito" | "Preparando" | "Pronto" | "Entregue" | undefined> = {
   Pendente: "Aceito",
   Aceito: "Preparando",
   Preparando: "Pronto",
-  Pronto: "A caminho",
-  "A caminho": "Entregue",
 };
 
 const actionLabel: Record<string, string> = {
   Pendente: "Aceitar pedido",
   Aceito: "Iniciar preparo",
   Preparando: "Marcar como pronto",
-  Pronto: "Enviar para entrega",
-  "A caminho": "Confirmar entrega",
+  Pronto: "Liberar retirada",
 };
 
 export default function SellerOrdersPage() {
   const { user } = useAuth();
   const q = trpc.pediu.orders.storeMine.useQuery(undefined, {
-    enabled: user?.role === "merchant",
+    enabled: Boolean(user),
     refetchInterval: 10_000,
   });
   const updateStatus = trpc.pediu.orders.status.useMutation({
@@ -46,8 +43,13 @@ export default function SellerOrdersPage() {
         <Card><Text style={s.sectionTitle}>Não foi possível carregar</Text><Text style={s.muted}>{q.error.message}</Text></Card>
       ) : q.data?.length ? (
         q.data.map((order) => {
-          const next = nextStatus[order.status];
+          const delivery = order.fulfillmentMode !== "pickup";
+          const next =
+            order.status === "Pronto" && !delivery
+              ? "Entregue"
+              : nextStatus[order.status];
           const canCancel = order.status === "Pendente";
+          const callCourier = order.status === "Pronto" && delivery;
           return (
             <Card key={order.id}>
               <View style={{ gap: 4 }}>
@@ -55,12 +57,28 @@ export default function SellerOrdersPage() {
                 <Text style={{ color: PEDIU.coral, fontSize: 13, fontWeight: "900" }}>{order.status}</Text>
                 <Text style={s.muted}>R$ {Number(order.total).toFixed(2).replace(".", ",")} · {order.deliveryAddress ?? "Sem endereço"}</Text>
               </View>
+              {callCourier ? (
+                <PrimaryButton
+                  title="Chamar motoboy"
+                  onPress={() =>
+                    router.push({
+                      pathname: "/seller/delivery",
+                      params: { orderId: String(order.id) },
+                    })
+                  }
+                />
+              ) : null}
               {next ? (
                 <PrimaryButton
                   title={actionLabel[order.status] ?? "Atualizar pedido"}
                   disabled={updateStatus.isPending}
                   onPress={() => advance(order.id, next)}
                 />
+              ) : null}
+              {order.status === "A caminho" ? (
+                <Text style={s.muted}>
+                  O motoboy conclui esta entrega na central dele. O status muda para entregue quando ele confirmar.
+                </Text>
               ) : null}
               {canCancel ? <OutlineButton title="Recusar pedido" onPress={() => cancel(order.id)} /> : null}
               <OutlineButton title="Ver acompanhamento" onPress={() => router.push({ pathname: "/order/track", params: { orderId: String(order.id) } })} />

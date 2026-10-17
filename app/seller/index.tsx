@@ -207,9 +207,10 @@ export default function SellerHomePage() {
           onPress={() => router.push("/seller/settings")}
         />
       </Card>
-      {user?.role !== "merchant" ? (
-        <Text style={s.muted}>Atualizando permissões da conta...</Text>
-      ) : null}
+      <Text style={s.muted}>
+        A mesma conta pode pedir como cliente e entregar como motoboy. O modo
+        cliente fica na tela inicial.
+      </Text>
     </Page>
   );
 }

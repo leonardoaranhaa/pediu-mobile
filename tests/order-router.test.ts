@@ -73,6 +73,27 @@ describe("Pediu order operational contract", () => {
     );
   });
 
+  it("does not let the store skip the courier by marking the order on the way", async () => {
+    vi.spyOn(db, "getOrderForUser").mockResolvedValue({
+      ...order,
+      status: "Pronto",
+      fulfillmentMode: "delivery",
+    } as any);
+    vi.spyOn(db, "getStoreForOwner").mockResolvedValue({
+      id: 7,
+      ownerId: 10,
+    } as any);
+    const transition = vi.spyOn(db, "transitionOrderStatus");
+
+    await expect(
+      appRouter.createCaller({ user } as any).pediu.orders.status({
+        orderId: 101,
+        status: "A caminho",
+      }),
+    ).rejects.toThrow(/motoboy/i);
+    expect(transition).not.toHaveBeenCalled();
+  });
+
   it("blocks an invalid jump through the router", async () => {
     vi.spyOn(db, "getOrderForUser").mockResolvedValue(order as any);
     vi.spyOn(db, "getStoreForOwner").mockResolvedValue({

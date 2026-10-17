@@ -61,6 +61,7 @@ import {
   SupportTicket,
   SupportTicketMessage,
   User,
+  accountRoles,
   adCredits,
   adminAuditLogs,
   chatMessages,
@@ -103,6 +104,11 @@ import {
   refunds,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import {
+  mergeAccountRoles,
+  rolesFromLegacy,
+  type AccountRole,
+} from "../shared/account-roles";
 import {
   DEFAULT_DISPATCH_OFFER_TTL_MS,
   boundedDispatchOfferTtl,
@@ -172,6 +178,11 @@ function getAffectedRows(result: unknown): number {
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
+    if (/^postgres(ql)?:/i.test(process.env.DATABASE_URL)) {
+      throw new Error(
+        "DATABASE_URL é Postgres (Supabase). Este servidor ainda grava em MySQL. Veja docs/HOSPEDAGEM.md antes de ligar o banco.",
+      );
+    }
     try {
       _db = drizzle(process.env.DATABASE_URL);
     } catch (error) {
@@ -642,6 +653,47 @@ export async function createOrderReview(
   }
 }
 
+export async function listAccountRoles(
+  userId: number,
+  legacyRole?: string | null,
+): Promise<AccountRole[]> {
+  const fallback = rolesFromLegacy(legacyRole);
+  try {
+    const db = await getDb();
+    if (!db) return fallback;
+    const rows = await db
+      .select({ role: accountRoles.role })
+      .from(accountRoles)
+      .where(eq(accountRoles.userId, userId));
+    if (!rows.length) return fallback;
+    return mergeAccountRoles(
+      rows.map((row) => row.role),
+      legacyRole,
+    );
+  } catch (error) {
+    console.warn("[AccountRoles] Falling back to legacy role", error);
+    return fallback;
+  }
+}
+
+export async function grantAccountRole(
+  userId: number,
+  role: AccountRole,
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .insert(accountRoles)
+    .values({ userId, role })
+    .onDuplicateKeyUpdate({ set: { role } });
+  if (role !== "customer") {
+    await db
+      .insert(accountRoles)
+      .values({ userId, role: "customer" })
+      .onDuplicateKeyUpdate({ set: { role: "customer" } });
+  }
+}
+
 export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) throw new Error("User openId is required for upsert");
   const db = await getDb();
@@ -882,6 +934,14 @@ export async function upsertCourierProfile(
     const result = await tx
       .insert(courierProfiles)
       .values({ ...input, status: "pending", availability: "offline" });
+    await tx
+      .insert(accountRoles)
+      .values({ userId: input.userId, role: "courier" })
+      .onDuplicateKeyUpdate({ set: { role: "courier" } });
+    await tx
+      .insert(accountRoles)
+      .values({ userId: input.userId, role: "customer" })
+      .onDuplicateKeyUpdate({ set: { role: "customer" } });
     const profileId = getInsertId(result);
     const created = await tx
       .select()
@@ -983,11 +1043,14 @@ export async function reviewCourierProfile(
         updatedAt: new Date(),
       })
       .where(eq(courierProfiles.id, profileId));
-    if (status === "approved")
-      await tx
-        .update(users)
-        .set({ role: "courier", updatedAt: new Date() })
-        .where(and(eq(users.id, current[0].userId), eq(users.role, "user")));
+    await tx
+      .insert(accountRoles)
+      .values({ userId: current[0].userId, role: "courier" })
+      .onDuplicateKeyUpdate({ set: { role: "courier" } });
+    await tx
+      .insert(accountRoles)
+      .values({ userId: current[0].userId, role: "customer" })
+      .onDuplicateKeyUpdate({ set: { role: "customer" } });
     const updated = await tx
       .select()
       .from(courierProfiles)
@@ -1050,6 +1113,11 @@ export async function createCustomerAddress(
         .update(customerAddresses)
         .set({ isDefault: 0 })
         .where(eq(customerAddresses.userId, userId));
+    if (input.latitude == null || input.longitude == null) {
+      throw new Error(
+        "Marque o endereço no mapa antes de salvar. Confira rua, número e cidade, ou use o GPS.",
+      );
+    }
     const { isDefault: _requestedDefault, ...fields } = input;
     const result = await tx
       .insert(customerAddresses)
@@ -1075,6 +1143,13 @@ export async function updateCustomerAddress(
       .limit(1);
     if (!current[0]) throw new Error("Endereço não encontrado");
     const { isDefault, ...fields } = input;
+    const latitude = fields.latitude === undefined ? current[0].latitude : fields.latitude;
+    const longitude = fields.longitude === undefined ? current[0].longitude : fields.longitude;
+    if (latitude == null || longitude == null || latitude === "" || longitude === "") {
+      throw new Error(
+        "Este endereço ainda não tem um ponto no mapa. Salve de novo com GPS ou com um endereço que o mapa reconheça.",
+      );
+    }
     if (isDefault === true)
       await tx
         .update(customerAddresses)
@@ -1186,9 +1261,13 @@ export async function createStore(input: InsertStore): Promise<number> {
     const result = await tx.insert(stores).values(input);
     const storeId = getInsertId(result);
     await tx
-      .update(users)
-      .set({ role: "merchant", updatedAt: new Date() })
-      .where(and(eq(users.id, input.ownerId), eq(users.role, "user")));
+      .insert(accountRoles)
+      .values({ userId: input.ownerId, role: "merchant" })
+      .onDuplicateKeyUpdate({ set: { role: "merchant" } });
+    await tx
+      .insert(accountRoles)
+      .values({ userId: input.ownerId, role: "customer" })
+      .onDuplicateKeyUpdate({ set: { role: "customer" } });
     return storeId;
   });
 }

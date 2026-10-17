@@ -1,17 +1,31 @@
 import { router } from "expo-router";
-import { useState } from "react";
-import { Text, TextInput } from "react-native";
-import { Page, Card, PrimaryButton, PEDIU, s } from "@/components/pediu-page";
+import { Text } from "react-native";
+import { Page, Card, PrimaryButton, OutlineButton, s } from "@/components/pediu-page";
+import { isOAuthConfigured, startOAuthLogin } from "@/constants/oauth";
 
 export default function ForgotPasswordScreen() {
-  const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
-  return <Page title="Recuperar acesso" eyebrow="SEGURANÇA" back>
-    <Card>
-      <Text style={s.sectionTitle}>{sent ? "Confira seu e-mail" : "Esqueceu sua senha?"}</Text>
-      <Text style={s.muted}>{sent ? "Se houver uma conta para este e-mail, enviaremos as instruções de recuperação." : "Informe o e-mail da sua conta para receber as instruções de recuperação."}</Text>
-      {!sent && <TextInput autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} placeholder="seu@email.com" style={{ borderWidth: 1, borderColor: PEDIU.line, borderRadius: 14, padding: 14, color: PEDIU.text }} />}
-      <PrimaryButton title={sent ? "Voltar para entrar" : "Enviar instruções"} onPress={() => sent ? router.replace("/login") : setSent(true)} disabled={!sent && !email.includes("@")} />
-    </Card>
-  </Page>;
+  return (
+    <Page title="Recuperar acesso" eyebrow="SEGURANÇA" back>
+      <Card>
+        <Text style={s.sectionTitle}>A senha não fica neste aplicativo</Text>
+        <Text style={s.muted}>
+          O Pediu entra por um login seguro de fora do aplicativo. Aqui não dá
+          para enviar um e-mail de nova senha, e nenhum aviso de “e-mail
+          enviado” será mostrado porque essa mensagem seria falsa.
+        </Text>
+        <Text style={s.muted}>
+          Se você esqueceu a senha, recupere no mesmo serviço em que criou a
+          conta e depois volte para entrar.
+        </Text>
+        <PrimaryButton
+          title={isOAuthConfigured ? "Abrir o login seguro" : "Voltar para entrar"}
+          onPress={() => {
+            if (isOAuthConfigured) void startOAuthLogin();
+            else router.replace("/login");
+          }}
+        />
+        <OutlineButton title="Voltar" onPress={() => router.back()} />
+      </Card>
+    </Page>
+  );
 }

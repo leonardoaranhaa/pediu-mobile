@@ -1,0 +1,40 @@
+# Serviço do servidor Pediu na Render.
+# O banco continua MySQL neste código. Não cole aqui a URL Postgres do Supabase.
+# O dono preenche os segredos no painel da Render. Este arquivo não contém chaves.
+services:
+  - type: web
+    name: pediu-api
+    runtime: node
+    plan: starter
+    region: ohio
+    branch: main
+    buildCommand: corepack enable && corepack prepare pnpm@9.12.0 --activate && pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "20"
+      - key: DATABASE_URL
+        sync: false
+      - key: VITE_APP_ID
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: OBSERVABILITY_TOKEN
+        sync: false
+      - key: OAUTH_SERVER_URL
+        sync: false
+      - key: OWNER_OPEN_ID
+        sync: false
+      - key: PIX_PROVIDER
+        value: manual
+      - key: MERCADO_PAGO_ACCESS_TOKEN
+        sync: false
+      - key: MERCADO_PAGO_WEBHOOK_SECRET
+        sync: false
+      - key: MERCADO_PAGO_NOTIFICATION_URL
+        sync: false

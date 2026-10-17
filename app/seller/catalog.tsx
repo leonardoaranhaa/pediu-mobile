@@ -7,7 +7,7 @@ import { Card, Field, Page, PrimaryButton, Row, s } from "@/components/pediu-pag
 
 export default function SellerCatalogPage() {
   const { user } = useAuth();
-  const store = trpc.pediu.stores.mine.useQuery(undefined, { enabled: user?.role === "merchant" });
+  const store = trpc.pediu.stores.mine.useQuery(undefined, { enabled: Boolean(user) });
   const products = trpc.pediu.products.mine.useQuery({ storeId: store.data?.id ?? 0 }, { enabled: Boolean(store.data?.id), refetchInterval: 15_000 });
   const [name, setName] = useState("");
   const [category, setCategory] = useState("Geral");

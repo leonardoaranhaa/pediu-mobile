@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
@@ -138,6 +139,10 @@ export default function HomeScreen() {
     clear: clearGlobalCart,
   } = useCart();
   const [role, setRole] = useState<"customer" | "seller">("customer");
+  const chooseMode = (next: "customer" | "seller") => {
+    setRole(next);
+    void AsyncStorage.setItem("pediu:ui-mode", next);
+  };
   const [customerTab, setCustomerTab] = useState<
     "discover" | "orders" | "profile"
   >("discover");
@@ -148,8 +153,27 @@ export default function HomeScreen() {
     useState<MascotReaction>("hungry");
   const mascotResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    setRole(user?.role === "merchant" ? "seller" : "customer");
-  }, [user?.role]);
+    if (!user?.id) {
+      setRole("customer");
+      return;
+    }
+    let active = true;
+    void AsyncStorage.getItem("pediu:ui-mode").then((stored) => {
+      if (!active) return;
+      if (stored === "seller" || stored === "customer") {
+        setRole(stored);
+        return;
+      }
+      const roles = user?.roles ?? [];
+      if (user?.role === "merchant" || roles.includes("merchant")) {
+        setRole("seller");
+        void AsyncStorage.setItem("pediu:ui-mode", "seller");
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [user?.id, user?.role, user?.roles]);
 
   const [category, setCategory] = useState("Tudo");
   const [searchQuery, setSearchQuery] = useState("");
@@ -158,7 +182,7 @@ export default function HomeScreen() {
     { staleTime: 30_000 },
   );
   const storeQuery = trpc.pediu.stores.mine.useQuery(undefined, {
-    enabled: isAuthenticated && role === "seller",
+    enabled: isAuthenticated,
   });
   const storeProductsQuery = trpc.pediu.products.mine.useQuery(
     { storeId: storeQuery.data?.id ?? 0 },
@@ -326,7 +350,7 @@ export default function HomeScreen() {
   const createStoreMutation = trpc.pediu.stores.create.useMutation({
     onSuccess: async () => {
       setShowSellerOnboarding(false);
-      setRole("seller");
+      chooseMode("seller");
       changeSellerTab("home");
       await refreshAuth();
       void storeQuery.refetch();
@@ -446,13 +470,9 @@ export default function HomeScreen() {
       requestLogin();
       return;
     }
-    if (user?.role !== "merchant") {
-      notify("Sua conta ainda não possui perfil de vendedor");
-      return;
-    }
-    setRole("seller");
+    chooseMode("seller");
     changeSellerTab("home");
-    if (!storeQuery.data) setShowSellerOnboarding(true);
+    if (storeQuery.isFetched && !storeQuery.data) setShowSellerOnboarding(true);
   };
 
   useEffect(() => {
@@ -749,14 +769,14 @@ export default function HomeScreen() {
   const handleVoiceAction = (action: string) => {
     setShowVoice(false);
     if (action === "doces") {
-      setRole("customer");
+      chooseMode("customer");
       changeCustomerTab("discover");
       setCategory("Doces");
       void notifyWithHaptic("Encontrei doces perto de você");
       return;
     }
     if (action === "pedidos") {
-      setRole("customer");
+      chooseMode("customer");
       changeCustomerTab("orders");
       return;
     }
@@ -765,24 +785,24 @@ export default function HomeScreen() {
       return;
     }
     if (action === "venda") {
-      setRole("seller");
+      chooseMode("seller");
       changeSellerTab("home");
       setShowSaleModal(true);
       return;
     }
     if (action === "fiado") {
-      setRole("seller");
+      chooseMode("seller");
       changeSellerTab("clients");
       void notifyWithHaptic("Abrindo clientes e vendas fiadas");
       return;
     }
     if (action === "catalogo") {
-      setRole("seller");
+      chooseMode("seller");
       changeSellerTab("catalog");
       return;
     }
     if (action === "divulgar") {
-      setRole("seller");
+      chooseMode("seller");
       changeSellerTab("home");
       void shareStoreCatalog();
       return;
@@ -1044,6 +1064,12 @@ export default function HomeScreen() {
                   onUpdateStatus={(orderId, status) =>
                     updateOrderStatusMutation.mutate({ orderId, status })
                   }
+                  onCallCourier={(orderId) =>
+                    router.push({
+                      pathname: "/seller/delivery",
+                      params: { orderId: String(orderId) },
+                    })
+                  }
                 />
               )}
               {sellerTab === "catalog" && (
@@ -1081,7 +1107,7 @@ export default function HomeScreen() {
                   saving={updateStoreMutation.isPending}
                   onAssistant={() => openVoiceAssistant("seller")}
                   onCustomerMode={() => {
-                    setRole("customer");
+                    chooseMode("customer");
                     changeCustomerTab("discover");
                   }}
                 />
@@ -2517,6 +2543,7 @@ function SellerHome({
 function SellerOrders({
   orders,
   onUpdateStatus,
+  onCallCourier,
 }: {
   orders: {
     id: number;
@@ -2533,26 +2560,18 @@ function SellerOrders({
       | "Aceito"
       | "Preparando"
       | "Pronto"
-      | "A caminho"
       | "Entregue"
       | "Cancelado",
   ) => void;
+  onCallCourier: (orderId: number) => void;
 }) {
   const nextStatus: Record<
     string,
-    | "Aceito"
-    | "Preparando"
-    | "Pronto"
-    | "A caminho"
-    | "Entregue"
-    | "Cancelado"
-    | undefined
+    "Aceito" | "Preparando" | "Pronto" | "Entregue" | "Cancelado" | undefined
   > = {
     Pendente: "Aceito",
     Aceito: "Preparando",
     Preparando: "Pronto",
-    Pronto: "A caminho",
-    "A caminho": "Entregue",
   };
 
   return (
@@ -2576,8 +2595,9 @@ function SellerOrders({
         </View>
       ) : (
         orders.map((order) => {
+          const delivery = order.fulfillmentMode !== "pickup";
           const next =
-            order.status === "Pronto" && order.fulfillmentMode === "pickup"
+            order.status === "Pronto" && !delivery
               ? "Entregue"
               : nextStatus[order.status];
           const actionLabel =
@@ -2588,12 +2608,8 @@ function SellerOrders({
                 : order.status === "Preparando"
                   ? "Marcar como pronto"
                   : order.status === "Pronto"
-                    ? order.fulfillmentMode === "pickup"
-                      ? "Liberar retirada"
-                      : "Enviar para entrega"
-                    : order.status === "A caminho"
-                      ? "Finalizar pedido"
-                      : order.status;
+                    ? "Liberar retirada"
+                    : order.status;
 
           return (
             <View style={styles.sellerOrderCard} key={order.id}>
@@ -2637,6 +2653,22 @@ function SellerOrders({
                     </Pressable>
                   )}
                 </View>
+              ) : order.status === "Pronto" && delivery ? (
+                <View style={styles.orderActions}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.primaryButtonSmall,
+                      pressed && styles.pressed,
+                    ]}
+                    onPress={() => onCallCourier(order.id)}
+                  >
+                    <Text style={styles.primaryButtonText}>Chamar motoboy</Text>
+                  </Pressable>
+                </View>
+              ) : order.status === "A caminho" ? (
+                <Text style={styles.muted}>
+                  O motoboy aceitou ou está na rota. A entrega é concluída por ele.
+                </Text>
               ) : (
                 <Text style={styles.muted}>Pedido encerrado.</Text>
               )}

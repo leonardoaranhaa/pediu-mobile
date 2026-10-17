@@ -54,16 +54,8 @@ const addressInputSchema = z.object({
     .string()
     .trim()
     .regex(/^\d{8}$/),
-  latitude: z
-    .string()
-    .regex(/^-?\d+(\.\d+)?$/)
-    .optional()
-    .nullable(),
-  longitude: z
-    .string()
-    .regex(/^-?\d+(\.\d+)?$/)
-    .optional()
-    .nullable(),
+  latitude: z.string().regex(/^-?\d+(\.\d+)?$/),
+  longitude: z.string().regex(/^-?\d+(\.\d+)?$/),
   isDefault: z.boolean().optional(),
 });
 
@@ -89,7 +81,14 @@ export const appRouter = router({
   system: systemRouter,
   admin: adminRouter,
   auth: router({
-    me: publicProcedure.query((opts) => opts.ctx.user),
+    me: publicProcedure.query(async (opts) => {
+      if (!opts.ctx.user) return null;
+      const roles = await db.listAccountRoles(
+        opts.ctx.user.id,
+        opts.ctx.user.role,
+      );
+      return { ...opts.ctx.user, roles };
+    }),
     confirmEmail: publicProcedure
       .input(z.object({ token: z.string().regex(/^[a-f0-9]{32,128}$/i) }))
       .mutation(async ({ input }) => ({
@@ -1016,6 +1015,19 @@ export const appRouter = router({
             (await db.getStoreForOwner(ctx.user.id))?.id === order.storeId;
           if (!isOwner && order.customerId !== ctx.user.id)
             throw new Error("Pedido não autorizado");
+          if (input.status === "A caminho") {
+            throw new Error(
+              "A caminho só começa quando o motoboy aceita a corrida e envia a posição.",
+            );
+          }
+          if (
+            input.status === "Entregue" &&
+            order.fulfillmentMode !== "pickup"
+          ) {
+            throw new Error(
+              "Quem conclui a entrega é o motoboy, depois de sair para a rota.",
+            );
+          }
           if (order.status === input.status) return { success: true as const };
           if (!isOwner) {
             if (

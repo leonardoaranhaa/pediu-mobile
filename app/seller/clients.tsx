@@ -6,7 +6,7 @@ import { Card, Field, Page, PrimaryButton, OutlineButton, Row, s } from "@/compo
 
 export default function SellerClientsPage() {
   const { user } = useAuth();
-  const clients = trpc.pediu.clients.mine.useQuery(undefined, { enabled: user?.role === "merchant" });
+  const clients = trpc.pediu.clients.mine.useQuery(undefined, { enabled: Boolean(user) });
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");

@@ -149,7 +149,7 @@ export function serviceabilityMessage(result: ServiceabilityResult): string {
     case "store_location_missing":
       return "A loja ainda não configurou sua área de entrega.";
     case "address_location_missing":
-      return "Este endereço precisa de localização para calcular a cobertura.";
+      return "Este endereço ainda não tem um ponto no mapa. Abra Meus endereços, salve de novo ou use o GPS.";
     case "outside_delivery_radius":
       return `O endereço está fora da área de entrega (${result.distanceKm} km).`;
     default:

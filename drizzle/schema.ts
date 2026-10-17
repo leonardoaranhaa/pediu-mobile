@@ -8,7 +8,16 @@ import {
   unique,
   varchar,
   index,
+  primaryKey,
 } from "drizzle-orm/mysql-core";
+
+export const accountRoleValues = [
+  "customer",
+  "merchant",
+  "courier",
+  "admin",
+] as const;
+export type AccountRole = (typeof accountRoleValues)[number];
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -26,6 +35,21 @@ export const users = mysqlTable("users", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
+
+/** Several profiles can belong to the same person. `users.role` stays as a legacy label and is not overwritten. */
+export const accountRoles = mysqlTable(
+  "pediu_account_roles",
+  {
+    userId: int("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: mysqlEnum("role", ["customer", "merchant", "courier", "admin"]).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.userId, table.role] }),
+  }),
+);
 
 export const emailVerificationTokens = mysqlTable(
   "pediu_email_verification_tokens",

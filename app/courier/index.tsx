@@ -247,6 +247,12 @@ export default function CourierHomePage() {
     return (
       <Page title="Central do entregador" eyebrow="STATUS DO CADASTRO">
         <Card>
+          <Text style={{ color: PEDIU.ink, fontSize: 28, fontWeight: "900" }}>
+            Conta #{user?.id}
+          </Text>
+          <Text style={s.muted}>
+            Guarde este número. A loja usa ele para colocar você na equipe.
+          </Text>
           <Text style={s.sectionTitle}>{statusText}</Text>
           <Text style={s.muted}>
             {profile.data.statusReason ??
@@ -296,6 +302,12 @@ export default function CourierHomePage() {
           }}
         >
           {user?.name ?? "Entregador"}
+        </Text>
+        <Text style={{ color: PEDIU.white, fontSize: 28, fontWeight: "900" }}>
+          Conta #{user?.id}
+        </Text>
+        <Text style={{ color: "#BCD0D1", marginTop: 3 }}>
+          Passe este número para a loja vincular você à equipe.
         </Text>
         <Text style={{ color: "#BCD0D1", marginTop: 3 }}>
           {vehicleLabels[approvedProfile.vehicleType]} ·{" "}

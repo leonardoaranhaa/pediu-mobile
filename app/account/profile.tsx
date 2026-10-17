@@ -167,9 +167,13 @@ export default function ProfilePage() {
       {isAuthenticated ? (
         <OutlineButton title="Sair da conta" onPress={() => void logout()} />
       ) : null}
+      <Text style={{ color: PEDIU.ink, fontSize: 22, fontWeight: "900" }}>
+        Conta #{user?.id ?? "—"}
+      </Text>
       <Text style={s.muted}>
-        O modo vendedor aparece apenas quando a conta possui perfil de
-        estabelecimento.
+        A mesma conta pode ser cliente, loja e motoboy ao mesmo tempo. O número
+        acima é o que a loja usa para chamar você para entregas. O modo vendedor
+        fica na tela inicial, em “Você também vende?”.
       </Text>
     </Page>
   );

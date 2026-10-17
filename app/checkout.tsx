@@ -391,15 +391,27 @@ export default function CheckoutScreen() {
             </View>
           ) : null}
           <Field
-            label="ENDEREÇO"
+            label="ENDEREÇO ESCOLHIDO"
             value={address}
-            onChangeText={(value) => {
-              setAddressId(undefined);
-              setAddress(value);
-            }}
-            placeholder="Rua, número, bairro e cidade"
+            onChangeText={() => undefined}
+            placeholder="Escolha um endereço salvo com ponto no mapa"
             multiline
+            editable={false}
           />
+          <Text style={s.muted}>
+            A entrega usa o endereço salvo, com um ponto no mapa. Para incluir
+            outro, abra Meus endereços e salve de novo. Digitar aqui não muda o
+            destino.
+          </Text>
+          {addresses.data?.some(
+            (saved) =>
+              saved.id === addressId && (!saved.latitude || !saved.longitude),
+          ) ? (
+            <Text style={{ color: PEDIU.coral, fontSize: 12 }}>
+              Este endereço ainda não tem um ponto no mapa. Abra Meus endereços
+              e salve de novo, ou use o GPS.
+            </Text>
+          ) : null}
           {addresses.isError ? (
             <Text style={{ color: PEDIU.coral, fontSize: 12 }}>
               {addresses.error.message}

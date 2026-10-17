@@ -196,7 +196,15 @@ export const experienceRouter = router({
       const order = await storeOwnedOrder(input.orderId, ctx.user.id);
       if (!order || order.status !== "Pronto") throw new Error("O pedido precisa estar pronto e pertencer à sua loja");
       if (order.fulfillmentMode === "pickup") throw new Error("Pedidos de retirada não passam pelo entregador");
-      return data.createDeliveryOffer({ ...input, ownerId: ctx.user.id, expiresAt: new Date(Date.now() + input.expiresInMinutes * 60_000) });
+      const offer = await data.createDeliveryOffer({ ...input, ownerId: ctx.user.id, expiresAt: new Date(Date.now() + input.expiresInMinutes * 60_000) });
+      if (offer.status === "pending") {
+        try {
+          await sendPushToUser(input.courierUserId, "Nova corrida", `A loja chamou você para o pedido #${input.orderId}. Abra a central do entregador.`, { type: "delivery", orderId: input.orderId, actionPath: "/courier" });
+        } catch (error) {
+          console.warn("[Delivery] Failed to notify courier about offer:", error);
+        }
+      }
+      return offer;
     }),
     location: protectedProcedure.input(z.object({ orderId: z.number().int().positive(), latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180), etaMinutes: z.number().int().min(0).max(240).optional(), capturedAt: z.coerce.date().optional(), idempotencyKey: z.string().trim().min(8).max(160) })).mutation(async ({ ctx, input }) => {
       const order = await data.getOrderForUser(input.orderId, ctx.user.id);
