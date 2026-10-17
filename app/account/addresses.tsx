@@ -1,8 +1,11 @@
 import { useMemo, useState } from "react";
 import { Alert, Pressable, Text, View } from "react-native";
-import { Page, Card, Field, OutlineButton, PrimaryButton, PEDIU, s } from "@/components/pediu-page";
+import { Page, Card, Field, OutlineButton, PrimaryButton, s } from "@/components/pediu-page";
+import { router } from "expo-router";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/hooks/use-auth";
+import { geocodeTypedAddress } from "@/lib/location";
+import { useAppPreferences } from "@/lib/app-preferences";
 
 type AddressForm = {
   label: string;
@@ -34,6 +37,7 @@ function formatAddress(address: { street: string; number: string; complement: st
 
 export default function AddressesPage() {
   const { isAuthenticated } = useAuth();
+  const { theme } = useAppPreferences();
   const addresses = trpc.pediu.addresses.list.useQuery(undefined, { enabled: isAuthenticated });
   const create = trpc.pediu.addresses.create.useMutation({ onSuccess: () => { setForm(EMPTY_FORM); void addresses.refetch(); } });
   const update = trpc.pediu.addresses.update.useMutation({ onSuccess: () => { setEditingId(null); setForm(EMPTY_FORM); void addresses.refetch(); } });
@@ -41,6 +45,8 @@ export default function AddressesPage() {
   const setDefault = trpc.pediu.addresses.setDefault.useMutation({ onSuccess: () => void addresses.refetch() });
   const [form, setForm] = useState<AddressForm>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [mapMessage, setMapMessage] = useState<string | null>(null);
+  const [locating, setLocating] = useState(false);
 
   const hasFormChanges = useMemo(() => Object.values(form).some((value) => value.trim().length > 0), [form]);
   const isSaving = create.isPending || update.isPending;
@@ -62,15 +68,51 @@ export default function AddressesPage() {
     });
   };
 
-  const submit = () => {
-    const payload = {
+  const submit = async () => {
+    setMapMessage(null);
+    const payloadBase = {
       ...form,
       state: form.state.toUpperCase(),
       postalCode: form.postalCode.replace(/\D/g, ""),
       complement: form.complement.trim() || null,
     };
-    if (editingId) update.mutate({ addressId: editingId, data: payload });
-    else create.mutate({ ...payload, isDefault: (addresses.data?.length ?? 0) === 0 });
+    if (payloadBase.postalCode.length !== 8 || payloadBase.state.length !== 2) {
+      setMapMessage("Informe o CEP com 8 números e a sigla do estado, por exemplo SP.");
+      return;
+    }
+    setLocating(true);
+    try {
+      const point = await geocodeTypedAddress(
+        [
+          payloadBase.street,
+          payloadBase.number,
+          payloadBase.neighborhood,
+          payloadBase.city,
+          payloadBase.state,
+          payloadBase.postalCode,
+          "Brasil",
+        ].join(", "),
+      );
+      if (!point) {
+        setMapMessage(
+          "Não achamos esse endereço no mapa. Confira rua, número e cidade, ou toque em usar minha localização para marcar o ponto.",
+        );
+        return;
+      }
+      const payload = {
+        ...payloadBase,
+        latitude: String(point.latitude),
+        longitude: String(point.longitude),
+      };
+      if (editingId) update.mutate({ addressId: editingId, data: payload });
+      else create.mutate({ ...payload, isDefault: (addresses.data?.length ?? 0) === 0 });
+    } catch {
+      setMapMessage(
+        "Não foi possível consultar o mapa agora. Tente de novo ou use minha localização.",
+      );
+    } finally {
+      setLocating(false);
+    }
   };
 
   const confirmDelete = (addressId: number) => Alert.alert("Excluir endereço", "Esse endereço será removido da sua conta.", [
@@ -98,8 +140,11 @@ export default function AddressesPage() {
         <View style={{ width: 74 }}><Field label="UF" value={form.state} onChangeText={(value) => setField("state", value.slice(0, 2))} placeholder="SP" autoCapitalize="characters" /></View>
       </View>
       <Field label="CEP" value={form.postalCode} onChangeText={(value) => setField("postalCode", value.replace(/\D/g, "").slice(0, 8))} placeholder="01001000" keyboardType="number-pad" />
-      {error ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{error.message}</Text> : null}
-      <PrimaryButton title={isSaving ? "Salvando..." : editingId ? "Salvar endereço" : "Adicionar endereço"} onPress={submit} disabled={isSaving || !hasFormChanges} />
+      <Text style={s.muted}>A entrega só funciona com um ponto no mapa. Ao salvar, o Pediu procura esse ponto. Se não achar, use o GPS.</Text>
+      {mapMessage ? <Text style={{ color: theme.primary, fontSize: 12 }}>{mapMessage}</Text> : null}
+      {error ? <Text style={{ color: theme.primary, fontSize: 12 }}>{error.message}</Text> : null}
+      <PrimaryButton title={locating ? "Procurando no mapa..." : isSaving ? "Salvando..." : editingId ? "Salvar endereço" : "Adicionar endereço"} onPress={() => void submit()} disabled={isSaving || locating || !hasFormChanges} />
+      <OutlineButton title="Usar minha localização" onPress={() => router.push("/location")} />
       {editingId ? <OutlineButton title="Cancelar edição" onPress={() => { setEditingId(null); setForm(EMPTY_FORM); }} /> : null}
     </Card>
 
@@ -107,18 +152,18 @@ export default function AddressesPage() {
       <Text style={s.sectionTitle}>Endereços salvos</Text>
       {addresses.isLoading ? <Text style={s.muted}>Carregando seus endereços...</Text> : null}
       {!addresses.isLoading && !addresses.data?.length ? <Text style={s.muted}>Você ainda não salvou um endereço.</Text> : null}
-      {(addresses.data ?? []).map((address) => <View key={address.id} style={{ gap: 9, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: PEDIU.line }}>
+      {(addresses.data ?? []).map((address) => <View key={address.id} style={{ gap: 9, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: theme.line }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Text style={{ flex: 1, color: PEDIU.ink, fontWeight: "900" }}>{address.label}</Text>
-          {address.isDefault ? <Text style={{ color: PEDIU.green, fontSize: 11, fontWeight: "900" }}>PADRÃO</Text> : null}
+          <Text style={{ flex: 1, color: theme.ink, fontWeight: "900" }}>{address.label}</Text>
+          {address.isDefault ? <Text style={{ color: theme.primary, fontSize: 11, fontWeight: "900" }}>PADRÃO</Text> : null}
         </View>
         <Text style={s.muted}>{address.recipientName}</Text>
         <Text style={s.muted}>{formatAddress(address)}</Text>
         <Text style={s.muted}>{address.neighborhood} · {address.city}/{address.state} · {address.postalCode}</Text>
         <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
           <OutlineButton title="Editar" onPress={() => startEdit(address)} />
-          {!address.isDefault ? <Pressable onPress={() => setDefault.mutate({ addressId: address.id })}><Text style={{ color: PEDIU.ink, fontWeight: "900", padding: 12 }}>Definir padrão</Text></Pressable> : null}
-          <Pressable onPress={() => confirmDelete(address.id)}><Text style={{ color: PEDIU.coral, fontWeight: "900", padding: 12 }}>Excluir</Text></Pressable>
+          {!address.isDefault ? <Pressable onPress={() => setDefault.mutate({ addressId: address.id })}><Text style={{ color: theme.ink, fontWeight: "900", padding: 12 }}>Definir padrão</Text></Pressable> : null}
+          <Pressable onPress={() => confirmDelete(address.id)}><Text style={{ color: theme.primary, fontWeight: "900", padding: 12 }}>Excluir</Text></Pressable>
         </View>
       </View>)}
     </Card>

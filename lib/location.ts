@@ -10,6 +10,19 @@ export type ResolvedLocation = {
   details: GeocodedAddressLike;
 };
 
+export async function geocodeTypedAddress(
+  query: string,
+): Promise<{ latitude: number; longitude: number } | null> {
+  const trimmed = query.trim();
+  if (trimmed.length < 8) return null;
+  const results = await Location.geocodeAsync(trimmed);
+  const first = results.find(
+    (item) => Number.isFinite(item.latitude) && Number.isFinite(item.longitude),
+  );
+  if (!first) return null;
+  return { latitude: first.latitude, longitude: first.longitude };
+}
+
 export async function resolveCurrentLocation(): Promise<ResolvedLocation> {
   const permission = await Location.requestForegroundPermissionsAsync();
   if (permission.status !== "granted") throw new Error("Permissão de localização não concedida");

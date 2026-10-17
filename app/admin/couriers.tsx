@@ -68,10 +68,16 @@ export default function AdminCouriersPage() {
               paddingVertical: 13,
             }}
           >
+            <Text style={{ color: PEDIU.ink, fontSize: 22, fontWeight: "900" }}>
+              Conta #{item.profile.userId}
+            </Text>
+            <Text style={s.muted}>
+              Este é o número que a loja digita para vincular o motoboy.
+            </Text>
             <Row
               icon="two-wheeler"
               title={item.user.name ?? `Conta #${item.profile.userId}`}
-              subtitle={`#${item.profile.userId} · ${vehicleLabels[item.profile.vehicleType]} · ${statusLabels[item.profile.status]}`}
+              subtitle={`${vehicleLabels[item.profile.vehicleType]} · ${statusLabels[item.profile.status]}`}
               right={
                 <Text
                   style={{

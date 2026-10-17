@@ -9,6 +9,7 @@ export type User = {
   email: string | null;
   loginMethod: string | null;
   role?: "user" | "merchant" | "courier" | "admin";
+  roles?: Array<"customer" | "merchant" | "courier" | "admin">;
   themePreference?: "classic" | "ocean" | "sunset";
   lastSignedIn: Date;
 };

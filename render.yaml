@@ -1,0 +1,41 @@
+# Servidor do Pediu na Render, plano gratuito.
+# Uma instância só. Ela desliga depois de cerca de 15 minutos sem visita.
+# O banco é o Postgres do Supabase. Cole a connection string no painel.
+# Este arquivo não contém senhas.
+services:
+  - type: web
+    name: pediu-api
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: corepack enable && corepack prepare pnpm@9.12.0 --activate && pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "20"
+      - key: DATABASE_URL
+        sync: false
+      - key: VITE_APP_ID
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: OBSERVABILITY_TOKEN
+        sync: false
+      - key: OAUTH_SERVER_URL
+        sync: false
+      - key: OWNER_OPEN_ID
+        sync: false
+      - key: PIX_PROVIDER
+        value: manual
+      - key: MERCADO_PAGO_ACCESS_TOKEN
+        sync: false
+      - key: MERCADO_PAGO_WEBHOOK_SECRET
+        sync: false
+      - key: MERCADO_PAGO_NOTIFICATION_URL
+        sync: false

@@ -8,7 +8,7 @@ import { ThemePicker } from "@/components/theme-picker";
 
 export default function SellerSettingsPage() {
   const { user } = useAuth();
-  const store = trpc.pediu.stores.mine.useQuery(undefined, { enabled: user?.role === "merchant" });
+  const store = trpc.pediu.stores.mine.useQuery(undefined, { enabled: Boolean(user) });
   const update = trpc.pediu.stores.update.useMutation({ onSuccess: () => void store.refetch() });
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");

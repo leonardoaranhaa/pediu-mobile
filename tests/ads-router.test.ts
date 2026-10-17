@@ -31,6 +31,10 @@ const store = {
   latitude: null,
   longitude: null,
   isOpen: 1,
+  kind: "restaurant" as const,
+  flashEnabled: 0,
+  flashEtaMaxMinutes: 30,
+  flashFeeOverride: null,
   createdAt: new Date(),
 };
 
@@ -41,6 +45,8 @@ const product = {
   category: "Doces",
   description: "Bolo caseiro com cobertura de chocolate",
   price: "18.00",
+  saleUnit: "unit" as const,
+  packSize: null,
   available: 1,
   inventoryTracked: 0,
   stockQuantity: 0,

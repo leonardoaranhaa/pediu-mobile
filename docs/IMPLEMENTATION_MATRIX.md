@@ -4,7 +4,7 @@ Legenda: `OK` = existe de forma funcional/estrutural; `PARCIAL` = existe, mas pr
 
 | Área | Requisito | Estado atual | Próxima implementação |
 |---|---|---:|---|
-| Entrada | Onboarding 3 telas | FALTA | criar fluxo persistente de primeiro acesso |
+| Entrada | Onboarding 4 telas | OK/PARCIAL | gate persistente de primeiro acesso adicionado; validar em Android/iOS e manter skip seguro |
 | Entrada | Login/cadastro | PARCIAL | OAuth seguro implementado; falta configurar provedor |
 | Entrada | MFA SMS/WhatsApp | FALTA/BLOQUEADO | abstração OTP + provedor externo |
 | Entrada | Recuperação de senha | FALTA/BLOQUEADO | fluxo do provedor de autenticação |

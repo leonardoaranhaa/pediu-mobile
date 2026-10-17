@@ -18,10 +18,10 @@ export default function LoginScreen() {
     </View>
     <Card>
       <Text style={s.sectionTitle}>Login seguro</Text>
-      <Text style={s.muted}>Entre com a autenticação segura do Pediu. Depois do acesso, você volta para o fluxo que estava usando.</Text>
-      <PrimaryButton title={loginAvailable ? "Entrar com login seguro" : "Login indisponível no preview"} onPress={() => void startOAuthLogin()} disabled={!loginAvailable} />
+      <Text style={s.muted}>Entre com Google pelo portal seguro. Se esta for sua primeira vez, o Pediu cria sua conta no servidor; nos próximos acessos, a mesma conta é reutilizada.</Text>
+      <PrimaryButton title={loginAvailable ? "Entrar ou criar com Google" : "Login indisponível no preview"} onPress={() => void startOAuthLogin()} disabled={!loginAvailable} />
       <OutlineButton title="Criar uma conta" onPress={() => router.push("/register")} />
-      {!loginAvailable ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>O provedor de autenticação ainda não foi configurado neste ambiente.</Text> : null}
+      {!loginAvailable ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>O login seguro não está disponível agora. Tente novamente mais tarde.</Text> : null}
     </Card>
     <View style={{ backgroundColor: PEDIU.coralSoft, borderRadius: 18, padding: 15, flexDirection: "row", gap: 10 }}>
       <MaterialIcons name="lock" size={19} color={PEDIU.coral} />

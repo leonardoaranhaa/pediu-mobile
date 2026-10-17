@@ -54,9 +54,9 @@ function insertId(result: any): number {
 }
 
 async function main() {
-  const mysql = await import("mysql2/promise");
+  const { createConnection } = await import("./pg-client");
   const { sdk } = await import("../server/_core/sdk");
-  const connection = await mysql.createConnection(databaseUrl);
+  const connection = await createConnection(databaseUrl);
   const runId = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
   const customerOpenId = `ci-dispatch-customer-${runId}`;
   const merchantOpenId = `ci-dispatch-merchant-${runId}`;

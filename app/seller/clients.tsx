@@ -6,18 +6,18 @@ import { Card, Field, Page, PrimaryButton, OutlineButton, Row, s } from "@/compo
 
 export default function SellerClientsPage() {
   const { user } = useAuth();
-  const clients = trpc.pediu.clients.mine.useQuery(undefined, { enabled: user?.role === "merchant" });
+  const clients = trpc.pediu.clients.mine.useQuery(undefined, { enabled: Boolean(user) });
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [creditLimit, setCreditLimit] = useState("0.00");
+  const [creditLimit, setCreditLimit] = useState("");
   const [selectedId, setSelectedId] = useState<number>();
   const [selectedLimit, setSelectedLimit] = useState("");
   const create = trpc.pediu.clients.create.useMutation({
     onSuccess: () => {
       setName("");
       setPhone("");
-      setCreditLimit("0.00");
+      setCreditLimit("");
       setShowForm(false);
       void clients.refetch();
     },
@@ -37,7 +37,16 @@ export default function SellerClientsPage() {
       <Card>
         <Text style={s.sectionTitle}>Saldo em aberto</Text>
         <Text style={{ color: "#FF8A3D", fontSize: 28, fontWeight: "900" }}>R$ {totalOwed.toFixed(2).replace(".", ",")}</Text>
-        <Text style={s.muted}>Calculado a partir dos lançamentos persistidos da sua loja.</Text>
+        <Text style={s.muted}>Somatório dos saldos dos clientes, calculado a partir dos lançamentos persistidos da sua loja.</Text>
+      </Card>
+      <Card>
+        <Text style={s.sectionTitle}>Como funciona o fiado</Text>
+        <Text style={s.muted}>
+          O limite é definido pela loja para cada cliente. O saldo em aberto reduz o valor disponível; bloquear o cadastro impede novas vendas nessa conta até você liberar novamente.
+        </Text>
+        <Text style={s.muted}>
+          Combine o prazo de pagamento diretamente com o cliente e registre cada baixa no controle financeiro da loja.
+        </Text>
       </Card>
       <Card>
         <OutlineButton title={showForm ? "Fechar cadastro" : "Cadastrar cliente"} onPress={() => setShowForm((value) => !value)} />
@@ -45,7 +54,7 @@ export default function SellerClientsPage() {
           <View style={{ gap: 10 }}>
             <Field label="NOME" value={name} onChangeText={setName} placeholder="Nome completo" />
             <Field label="TELEFONE" value={phone} onChangeText={setPhone} placeholder="(11) 99999-9999" keyboardType="phone-pad" />
-            <Field label="LIMITE DE FIADO" value={creditLimit} onChangeText={setCreditLimit} placeholder="0.00" keyboardType="decimal-pad" />
+            <Field label="LIMITE DE FIADO (R$)" value={creditLimit} onChangeText={setCreditLimit} placeholder="Ex.: 200,00" keyboardType="decimal-pad" />
             <PrimaryButton title={create.isPending ? "Salvando..." : "Salvar cliente"} disabled={create.isPending} onPress={createCustomer} />
             {create.error ? <Text style={{ color: "#FF5A4F", fontSize: 12 }}>{create.error.message}</Text> : null}
           </View>
@@ -64,10 +73,10 @@ export default function SellerClientsPage() {
           };
           return (
             <View key={customer.id} style={{ gap: 8 }}>
-              <Row icon="person" title={customer.name} subtitle={`${blocked ? "Bloqueado" : "Ativo"} · Saldo R$ ${Number(customer.balance).toFixed(2).replace(".", ",")} · Limite R$ ${Number(customer.creditLimit).toFixed(2).replace(".", ",")}`} onPress={() => { setSelectedId(selected ? undefined : customer.id); setSelectedLimit(Number(customer.creditLimit).toFixed(2)); }} />
+              <Row icon="person" title={customer.name} subtitle={`${blocked ? "Bloqueado" : "Ativo"} · Saldo R$ ${Number(customer.balance).toFixed(2).replace(".", ",")} · Disponível R$ ${Math.max(0, Number(customer.creditLimit) - Number(customer.balance)).toFixed(2).replace(".", ",")}`} onPress={() => { setSelectedId(selected ? undefined : customer.id); setSelectedLimit(Number(customer.creditLimit).toFixed(2)); }} />
               {selected ? (
                 <View style={{ gap: 8, paddingLeft: 48 }}>
-                  <Field label="NOVO LIMITE" value={selectedLimit} onChangeText={setSelectedLimit} placeholder="0.00" keyboardType="decimal-pad" />
+                  <Field label="NOVO LIMITE (R$)" value={selectedLimit} onChangeText={setSelectedLimit} placeholder="Ex.: 300,00" keyboardType="decimal-pad" />
                   <PrimaryButton title={setLimit.isPending ? "Salvando..." : "Atualizar limite"} disabled={setLimit.isPending} onPress={updateLimit} />
                   <OutlineButton title={block.isPending ? "Atualizando..." : blocked ? "Desbloquear cliente" : "Bloquear cliente"} disabled={block.isPending} onPress={() => block.mutate({ customerId: customer.id, blocked: !blocked })} />
                 </View>

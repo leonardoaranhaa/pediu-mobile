@@ -239,15 +239,17 @@ function formatChecks(checks: ReadinessCheck[]) {
 }
 
 async function inspectDatabase(databaseUrl: string) {
-  const mysql = await import("mysql2/promise");
-  const connection = await mysql.createConnection(databaseUrl);
+  const { createConnection } = await import("./pg-client");
+  const connection = await createConnection(databaseUrl);
   try {
-    const [tables] = await connection.query("SHOW TABLES");
+    const [tables] = await connection.query(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'",
+    );
     const tableNames = (tables as Array<Record<string, unknown>>).map((row) =>
       String(Object.values(row)[0] ?? ""),
     );
     const [journal] = await connection.query(
-      "SELECT COUNT(*) AS count FROM __drizzle_migrations",
+      'SELECT COUNT(*) AS count FROM drizzle.__drizzle_migrations',
     );
     const migrationCount = Number(
       (journal as Array<{ count?: number | string }>)[0]?.count ?? 0,
