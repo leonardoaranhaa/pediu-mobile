@@ -32,6 +32,29 @@ export function adaptSql(sql: string): string {
 
 type Header = { insertId?: number; affectedRows: number };
 
+function expandArrayPlaceholders(statement: string, params: unknown[]) {
+  const values: unknown[] = [];
+  let index = 0;
+  const text = statement.replace(/\?/g, () => {
+    const value = params[index++];
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        values.push(null);
+        return "NULL";
+      }
+      return value
+        .map((item) => {
+          values.push(item);
+          return "?";
+        })
+        .join(", ");
+    }
+    values.push(value);
+    return "?";
+  });
+  return { text, values };
+}
+
 export async function createConnection(databaseUrl: string) {
   const options = postgresConnectionOptions(databaseUrl);
   const sql = postgres(options.url, {
@@ -42,10 +65,15 @@ export async function createConnection(databaseUrl: string) {
   });
 
   async function run(statement: string, params: unknown[] = []) {
-    const text = adaptSql(statement);
-    const rows = await sql.unsafe(text, params as never[]);
+    const expanded = expandArrayPlaceholders(statement, params);
+    const text = adaptSql(expanded.text);
+    const rows = await sql.unsafe(text, expanded.values as never[]);
     const command = /^\s*(\w+)/.exec(statement)?.[1]?.toLowerCase();
-    if (command === "select" || command === "with") return [rows];
+    if (command === "select" || command === "with") {
+      // postgres.js returns a Result (an Array subclass). Strict equality
+      // checks the prototype, so go-live scripts need a plain array of rows.
+      return [rows.map((row) => ({ ...row }))];
+    }
     const header: Header = {
       affectedRows: rows.count ?? rows.length,
     };

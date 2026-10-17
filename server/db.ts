@@ -3,6 +3,7 @@ import {
   desc,
   eq,
   gt,
+  gte,
   inArray,
   isNull,
   lte,
@@ -1837,7 +1838,7 @@ export async function searchAvailableProducts(
         ? and(
             isNull(generatedAds.id),
             or(
-              sql`${products.createdAt} < ${cursorCreatedAt}`,
+              sql`${products.createdAt} < ${cursorCreatedAt.toISOString()}`,
               and(
                 eq(products.createdAt, cursorCreatedAt),
                 sql`${products.id} < ${cursor.productId}`,
@@ -1850,7 +1851,7 @@ export async function searchAvailableProducts(
             and(
               eq(generatedAds.id, cursor.adId),
               or(
-                sql`${products.createdAt} < ${cursorCreatedAt}`,
+                sql`${products.createdAt} < ${cursorCreatedAt.toISOString()}`,
                 and(
                   eq(products.createdAt, cursorCreatedAt),
                   sql`${products.id} < ${cursor.productId}`,
@@ -3714,26 +3715,44 @@ export async function applyPaymentWebhook(input: {
         const providerTransactionId =
           input.transactionId ?? payment.transactionId ?? null;
         const transactionIdempotencyKey = `webhook:${input.provider}:${input.providerEventId}`;
-        await tx
-          .insert(paymentTransactions)
-          .values({
-            paymentId: payment.id,
-            provider: input.provider,
-            providerTransactionId,
-            status: "paid",
-            amount: order.total,
-            currency,
-            idempotencyKey: transactionIdempotencyKey,
-          })
-          .onConflictDoUpdate({
-            target: [paymentTransactions.provider, paymentTransactions.idempotencyKey],
-            set: {
-              paymentId: payment.id,
-              status: "paid",
-              amount: order.total,
-              currency,
-            },
-          });
+        const paidTransaction = {
+          paymentId: payment.id,
+          provider: input.provider,
+          providerTransactionId,
+          status: "paid" as const,
+          amount: order.total,
+          currency,
+          idempotencyKey: transactionIdempotencyKey,
+        };
+        const paidTransactionUpdate = {
+          paymentId: payment.id,
+          status: "paid" as const,
+          amount: order.total,
+          currency,
+        };
+        if (providerTransactionId) {
+          await tx
+            .insert(paymentTransactions)
+            .values(paidTransaction)
+            .onConflictDoUpdate({
+              target: [
+                paymentTransactions.provider,
+                paymentTransactions.providerTransactionId,
+              ],
+              set: paidTransactionUpdate,
+            });
+        } else {
+          await tx
+            .insert(paymentTransactions)
+            .values(paidTransaction)
+            .onConflictDoUpdate({
+              target: [
+                paymentTransactions.provider,
+                paymentTransactions.idempotencyKey,
+              ],
+              set: paidTransactionUpdate,
+            });
+        }
 
         const commissionRows = await tx
           .select()
@@ -4145,8 +4164,8 @@ export async function reconcilePaymentRecords(input: {
       .where(
         and(
           eq(paymentTransactions.provider, input.provider),
-          sql`${paymentTransactions.createdAt} >= ${input.periodStart}`,
-          sql`${paymentTransactions.createdAt} <= ${input.periodEnd}`,
+          gte(paymentTransactions.createdAt, input.periodStart),
+          lte(paymentTransactions.createdAt, input.periodEnd),
         ),
       )
       .limit(500);

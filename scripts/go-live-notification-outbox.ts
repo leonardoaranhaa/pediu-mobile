@@ -60,7 +60,11 @@ async function main() {
       }),
     });
     notificationIds.push(first.notificationId);
-    const firstAttempt = await worker.processOneNotificationOutboxItem();
+    const firstAttempt = await processThisOutboxItem(
+      connection,
+      worker,
+      first.outboxId,
+    );
     assert.equal(firstAttempt, true);
     const [failedRows] = await connection.execute(
       "SELECT status, attemptCount, lastError FROM pediu_notification_outbox WHERE id = ?",
@@ -75,7 +79,11 @@ async function main() {
       "UPDATE pediu_notification_outbox SET availableAt = NOW() WHERE id = ?",
       [first.outboxId],
     );
-    const secondAttempt = await worker.processOneNotificationOutboxItem();
+    const secondAttempt = await processThisOutboxItem(
+      connection,
+      worker,
+      first.outboxId,
+    );
     assert.equal(secondAttempt, true);
     const [sentRows] = await connection.execute(
       "SELECT status, attemptCount, sentAt FROM pediu_notification_outbox WHERE id = ?",
@@ -104,7 +112,7 @@ async function main() {
       }),
     });
     notificationIds.push(skipped.notificationId);
-    await worker.processOneNotificationOutboxItem();
+    await processThisOutboxItem(connection, worker, skipped.outboxId);
     const [skippedRows] = await connection.execute(
       "SELECT status, attemptCount, lastError FROM pediu_notification_outbox WHERE id = ?",
       [skipped.outboxId],
@@ -155,6 +163,40 @@ async function main() {
     await connection.end();
     await new Promise<void>((resolve) => pushMock.close(() => resolve()));
   }
+}
+
+async function processThisOutboxItem(
+  connection: {
+    execute: (statement: string, params?: unknown[]) => Promise<any>;
+  },
+  worker: {
+    processOneNotificationOutboxItem: () => Promise<boolean>;
+  },
+  outboxId: number,
+) {
+  const processed = await worker.processOneNotificationOutboxItem();
+  if (processed) return true;
+  const [rows] = await connection.execute(
+    "SELECT status, lastError, availableAt FROM pediu_notification_outbox WHERE id = ?",
+    [outboxId],
+  );
+  const row = (rows as Array<{
+    status?: string;
+    lastError?: string | null;
+    availableAt?: Date | string | null;
+  }>)[0];
+  if (!row) return false;
+  const availableAt = row.availableAt ? new Date(row.availableAt).getTime() : 0;
+  const takenByOtherWorker =
+    row.status !== "pending" ||
+    Boolean(row.lastError) ||
+    availableAt > Date.now() + 1000;
+  if (!takenByOtherWorker) return false;
+  await connection.execute(
+    "UPDATE pediu_notification_outbox SET status = 'pending', attemptCount = 0, lastError = NULL, lockedAt = NULL, availableAt = NOW() WHERE id = ?",
+    [outboxId],
+  );
+  return worker.processOneNotificationOutboxItem();
 }
 
 main()
