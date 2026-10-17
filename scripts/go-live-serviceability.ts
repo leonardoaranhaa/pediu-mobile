@@ -70,8 +70,8 @@ async function expectFailure(action: () => Promise<unknown>, fragment: string) {
 }
 
 async function main() {
-  const mysql = await import("mysql2/promise");
-  const connection = await mysql.createConnection(databaseUrl);
+  const { createConnection } = await import("./pg-client");
+  const connection = await createConnection(databaseUrl);
   const runId = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
   const customerOpenId = `ci-serviceability-customer-${runId}`;
   const merchantOpenId = `ci-serviceability-merchant-${runId}`;

@@ -1,12 +1,13 @@
-# Serviço do servidor Pediu na Render.
-# O banco continua MySQL neste código. Não cole aqui a URL Postgres do Supabase.
-# O dono preenche os segredos no painel da Render. Este arquivo não contém chaves.
+# Servidor do Pediu na Render, plano gratuito.
+# Uma instância só. Ela desliga depois de cerca de 15 minutos sem visita.
+# O banco é o Postgres do Supabase. Cole a connection string no painel.
+# Este arquivo não contém senhas.
 services:
   - type: web
     name: pediu-api
     runtime: node
-    plan: starter
-    region: ohio
+    plan: free
+    region: oregon
     branch: main
     buildCommand: corepack enable && corepack prepare pnpm@9.12.0 --activate && pnpm install --frozen-lockfile && pnpm build
     startCommand: pnpm start

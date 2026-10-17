@@ -8,23 +8,24 @@ on:
   workflow_dispatch:
 
 jobs:
-  mysql-and-api-smoke:
+  postgres-and-api-smoke:
     runs-on: ubuntu-latest
     services:
-      mysql:
-        image: mysql:8.0
+      postgres:
+        image: postgres:16
         env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: pediu_test
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: pediu_test
         ports:
-          - 3306:3306
+          - 5432:5432
         options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-cmd="pg_isready -U postgres -d pediu_test"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=20
     env:
-      DATABASE_URL: mysql://root:root@127.0.0.1:3306/pediu_test
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/pediu_test
       NODE_ENV: test
       PORT: 3000
       VITE_APP_ID: ci-e2e-app
@@ -47,10 +48,12 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Wait for MySQL
+      - name: Install Postgres client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Wait for Postgres
         run: |
           for i in {1..30}; do
-            if mysqladmin ping -h 127.0.0.1 -P 3306 -uroot -proot --silent; then
+            if pg_isready -h 127.0.0.1 -p 5432 -U postgres -d pediu_test; then
               exit 0
             fi
             sleep 2
@@ -61,12 +64,12 @@ jobs:
         run: pnpm exec drizzle-kit migrate
       - name: Verify migrated schema
         run: |
-          node - <<'NODE'
-          const mysql = require('mysql2/promise');
-          (async () => {
-            const c = await mysql.createConnection(process.env.DATABASE_URL);
-            const [tables] = await c.query('SHOW TABLES');
-            const names = tables.map(row => Object.values(row)[0]);
+          node --input-type=module - <<'NODE'
+          import postgres from 'postgres';
+          const sql = postgres(process.env.DATABASE_URL, { max: 1 });
+          try {
+            const tables = await sql`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`;
+            const names = tables.map(row => row.table_name);
             const required = [
               'users',
               'pediu_stores',
@@ -90,45 +93,49 @@ jobs:
             ];
             const missing = required.filter(name => !names.includes(name));
             if (missing.length) throw new Error(`Missing migrated tables: ${missing.join(', ')}`);
-            const [paymentColumns] = await c.query('SHOW COLUMNS FROM pediu_payment_transactions');
-            const paymentColumnNames = paymentColumns.map(row => row.Field);
+            const paymentColumns = await sql`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'pediu_payment_transactions'`;
+            const paymentColumnNames = paymentColumns.map(row => row.column_name);
             const requiredPaymentColumns = ['externalReference', 'qrCode', 'qrCodeBase64', 'ticketUrl'];
             const missingPaymentColumns = requiredPaymentColumns.filter(name => !paymentColumnNames.includes(name));
             if (missingPaymentColumns.length) throw new Error(`Missing payment columns: ${missingPaymentColumns.join(', ')}`);
-            const [refundColumns] = await c.query('SHOW COLUMNS FROM pediu_refunds');
-            const refundColumnNames = refundColumns.map(row => row.Field);
+            const refundColumns = await sql`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'pediu_refunds'`;
+            const refundColumnNames = refundColumns.map(row => row.column_name);
             const requiredRefundColumns = ['idempotencyKey', 'currency'];
             const missingRefundColumns = requiredRefundColumns.filter(name => !refundColumnNames.includes(name));
             if (missingRefundColumns.length) throw new Error(`Missing refund columns: ${missingRefundColumns.join(', ')}`);
-            const [productColumns] = await c.query('SHOW COLUMNS FROM pediu_products');
-            const productColumnNames = productColumns.map(row => row.Field);
+            const productColumns = await sql`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'pediu_products'`;
+            const productColumnNames = productColumns.map(row => row.column_name);
             const requiredProductColumns = ['inventoryTracked', 'stockQuantity', 'reservedQuantity'];
             const missingProductColumns = requiredProductColumns.filter(name => !productColumnNames.includes(name));
             if (missingProductColumns.length) throw new Error(`Missing inventory columns: ${missingProductColumns.join(', ')}`);
-            const [storeColumns] = await c.query('SHOW COLUMNS FROM pediu_stores');
-            const storeColumnNames = storeColumns.map(row => row.Field);
+            const storeColumns = await sql`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'pediu_stores'`;
+            const storeColumnNames = storeColumns.map(row => row.column_name);
             const requiredStoreColumns = ['deliveryEnabled', 'pickupEnabled', 'deliveryRadiusKm', 'latitude', 'longitude'];
             const missingStoreColumns = requiredStoreColumns.filter(name => !storeColumnNames.includes(name));
             if (missingStoreColumns.length) throw new Error(`Missing serviceability store columns: ${missingStoreColumns.join(', ')}`);
-            const [orderColumns] = await c.query('SHOW COLUMNS FROM pediu_orders');
-            const orderColumnNames = orderColumns.map(row => row.Field);
+            const orderColumns = await sql`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'pediu_orders'`;
+            const orderColumnNames = orderColumns.map(row => row.column_name);
             const requiredOrderColumns = ['fulfillmentMode', 'deliveryFeeSnapshot'];
             const missingOrderColumns = requiredOrderColumns.filter(name => !orderColumnNames.includes(name));
             if (missingOrderColumns.length) throw new Error(`Missing fulfillment order columns: ${missingOrderColumns.join(', ')}`);
-            const [locationColumns] = await c.query('SHOW COLUMNS FROM pediu_delivery_locations');
-            const locationColumnNames = locationColumns.map(row => row.Field);
+            const locationColumns = await sql`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'pediu_delivery_locations'`;
+            const locationColumnNames = locationColumns.map(row => row.column_name);
             if (!locationColumnNames.includes('capturedAt')) throw new Error('Missing tracking capturedAt column');
-            const [journal] = await c.query('SELECT COUNT(*) AS count FROM __drizzle_migrations');
+            const journal = await sql`SELECT COUNT(*) AS count FROM drizzle.__drizzle_migrations`;
             if (Number(journal[0].count) < 1) throw new Error('Drizzle migration journal is empty');
             console.log(`Migration smoke test OK: ${journal[0].count} migration(s), ${names.length} Pediu table(s)`);
-            await c.end();
-          })().catch(error => { console.error(error); process.exit(1); });
+            await sql.end();
+          } catch (error) {
+            console.error(error);
+            try { await sql.end(); } catch {}
+            process.exit(1);
+          }
           NODE
       - name: Run Go-Live backup and restore smoke
         run: BACKUP_RESTORE_REQUIRED=1 pnpm go-live:backup-restore
       - name: Validate database connectivity
         run: |
-          node -e "const mysql=require('mysql2/promise'); mysql.createConnection(process.env.DATABASE_URL).then(async c=>{const [r]=await c.query('SELECT 1 AS ok'); if(r[0].ok!==1) process.exit(1); await c.end(); console.log('MySQL operational')}).catch(e=>{console.error(e); process.exit(1)})"
+          node --input-type=module -e 'import postgres from "postgres"; const sql=postgres(process.env.DATABASE_URL,{max:1}); const rows=await sql.unsafe("SELECT 1 AS ok"); if(Number(rows[0].ok)!==1) process.exit(1); await sql.end(); console.log("Postgres operational");'
       - name: Start Mercado Pago test API
         run: |
           pnpm exec tsx scripts/mercado-pago-api-mock.ts > /tmp/mercado-pago-mock.log 2>&1 &

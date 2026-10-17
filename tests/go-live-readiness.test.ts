@@ -8,7 +8,7 @@ const baseEnv = {
   NODE_ENV: "test",
   VITE_APP_ID: "pediu-test",
   JWT_SECRET: "secret-value",
-  DATABASE_URL: "mysql://user:password@localhost:3306/pediu_test",
+  DATABASE_URL: "postgresql://user:password@localhost:5432/pediu_test",
   ALLOWED_ORIGINS: "http://localhost:8081",
   PIX_PROVIDER: "mercado_pago",
   MERCADO_PAGO_ACCESS_TOKEN: "mp-access-secret",

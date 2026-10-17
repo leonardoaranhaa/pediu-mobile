@@ -45,7 +45,7 @@ Exemplo mínimo para desenvolvimento:
 
 ```bash
 export NODE_ENV=development
-export DATABASE_URL='mysql://usuario:senha@127.0.0.1:3306/pediu'
+export DATABASE_URL='postgresql://usuario:senha@127.0.0.1:5432/pediu'
 export VITE_APP_ID='app-id-do-ambiente'
 export JWT_SECRET='segredo-local-apenas-para-desenvolvimento'
 export ALLOWED_ORIGINS='http://localhost:8081'
@@ -68,7 +68,7 @@ Variáveis com prefixo `EXPO_PUBLIC_` são incorporadas ao cliente. Não coloque
 As migrations comprometidas estão em `drizzle/`. Para aplicar somente o histórico já versionado em um banco existente, use:
 
 ```bash
-DATABASE_URL='mysql://usuario:senha@127.0.0.1:3306/pediu' pnpm exec drizzle-kit migrate
+DATABASE_URL='postgresql://usuario:senha@127.0.0.1:5432/pediu' pnpm exec drizzle-kit migrate
 ```
 
 O comando `pnpm db:push` executa a geração de migration e a aplicação. Use-o apenas quando uma alteração intencional de schema tiver sido revisada, pois ele pode criar novos arquivos no histórico. O CI aplica as migrations comprometidas em um banco MySQL limpo e verifica as tabelas essenciais.

@@ -27,8 +27,8 @@ function insertId(result: any): number {
 }
 
 async function main() {
-  const mysql = await import("mysql2/promise");
-  const connection = await mysql.createConnection(databaseUrl);
+  const { createConnection } = await import("./pg-client");
+  const connection = await createConnection(databaseUrl);
   const runId = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
   const openId = `ci-rate-limit-${runId}`;
   const directBucketKey = `ci-rate-limit-direct-${runId}`;

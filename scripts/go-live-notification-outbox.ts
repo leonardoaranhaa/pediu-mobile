@@ -7,10 +7,10 @@ if (!databaseUrl)
   throw new Error("DATABASE_URL is required for notification outbox smoke.");
 
 async function main() {
-  const mysql = await import("mysql2/promise");
+  const { createConnection } = await import("./pg-client");
   const db = await import("../server/db");
   const worker = await import("../server/notification-outbox-worker");
-  const connection = await mysql.createConnection(databaseUrl);
+  const connection = await createConnection(databaseUrl);
   const runId = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
   const openId = `ci-notification-outbox-${runId}`;
   let userId: number | undefined;

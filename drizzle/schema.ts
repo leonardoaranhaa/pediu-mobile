@@ -1,15 +1,15 @@
 import {
-  decimal,
-  int,
-  mysqlEnum,
-  mysqlTable,
+  index,
+  integer,
+  numeric,
+  pgTable,
+  primaryKey,
+  serial,
   text,
   timestamp,
   unique,
   varchar,
-  index,
-  primaryKey,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 
 export const accountRoleValues = [
   "customer",
@@ -19,31 +19,31 @@ export const accountRoleValues = [
 ] as const;
 export type AccountRole = (typeof accountRoleValues)[number];
 
-export const users = mysqlTable("users", {
-  id: int("id").autoincrement().primaryKey(),
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "merchant", "courier", "admin"])
+  role: varchar("role", { length: 32 }).$type<"user" | "merchant" | "courier" | "admin">()
     .default("user")
     .notNull(),
   themePreference: varchar("themePreference", { length: 16 })
     .default("classic")
     .notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
 /** Several profiles can belong to the same person. `users.role` stays as a legacy label and is not overwritten. */
-export const accountRoles = mysqlTable(
+export const accountRoles = pgTable(
   "pediu_account_roles",
   {
-    userId: int("userId")
+    userId: integer("userId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    role: mysqlEnum("role", ["customer", "merchant", "courier", "admin"]).notNull(),
+    role: varchar("role", { length: 32 }).$type<"customer" | "merchant" | "courier" | "admin">().notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (table) => ({
@@ -51,11 +51,11 @@ export const accountRoles = mysqlTable(
   }),
 );
 
-export const emailVerificationTokens = mysqlTable(
+export const emailVerificationTokens = pgTable(
   "pediu_email_verification_tokens",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId")
+    id: serial("id").primaryKey(),
+    userId: integer("userId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     email: varchar("email", { length: 320 }).notNull(),
@@ -72,31 +72,31 @@ export const emailVerificationTokens = mysqlTable(
   }),
 );
 
-export const stores = mysqlTable(
+export const stores = pgTable(
   "pediu_stores",
   {
-    id: int("id").autoincrement().primaryKey(),
-    ownerId: int("ownerId")
+    id: serial("id").primaryKey(),
+    ownerId: integer("ownerId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 160 }).notNull(),
     phone: varchar("phone", { length: 32 }),
     address: varchar("address", { length: 255 }),
     pixKey: varchar("pixKey", { length: 255 }),
-    deliveryFee: decimal("deliveryFee", { precision: 10, scale: 2 })
+    deliveryFee: numeric("deliveryFee", { precision: 10, scale: 2 })
       .default("0.00")
       .notNull(),
-    deliveryEnabled: int("deliveryEnabled").default(1).notNull(),
-    pickupEnabled: int("pickupEnabled").default(0).notNull(),
-    deliveryRadiusKm: decimal("deliveryRadiusKm", {
+    deliveryEnabled: integer("deliveryEnabled").default(1).notNull(),
+    pickupEnabled: integer("pickupEnabled").default(0).notNull(),
+    deliveryRadiusKm: numeric("deliveryRadiusKm", {
       precision: 6,
       scale: 2,
     })
       .default("10.00")
       .notNull(),
-    latitude: decimal("latitude", { precision: 10, scale: 7 }),
-    longitude: decimal("longitude", { precision: 10, scale: 7 }),
-    isOpen: int("isOpen").default(1).notNull(),
+    latitude: numeric("latitude", { precision: 10, scale: 7 }),
+    longitude: numeric("longitude", { precision: 10, scale: 7 }),
+    isOpen: integer("isOpen").default(1).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (table) => ({
@@ -105,21 +105,21 @@ export const stores = mysqlTable(
   }),
 );
 
-export const products = mysqlTable(
+export const products = pgTable(
   "pediu_products",
   {
-    id: int("id").autoincrement().primaryKey(),
-    storeId: int("storeId")
+    id: serial("id").primaryKey(),
+    storeId: integer("storeId")
       .notNull()
       .references(() => stores.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 180 }).notNull(),
     category: varchar("category", { length: 80 }).notNull(),
     description: text("description"),
-    price: decimal("price", { precision: 10, scale: 2 }).notNull(),
-    available: int("available").default(1).notNull(),
-    inventoryTracked: int("inventoryTracked").default(0).notNull(),
-    stockQuantity: int("stockQuantity").default(0).notNull(),
-    reservedQuantity: int("reservedQuantity").default(0).notNull(),
+    price: numeric("price", { precision: 10, scale: 2 }).notNull(),
+    available: integer("available").default(1).notNull(),
+    inventoryTracked: integer("inventoryTracked").default(0).notNull(),
+    stockQuantity: integer("stockQuantity").default(0).notNull(),
+    reservedQuantity: integer("reservedQuantity").default(0).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (table) => ({
@@ -131,37 +131,29 @@ export const products = mysqlTable(
   }),
 );
 
-export const orders = mysqlTable(
+export const orders = pgTable(
   "pediu_orders",
   {
-    id: int("id").autoincrement().primaryKey(),
-    customerId: int("customerId")
+    id: serial("id").primaryKey(),
+    customerId: integer("customerId")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    storeId: int("storeId")
+    storeId: integer("storeId")
       .notNull()
       .references(() => stores.id, { onDelete: "restrict" }),
-    status: mysqlEnum("status", [
-      "Pendente",
-      "Aceito",
-      "Preparando",
-      "Pronto",
-      "A caminho",
-      "Entregue",
-      "Cancelado",
-    ])
+    status: varchar("status", { length: 32 }).$type<"Pendente" | "Aceito" | "Preparando" | "Pronto" | "A caminho" | "Entregue" | "Cancelado">()
       .default("Pendente")
       .notNull(),
-    total: decimal("total", { precision: 10, scale: 2 }).notNull(),
+    total: numeric("total", { precision: 10, scale: 2 }).notNull(),
     couponCode: varchar("couponCode", { length: 40 }),
-    discount: decimal("discount", { precision: 10, scale: 2 })
+    discount: numeric("discount", { precision: 10, scale: 2 })
       .default("0.00")
       .notNull(),
     deliveryAddress: varchar("deliveryAddress", { length: 255 }),
-    fulfillmentMode: mysqlEnum("fulfillmentMode", ["delivery", "pickup"])
+    fulfillmentMode: varchar("fulfillmentMode", { length: 32 }).$type<"delivery" | "pickup">()
       .default("delivery")
       .notNull(),
-    deliveryFeeSnapshot: decimal("deliveryFeeSnapshot", {
+    deliveryFeeSnapshot: numeric("deliveryFeeSnapshot", {
       precision: 10,
       scale: 2,
     })
@@ -169,7 +161,7 @@ export const orders = mysqlTable(
       .notNull(),
     idempotencyKey: varchar("idempotencyKey", { length: 160 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (table) => ({
     customerCreatedIdx: index("pediu_orders_customer_created_idx").on(
@@ -187,18 +179,18 @@ export const orders = mysqlTable(
   }),
 );
 
-export const orderItems = mysqlTable(
+export const orderItems = pgTable(
   "pediu_order_items",
   {
-    id: int("id").autoincrement().primaryKey(),
-    orderId: int("orderId")
+    id: serial("id").primaryKey(),
+    orderId: integer("orderId")
       .notNull()
       .references(() => orders.id, { onDelete: "cascade" }),
-    productId: int("productId")
+    productId: integer("productId")
       .notNull()
       .references(() => products.id, { onDelete: "restrict" }),
-    quantity: int("quantity").default(1).notNull(),
-    unitPrice: decimal("unitPrice", { precision: 10, scale: 2 }).notNull(),
+    quantity: integer("quantity").default(1).notNull(),
+    unitPrice: numeric("unitPrice", { precision: 10, scale: 2 }).notNull(),
     note: varchar("note", { length: 500 }),
   },
   (table) => ({
@@ -206,17 +198,17 @@ export const orderItems = mysqlTable(
   }),
 );
 
-export const payments = mysqlTable(
+export const payments = pgTable(
   "pediu_payments",
   {
-    id: int("id").autoincrement().primaryKey(),
-    orderId: int("orderId")
+    id: serial("id").primaryKey(),
+    orderId: integer("orderId")
       .notNull()
       .references(() => orders.id, { onDelete: "cascade" }),
-    method: mysqlEnum("method", ["pix", "card", "cash", "fiado"])
+    method: varchar("method", { length: 32 }).$type<"pix" | "card" | "cash" | "fiado">()
       .default("pix")
       .notNull(),
-    status: mysqlEnum("status", ["pending", "paid", "failed", "cancelled"])
+    status: varchar("status", { length: 32 }).$type<"pending" | "paid" | "failed" | "cancelled">()
       .default("pending")
       .notNull(),
     pixKey: varchar("pixKey", { length: 255 }),
@@ -234,17 +226,17 @@ export const payments = mysqlTable(
   }),
 );
 
-export const customerPaymentPreferences = mysqlTable(
+export const customerPaymentPreferences = pgTable(
   "pediu_customer_payment_preferences",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId")
+    id: serial("id").primaryKey(),
+    userId: integer("userId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    pixEnabled: int("pixEnabled").default(1).notNull(),
-    cardEnabled: int("cardEnabled").default(0).notNull(),
-    cashEnabled: int("cashEnabled").default(1).notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    pixEnabled: integer("pixEnabled").default(1).notNull(),
+    cardEnabled: integer("cardEnabled").default(0).notNull(),
+    cashEnabled: integer("cashEnabled").default(1).notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (table) => ({
     userUnique: unique("pediu_customer_payment_preferences_user_unique").on(
@@ -253,23 +245,18 @@ export const customerPaymentPreferences = mysqlTable(
   }),
 );
 
-export const paymentAccounts = mysqlTable(
+export const paymentAccounts = pgTable(
   "pediu_payment_accounts",
   {
-    id: int("id").autoincrement().primaryKey(),
-    storeId: int("storeId").notNull(),
+    id: serial("id").primaryKey(),
+    storeId: integer("storeId").notNull(),
     provider: varchar("provider", { length: 40 }).notNull(),
     providerAccountId: varchar("providerAccountId", { length: 160 }),
-    onboardingStatus: mysqlEnum("onboardingStatus", [
-      "pending",
-      "active",
-      "restricted",
-      "disabled",
-    ])
+    onboardingStatus: varchar("onboardingStatus", { length: 32 }).$type<"pending" | "active" | "restricted" | "disabled">()
       .default("pending")
       .notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (table) => ({
     storeUnique: unique("pediu_payment_accounts_store_unique").on(
@@ -281,25 +268,18 @@ export const paymentAccounts = mysqlTable(
   }),
 );
 
-export const paymentTransactions = mysqlTable(
+export const paymentTransactions = pgTable(
   "pediu_payment_transactions",
   {
-    id: int("id").autoincrement().primaryKey(),
-    paymentId: int("paymentId").notNull(),
+    id: serial("id").primaryKey(),
+    paymentId: integer("paymentId").notNull(),
     provider: varchar("provider", { length: 40 }).notNull(),
     providerTransactionId: varchar("providerTransactionId", { length: 160 }),
-    status: mysqlEnum("status", [
-      "pending",
-      "authorized",
-      "paid",
-      "failed",
-      "refunded",
-      "cancelled",
-    ])
+    status: varchar("status", { length: 32 }).$type<"pending" | "authorized" | "paid" | "failed" | "refunded" | "cancelled">()
       .default("pending")
       .notNull(),
-    amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-    gatewayFee: decimal("gatewayFee", { precision: 10, scale: 2 })
+    amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+    gatewayFee: numeric("gatewayFee", { precision: 10, scale: 2 })
       .default("0.00")
       .notNull(),
     currency: varchar("currency", { length: 3 }).default("BRL").notNull(),
@@ -309,7 +289,7 @@ export const paymentTransactions = mysqlTable(
     qrCodeBase64: text("qrCodeBase64"),
     ticketUrl: varchar("ticketUrl", { length: 1024 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (table) => ({
     providerTransactionUnique: unique(
@@ -321,14 +301,14 @@ export const paymentTransactions = mysqlTable(
   }),
 );
 
-export const commissionRules = mysqlTable("pediu_commission_rules", {
-  id: int("id").autoincrement().primaryKey(),
-  storeId: int("storeId"),
-  type: mysqlEnum("type", ["percentage", "fixed", "hybrid"]).notNull(),
-  percentage: decimal("percentage", { precision: 7, scale: 4 })
+export const commissionRules = pgTable("pediu_commission_rules", {
+  id: serial("id").primaryKey(),
+  storeId: integer("storeId"),
+  type: varchar("type", { length: 32 }).$type<"percentage" | "fixed" | "hybrid">().notNull(),
+  percentage: numeric("percentage", { precision: 7, scale: 4 })
     .default("0.0000")
     .notNull(),
-  fixedAmount: decimal("fixedAmount", { precision: 10, scale: 2 })
+  fixedAmount: numeric("fixedAmount", { precision: 10, scale: 2 })
     .default("0.00")
     .notNull(),
   activeFrom: timestamp("activeFrom").defaultNow().notNull(),
@@ -336,62 +316,48 @@ export const commissionRules = mysqlTable("pediu_commission_rules", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
-export const commissionEntries = mysqlTable("pediu_commission_entries", {
-  id: int("id").autoincrement().primaryKey(),
-  orderId: int("orderId").notNull(),
-  paymentId: int("paymentId"),
-  ruleId: int("ruleId"),
-  grossAmount: decimal("grossAmount", { precision: 10, scale: 2 }).notNull(),
-  commissionAmount: decimal("commissionAmount", {
+export const commissionEntries = pgTable("pediu_commission_entries", {
+  id: serial("id").primaryKey(),
+  orderId: integer("orderId").notNull(),
+  paymentId: integer("paymentId"),
+  ruleId: integer("ruleId"),
+  grossAmount: numeric("grossAmount", { precision: 10, scale: 2 }).notNull(),
+  commissionAmount: numeric("commissionAmount", {
     precision: 10,
     scale: 2,
   }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
-export const financialLedger = mysqlTable("pediu_financial_ledger", {
-  id: int("id").autoincrement().primaryKey(),
-  storeId: int("storeId").notNull(),
-  orderId: int("orderId"),
-  paymentId: int("paymentId"),
-  type: mysqlEnum("type", [
-    "sale",
-    "gateway_fee",
-    "commission",
-    "receivable",
-    "payout",
-    "refund",
-    "adjustment",
-  ]).notNull(),
-  direction: mysqlEnum("direction", ["credit", "debit"]).notNull(),
-  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+export const financialLedger = pgTable("pediu_financial_ledger", {
+  id: serial("id").primaryKey(),
+  storeId: integer("storeId").notNull(),
+  orderId: integer("orderId"),
+  paymentId: integer("paymentId"),
+  type: varchar("type", { length: 32 }).$type<"sale" | "gateway_fee" | "commission" | "receivable" | "payout" | "refund" | "adjustment">().notNull(),
+  direction: varchar("direction", { length: 32 }).$type<"credit" | "debit">().notNull(),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
   currency: varchar("currency", { length: 3 }).default("BRL").notNull(),
   referenceId: varchar("referenceId", { length: 160 }),
   note: varchar("note", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
-export const payouts = mysqlTable(
+export const payouts = pgTable(
   "pediu_payouts",
   {
-    id: int("id").autoincrement().primaryKey(),
-    storeId: int("storeId").notNull(),
+    id: serial("id").primaryKey(),
+    storeId: integer("storeId").notNull(),
     provider: varchar("provider", { length: 40 }).notNull(),
     providerPayoutId: varchar("providerPayoutId", { length: 160 }),
-    status: mysqlEnum("status", [
-      "pending",
-      "processing",
-      "paid",
-      "failed",
-      "cancelled",
-    ])
+    status: varchar("status", { length: 32 }).$type<"pending" | "processing" | "paid" | "failed" | "cancelled">()
       .default("pending")
       .notNull(),
-    grossAmount: decimal("grossAmount", { precision: 10, scale: 2 }).notNull(),
-    fees: decimal("fees", { precision: 10, scale: 2 })
+    grossAmount: numeric("grossAmount", { precision: 10, scale: 2 }).notNull(),
+    fees: numeric("fees", { precision: 10, scale: 2 })
       .default("0.00")
       .notNull(),
-    netAmount: decimal("netAmount", { precision: 10, scale: 2 }).notNull(),
+    netAmount: numeric("netAmount", { precision: 10, scale: 2 }).notNull(),
     currency: varchar("currency", { length: 3 }).default("BRL").notNull(),
     scheduledAt: timestamp("scheduledAt"),
     paidAt: timestamp("paidAt"),
@@ -405,19 +371,19 @@ export const payouts = mysqlTable(
   }),
 );
 
-export const refunds = mysqlTable(
+export const refunds = pgTable(
   "pediu_refunds",
   {
-    id: int("id").autoincrement().primaryKey(),
-    paymentId: int("paymentId").notNull(),
-    orderId: int("orderId").notNull(),
+    id: serial("id").primaryKey(),
+    paymentId: integer("paymentId").notNull(),
+    orderId: integer("orderId").notNull(),
     provider: varchar("provider", { length: 40 }).notNull(),
     providerRefundId: varchar("providerRefundId", { length: 160 }),
     idempotencyKey: varchar("idempotencyKey", { length: 160 }).notNull(),
-    status: mysqlEnum("status", ["pending", "processing", "refunded", "failed"])
+    status: varchar("status", { length: 32 }).$type<"pending" | "processing" | "refunded" | "failed">()
       .default("pending")
       .notNull(),
-    amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+    amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
     currency: varchar("currency", { length: 3 }).default("BRL").notNull(),
     reason: varchar("reason", { length: 255 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -434,14 +400,14 @@ export const refunds = mysqlTable(
   }),
 );
 
-export const webhookEvents = mysqlTable(
+export const webhookEvents = pgTable(
   "pediu_webhook_events",
   {
-    id: int("id").autoincrement().primaryKey(),
+    id: serial("id").primaryKey(),
     provider: varchar("provider", { length: 40 }).notNull(),
     providerEventId: varchar("providerEventId", { length: 160 }).notNull(),
     eventType: varchar("eventType", { length: 100 }).notNull(),
-    status: mysqlEnum("status", ["received", "processed", "ignored", "failed"])
+    status: varchar("status", { length: 32 }).$type<"received" | "processed" | "ignored" | "failed">()
       .default("received")
       .notNull(),
     payload: text("payload"),
@@ -455,19 +421,19 @@ export const webhookEvents = mysqlTable(
   }),
 );
 
-export const paymentReconciliationRuns = mysqlTable(
+export const paymentReconciliationRuns = pgTable(
   "pediu_payment_reconciliation_runs",
   {
-    id: int("id").autoincrement().primaryKey(),
+    id: serial("id").primaryKey(),
     provider: varchar("provider", { length: 40 }).notNull(),
     idempotencyKey: varchar("idempotencyKey", { length: 160 }).notNull(),
     periodStart: timestamp("periodStart").notNull(),
     periodEnd: timestamp("periodEnd").notNull(),
-    status: mysqlEnum("status", ["running", "completed", "failed"])
+    status: varchar("status", { length: 32 }).$type<"running" | "completed" | "failed">()
       .default("running")
       .notNull(),
-    matchedCount: int("matchedCount").default(0).notNull(),
-    mismatchCount: int("mismatchCount").default(0).notNull(),
+    matchedCount: integer("matchedCount").default(0).notNull(),
+    mismatchCount: integer("mismatchCount").default(0).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     completedAt: timestamp("completedAt"),
   },
@@ -478,34 +444,26 @@ export const paymentReconciliationRuns = mysqlTable(
   }),
 );
 
-export const paymentReconciliationItems = mysqlTable(
+export const paymentReconciliationItems = pgTable(
   "pediu_payment_reconciliation_items",
   {
-    id: int("id").autoincrement().primaryKey(),
-    runId: int("runId")
+    id: serial("id").primaryKey(),
+    runId: integer("runId")
       .notNull()
       .references(() => paymentReconciliationRuns.id, { onDelete: "cascade" }),
     providerTransactionId: varchar("providerTransactionId", {
       length: 160,
     }).notNull(),
-    paymentId: int("paymentId"),
-    orderId: int("orderId"),
-    classification: mysqlEnum("classification", [
-      "matched",
-      "missing_internal",
-      "missing_provider",
-      "amount_mismatch",
-      "currency_mismatch",
-      "status_mismatch",
-      "duplicate",
-    ]).notNull(),
+    paymentId: integer("paymentId"),
+    orderId: integer("orderId"),
+    classification: varchar("classification", { length: 32 }).$type<"matched" | "missing_internal" | "missing_provider" | "amount_mismatch" | "currency_mismatch" | "status_mismatch" | "duplicate">().notNull(),
     providerStatus: varchar("providerStatus", { length: 32 }).notNull(),
     internalStatus: varchar("internalStatus", { length: 32 }),
-    providerAmount: decimal("providerAmount", {
+    providerAmount: numeric("providerAmount", {
       precision: 10,
       scale: 2,
     }).notNull(),
-    internalAmount: decimal("internalAmount", {
+    internalAmount: numeric("internalAmount", {
       precision: 10,
       scale: 2,
     }),
@@ -524,22 +482,22 @@ export const paymentReconciliationItems = mysqlTable(
   }),
 );
 
-export const customers = mysqlTable(
+export const customers = pgTable(
   "pediu_customers",
   {
-    id: int("id").autoincrement().primaryKey(),
-    storeId: int("storeId").notNull(),
-    userId: int("userId"),
+    id: serial("id").primaryKey(),
+    storeId: integer("storeId").notNull(),
+    userId: integer("userId"),
     name: varchar("name", { length: 160 }).notNull(),
     phone: varchar("phone", { length: 32 }),
     notes: text("notes"),
-    creditLimit: decimal("creditLimit", { precision: 10, scale: 2 })
+    creditLimit: numeric("creditLimit", { precision: 10, scale: 2 })
       .default("0.00")
       .notNull(),
-    balance: decimal("balance", { precision: 10, scale: 2 })
+    balance: numeric("balance", { precision: 10, scale: 2 })
       .default("0.00")
       .notNull(),
-    status: mysqlEnum("status", ["active", "blocked"])
+    status: varchar("status", { length: 32 }).$type<"active" | "blocked">()
       .default("active")
       .notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -553,21 +511,16 @@ export const customers = mysqlTable(
   }),
 );
 
-export const ledgerEntries = mysqlTable(
+export const ledgerEntries = pgTable(
   "pediu_ledger_entries",
   {
-    id: int("id").autoincrement().primaryKey(),
-    storeId: int("storeId").notNull(),
-    customerId: int("customerId").notNull(),
-    orderId: int("orderId"),
-    type: mysqlEnum("type", [
-      "credit",
-      "payment",
-      "adjustment",
-      "reversal",
-    ]).notNull(),
-    amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-    balanceAfter: decimal("balanceAfter", { precision: 10, scale: 2 }),
+    id: serial("id").primaryKey(),
+    storeId: integer("storeId").notNull(),
+    customerId: integer("customerId").notNull(),
+    orderId: integer("orderId"),
+    type: varchar("type", { length: 32 }).$type<"credit" | "payment" | "adjustment" | "reversal">().notNull(),
+    amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+    balanceAfter: numeric("balanceAfter", { precision: 10, scale: 2 }),
     note: varchar("note", { length: 255 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
@@ -578,20 +531,15 @@ export const ledgerEntries = mysqlTable(
   }),
 );
 
-export const sales = mysqlTable(
+export const sales = pgTable(
   "pediu_sales",
   {
-    id: int("id").autoincrement().primaryKey(),
-    storeId: int("storeId").notNull(),
-    customerId: int("customerId"),
-    orderId: int("orderId"),
-    total: decimal("total", { precision: 10, scale: 2 }).notNull(),
-    paymentMethod: mysqlEnum("paymentMethod", [
-      "pix",
-      "card",
-      "cash",
-      "fiado",
-    ]).notNull(),
+    id: serial("id").primaryKey(),
+    storeId: integer("storeId").notNull(),
+    customerId: integer("customerId"),
+    orderId: integer("orderId"),
+    total: numeric("total", { precision: 10, scale: 2 }).notNull(),
+    paymentMethod: varchar("paymentMethod", { length: 32 }).$type<"pix" | "card" | "cash" | "fiado">().notNull(),
     note: varchar("note", { length: 255 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
@@ -603,11 +551,11 @@ export const sales = mysqlTable(
   }),
 );
 
-export const pushTokens = mysqlTable(
+export const pushTokens = pgTable(
   "pediu_push_tokens",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
     token: varchar("token", { length: 255 }).notNull().unique(),
     platform: varchar("platform", { length: 32 }).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -617,9 +565,9 @@ export const pushTokens = mysqlTable(
   }),
 );
 
-export const customerAddresses = mysqlTable("pediu_customer_addresses", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId")
+export const customerAddresses = pgTable("pediu_customer_addresses", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   label: varchar("label", { length: 40 }).notNull(),
@@ -631,36 +579,36 @@ export const customerAddresses = mysqlTable("pediu_customer_addresses", {
   city: varchar("city", { length: 100 }).notNull(),
   state: varchar("state", { length: 2 }).notNull(),
   postalCode: varchar("postalCode", { length: 8 }).notNull(),
-  latitude: decimal("latitude", { precision: 10, scale: 7 }),
-  longitude: decimal("longitude", { precision: 10, scale: 7 }),
-  isDefault: int("isDefault").default(0).notNull(),
+  latitude: numeric("latitude", { precision: 10, scale: 7 }),
+  longitude: numeric("longitude", { precision: 10, scale: 7 }),
+  isDefault: integer("isDefault").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 
-export const coupons = mysqlTable("pediu_coupons", {
-  id: int("id").autoincrement().primaryKey(),
+export const coupons = pgTable("pediu_coupons", {
+  id: serial("id").primaryKey(),
   code: varchar("code", { length: 40 }).notNull().unique(),
   type: varchar("type", { length: 16 }).notNull(),
-  value: decimal("value", { precision: 10, scale: 2 }).notNull(),
-  minSubtotal: decimal("minSubtotal", { precision: 10, scale: 2 })
+  value: numeric("value", { precision: 10, scale: 2 }).notNull(),
+  minSubtotal: numeric("minSubtotal", { precision: 10, scale: 2 })
     .default("0.00")
     .notNull(),
-  maxDiscount: decimal("maxDiscount", { precision: 10, scale: 2 }),
-  active: int("active").default(1).notNull(),
+  maxDiscount: numeric("maxDiscount", { precision: 10, scale: 2 }),
+  active: integer("active").default(1).notNull(),
   expiresAt: timestamp("expiresAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
-export const orderReviews = mysqlTable(
+export const orderReviews = pgTable(
   "pediu_order_reviews",
   {
-    id: int("id").autoincrement().primaryKey(),
-    orderId: int("orderId").notNull(),
-    userId: int("userId").notNull(),
+    id: serial("id").primaryKey(),
+    orderId: integer("orderId").notNull(),
+    userId: integer("userId").notNull(),
     target: varchar("target", { length: 16 }).notNull(),
-    productId: int("productId"),
-    rating: int("rating").notNull(),
+    productId: integer("productId"),
+    rating: integer("rating").notNull(),
     comment: text("comment"),
     idempotencyKey: varchar("idempotencyKey", { length: 160 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -679,16 +627,16 @@ export const orderReviews = mysqlTable(
   }),
 );
 
-export const deliveryEvents = mysqlTable(
+export const deliveryEvents = pgTable(
   "pediu_delivery_events",
   {
-    id: int("id").autoincrement().primaryKey(),
-    orderId: int("orderId")
+    id: serial("id").primaryKey(),
+    orderId: integer("orderId")
       .notNull()
       .references(() => orders.id, { onDelete: "cascade" }),
     eventType: varchar("eventType", { length: 32 }).notNull(),
-    latitude: decimal("latitude", { precision: 10, scale: 7 }),
-    longitude: decimal("longitude", { precision: 10, scale: 7 }),
+    latitude: numeric("latitude", { precision: 10, scale: 7 }),
+    longitude: numeric("longitude", { precision: 10, scale: 7 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (table) => ({
@@ -699,32 +647,27 @@ export const deliveryEvents = mysqlTable(
   }),
 );
 
-export const deliveryAssignments = mysqlTable(
+export const deliveryAssignments = pgTable(
   "pediu_delivery_assignments",
   {
-    id: int("id").autoincrement().primaryKey(),
-    orderId: int("orderId")
+    id: serial("id").primaryKey(),
+    orderId: integer("orderId")
       .notNull()
       .references(() => orders.id, { onDelete: "cascade" }),
-    courierId: int("courierId")
+    courierId: integer("courierId")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
     courierName: varchar("courierName", { length: 160 }).notNull(),
     courierPhone: varchar("courierPhone", { length: 32 }),
-    etaMinutes: int("etaMinutes"),
-    status: mysqlEnum("status", [
-      "assigned",
-      "in_transit",
-      "delivered",
-      "cancelled",
-    ])
+    etaMinutes: integer("etaMinutes"),
+    status: varchar("status", { length: 32 }).$type<"assigned" | "in_transit" | "delivered" | "cancelled">()
       .default("assigned")
       .notNull(),
-    currentLatitude: decimal("currentLatitude", { precision: 10, scale: 7 }),
-    currentLongitude: decimal("currentLongitude", { precision: 10, scale: 7 }),
+    currentLatitude: numeric("currentLatitude", { precision: 10, scale: 7 }),
+    currentLongitude: numeric("currentLongitude", { precision: 10, scale: 7 }),
     lastLocationAt: timestamp("lastLocationAt"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (table) => ({
     orderUnique: unique("pediu_delivery_assignment_order_unique").on(
@@ -737,32 +680,27 @@ export const deliveryAssignments = mysqlTable(
   }),
 );
 
-export const courierProfiles = mysqlTable(
+export const courierProfiles = pgTable(
   "pediu_courier_profiles",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId")
+    id: serial("id").primaryKey(),
+    userId: integer("userId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    status: mysqlEnum("status", [
-      "pending",
-      "approved",
-      "rejected",
-      "suspended",
-    ])
+    status: varchar("status", { length: 32 }).$type<"pending" | "approved" | "rejected" | "suspended">()
       .default("pending")
       .notNull(),
-    vehicleType: mysqlEnum("vehicleType", ["bike", "moto", "car"]).notNull(),
+    vehicleType: varchar("vehicleType", { length: 32 }).$type<"bike" | "moto" | "car">().notNull(),
     vehiclePlate: varchar("vehiclePlate", { length: 16 }),
     phone: varchar("phone", { length: 32 }),
-    availability: mysqlEnum("availability", ["offline", "available", "busy"])
+    availability: varchar("availability", { length: 32 }).$type<"offline" | "available" | "busy">()
       .default("offline")
       .notNull(),
     locationConsentAt: timestamp("locationConsentAt"),
     approvedAt: timestamp("approvedAt"),
     statusReason: varchar("statusReason", { length: 255 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (table) => ({
     userUnique: unique("pediu_courier_profile_user_unique").on(table.userId),
@@ -773,24 +711,24 @@ export const courierProfiles = mysqlTable(
   }),
 );
 
-export const storeCouriers = mysqlTable(
+export const storeCouriers = pgTable(
   "pediu_store_couriers",
   {
-    id: int("id").autoincrement().primaryKey(),
-    storeId: int("storeId")
+    id: serial("id").primaryKey(),
+    storeId: integer("storeId")
       .notNull()
       .references(() => stores.id, { onDelete: "cascade" }),
-    courierUserId: int("courierUserId")
+    courierUserId: integer("courierUserId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    status: mysqlEnum("status", ["pending", "active", "revoked"])
+    status: varchar("status", { length: 32 }).$type<"pending" | "active" | "revoked">()
       .default("pending")
       .notNull(),
-    invitedBy: int("invitedBy").references(() => users.id, {
+    invitedBy: integer("invitedBy").references(() => users.id, {
       onDelete: "set null",
     }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (table) => ({
     storeCourierUnique: unique("pediu_store_courier_unique").on(
@@ -804,29 +742,23 @@ export const storeCouriers = mysqlTable(
   }),
 );
 
-export const deliveryOffers = mysqlTable(
+export const deliveryOffers = pgTable(
   "pediu_delivery_offers",
   {
-    id: int("id").autoincrement().primaryKey(),
-    orderId: int("orderId")
+    id: serial("id").primaryKey(),
+    orderId: integer("orderId")
       .notNull()
       .references(() => orders.id, { onDelete: "cascade" }),
-    storeId: int("storeId")
+    storeId: integer("storeId")
       .notNull()
       .references(() => stores.id, { onDelete: "cascade" }),
-    courierUserId: int("courierUserId")
+    courierUserId: integer("courierUserId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    status: mysqlEnum("status", [
-      "pending",
-      "accepted",
-      "rejected",
-      "expired",
-      "cancelled",
-    ])
+    status: varchar("status", { length: 32 }).$type<"pending" | "accepted" | "rejected" | "expired" | "cancelled">()
       .default("pending")
       .notNull(),
-    etaMinutes: int("etaMinutes"),
+    etaMinutes: integer("etaMinutes"),
     message: varchar("message", { length: 255 }),
     idempotencyKey: varchar("idempotencyKey", { length: 160 }).notNull(),
     expiresAt: timestamp("expiresAt").notNull(),
@@ -849,22 +781,22 @@ export const deliveryOffers = mysqlTable(
   }),
 );
 
-export const deliveryLocations = mysqlTable(
+export const deliveryLocations = pgTable(
   "pediu_delivery_locations",
   {
-    id: int("id").autoincrement().primaryKey(),
-    assignmentId: int("assignmentId")
+    id: serial("id").primaryKey(),
+    assignmentId: integer("assignmentId")
       .notNull()
       .references(() => deliveryAssignments.id, { onDelete: "cascade" }),
-    orderId: int("orderId")
+    orderId: integer("orderId")
       .notNull()
       .references(() => orders.id, { onDelete: "cascade" }),
-    courierId: int("courierId")
+    courierId: integer("courierId")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    latitude: decimal("latitude", { precision: 10, scale: 7 }).notNull(),
-    longitude: decimal("longitude", { precision: 10, scale: 7 }).notNull(),
-    etaMinutes: int("etaMinutes"),
+    latitude: numeric("latitude", { precision: 10, scale: 7 }).notNull(),
+    longitude: numeric("longitude", { precision: 10, scale: 7 }).notNull(),
+    etaMinutes: integer("etaMinutes"),
     idempotencyKey: varchar("idempotencyKey", { length: 160 }).notNull(),
     capturedAt: timestamp("capturedAt").defaultNow().notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -884,14 +816,14 @@ export const deliveryLocations = mysqlTable(
   }),
 );
 
-export const chatMessages = mysqlTable(
+export const chatMessages = pgTable(
   "pediu_chat_messages",
   {
-    id: int("id").autoincrement().primaryKey(),
-    orderId: int("orderId").references(() => orders.id, {
+    id: serial("id").primaryKey(),
+    orderId: integer("orderId").references(() => orders.id, {
       onDelete: "cascade",
     }),
-    userId: int("userId")
+    userId: integer("userId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     role: varchar("role", { length: 16 }).notNull(),
@@ -911,23 +843,23 @@ export const chatMessages = mysqlTable(
   }),
 );
 
-export const supportTickets = mysqlTable(
+export const supportTickets = pgTable(
   "pediu_support_tickets",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId")
+    id: serial("id").primaryKey(),
+    userId: integer("userId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    orderId: int("orderId").references(() => orders.id, {
+    orderId: integer("orderId").references(() => orders.id, {
       onDelete: "set null",
     }),
     subject: varchar("subject", { length: 160 }).notNull(),
     body: text("body").notNull(),
-    status: mysqlEnum("status", ["open", "in_progress", "resolved", "closed"])
+    status: varchar("status", { length: 32 }).$type<"open" | "in_progress" | "resolved" | "closed">()
       .default("open")
       .notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (table) => ({
     userCreatedIdx: index("pediu_support_user_created_idx").on(
@@ -938,14 +870,14 @@ export const supportTickets = mysqlTable(
   }),
 );
 
-export const supportTicketMessages = mysqlTable(
+export const supportTicketMessages = pgTable(
   "pediu_support_ticket_messages",
   {
-    id: int("id").autoincrement().primaryKey(),
-    ticketId: int("ticketId")
+    id: serial("id").primaryKey(),
+    ticketId: integer("ticketId")
       .notNull()
       .references(() => supportTickets.id, { onDelete: "cascade" }),
-    userId: int("userId")
+    userId: integer("userId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     role: varchar("role", { length: 16 }).notNull(),
@@ -965,11 +897,11 @@ export const supportTicketMessages = mysqlTable(
   }),
 );
 
-export const privacyConsents = mysqlTable(
+export const privacyConsents = pgTable(
   "pediu_privacy_consents",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId")
+    id: serial("id").primaryKey(),
+    userId: integer("userId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     kind: varchar("kind", { length: 40 }).notNull(),
@@ -986,14 +918,14 @@ export const privacyConsents = mysqlTable(
   }),
 );
 
-export const adminAuditLogs = mysqlTable(
+export const adminAuditLogs = pgTable(
   "pediu_admin_audit_logs",
   {
-    id: int("id").autoincrement().primaryKey(),
-    actorId: int("actorId").notNull(),
+    id: serial("id").primaryKey(),
+    actorId: integer("actorId").notNull(),
     action: varchar("action", { length: 80 }).notNull(),
     entityType: varchar("entityType", { length: 40 }).notNull(),
-    entityId: int("entityId"),
+    entityId: integer("entityId"),
     metadata: text("metadata"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
@@ -1002,11 +934,11 @@ export const adminAuditLogs = mysqlTable(
   }),
 );
 
-export const notifications = mysqlTable(
+export const notifications = pgTable(
   "pediu_notifications",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId")
+    id: serial("id").primaryKey(),
+    userId: integer("userId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     title: varchar("title", { length: 160 }).notNull(),
@@ -1025,25 +957,25 @@ export const notifications = mysqlTable(
   }),
 );
 
-export const notificationOutbox = mysqlTable(
+export const notificationOutbox = pgTable(
   "pediu_notification_outbox",
   {
-    id: int("id").autoincrement().primaryKey(),
-    notificationId: int("notificationId")
+    id: serial("id").primaryKey(),
+    notificationId: integer("notificationId")
       .notNull()
       .references(() => notifications.id, { onDelete: "cascade" }),
-    userId: int("userId")
+    userId: integer("userId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     payload: text("payload").notNull(),
     status: varchar("status", { length: 16 }).default("pending").notNull(),
-    attemptCount: int("attemptCount").default(0).notNull(),
+    attemptCount: integer("attemptCount").default(0).notNull(),
     availableAt: timestamp("availableAt").defaultNow().notNull(),
     lockedAt: timestamp("lockedAt"),
     lastError: varchar("lastError", { length: 500 }),
     sentAt: timestamp("sentAt"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (table) => ({
     notificationUnique: unique(
@@ -1057,32 +989,32 @@ export const notificationOutbox = mysqlTable(
   }),
 );
 
-export const rateLimitBuckets = mysqlTable(
+export const rateLimitBuckets = pgTable(
   "pediu_rate_limit_buckets",
   {
     bucketKey: varchar("bucketKey", { length: 255 }).primaryKey(),
-    requestCount: int("requestCount", { unsigned: true }).default(0).notNull(),
+    requestCount: integer("requestCount").default(0).notNull(),
     windowStartedAt: timestamp("windowStartedAt").notNull(),
     expiresAt: timestamp("expiresAt").notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (table) => ({
     expiresIdx: index("pediu_rate_limit_expires_idx").on(table.expiresAt),
   }),
 );
 
-export const notificationPreferences = mysqlTable(
+export const notificationPreferences = pgTable(
   "pediu_notification_preferences",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId")
+    id: serial("id").primaryKey(),
+    userId: integer("userId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    orderUpdates: int("orderUpdates").default(1).notNull(),
-    supportMessages: int("supportMessages").default(1).notNull(),
-    promotions: int("promotions").default(1).notNull(),
-    pushEnabled: int("pushEnabled").default(1).notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    orderUpdates: integer("orderUpdates").default(1).notNull(),
+    supportMessages: integer("supportMessages").default(1).notNull(),
+    promotions: integer("promotions").default(1).notNull(),
+    pushEnabled: integer("pushEnabled").default(1).notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (table) => ({
     userUnique: unique("pediu_notification_preferences_user_unique").on(
@@ -1091,34 +1023,34 @@ export const notificationPreferences = mysqlTable(
   }),
 );
 
-export const adCredits = mysqlTable(
+export const adCredits = pgTable(
   "pediu_ad_credits",
   {
-    id: int("id").autoincrement().primaryKey(),
-    storeId: int("storeId")
+    id: serial("id").primaryKey(),
+    storeId: integer("storeId")
       .notNull()
       .references(() => stores.id, { onDelete: "cascade" }),
-    balance: int("balance").default(3).notNull(),
-    lifetimeGranted: int("lifetimeGranted").default(3).notNull(),
-    lifetimeUsed: int("lifetimeUsed").default(0).notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    balance: integer("balance").default(3).notNull(),
+    lifetimeGranted: integer("lifetimeGranted").default(3).notNull(),
+    lifetimeUsed: integer("lifetimeUsed").default(0).notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (table) => ({
     storeUnique: unique("pediu_ad_credits_store_unique").on(table.storeId),
   }),
 );
 
-export const generatedAds = mysqlTable(
+export const generatedAds = pgTable(
   "pediu_generated_ads",
   {
-    id: int("id").autoincrement().primaryKey(),
-    storeId: int("storeId")
+    id: serial("id").primaryKey(),
+    storeId: integer("storeId")
       .notNull()
       .references(() => stores.id, { onDelete: "cascade" }),
-    productId: int("productId").references(() => products.id, {
+    productId: integer("productId").references(() => products.id, {
       onDelete: "set null",
     }),
-    status: mysqlEnum("status", ["draft", "published", "archived"])
+    status: varchar("status", { length: 32 }).$type<"draft" | "published" | "archived">()
       .default("draft")
       .notNull(),
     headline: varchar("headline", { length: 120 }).notNull(),
@@ -1128,10 +1060,10 @@ export const generatedAds = mysqlTable(
     visualPrompt: text("visualPrompt").notNull(),
     imageKey: varchar("imageKey", { length: 512 }),
     model: varchar("model", { length: 80 }),
-    generationCost: int("generationCost").default(1).notNull(),
+    generationCost: integer("generationCost").default(1).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     publishedAt: timestamp("publishedAt"),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (table) => ({
     storeStatusCreatedIdx: index(

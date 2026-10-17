@@ -54,8 +54,8 @@ function rawGet(path: string): Promise<{ status: number; body: string }> {
 }
 
 async function main() {
-  const mysql = await import("mysql2/promise");
-  const connection = await mysql.createConnection(databaseUrl);
+  const { createConnection } = await import("./pg-client");
+  const connection = await createConnection(databaseUrl);
   const runId = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
   const ownerOpenId = `ci-storage-owner-${runId}`;
   const otherOpenId = `ci-storage-other-${runId}`;
