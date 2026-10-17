@@ -65,6 +65,8 @@ DATABASE_URL='postgresql://...' pnpm exec drizzle-kit migrate
 
 Se a migration falhar na porta 6543, cole a URI direta (porta 5432) em `DIRECT_URL` e rode o comando de novo. O aplicativo pode continuar com a URI do pooler em `DATABASE_URL`.
 
+As tabelas públicas ficam com a trava do Postgres ligada (row level security) e sem regra de acesso. O servidor entra como dono do banco (`postgres`) e continua lendo e gravando. As chaves `anon` e `authenticated` do Supabase não enxergam essas tabelas. Não desligue essa trava e não crie política para essas chaves. Tabela nova no schema precisa da mesma trava (`.enableRLS()`), senão o teste do repositório falha.
+
 ## Passo a passo: Render
 
 1. Envie este repositório para o GitHub, se ainda não estiver.

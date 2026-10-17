@@ -34,7 +34,7 @@ export const users = pgTable("users", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
-});
+}).enableRLS();
 
 /** Several profiles can belong to the same person. `users.role` stays as a legacy label and is not overwritten. */
 export const accountRoles = pgTable(
@@ -49,7 +49,7 @@ export const accountRoles = pgTable(
   (table) => ({
     pk: primaryKey({ columns: [table.userId, table.role] }),
   }),
-);
+).enableRLS();
 
 export const emailVerificationTokens = pgTable(
   "pediu_email_verification_tokens",
@@ -70,7 +70,7 @@ export const emailVerificationTokens = pgTable(
       table.createdAt,
     ),
   }),
-);
+).enableRLS();
 
 export const stores = pgTable(
   "pediu_stores",
@@ -117,7 +117,7 @@ export const stores = pgTable(
     ),
     kindIdx: index("pediu_stores_kind_idx").on(table.kind, table.isOpen),
   }),
-);
+).enableRLS();
 
 export const products = pgTable(
   "pediu_products",
@@ -147,7 +147,7 @@ export const products = pgTable(
       table.available,
     ),
   }),
-);
+).enableRLS();
 
 export const orders = pgTable(
   "pediu_orders",
@@ -205,7 +205,7 @@ export const orders = pgTable(
       table.idempotencyKey,
     ),
   }),
-);
+).enableRLS();
 
 export const orderItems = pgTable(
   "pediu_order_items",
@@ -223,8 +223,9 @@ export const orderItems = pgTable(
   },
   (table) => ({
     orderIdx: index("pediu_order_items_order_idx").on(table.orderId),
+    productIdx: index("pediu_order_items_product_idx").on(table.productId),
   }),
-);
+).enableRLS();
 
 export const payments = pgTable(
   "pediu_payments",
@@ -252,7 +253,7 @@ export const payments = pgTable(
       table.status,
     ),
   }),
-);
+).enableRLS();
 
 export const customerPaymentPreferences = pgTable(
   "pediu_customer_payment_preferences",
@@ -271,7 +272,7 @@ export const customerPaymentPreferences = pgTable(
       table.userId,
     ),
   }),
-);
+).enableRLS();
 
 export const paymentAccounts = pgTable(
   "pediu_payment_accounts",
@@ -294,7 +295,7 @@ export const paymentAccounts = pgTable(
       "pediu_payment_accounts_provider_account_unique",
     ).on(table.provider, table.providerAccountId),
   }),
-);
+).enableRLS();
 
 export const paymentTransactions = pgTable(
   "pediu_payment_transactions",
@@ -327,7 +328,7 @@ export const paymentTransactions = pgTable(
       "pediu_payment_transactions_idempotency_unique",
     ).on(table.provider, table.idempotencyKey),
   }),
-);
+).enableRLS();
 
 export const commissionRules = pgTable("pediu_commission_rules", {
   id: serial("id").primaryKey(),
@@ -342,7 +343,7 @@ export const commissionRules = pgTable("pediu_commission_rules", {
   activeFrom: timestamp("activeFrom").defaultNow().notNull(),
   activeUntil: timestamp("activeUntil"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}).enableRLS();
 
 export const commissionEntries = pgTable("pediu_commission_entries", {
   id: serial("id").primaryKey(),
@@ -355,7 +356,7 @@ export const commissionEntries = pgTable("pediu_commission_entries", {
     scale: 2,
   }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}).enableRLS();
 
 export const financialLedger = pgTable("pediu_financial_ledger", {
   id: serial("id").primaryKey(),
@@ -369,7 +370,7 @@ export const financialLedger = pgTable("pediu_financial_ledger", {
   referenceId: varchar("referenceId", { length: 160 }),
   note: varchar("note", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}).enableRLS();
 
 export const tipSettlements = pgTable(
   "pediu_tip_settlements",
@@ -410,7 +411,7 @@ export const tipSettlements = pgTable(
       table.status,
     ),
   }),
-);
+).enableRLS();
 
 /** Pediu Junto: estrutura persistida, ainda bloqueada pela feature flag. */
 export const orderShares = pgTable(
@@ -444,6 +445,7 @@ export const orderShares = pgTable(
     idempotencyUnique: unique("pediu_order_shares_idempotency_unique").on(
       table.idempotencyKey,
     ),
+    orderIdx: index("pediu_order_shares_order_idx").on(table.orderId),
     hostCreatedIdx: index("pediu_order_shares_host_created_idx").on(
       table.hostUserId,
       table.createdAt,
@@ -453,7 +455,7 @@ export const orderShares = pgTable(
       table.status,
     ),
   }),
-);
+).enableRLS();
 
 export const orderShareParticipants = pgTable(
   "pediu_order_share_participants",
@@ -482,7 +484,7 @@ export const orderShareParticipants = pgTable(
       table.status,
     ),
   }),
-);
+).enableRLS();
 
 export const payouts = pgTable(
   "pediu_payouts",
@@ -510,7 +512,7 @@ export const payouts = pgTable(
       table.providerPayoutId,
     ),
   }),
-);
+).enableRLS();
 
 export const refunds = pgTable(
   "pediu_refunds",
@@ -539,7 +541,7 @@ export const refunds = pgTable(
       "pediu_refunds_provider_idempotency_unique",
     ).on(table.provider, table.idempotencyKey),
   }),
-);
+).enableRLS();
 
 export const webhookEvents = pgTable(
   "pediu_webhook_events",
@@ -560,7 +562,7 @@ export const webhookEvents = pgTable(
       "pediu_webhook_events_provider_event_unique",
     ).on(table.provider, table.providerEventId),
   }),
-);
+).enableRLS();
 
 export const paymentReconciliationRuns = pgTable(
   "pediu_payment_reconciliation_runs",
@@ -583,7 +585,7 @@ export const paymentReconciliationRuns = pgTable(
       "pediu_payment_reconciliation_provider_idempotency_unique",
     ).on(table.provider, table.idempotencyKey),
   }),
-);
+).enableRLS();
 
 export const paymentReconciliationItems = pgTable(
   "pediu_payment_reconciliation_items",
@@ -621,7 +623,7 @@ export const paymentReconciliationItems = pgTable(
       table.createdAt,
     ),
   }),
-);
+).enableRLS();
 
 export const customers = pgTable(
   "pediu_customers",
@@ -650,7 +652,7 @@ export const customers = pgTable(
     ),
     storeIdx: index("pediu_customers_store_idx").on(table.storeId),
   }),
-);
+).enableRLS();
 
 export const ledgerEntries = pgTable(
   "pediu_ledger_entries",
@@ -670,7 +672,7 @@ export const ledgerEntries = pgTable(
       "pediu_ledger_store_customer_created_idx",
     ).on(table.storeId, table.customerId, table.createdAt),
   }),
-);
+).enableRLS();
 
 export const sales = pgTable(
   "pediu_sales",
@@ -690,7 +692,7 @@ export const sales = pgTable(
       table.createdAt,
     ),
   }),
-);
+).enableRLS();
 
 export const pushTokens = pgTable(
   "pediu_push_tokens",
@@ -704,28 +706,34 @@ export const pushTokens = pgTable(
   (table) => ({
     userIdx: index("pediu_push_tokens_user_idx").on(table.userId),
   }),
-);
+).enableRLS();
 
-export const customerAddresses = pgTable("pediu_customer_addresses", {
-  id: serial("id").primaryKey(),
-  userId: integer("userId")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  label: varchar("label", { length: 40 }).notNull(),
-  recipientName: varchar("recipientName", { length: 160 }).notNull(),
-  street: varchar("street", { length: 180 }).notNull(),
-  number: varchar("number", { length: 30 }).notNull(),
-  complement: varchar("complement", { length: 120 }),
-  neighborhood: varchar("neighborhood", { length: 100 }).notNull(),
-  city: varchar("city", { length: 100 }).notNull(),
-  state: varchar("state", { length: 2 }).notNull(),
-  postalCode: varchar("postalCode", { length: 8 }).notNull(),
-  latitude: numeric("latitude", { precision: 10, scale: 7 }),
-  longitude: numeric("longitude", { precision: 10, scale: 7 }),
-  isDefault: integer("isDefault").default(0).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
-});
+export const customerAddresses = pgTable(
+  "pediu_customer_addresses",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    label: varchar("label", { length: 40 }).notNull(),
+    recipientName: varchar("recipientName", { length: 160 }).notNull(),
+    street: varchar("street", { length: 180 }).notNull(),
+    number: varchar("number", { length: 30 }).notNull(),
+    complement: varchar("complement", { length: 120 }),
+    neighborhood: varchar("neighborhood", { length: 100 }).notNull(),
+    city: varchar("city", { length: 100 }).notNull(),
+    state: varchar("state", { length: 2 }).notNull(),
+    postalCode: varchar("postalCode", { length: 8 }).notNull(),
+    latitude: numeric("latitude", { precision: 10, scale: 7 }),
+    longitude: numeric("longitude", { precision: 10, scale: 7 }),
+    isDefault: integer("isDefault").default(0).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
+  },
+  (table) => ({
+    userIdx: index("pediu_customer_addresses_user_idx").on(table.userId),
+  }),
+).enableRLS();
 
 export const coupons = pgTable("pediu_coupons", {
   id: serial("id").primaryKey(),
@@ -739,7 +747,7 @@ export const coupons = pgTable("pediu_coupons", {
   active: integer("active").default(1).notNull(),
   expiresAt: timestamp("expiresAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}).enableRLS();
 
 export const orderReviews = pgTable(
   "pediu_order_reviews",
@@ -766,7 +774,7 @@ export const orderReviews = pgTable(
     ),
     orderIdx: index("pediu_review_order_idx").on(table.orderId),
   }),
-);
+).enableRLS();
 
 export const deliveryEvents = pgTable(
   "pediu_delivery_events",
@@ -786,7 +794,7 @@ export const deliveryEvents = pgTable(
       table.createdAt,
     ),
   }),
-);
+).enableRLS();
 
 export const deliveryAssignments = pgTable(
   "pediu_delivery_assignments",
@@ -819,7 +827,7 @@ export const deliveryAssignments = pgTable(
       table.status,
     ),
   }),
-);
+).enableRLS();
 
 export const courierProfiles = pgTable(
   "pediu_courier_profiles",
@@ -850,7 +858,7 @@ export const courierProfiles = pgTable(
       table.availability,
     ),
   }),
-);
+).enableRLS();
 
 export const storeCouriers = pgTable(
   "pediu_store_couriers",
@@ -880,8 +888,11 @@ export const storeCouriers = pgTable(
       table.courierUserId,
       table.status,
     ),
+    invitedByIdx: index("pediu_store_courier_invited_by_idx").on(
+      table.invitedBy,
+    ),
   }),
-);
+).enableRLS();
 
 export const deliveryOffers = pgTable(
   "pediu_delivery_offers",
@@ -915,12 +926,13 @@ export const deliveryOffers = pgTable(
       table.status,
       table.expiresAt,
     ),
+    storeIdx: index("pediu_delivery_offer_store_idx").on(table.storeId),
     orderStatusIdx: index("pediu_delivery_offer_order_status_idx").on(
       table.orderId,
       table.status,
     ),
   }),
-);
+).enableRLS();
 
 export const deliveryLocations = pgTable(
   "pediu_delivery_locations",
@@ -949,13 +961,16 @@ export const deliveryLocations = pgTable(
     assignmentCreatedIdx: index(
       "pediu_delivery_location_assignment_created_idx",
     ).on(table.assignmentId, table.createdAt),
+    courierIdx: index("pediu_delivery_location_courier_idx").on(
+      table.courierId,
+    ),
     orderCapturedIdx: index("pediu_delivery_location_order_captured_idx").on(
       table.orderId,
       table.capturedAt,
       table.id,
     ),
   }),
-);
+).enableRLS();
 
 export const chatMessages = pgTable(
   "pediu_chat_messages",
@@ -977,12 +992,13 @@ export const chatMessages = pgTable(
     idempotencyUnique: unique("pediu_chat_message_idempotency_unique").on(
       table.idempotencyKey,
     ),
+    userIdx: index("pediu_chat_user_idx").on(table.userId),
     orderCreatedIdx: index("pediu_chat_order_created_idx").on(
       table.orderId,
       table.createdAt,
     ),
   }),
-);
+).enableRLS();
 
 export const supportTickets = pgTable(
   "pediu_support_tickets",
@@ -1009,7 +1025,7 @@ export const supportTickets = pgTable(
     ),
     orderIdx: index("pediu_support_order_idx").on(table.orderId),
   }),
-);
+).enableRLS();
 
 export const supportTicketMessages = pgTable(
   "pediu_support_ticket_messages",
@@ -1031,12 +1047,13 @@ export const supportTicketMessages = pgTable(
     idempotencyUnique: unique("pediu_support_message_idempotency_unique").on(
       table.idempotencyKey,
     ),
+    userIdx: index("pediu_support_message_user_idx").on(table.userId),
     ticketCreatedIdx: index("pediu_support_message_ticket_created_idx").on(
       table.ticketId,
       table.createdAt,
     ),
   }),
-);
+).enableRLS();
 
 export const privacyConsents = pgTable(
   "pediu_privacy_consents",
@@ -1057,7 +1074,7 @@ export const privacyConsents = pgTable(
     ),
     userIdx: index("pediu_privacy_consent_user_idx").on(table.userId),
   }),
-);
+).enableRLS();
 
 export const adminAuditLogs = pgTable(
   "pediu_admin_audit_logs",
@@ -1073,7 +1090,7 @@ export const adminAuditLogs = pgTable(
   (table) => ({
     createdIdx: index("pediu_admin_audit_created_idx").on(table.createdAt),
   }),
-);
+).enableRLS();
 
 export const notifications = pgTable(
   "pediu_notifications",
@@ -1096,7 +1113,7 @@ export const notifications = pgTable(
       table.createdAt,
     ),
   }),
-);
+).enableRLS();
 
 export const notificationOutbox = pgTable(
   "pediu_notification_outbox",
@@ -1122,13 +1139,14 @@ export const notificationOutbox = pgTable(
     notificationUnique: unique(
       "pediu_notification_outbox_notification_unique",
     ).on(table.notificationId),
+    userIdx: index("pediu_notification_outbox_user_idx").on(table.userId),
     pendingIdx: index("pediu_notification_outbox_status_available_idx").on(
       table.status,
       table.availableAt,
       table.id,
     ),
   }),
-);
+).enableRLS();
 
 export const rateLimitBuckets = pgTable(
   "pediu_rate_limit_buckets",
@@ -1142,7 +1160,7 @@ export const rateLimitBuckets = pgTable(
   (table) => ({
     expiresIdx: index("pediu_rate_limit_expires_idx").on(table.expiresAt),
   }),
-);
+).enableRLS();
 
 export const notificationPreferences = pgTable(
   "pediu_notification_preferences",
@@ -1162,7 +1180,7 @@ export const notificationPreferences = pgTable(
       table.userId,
     ),
   }),
-);
+).enableRLS();
 
 export const adCredits = pgTable(
   "pediu_ad_credits",
@@ -1179,7 +1197,7 @@ export const adCredits = pgTable(
   (table) => ({
     storeUnique: unique("pediu_ad_credits_store_unique").on(table.storeId),
   }),
-);
+).enableRLS();
 
 export const generatedAds = pgTable(
   "pediu_generated_ads",
@@ -1215,7 +1233,7 @@ export const generatedAds = pgTable(
       table.status,
     ),
   }),
-);
+).enableRLS();
 
 export const loyaltyAccounts = pgTable(
   "pediu_loyalty_accounts",
@@ -1235,7 +1253,7 @@ export const loyaltyAccounts = pgTable(
   (table) => ({
     userUnique: unique("pediu_loyalty_accounts_user_unique").on(table.userId),
   }),
-);
+).enableRLS();
 
 export const loyaltyLedger = pgTable(
   "pediu_loyalty_ledger",
@@ -1263,9 +1281,10 @@ export const loyaltyLedger = pgTable(
       table.userId,
       table.createdAt,
     ),
+    accountIdx: index("pediu_loyalty_ledger_account_idx").on(table.accountId),
     orderIdx: index("pediu_loyalty_ledger_order_idx").on(table.orderId),
   }),
-);
+).enableRLS();
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
