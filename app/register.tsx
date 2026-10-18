@@ -1,25 +1,56 @@
 import { router } from "expo-router";
+import { useState } from "react";
 import { Text, View } from "react-native";
-import { Page, Card, PrimaryButton, OutlineButton, PEDIU, s } from "@/components/pediu-page";
-import { isOAuthConfigured, startOAuthLogin } from "@/constants/oauth";
+import { Card, Field, OutlineButton, Page, PEDIU, PrimaryButton, s } from "@/components/pediu-page";
+import { useAuth } from "@/hooks/use-auth";
+import * as Auth from "@/lib/_core/auth";
+import { trpc } from "@/lib/trpc";
 
-function BrandMark() {
-  return <View style={{ width: 64, height: 64, borderRadius: 18, backgroundColor: PEDIU.coral, alignItems: "center", justifyContent: "center", transform: [{ rotate: "-8deg" }] }}><Text style={{ color: PEDIU.white, fontSize: 48, fontWeight: "900", fontStyle: "italic", lineHeight: 52 }}>p</Text></View>;
+function messageOf(error: unknown) {
+  return error instanceof Error ? error.message : "Não foi possível criar a conta.";
 }
 
 export default function RegisterScreen() {
-  const loginAvailable = isOAuthConfigured;
-  return <Page title="Criar conta" eyebrow="COMECE AGORA" back={false}>
-    <View style={{ alignItems: "center", gap: 10, paddingVertical: 16 }}>
-      <BrandMark />
-      <Text style={{ color: PEDIU.ink, fontSize: 19, fontWeight: "900" }}>Uma conta para todos os seus pedidos</Text>
-      <Text style={[s.muted, { textAlign: "center" }]}>Use sua conta Google no portal seguro para criar um cadastro persistido no servidor. Se você já tiver uma conta, o Pediu recupera o mesmo perfil automaticamente.</Text>
-    </View>
-    <Card>
-      <Text style={s.sectionTitle}>Cadastro</Text>
-      <PrimaryButton title={loginAvailable ? "Criar conta com Google" : "Cadastro indisponível no preview"} onPress={() => void startOAuthLogin()} disabled={!loginAvailable} />
-      {!loginAvailable ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>Configure o provedor de autenticação para habilitar cadastro e recuperação de acesso.</Text> : null}
-      <OutlineButton title="Já tenho uma conta" onPress={() => router.push("/login")} />
-    </Card>
-  </Page>;
+  const { refresh } = useAuth({ autoFetch: false });
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const signup = trpc.auth.signup.useMutation({
+    onSuccess: async (result) => {
+      await Auth.setSessionToken(result.token);
+      await refresh();
+      router.replace("/(tabs)");
+    },
+  });
+
+  return (
+    <Page title="Criar conta" eyebrow="COMECE AGORA" back={false}>
+      <View style={{ alignItems: "center", gap: 10, paddingVertical: 16 }}>
+        <Text style={{ color: PEDIU.ink, fontSize: 19, fontWeight: "900" }}>Uma conta para pedir, vender e entregar</Text>
+        <Text style={[s.muted, { textAlign: "center" }]}>Use seu e-mail e uma senha. A mesma conta serve para cliente, loja e motoboy.</Text>
+      </View>
+      <Card>
+        <Text style={s.sectionTitle}>Cadastro</Text>
+        <Field label="Nome" value={name} onChangeText={setName} autoComplete="name" />
+        <Field label="E-mail" value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" />
+        <Field label="Telefone (opcional)" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+        <Field label="Senha (mínimo 8)" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" />
+        {signup.error ? <Text style={{ color: PEDIU.coral, fontWeight: "700" }}>{messageOf(signup.error)}</Text> : null}
+        <PrimaryButton
+          title={signup.isPending ? "Criando..." : "Criar conta"}
+          disabled={signup.isPending || name.trim().length < 2 || password.length < 8}
+          onPress={() =>
+            signup.mutate({
+              name: name.trim(),
+              email: email.trim(),
+              phone: phone.trim() || undefined,
+              password,
+            })
+          }
+        />
+        <OutlineButton title="Já tenho uma conta" onPress={() => router.push("/login")} />
+      </Card>
+    </Page>
+  );
 }

@@ -1,6 +1,8 @@
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { adminProcedure, router } from "./_core/trpc";
 import * as db from "./db";
+import { issuePasswordReset } from "./password-auth";
 import { requestPixRefund } from "./payments";
 
 const pagination = z.object({
@@ -24,6 +26,24 @@ export const adminRouter = router({
   users: adminProcedure
     .input(pagination)
     .query(({ input }) => db.listAdminUsers(input.limit, input.offset)),
+  issuePasswordReset: adminProcedure
+    .input(z.object({ email: z.string().trim().email().max(320) }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await issuePasswordReset({
+          email: input.email,
+          createdByUserId: ctx.user.id,
+        });
+      } catch (error) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Não foi possível gerar o código.",
+        });
+      }
+    }),
 
   stores: adminProcedure
     .input(pagination)

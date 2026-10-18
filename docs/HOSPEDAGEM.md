@@ -6,9 +6,9 @@ O ambiente antigo chamado WebDev era só o computador de testes em que o aplicat
 
 ## O que sobe onde
 
-- **Banco:** Supabase, plano Free. É Postgres. O login do Supabase (e-mail, Google) não substitui o login que o Pediu já usa.
-- **Programa do servidor:** Render, plano Free, **uma** instância. Node.js 20. Comandos: `pnpm build` e `pnpm start`.
-- **Login:** continua no provedor de fora (`OAUTH_SERVER_URL` e `EXPO_PUBLIC_OAUTH_PORTAL_URL`).
+- **Banco:** Supabase, plano Free. É Postgres. O login do Supabase (e-mail, Google) não é o login do Pediu.
+- **Programa do servidor:** Render, plano Free, **uma** instância, região Virginia. Node.js 20. A construção é `pnpm install --frozen-lockfile && pnpm build` e a partida é `pnpm start`.
+- **Login:** e-mail e senha criados no próprio Pediu. Não há mais conta da Manus.
 - **Avisos no celular:** o servidor fala com o serviço da Expo. Não há outro programa.
 - **Tarefas de fundo:** avisos, reserva de estoque, ofertas de entrega e limpeza de limite rodam dentro desse mesmo processo.
 
@@ -73,28 +73,37 @@ As tabelas públicas ficam com a trava do Postgres ligada (row level security) e
 2. Na Render, **New → Blueprint** e aponte para o repositório. O arquivo `render.yaml` descreve o serviço `pediu-api` no plano free.
 3. Preencha no painel o que ficou em branco. A lista está em `.env.example`. O mínimo:
    - `DATABASE_URL` com a URI do Supabase
-   - `VITE_APP_ID`
    - `JWT_SECRET` (frase longa e aleatória)
    - `ALLOWED_ORIGINS` (o endereço https da própria API, se ainda não houver site)
    - `OBSERVABILITY_TOKEN`
-   - `OAUTH_SERVER_URL` e `OWNER_OPEN_ID` quando o login estiver definido
+   - `ADMIN_EMAILS` com o e-mail de quem vai administrar, separado por vírgula se forem vários
 4. Publique. A Render mostra uma URL `https://....onrender.com`.
 5. Abra `https://essa-url/api/health`. Tem que responder que está ok. A primeira vez pode demorar, porque o plano grátis acorda do zero.
 6. Rode a migration do passo do Supabase, no seu computador, com a mesma URI.
 7. Crie o despertador de 10 minutos do item acima.
-8. No aplicativo, essa URL é `EXPO_PUBLIC_API_BASE_URL`. O mesmo texto de `VITE_APP_ID` vira `EXPO_PUBLIC_APP_ID`.
+8. No aplicativo, essa URL é `EXPO_PUBLIC_API_BASE_URL`, sem barra no fim.
+
+## Primeira conta de administrador
+
+Não existe uma conta pronta no banco. Coloque o seu e-mail em `ADMIN_EMAILS` na Render, abra o aplicativo e crie a conta com esse mesmo e-mail e uma senha. Essa conta já nasce como administradora. Quem se cadastra com outro e-mail vira cliente comum e pode, no aplicativo, abrir loja ou pedir para ser motoboy.
+
+## Esqueci a senha
+
+O Pediu ainda não envia e-mail. A tela de esqueci a senha não finge que mandou uma mensagem. Quem esqueceu a senha pede o código a quem administra. No painel de usuários, a pessoa administradora gera um código de 8 números, válido por 30 minutos, e lê esse código para a pessoa. Ela digita o código e a senha nova no aplicativo. O código aparece uma vez só.
+
+## O que deixa de funcionar sem o serviço antigo
+
+Pedido, login, loja, motoboy e aviso pelo aplicativo da Expo não dependem do serviço antigo da Manus. Sem as variáveis `BUILT_IN_FORGE_*` ficam desligados: imagem de anúncio gerada, envio de arquivo, transcrição de voz, ajuda de texto automático e o aviso antigo para o dono. O piloto não precisa deles.
 
 ## APK de teste
 
 1. Crie a conta em [expo.dev](https://expo.dev).
 2. No projeto, `npx eas-cli login`.
 3. Se pedir, `npx eas-cli init`.
-4. No site da Expo, ambiente **preview**, cadastre:
+4. No site da Expo, ambiente **preview**, cadastre só:
    - `EXPO_PUBLIC_API_BASE_URL` = a URL https da Render, sem barra no fim
-   - `EXPO_PUBLIC_APP_ID` = o mesmo valor de `VITE_APP_ID`
-   - `EXPO_PUBLIC_OAUTH_PORTAL_URL` e `EXPO_PUBLIC_OAUTH_SERVER_URL` = o login, quando existir
 5. Rode `pnpm build:preview`. O perfil `preview` gera um APK.
 6. Instale nos celulares de teste. O Android pede permissão para instalar de fora da loja.
 7. No primeiro teste, use dinheiro na entrega (`PIX_PROVIDER=manual`). PIX e Mercado Pago ficam para depois.
 
-Sem a URL https pública e sem o login configurado, o APK abre e o botão de entrar fica desligado.
+Sem a URL https pública, o APK abre, mas não consegue criar conta nem entrar.

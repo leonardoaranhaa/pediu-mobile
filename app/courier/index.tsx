@@ -2,7 +2,6 @@ import * as Location from "expo-location";
 import { router } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
-import { startOAuthLogin } from "@/constants/oauth";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
 import {
@@ -157,8 +156,8 @@ export default function CourierHomePage() {
             parceiras.
           </Text>
           <PrimaryButton
-            title="Entrar com login seguro"
-            onPress={() => void startOAuthLogin()}
+            title="Entrar"
+            onPress={() => router.push("/login")}
           />
           <OutlineButton title="Voltar" onPress={() => router.back()} />
         </Card>

@@ -19,7 +19,7 @@ export default function OrdersPage() {
         <Text style={{ color: "#BCD0D1", fontSize: 12, lineHeight: 18 }}>Acompanhe cada etapa e volte a pedir seus favoritos quando quiser.</Text>
       </View>
       {!isAuthenticated ? (
-        <Card><Text style={s.sectionTitle}>Sincronize seu histórico</Text><Text style={s.muted}>Entre para consultar seus pedidos sincronizados em qualquer dispositivo.</Text><PrimaryButton title="Entrar com login seguro" onPress={() => router.push("/login")} /></Card>
+        <Card><Text style={s.sectionTitle}>Sincronize seu histórico</Text><Text style={s.muted}>Entre para consultar seus pedidos sincronizados em qualquer dispositivo.</Text><PrimaryButton title="Entrar" onPress={() => router.push("/login")} /></Card>
       ) : q.isLoading ? (
         <Card><Text style={s.muted}>Carregando pedidos...</Text></Card>
       ) : q.isError ? (

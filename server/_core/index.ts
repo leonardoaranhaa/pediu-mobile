@@ -3,13 +3,14 @@ import express from "express";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { registerOAuthRoutes } from "./oauth";
+import { registerAuthRoutes } from "./auth-routes";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import {
   isAllowedOrigin,
   isUnsafeMethod,
+  isPublicPasswordAuth,
   requestHasAllowedOrigin,
   requestUsesBearer,
 } from "./security";
@@ -83,7 +84,7 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "16mb", extended: true }));
 
   registerStorageProxy(app);
-  registerOAuthRoutes(app);
+  registerAuthRoutes(app);
 
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true, timestamp: Date.now() });
@@ -140,7 +141,8 @@ async function startServer() {
       if (
         isUnsafeMethod(req.method) &&
         !requestUsesBearer(req) &&
-        !requestHasAllowedOrigin(req)
+        !requestHasAllowedOrigin(req) &&
+        !isPublicPasswordAuth(req)
       ) {
         res.status(403).json({
           error: "Origin not allowed for cookie-authenticated mutation",

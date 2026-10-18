@@ -1,7 +1,6 @@
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
-import { startOAuthLogin } from "@/constants/oauth";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
 import { useAppPreferences } from "@/lib/app-preferences";
@@ -268,8 +267,8 @@ export default function SellerHomePage() {
             A criação da loja e os pedidos ficam vinculados à sua conta segura.
           </Text>
           <PrimaryButton
-            title="Entrar com login seguro"
-            onPress={() => void startOAuthLogin()}
+            title="Entrar"
+            onPress={() => router.push("/login")}
           />
           <OutlineButton
             title="Criar uma conta"

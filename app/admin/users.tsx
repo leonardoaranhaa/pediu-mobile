@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { ActivityIndicator, Text } from "react-native";
 import { EmptyState } from "@/components/pediu/empty-state";
-import { Card, Page, PEDIU, Row, s } from "@/components/pediu-page";
+import { Card, Field, Page, PEDIU, PrimaryButton, Row, s } from "@/components/pediu-page";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
 import { useRouter } from "expo-router";
@@ -16,6 +17,8 @@ export default function AdminUsersPage() {
   const { user, loading } = useAuth();
   const allowed = user?.role === "admin";
   const query = trpc.admin.users.useQuery({ limit: 50, offset: 0 }, { enabled: allowed });
+  const [email, setEmail] = useState("");
+  const reset = trpc.admin.issuePasswordReset.useMutation();
 
   if (loading) return <Page title="Usuários" eyebrow="OPS"><ActivityIndicator color={PEDIU.coral} /></Page>;
   if (!allowed) {
@@ -31,6 +34,20 @@ export default function AdminUsersPage() {
       <Card>
         <Text style={s.sectionTitle}>Contas da plataforma</Text>
         <Text style={s.muted}>Leitura operacional. Impersonation não entra na v1.</Text>
+      </Card>
+      <Card>
+        <Text style={s.sectionTitle}>Código de nova senha</Text>
+        <Text style={s.muted}>O Pediu não envia e-mail. O código aparece só aqui, vale 30 minutos e deve ser passado para a pessoa.</Text>
+        <Field label="E-mail da conta" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
+        {reset.data ? (
+          <Text style={{ color: PEDIU.ink, fontSize: 28, fontWeight: "900", letterSpacing: 4 }}>{reset.data.code}</Text>
+        ) : null}
+        {reset.error ? <Text style={{ color: PEDIU.coral, fontWeight: "700" }}>{reset.error.message}</Text> : null}
+        <PrimaryButton
+          title={reset.isPending ? "Gerando..." : "Gerar código"}
+          disabled={reset.isPending || !email.includes("@")}
+          onPress={() => reset.mutate({ email: email.trim() })}
+        />
       </Card>
       {query.isLoading ? <ActivityIndicator color={PEDIU.coral} /> : null}
       {query.error ? <Text style={{ color: PEDIU.coral, fontWeight: "700" }}>Falha ao carregar usuários.</Text> : null}

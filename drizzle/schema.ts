@@ -19,22 +19,73 @@ export const accountRoleValues = [
 ] as const;
 export type AccountRole = (typeof accountRoleValues)[number];
 
-export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  openId: varchar("openId", { length: 64 }).notNull().unique(),
-  name: text("name"),
-  email: varchar("email", { length: 320 }),
-  loginMethod: varchar("loginMethod", { length: 64 }),
-  role: varchar("role", { length: 32 }).$type<"user" | "merchant" | "courier" | "admin">()
-    .default("user")
-    .notNull(),
-  themePreference: varchar("themePreference", { length: 16 })
-    .default("classic")
-    .notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
-  lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
-}).enableRLS();
+export const users = pgTable(
+  "users",
+  {
+    id: serial("id").primaryKey(),
+    openId: varchar("openId", { length: 64 }).notNull().unique(),
+    name: text("name"),
+    email: varchar("email", { length: 320 }),
+    phone: varchar("phone", { length: 32 }),
+    passwordHash: varchar("passwordHash", { length: 255 }),
+    loginMethod: varchar("loginMethod", { length: 64 }),
+    role: varchar("role", { length: 32 }).$type<"user" | "merchant" | "courier" | "admin">()
+      .default("user")
+      .notNull(),
+    themePreference: varchar("themePreference", { length: 16 })
+      .default("classic")
+      .notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
+    lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
+  },
+  (table) => ({
+    emailUnique: unique("users_email_unique").on(table.email),
+  }),
+).enableRLS();
+
+/** Server-side session. The mobile token only works while this row is active. */
+export const authSessions = pgTable(
+  "pediu_auth_sessions",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: varchar("tokenHash", { length: 64 }).notNull().unique(),
+    expiresAt: timestamp("expiresAt").notNull(),
+    revokedAt: timestamp("revokedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    lastUsedAt: timestamp("lastUsedAt").defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdx: index("pediu_auth_sessions_user_idx").on(table.userId),
+  }),
+).enableRLS();
+
+/** One-time code an admin reads out loud. There is no email provider. */
+export const passwordResets = pgTable(
+  "pediu_password_resets",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    codeHash: varchar("codeHash", { length: 64 }).notNull(),
+    expiresAt: timestamp("expiresAt").notNull(),
+    usedAt: timestamp("usedAt"),
+    createdByUserId: integer("createdByUserId").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdx: index("pediu_password_resets_user_idx").on(table.userId),
+    createdByIdx: index("pediu_password_resets_created_by_idx").on(
+      table.createdByUserId,
+    ),
+  }),
+).enableRLS();
 
 /** Several profiles can belong to the same person. `users.role` stays as a legacy label and is not overwritten. */
 export const accountRoles = pgTable(

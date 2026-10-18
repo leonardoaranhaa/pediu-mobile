@@ -28,7 +28,6 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/pediu_test
       NODE_ENV: test
       PORT: 3000
-      VITE_APP_ID: ci-e2e-app
       JWT_SECRET: ci-e2e-jwt-secret
       PIX_PROVIDER: mercado_pago
       MERCADO_PAGO_ACCESS_TOKEN: ci-mp-access-token

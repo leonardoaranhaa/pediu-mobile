@@ -112,7 +112,6 @@ import {
   webhookEvents,
   refunds,
 } from "../drizzle/schema";
-import { ENV } from "./_core/env";
 import {
   mergeAccountRoles,
   rolesFromLegacy,
@@ -172,6 +171,7 @@ import {
 } from "./domain/tips";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _client: ReturnType<typeof postgres> | null = null;
 
 type AppDatabase = NonNullable<Awaited<ReturnType<typeof getDb>>>;
 type DatabaseTransaction = Parameters<AppDatabase["transaction"]>[0] extends (
@@ -215,6 +215,7 @@ export async function getDb() {
         ssl: options.ssl,
         connect_timeout: 20,
       });
+      _client = client;
       _db = drizzle(client);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
@@ -222,6 +223,14 @@ export async function getDb() {
     }
   }
   return _db;
+}
+
+/** Closes the pool opened by one-shot scripts so Node can exit. */
+export async function closeDb() {
+  const client = _client;
+  _client = null;
+  _db = null;
+  if (client) await client.end({ timeout: 5 });
 }
 
 export async function consumeDistributedRateLimit(input: {
@@ -758,9 +767,6 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     if (user.role !== undefined) {
       values.role = user.role;
       updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
-      values.role = "admin";
-      updateSet.role = "admin";
     }
 
     if (!values.lastSignedIn) values.lastSignedIn = new Date();

@@ -10,8 +10,6 @@ const databaseUrl = process.env.DATABASE_URL?.trim() ?? "";
 
 if (!databaseUrl)
   throw new Error("DATABASE_URL is required for finance smoke.");
-if (!process.env.VITE_APP_ID?.trim())
-  throw new Error("VITE_APP_ID is required for finance smoke.");
 if (!process.env.JWT_SECRET?.trim())
   throw new Error("JWT_SECRET is required for finance smoke.");
 
@@ -409,7 +407,12 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
-});
+main()
+  .catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    const { finishDatabaseScript } = await import("./finish-database-script");
+    await finishDatabaseScript();
+  });

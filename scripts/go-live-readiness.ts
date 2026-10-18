@@ -37,7 +37,6 @@ export function evaluateReadiness(
 ): ReadinessCheck[] {
   const production = env.NODE_ENV === "production";
   const requiredRuntimeKeys = [
-    "VITE_APP_ID",
     "JWT_SECRET",
     "DATABASE_URL",
     "ALLOWED_ORIGINS",
@@ -67,7 +66,7 @@ export function evaluateReadiness(
             : "NOT_CONFIGURED",
       detail:
         missingRuntimeKeys.length === 0
-          ? "VITE_APP_ID, JWT_SECRET, DATABASE_URL e ALLOWED_ORIGINS estão definidos; valores não são exibidos."
+          ? "JWT_SECRET, DATABASE_URL e ALLOWED_ORIGINS estão definidos; valores não são exibidos."
           : `${production ? "Produção bloqueada" : "Não configurado neste ambiente"}: ${missingRuntimeKeys.join(", ")}.`,
     },
   ];
@@ -144,11 +143,11 @@ export function evaluateReadiness(
         "Configure o segredo de assinatura Mercado Pago e registre a URL de notificação no painel da aplicação.",
     },
     {
-      id: "oauth",
-      title: "OAuth externo configurado",
-      keys: ["OAUTH_SERVER_URL"],
+      id: "password-auth",
+      title: "Login próprio com senha",
+      keys: ["JWT_SECRET"],
       guidance:
-        "Configure OAUTH_SERVER_URL e homologue redirect URI, state e PKCE.",
+        "Defina JWT_SECRET. O login é e-mail e senha do Pediu; não há provedor OAuth.",
     },
     {
       id: "email",

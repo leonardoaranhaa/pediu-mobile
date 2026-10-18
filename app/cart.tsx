@@ -1,6 +1,5 @@
 import { Pressable, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
-import { isOAuthConfigured, startOAuthLogin } from "@/constants/oauth";
 import {
   Card,
   OutlineButton,
@@ -54,11 +53,8 @@ export default function CartPage() {
             entre pessoas e dispositivos.
           </Text>
           <PrimaryButton
-            title="Entrar com login seguro"
-            onPress={() => {
-              if (isOAuthConfigured) void startOAuthLogin();
-            }}
-            disabled={!isOAuthConfigured}
+            title="Entrar"
+            onPress={() => router.push("/login")}
           />
           <OutlineButton
             title="Continuar descobrindo"

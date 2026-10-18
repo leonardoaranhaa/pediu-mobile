@@ -146,6 +146,12 @@ export default function ProfilePage() {
           onPress={() => router.push("/account/notifications")}
         />
         <Row
+          icon="lock-outline"
+          title="Trocar senha"
+          subtitle="A senha fica no servidor do Pediu"
+          onPress={() => router.push("/account/password")}
+        />
+        <Row
           icon="settings"
           title="Personalizar o Pediu"
           subtitle={`${theme.label} · mascote ${customization.mascotEnabled ? "ativo" : "discreto"}`}

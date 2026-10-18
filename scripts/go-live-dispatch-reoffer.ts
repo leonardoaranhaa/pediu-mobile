@@ -7,8 +7,6 @@ const apiBaseUrl = (
 const databaseUrl = process.env.DATABASE_URL?.trim() ?? "";
 if (!databaseUrl)
   throw new Error("DATABASE_URL is required for dispatch smoke.");
-if (!process.env.VITE_APP_ID?.trim())
-  throw new Error("VITE_APP_ID is required for dispatch smoke.");
 if (!process.env.JWT_SECRET?.trim())
   throw new Error("JWT_SECRET is required for dispatch smoke.");
 

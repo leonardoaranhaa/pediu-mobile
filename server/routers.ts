@@ -1,7 +1,19 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { COOKIE_NAME } from "../shared/const.js";
+import { COOKIE_NAME, SESSION_TTL_MS } from "../shared/const.js";
 import { getSessionCookieOptions } from "./_core/cookies";
+import { revokeAuthSession } from "./auth-sessions";
+import { sdk } from "./_core/sdk";
+import {
+  changeAccountPassword,
+  LOGIN_ERROR,
+  loginAccount,
+  PASSWORD_ERROR,
+  RESET_ERROR,
+  resetAccountPassword,
+  SIGNUP_ERROR,
+  signupAccount,
+} from "./password-auth";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { systemRouter } from "./_core/systemRouter";
@@ -81,18 +93,145 @@ function hasAudioSignature(audio: Buffer, mimeType: string): boolean {
   return false;
 }
 
+function setSessionCookie(
+  ctx: { req: Parameters<typeof getSessionCookieOptions>[0]; res: { cookie?: Function } },
+  token: string,
+) {
+  if (typeof ctx.res.cookie !== "function") return;
+  const cookieOptions = getSessionCookieOptions(ctx.req);
+  ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: SESSION_TTL_MS });
+}
+
 export const appRouter = router({
   system: systemRouter,
   admin: adminRouter,
   auth: router({
     me: publicProcedure.query(async (opts) => {
       if (!opts.ctx.user) return null;
-      const roles = await db.listAccountRoles(
-        opts.ctx.user.id,
-        opts.ctx.user.role,
-      );
-      return { ...opts.ctx.user, roles };
+      const { passwordHash: _passwordHash, sessionId: _sessionId, ...safe } =
+        opts.ctx.user;
+      const roles = await db.listAccountRoles(safe.id, safe.role);
+      return { ...safe, roles };
     }),
+    signup: publicProcedure
+      .input(
+        z.object({
+          name: z.string().trim().min(2).max(160),
+          email: z.string().trim().email().max(320),
+          phone: z.string().trim().max(32).optional(),
+          password: z.string().min(8).max(72),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        await enforceDistributedRateLimit(ctx, {
+          scope: "auth-signup",
+          identity: input.email,
+          limit: 5,
+          windowMs: 15 * 60_000,
+          message: "Muitas tentativas de cadastro. Espere um pouco e tente de novo.",
+        });
+        try {
+          const result = await signupAccount(input);
+          setSessionCookie(ctx, result.token);
+          return result;
+        } catch (error) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: error instanceof Error ? error.message : SIGNUP_ERROR,
+          });
+        }
+      }),
+    login: publicProcedure
+      .input(
+        z.object({
+          email: z.string().trim().email().max(320),
+          password: z.string().min(1).max(72),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        await enforceDistributedRateLimit(ctx, {
+          scope: "auth-login",
+          identity: input.email,
+          limit: 10,
+          windowMs: 15 * 60_000,
+          message: "Muitas tentativas de entrada. Espere um pouco e tente de novo.",
+        });
+        try {
+          const result = await loginAccount(input);
+          setSessionCookie(ctx, result.token);
+          return result;
+        } catch (error) {
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message: error instanceof Error ? error.message : LOGIN_ERROR,
+          });
+        }
+      }),
+    refresh: publicProcedure.mutation(async ({ ctx }) => {
+      const header = ctx.req.headers?.authorization;
+      const bearer =
+        typeof header === "string" && header.startsWith("Bearer ")
+          ? header.slice("Bearer ".length).trim()
+          : undefined;
+      const refreshed = await sdk.refreshSession(bearer);
+      if (!refreshed) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Sessão inválida. Entre de novo.",
+        });
+      }
+      setSessionCookie(ctx, refreshed.token);
+      const { passwordHash: _passwordHash, ...safe } = refreshed.user;
+      return { token: refreshed.token, expiresAt: refreshed.expiresAt, user: safe };
+    }),
+    changePassword: protectedProcedure
+      .input(
+        z.object({
+          currentPassword: z.string().min(1).max(72),
+          nextPassword: z.string().min(8).max(72),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        try {
+          const result = await changeAccountPassword({
+            userId: ctx.user.id,
+            currentPassword: input.currentPassword,
+            nextPassword: input.nextPassword,
+          });
+          setSessionCookie(ctx, result.token);
+          return result;
+        } catch (error) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: error instanceof Error ? error.message : PASSWORD_ERROR,
+          });
+        }
+      }),
+    resetPassword: publicProcedure
+      .input(
+        z.object({
+          email: z.string().trim().email().max(320),
+          code: z.string().trim().regex(/^\d{8}$/),
+          nextPassword: z.string().min(8).max(72),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        await enforceDistributedRateLimit(ctx, {
+          scope: "auth-reset",
+          identity: input.email,
+          limit: 5,
+          windowMs: 15 * 60_000,
+          message: "Muitas tentativas. Espere um pouco e tente de novo.",
+        });
+        try {
+          return await resetAccountPassword(input);
+        } catch (error) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: error instanceof Error ? error.message : RESET_ERROR,
+          });
+        }
+      }),
     confirmEmail: publicProcedure
       .input(z.object({ token: z.string().regex(/^[a-f0-9]{32,128}$/i) }))
       .mutation(async ({ input }) => ({
@@ -100,7 +239,8 @@ export const appRouter = router({
           hashEmailToken(input.token),
         ),
       })),
-    logout: publicProcedure.mutation(({ ctx }) => {
+    logout: publicProcedure.mutation(async ({ ctx }) => {
+      if (ctx.user?.sessionId) await revokeAuthSession(ctx.user.sessionId);
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;

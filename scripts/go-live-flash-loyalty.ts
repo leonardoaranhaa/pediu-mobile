@@ -10,8 +10,6 @@ const databaseUrl = process.env.DATABASE_URL?.trim() ?? "";
 
 if (!databaseUrl)
   throw new Error("DATABASE_URL é obrigatório para o smoke Flash/Club.");
-if (!process.env.VITE_APP_ID?.trim())
-  throw new Error("VITE_APP_ID é obrigatório para o smoke Flash/Club.");
 if (!process.env.JWT_SECRET?.trim())
   throw new Error("JWT_SECRET é obrigatório para o smoke Flash/Club.");
 
@@ -615,7 +613,12 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error("[go-live:flash-loyalty] FAILED", error);
-  process.exitCode = 1;
-});
+main()
+  .catch((error) => {
+    console.error("[go-live:flash-loyalty] FAILED", error);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    const { finishDatabaseScript } = await import("./finish-database-script");
+    await finishDatabaseScript();
+  });

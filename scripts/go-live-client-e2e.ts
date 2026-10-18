@@ -1,7 +1,6 @@
 import "dotenv/config";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { sdk } from "../server/_core/sdk";
 
 const apiBaseUrl = (
   process.env.API_BASE_URL ?? `http://127.0.0.1:${process.env.PORT ?? "3000"}`
@@ -10,8 +9,6 @@ const databaseUrl = process.env.DATABASE_URL?.trim() ?? "";
 
 if (!databaseUrl)
   throw new Error("DATABASE_URL is required for the Go-Live client E2E smoke.");
-if (!process.env.VITE_APP_ID?.trim())
-  throw new Error("VITE_APP_ID is required for the Go-Live client E2E smoke.");
 if (!process.env.JWT_SECRET?.trim())
   throw new Error("JWT_SECRET is required for the Go-Live client E2E smoke.");
 
@@ -55,6 +52,53 @@ async function callTrpc<T>(
   return unwrapTrpcData(body) as T;
 }
 
+async function callPublic<T>(path: string, input: unknown): Promise<T> {
+  const response = await fetch(`${apiBaseUrl}/api/trpc/${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: "http://localhost:8081",
+    },
+    body: JSON.stringify({ json: input }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message =
+      body?.error?.json?.message ??
+      body?.error?.message ??
+      `HTTP ${response.status}`;
+    throw new Error(`${path}: ${message}`);
+  }
+  return unwrapTrpcData(body) as T;
+}
+
+async function signupAndLogin(input: {
+  name: string;
+  email: string;
+  password: string;
+  phone?: string;
+}) {
+  const created = await callPublic<{
+    token: string;
+    user: { id: number; email: string; role: string };
+  }>("auth.signup", input);
+  const loggedIn = await callPublic<{
+    token: string;
+    user: { id: number; email: string; role: string };
+  }>("auth.login", { email: input.email, password: input.password });
+  assert.equal(loggedIn.user.id, created.user.id);
+  assert.equal(loggedIn.user.email, input.email);
+  const me = await callTrpc<{ id: number; email: string; roles: string[] }>(
+    "auth.me",
+    undefined,
+    loggedIn.token,
+  );
+  assert.equal(me.id, created.user.id);
+  assert.ok(me.roles.includes("customer"));
+  return loggedIn;
+}
+
 function insertId(result: any): number {
   const id = Number(result.insertId);
   assert.ok(
@@ -68,40 +112,46 @@ async function main() {
   const { createConnection } = await import("./pg-client");
   const connection = await createConnection(databaseUrl);
   const runId = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
-  const customerOpenId = `ci-e2e-customer-${runId}`;
-  const merchantOpenId = `ci-e2e-merchant-${runId}`;
+  const password = "Pediu-e2e-pass-1";
   const idempotencyKey = `ci-e2e-order-${runId}`;
   let customerId: number | undefined;
   let merchantId: number | undefined;
+  let courierId: number | undefined;
   let storeId: number | undefined;
   let productId: number | undefined;
   let addressId: number | undefined;
   let orderId: number | undefined;
 
   try {
-    const [customerResult] = await connection.execute(
-      "INSERT INTO users (openId, name, email, loginMethod, role) VALUES (?, ?, ?, ?, ?)",
-      [
-        customerOpenId,
-        "Cliente E2E Go-Live",
-        `${customerOpenId}@example.test`,
-        "e2e",
-        "user",
-      ],
+    const customer = await signupAndLogin({
+      name: "Cliente E2E Go-Live",
+      email: `cliente-${runId}@example.test`,
+      password,
+      phone: "11988887777",
+    });
+    const merchant = await signupAndLogin({
+      name: "Lojista E2E Go-Live",
+      email: `loja-${runId}@example.test`,
+      password,
+    });
+    const courier = await signupAndLogin({
+      name: "Motoboy E2E Go-Live",
+      email: `moto-${runId}@example.test`,
+      password,
+    });
+    customerId = customer.user.id;
+    merchantId = merchant.user.id;
+    courierId = courier.user.id;
+    const customerToken = customer.token;
+    const merchantToken = merchant.token;
+    assert.equal(courier.user.role, "user");
+    const courierProfile = await callTrpc<{ id: number; status: string }>(
+      "pediu.courier.profile.register",
+      { vehicleType: "moto", vehiclePlate: "E2E1A23", phone: "11977776666" },
+      courier.token,
+      "POST",
     );
-    customerId = insertId(customerResult);
-
-    const [merchantResult] = await connection.execute(
-      "INSERT INTO users (openId, name, email, loginMethod, role) VALUES (?, ?, ?, ?, ?)",
-      [
-        merchantOpenId,
-        "Lojista E2E Go-Live",
-        `${merchantOpenId}@example.test`,
-        "e2e",
-        "merchant",
-      ],
-    );
-    merchantId = insertId(merchantResult);
+    assert.equal(courierProfile.status, "pending");
 
     const [storeResult] = await connection.execute(
       "INSERT INTO pediu_stores (ownerId, name, phone, address, pixKey, deliveryFee, deliveryEnabled, pickupEnabled, deliveryRadiusKm, latitude, longitude, isOpen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -134,15 +184,6 @@ async function main() {
       ],
     );
     productId = insertId(productResult);
-
-    const customerToken = await sdk.createSessionToken(customerOpenId, {
-      name: "Cliente E2E Go-Live",
-      expiresInMs: 15 * 60_000,
-    });
-    const merchantToken = await sdk.createSessionToken(merchantOpenId, {
-      name: "Lojista E2E Go-Live",
-      expiresInMs: 15 * 60_000,
-    });
 
     const catalog = await callTrpc<{
       items: Array<{ id: number; storeId: number; name: string }>;
@@ -467,9 +508,9 @@ async function main() {
         storeId,
       ]);
     }
-    if (customerId || merchantId) {
-      const ids = [customerId, merchantId].filter((id): id is number =>
-        Boolean(id),
+    if (customerId || merchantId || courierId) {
+      const ids = [customerId, merchantId, courierId].filter(
+        (id): id is number => Boolean(id),
       );
       if (ids.length)
         await connection.query(
@@ -481,9 +522,14 @@ async function main() {
   }
 }
 
-void main().catch((error) => {
-  console.error(
-    `Go-Live client E2E smoke failed: ${error instanceof Error ? error.message : "unknown error"}`,
-  );
-  process.exitCode = 1;
-});
+void main()
+  .catch((error) => {
+    console.error(
+      `Go-Live client E2E smoke failed: ${error instanceof Error ? error.message : "unknown error"}`,
+    );
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    const { finishDatabaseScript } = await import("./finish-database-script");
+    await finishDatabaseScript();
+  });

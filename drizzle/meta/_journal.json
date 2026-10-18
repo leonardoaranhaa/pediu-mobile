@@ -22,6 +22,13 @@
       "when": 1792238250745,
       "tag": "0002_pediu_rls_fk_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792283785832,
+      "tag": "0003_pediu_password_auth",
+      "breakpoints": true
     }
   ]
 }
