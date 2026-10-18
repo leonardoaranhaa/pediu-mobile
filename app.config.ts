@@ -20,6 +20,7 @@ const bundleId = rawBundleId
 const config: ExpoConfig = {
   name: "Pediu",
   slug: "pediu-mobile",
+  owner: "canuc-avais-organization",
   version: "1.0.0",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
@@ -100,6 +101,9 @@ const config: ExpoConfig = {
     ],
   ],
   experiments: { typedRoutes: true, reactCompiler: true },
+  extra: {
+    eas: { projectId: "b48a8601-ffae-43b9-9fc4-d0d027f932cd" },
+  },
 };
 
 export default config;

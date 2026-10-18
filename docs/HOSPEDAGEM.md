@@ -100,10 +100,13 @@ Pedido, login, loja, motoboy e aviso pelo aplicativo da Expo não dependem do se
 1. Crie a conta em [expo.dev](https://expo.dev).
 2. No projeto, `npx eas-cli login`.
 3. Se pedir, `npx eas-cli init`.
-4. No site da Expo, ambiente **preview**, cadastre só:
-   - `EXPO_PUBLIC_API_BASE_URL` = a URL https da Render, sem barra no fim
+4. No site da Expo, a variável `EXPO_PUBLIC_API_BASE_URL` já está no ambiente **preview**, com o valor `https://pediu-mobile.onrender.com` e sem barra no fim. Não coloque senha nem segredo nessa variável.
 5. Rode `pnpm build:preview`. O perfil `preview` gera um APK.
 6. Instale nos celulares de teste. O Android pede permissão para instalar de fora da loja.
 7. No primeiro teste, use dinheiro na entrega (`PIX_PROVIDER=manual`). PIX e Mercado Pago ficam para depois.
+
+Antes de gerar um aplicativo de loja, cadastre a mesma `EXPO_PUBLIC_API_BASE_URL` no ambiente **production** da Expo. Sem isso, o build de produção não sabe o endereço do servidor.
+
+O próximo APK precisa de um número de versão do Android maior que o já instalado. O arquivo `eas.json` já guarda essa numeração na Expo (`appVersionSource` remoto). O perfil de produção já sobe o número sozinho. No APK de teste, ou aumente `android.versionCode` no `app.config.ts`, ou ligue o mesmo aumento automático no perfil `preview`. Sem um número maior, o celular recusa instalar por cima.
 
 Sem a URL https pública, o APK abre, mas não consegue criar conta nem entrar.
