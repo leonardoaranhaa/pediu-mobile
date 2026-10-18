@@ -12,6 +12,7 @@ import {
   privacyConsents,
 } from "../drizzle/schema";
 import { calculateCouponDiscount } from "./domain/coupons";
+import { deliveryCodesMatch } from "../shared/pilot-ops";
 import {
   classifyTrackingFreshness,
   isTrackingCapturedAtAcceptable,
@@ -358,12 +359,28 @@ export const experienceRouter = router({
         const latestLocation = await data.getLatestDeliveryLocation(
           input.orderId,
         );
+        const store = await data.getStoreById(order.storeId);
         const now = new Date();
         return {
           orderId: input.orderId,
           status: order.status,
           assignment: assignment ?? null,
           latestLocation: latestLocation ?? null,
+          storePoint:
+            store?.latitude && store.longitude
+              ? {
+                  latitude: Number(store.latitude),
+                  longitude: Number(store.longitude),
+                  name: store.name,
+                }
+              : null,
+          destination:
+            order.destinationLatitude && order.destinationLongitude
+              ? {
+                  latitude: Number(order.destinationLatitude),
+                  longitude: Number(order.destinationLongitude),
+                }
+              : null,
           locationAgeSeconds: trackingAgeSeconds(
             latestLocation?.capturedAt,
             now,
@@ -527,8 +544,43 @@ export const experienceRouter = router({
           status: "A caminho" as const,
         };
       }),
-    complete: protectedProcedure
+    broadcast: protectedProcedure
       .input(z.object({ orderId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await data.dispatchNearbyOffers(ctx.user.id, input.orderId);
+        for (const courierUserId of result.courierUserIds) {
+          try {
+            await sendPushToUser(
+              courierUserId,
+              "Nova corrida",
+              "Tem uma entrega perto de você. Abra a central do entregador.",
+              { type: "delivery", orderId: input.orderId, actionPath: "/courier" },
+            );
+          } catch (error) {
+            console.warn("[Delivery] Failed to notify nearby courier:", error);
+          }
+        }
+        return result;
+      }),
+    arrive: protectedProcedure
+      .input(z.object({ orderId: z.number().int().positive() }))
+      .mutation(({ ctx, input }) =>
+        data.markCourierArrival(input.orderId, ctx.user.id),
+      ),
+    pickup: protectedProcedure
+      .input(z.object({ orderId: z.number().int().positive() }))
+      .mutation(({ ctx, input }) =>
+        data.markCourierPickup(input.orderId, ctx.user.id),
+      ),
+    complete: protectedProcedure
+      .input(
+        z.object({
+          orderId: z.number().int().positive(),
+          code: z.string().trim().max(4).optional(),
+          photo: z.string().max(350_000).optional(),
+          cashReceived: z.boolean().optional(),
+        }),
+      )
       .mutation(async ({ ctx, input }) => {
         const order = await data.getOrderForUser(input.orderId, ctx.user.id);
         if (!order) throw new Error("Pedido não encontrado ou não autorizado");
@@ -551,7 +603,18 @@ export const experienceRouter = router({
           (assignment.courierId !== ctx.user.id && store?.id !== order.storeId)
         )
           throw new Error("A entrega ainda não foi atribuída a este operador");
-        const completed = await data.completeDelivery(input.orderId);
+        if (!deliveryCodesMatch(order.deliveryCode, input.code ?? ""))
+          throw new Error("O código não confere com o que o cliente mostrou.");
+        const payment = await data.getPaymentForOrder(
+          order.id,
+          order.customerId,
+        );
+        if (payment?.method === "cash" && !input.cashReceived)
+          throw new Error("Confirme que recebeu o dinheiro antes de concluir.");
+        const completed = await data.completeDelivery(input.orderId, {
+          photo: input.photo,
+          cashReceived: input.cashReceived,
+        });
         if (completed.changed) {
           const profile = await data.getCourierProfileByUser(ctx.user.id);
           if (profile)

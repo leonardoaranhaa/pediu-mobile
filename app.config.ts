@@ -76,6 +76,15 @@ const config: ExpoConfig = {
       },
     ],
     ["expo-notifications", { color: "#E20D2A" }],
+    [
+      "expo-image-picker",
+      {
+        photosPermission:
+          "Permita que o Pediu use suas fotos para o cardápio e o cadastro do entregador.",
+        cameraPermission:
+          "Permita que o Pediu use a câmera para a foto da entrega e dos documentos.",
+      },
+    ],
     "expo-font",
     [
       "expo-video",

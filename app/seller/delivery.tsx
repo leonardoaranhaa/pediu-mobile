@@ -66,6 +66,12 @@ export default function SellerDeliveryPage() {
       void queueQuery.refetch();
     },
   });
+  const broadcast = trpc.pediu.experience.delivery.broadcast.useMutation({
+    onSuccess: () => {
+      void current.refetch();
+      void queueQuery.refetch();
+    },
+  });
   const available = (couriers.data ?? []).filter(
     (courier) =>
       courier.linkStatus === "active" &&
@@ -210,15 +216,36 @@ export default function SellerDeliveryPage() {
                 {offer.error.message}
               </Text>
             ) : null}
-            {offer.data?.status === "pending" ? (
-              <Text style={{ color: "#0E7A45", fontFamily: "Nunito" }}>
-                Oferta enviada. O motoboy vê a corrida na central dele.
+            {broadcast.error ? (
+              <Text style={{ color: "#E20D2A", fontFamily: "Nunito" }}>
+                {broadcast.error.message}
               </Text>
             ) : null}
-            {!available.length ? (
+            {offer.data?.status === "pending" || (broadcast.data?.courierUserIds.length ?? 0) > 0 ? (
+              <Text style={{ color: "#0E7A45", fontFamily: "Nunito" }}>
+                Oferta enviada. Os motoboys perto da loja veem a corrida na central.
+              </Text>
+            ) : null}
+            <OpsButton
+              title={
+                broadcast.isPending
+                  ? "Chamando..."
+                  : "Chamar motoboys por perto"
+              }
+              onPress={() => broadcast.mutate({ orderId })}
+              disabled={
+                broadcast.isPending ||
+                selectedOrder.status !== "Pronto" ||
+                Boolean(current.data?.assignment)
+              }
+            />
+            <Text style={s.muted}>
+              A chamada vai para motoboys aprovados que estão online perto da loja.
+              Não é preciso o número da conta.
+            </Text>
+            {broadcast.data && broadcast.data.courierUserIds.length === 0 ? (
               <Text style={s.muted}>
-                Nenhum motoboy aprovado está disponível. Vincule a conta dele
-                em Entregadores e peça para ele ficar “Disponível”.
+                Nenhum motoboy online perto da loja agora. Peça para ele ficar online com a localização ligada.
               </Text>
             ) : null}
             {available.map((courier) => (
@@ -227,7 +254,7 @@ export default function SellerDeliveryPage() {
                 title={
                   offer.isPending
                     ? "Enviando..."
-                    : `Chamar ${courier.name ?? "motoboy"} · conta #${courier.courierUserId}`
+                    : `Chamar ${courier.name ?? "motoboy"} da equipe`
                 }
                 onPress={() => callCourier(courier.courierUserId)}
                 disabled={

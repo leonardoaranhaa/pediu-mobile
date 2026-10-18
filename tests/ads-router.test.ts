@@ -35,6 +35,7 @@ const store = {
   flashEnabled: 0,
   flashEtaMaxMinutes: 30,
   flashFeeOverride: null,
+  openingHours: null,
   createdAt: new Date(),
 };
 
@@ -51,6 +52,7 @@ const product = {
   inventoryTracked: 0,
   stockQuantity: 0,
   reservedQuantity: 0,
+  imageData: null,
   createdAt: new Date(),
 };
 

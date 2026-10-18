@@ -46,6 +46,8 @@ export default function CheckoutScreen() {
   const [address, setAddress] = useState("");
   const [addressId, setAddressId] = useState<number | undefined>();
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix");
+  const [changeFor, setChangeFor] = useState("");
+  const [changeError, setChangeError] = useState("");
   const [idempotencyKey, setIdempotencyKey] = useState("");
   const [couponCode, setCouponCode] = useState("");
   const [appliedCouponCode, setAppliedCouponCode] = useState("");
@@ -179,11 +181,23 @@ export default function CheckoutScreen() {
       quote.isFetching
     )
       return;
+    const changeValue = changeFor.replace(",", ".").trim();
+    if (
+      paymentMethod === "cash" &&
+      changeValue &&
+      (!/^\d+(\.\d{1,2})?$/.test(changeValue) ||
+        Number(changeValue) + 0.001 < Number(quote.data.total))
+    ) {
+      setChangeError("O valor para troco precisa cobrir o total do pedido.");
+      return;
+    }
+    setChangeError("");
     createOrder.mutate({
       idempotencyKey,
       storeId: quote.data.storeId,
       total: quote.data.total,
       paymentMethod,
+      ...(paymentMethod === "cash" && changeValue ? { changeFor: changeValue } : {}),
       fulfillmentMode: effectiveFulfillmentMode,
       fulfillment: quote.data.fulfillment,
       tipAmount: Number(quote.data.tipAmount),
@@ -661,6 +675,16 @@ export default function CheckoutScreen() {
             </Pressable>
           ))}
         </View>
+        {paymentMethod === "cash" ? (
+          <Field
+            label="TROCO PARA QUANTO?"
+            value={changeFor}
+            onChangeText={setChangeFor}
+            placeholder="Ex.: 50,00. Deixe em branco se não precisar."
+            keyboardType="decimal-pad"
+          />
+        ) : null}
+        {changeError ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{changeError}</Text> : null}
       </Card>
       <Card>
         <Text style={s.sectionTitle}>Confirmação</Text>

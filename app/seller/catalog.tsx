@@ -1,5 +1,6 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { useEffect, useMemo, useState } from "react";
+import { ProductExtrasFields, type ProductExtras } from "@/components/product-extras-fields";
 import { Pressable, Share, StyleSheet, Text, View } from "react-native";
 import { EmptyState } from "@/components/pediu/empty-state";
 import { useAuth } from "@/hooks/use-auth";
@@ -24,6 +25,7 @@ export default function SellerCatalogPage() {
   const [price, setPrice] = useState("");
   const [saleUnit, setSaleUnit] = useState<SaleUnit>("unit");
   const [packSize, setPackSize] = useState("");
+  const [extras, setExtras] = useState<ProductExtras>({});
 
   const unitOptions = useMemo(() => SALE_UNITS, []);
   const categorySuggestions = isMarket ? MARKET_CATEGORY_SUGGESTIONS : MERCHANT_CATEGORY_SUGGESTIONS;
@@ -110,6 +112,7 @@ export default function SellerCatalogPage() {
         </View>
         <Field label="DESCRIÇÃO" value={description} onChangeText={setDescription} placeholder={catalogPlaceholder.description} multiline />
         <Field label="PREÇO (R$)" value={price} onChangeText={setPrice} placeholder={catalogPlaceholder.price} keyboardType="decimal-pad" />
+        <ProductExtrasFields onChange={setExtras} />
         {isMarket ? (
           <>
             <Text style={s.label}>UNIDADE DE VENDA</Text>
@@ -162,6 +165,8 @@ export default function SellerCatalogPage() {
                 price: normalized,
                 saleUnit: isMarket ? saleUnit : "unit",
                 packSize: pack && /^\d+(\.\d{1,3})?$/.test(pack) ? pack : null,
+                imageData: extras.imageData,
+                optionGroups: extras.optionGroups,
               });
             }
           }}

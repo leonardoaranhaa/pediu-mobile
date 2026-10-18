@@ -29,6 +29,13 @@
       "when": 1792283785832,
       "tag": "0003_pediu_password_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792326276082,
+      "tag": "0004_pediu_pilot_ops",
+      "breakpoints": true
     }
   ]
 }

@@ -31,10 +31,14 @@ import {
   View,
 } from "react-native";
 
+import { OpeningHoursEditor } from "@/components/opening-hours-editor";
+import { PinMap } from "@/components/pin-map";
+import { ProductExtrasFields, type ProductExtras } from "@/components/product-extras-fields";
 import { askToJoin } from "@/components/auth-prompt";
 import { ProfileHome } from "@/components/profile-home";
 import { ScreenContainer } from "@/components/screen-container";
 import type { AccountAction, SignupRole } from "@/lib/guest-access";
+import { geocodeTypedAddress } from "@/lib/location";
 import type { MascotReaction } from "@/components/pediu-mascot";
 import { CartPeek } from "@/components/pediu/cart-peek";
 import { PediuMascotDock } from "@/components/pediu-companion";
@@ -91,6 +95,8 @@ type Product = {
   storeKind?: "restaurant" | "market" | "service";
   flashEnabled?: boolean;
   flash?: boolean;
+  storeOpen?: boolean;
+  nextOpenLabel?: string | null;
 };
 
 type SavedAddress = {
@@ -491,6 +497,7 @@ export default function HomeScreen() {
   const [newProductPrice, setNewProductPrice] = useState("");
   const [newProductCategory, setNewProductCategory] = useState("Doces");
   const [newProductDescription, setNewProductDescription] = useState("");
+  const [productExtras, setProductExtras] = useState<ProductExtras>({});
   const [notice, setNotice] = useState("");
   const [pixPaymentPending, setPixPaymentPending] = useState(false);
   const [locationLabel, setLocationLabel] = useState("Usar minha localização");
@@ -648,7 +655,7 @@ export default function HomeScreen() {
         distance: "perto de você",
         category: product.category,
         description: product.description,
-        imageUrl: product.adImageUrl,
+        imageUrl: product.imageData || product.adImageUrl,
         adId: product.adId,
         adHeadline: product.adHeadline,
         adDescription: product.adDescription,
@@ -656,10 +663,16 @@ export default function HomeScreen() {
         emoji:
           product.category === "Lanches"
             ? "🍔"
-            : product.category === "Serviços"
-              ? "🛠️"
-              : "🍰",
+            : product.category === "Pizza"
+              ? "🍕"
+              : product.category === "Doces"
+                ? "🍰"
+                : product.category === "Serviços"
+                  ? "🛠️"
+                  : "🍽️",
         available: Boolean(product.available),
+        storeOpen: product.storeOpen,
+        nextOpenLabel: product.nextOpenLabel,
         deliveryFee: product.deliveryFee,
         storeKind: product.storeKind,
         flashEnabled: Boolean(product.flashEnabled),
@@ -829,7 +842,7 @@ export default function HomeScreen() {
     if (
       !storeId ||
       !newProductName.trim() ||
-      !/^\\d+(\\.\\d{1,2})?$/.test(price)
+      !/^\d+(\.\d{1,2})?$/.test(price)
     ) {
       notify("Informe nome, categoria e um preço válido");
       return;
@@ -840,6 +853,8 @@ export default function HomeScreen() {
       category: newProductCategory.trim() || "Geral",
       description: newProductDescription.trim() || undefined,
       price,
+      imageData: productExtras.imageData,
+      optionGroups: productExtras.optionGroups,
     });
   };
 
@@ -1012,6 +1027,7 @@ export default function HomeScreen() {
     latitude?: number | null;
     longitude?: number | null;
     isOpen?: boolean;
+    openingHours?: string;
   }) => {
     updateStoreMutation.mutate(input);
   };
@@ -1444,6 +1460,7 @@ export default function HomeScreen() {
                   style={styles.input}
                   multiline
                 />
+                <ProductExtrasFields onChange={setProductExtras} />
                 <Pressable
                   style={[
                     styles.primaryButton,
@@ -1871,7 +1888,11 @@ function CustomerDiscover({
                       product.adId ? { color: COLORS.orange } : null,
                     ]}
                   >
-                    {product.adId ? "OFERTA PEDIU" : "DISPONÍVEL"}
+                    {product.storeOpen === false
+                      ? "FECHADO"
+                      : product.adId
+                        ? "OFERTA PEDIU"
+                        : "DISPONÍVEL"}
                   </Text>
                 </View>
               </View>
@@ -2029,8 +2050,10 @@ function CustomerOrders({
   orders: {
     id: number;
     storeId: number;
+    storeName?: string | null;
     status: OrderStatus;
     total: string;
+    cancelReason?: string | null;
     deliveryAddress: string | null;
     createdAt: Date | string | null;
   }[];
@@ -2098,9 +2121,9 @@ function CustomerOrders({
           <View style={styles.orderCard} key={order.id}>
             <View style={styles.orderTop}>
               <View>
-                <Text style={styles.eyebrow}>`PEDIDO #${order.id}`</Text>
+                <Text style={styles.eyebrow}>PEDIDO #{order.id}</Text>
                 <Text style={styles.orderStore}>
-                  `Estabelecimento #${order.storeId}`
+                  {order.storeName || "Loja"}
                 </Text>
               </View>
               <View style={styles.statusPill}>
@@ -2112,7 +2135,7 @@ function CustomerOrders({
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Total</Text>
               <Text style={styles.totalValue}>
-                `R$ ${Number(order.total).toFixed(2).replace(".", ",")}`
+                {`R$ ${Number(order.total).toFixed(2).replace(".", ",")}`}
               </Text>
             </View>
             {order.deliveryAddress ? (
@@ -2137,7 +2160,9 @@ function CustomerOrders({
                 </View>
               </>
             ) : (
-              <Text style={styles.muted}>Este pedido foi cancelado.</Text>
+              <Text style={styles.muted}>
+                {order.cancelReason || "Este pedido foi cancelado."}
+              </Text>
             )}
             <Pressable
               style={styles.outlineButtonSmall}
@@ -2600,6 +2625,7 @@ function SellerSettings({
     latitude: string | null;
     longitude: string | null;
     isOpen: number;
+    openingHours?: string | null;
   };
   salesCount: number;
   onSave: (input: {
@@ -2614,6 +2640,7 @@ function SellerSettings({
     latitude?: number | null;
     longitude?: number | null;
     isOpen?: boolean;
+    openingHours?: string;
   }) => void;
   saving: boolean;
   onAssistant: () => void;
@@ -2633,8 +2660,14 @@ function SellerSettings({
   const [deliveryRadiusKm, setDeliveryRadiusKm] = useState(
     store?.deliveryRadiusKm ?? "10.00",
   );
-  const [latitude, setLatitude] = useState(store?.latitude ?? "");
-  const [longitude, setLongitude] = useState(store?.longitude ?? "");
+  const [pin, setPin] = useState<{ latitude: number; longitude: number } | null>(
+    store?.latitude != null && store?.longitude != null
+      ? { latitude: Number(store.latitude), longitude: Number(store.longitude) }
+      : null,
+  );
+  const [pinKey, setPinKey] = useState(0);
+  const [locating, setLocating] = useState(false);
+  const [hoursJson, setHoursJson] = useState<string | null>(null);
   const [validationMessage, setValidationMessage] = useState("");
   const [isOpen, setIsOpen] = useState(Boolean(store?.isOpen));
   useEffect(() => {
@@ -2646,8 +2679,11 @@ function SellerSettings({
     setDeliveryEnabled(Boolean(store?.deliveryEnabled ?? 1));
     setPickupEnabled(Boolean(store?.pickupEnabled));
     setDeliveryRadiusKm(store?.deliveryRadiusKm ?? "10.00");
-    setLatitude(store?.latitude ?? "");
-    setLongitude(store?.longitude ?? "");
+    setPin(
+      store?.latitude != null && store?.longitude != null
+        ? { latitude: Number(store.latitude), longitude: Number(store.longitude) }
+        : null,
+    );
     setIsOpen(Boolean(store?.isOpen));
   }, [
     store?.id,
@@ -2663,14 +2699,27 @@ function SellerSettings({
     store?.longitude,
     store?.isOpen,
   ]);
+  const locateStore = async () => {
+    setValidationMessage("");
+    setLocating(true);
+    try {
+      const point = await geocodeTypedAddress(`${address}, Brasil`);
+      if (!point) {
+        setValidationMessage("Não achamos esse endereço. Confira rua, número e cidade.");
+        return;
+      }
+      setPin(point);
+      setPinKey((value) => value + 1);
+    } catch {
+      setValidationMessage("Não foi possível consultar o mapa agora.");
+    } finally {
+      setLocating(false);
+    }
+  };
   const save = () => {
     const normalizedRadius = deliveryRadiusKm.replace(",", ".").trim();
-    const parsedLatitude = latitude.trim()
-      ? Number(latitude.replace(",", "."))
-      : null;
-    const parsedLongitude = longitude.trim()
-      ? Number(longitude.replace(",", "."))
-      : null;
+    const parsedLatitude = pin?.latitude ?? null;
+    const parsedLongitude = pin?.longitude ?? null;
     if (
       name.trim().length < 2 ||
       !/^\d+(\.\d{1,2})?$/.test(deliveryFee.replace(",", ".").trim())
@@ -2695,7 +2744,7 @@ function SellerSettings({
         parsedLongitude > 180)
     ) {
       setValidationMessage(
-        "Delivery ativo exige latitude e longitude válidas da loja.",
+        "Marque o ponto da loja no mapa antes de ativar o delivery.",
       );
       return;
     }
@@ -2712,6 +2761,7 @@ function SellerSettings({
       latitude: parsedLatitude,
       longitude: parsedLongitude,
       isOpen,
+      ...(hoursJson ? { openingHours: hoursJson } : {}),
     });
   };
   return (
@@ -2808,28 +2858,28 @@ function SellerSettings({
           style={styles.input}
           keyboardType="decimal-pad"
         />
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <TextInput
-            value={latitude}
-            onChangeText={setLatitude}
-            placeholder="Latitude da loja"
-            placeholderTextColor={COLORS.muted}
-            style={[styles.input, { flex: 1 }]}
-            keyboardType="numbers-and-punctuation"
+        <Pressable onPress={() => void locateStore()}>
+          <Text style={{ color: COLORS.coral, fontWeight: "900" }}>
+            {locating ? "Procurando no mapa..." : "Ver endereço no mapa"}
+          </Text>
+        </Pressable>
+        {pin ? (
+          <PinMap
+            latitude={pin.latitude}
+            longitude={pin.longitude}
+            anchorKey={`${store?.id ?? 0}-${pinKey}`}
+            label="Loja"
+            onChange={setPin}
           />
-          <TextInput
-            value={longitude}
-            onChangeText={setLongitude}
-            placeholder="Longitude da loja"
-            placeholderTextColor={COLORS.muted}
-            style={[styles.input, { flex: 1 }]}
-            keyboardType="numbers-and-punctuation"
-          />
-        </View>
+        ) : null}
         <Text style={styles.muted}>
-          Use as coordenadas reais do estabelecimento. O Pediu não promete
-          cobertura quando elas não estiverem configuradas.
+          Arraste o ponto até a porta da loja. Não precisa digitar latitude nem longitude.
         </Text>
+        <OpeningHoursEditor
+          key={store?.id ?? 0}
+          initial={store?.openingHours}
+          onChange={setHoursJson}
+        />
         {validationMessage ? (
           <Text
             style={{ color: COLORS.coral, fontSize: 12, fontWeight: "800" }}

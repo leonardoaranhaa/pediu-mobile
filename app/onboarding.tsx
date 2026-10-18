@@ -19,7 +19,11 @@ import { PediuMascot } from "@/components/pediu-mascot";
 import { PrimaryButton } from "@/components/pediu-page";
 import { useAppPreferences } from "@/lib/app-preferences";
 import { routeAfterWelcome } from "@/lib/guest-access";
-import { ONBOARDING_COMPLETE_VALUE, ONBOARDING_STORAGE_KEY } from "@/lib/onboarding-gate";
+import {
+  ONBOARDING_COMPLETE_VALUE,
+  ONBOARDING_STORAGE_KEY,
+  rememberOnboardingComplete,
+} from "@/lib/onboarding-gate";
 import {
   ONBOARDING_SLIDES,
   type OnboardingSlide,
@@ -121,6 +125,7 @@ export default function OnboardingScreen() {
   );
 
   const finish = useCallback(async () => {
+    rememberOnboardingComplete();
     await AsyncStorage.setItem(ONBOARDING_STORAGE_KEY, ONBOARDING_COMPLETE_VALUE);
     router.replace(routeAfterWelcome());
   }, []);

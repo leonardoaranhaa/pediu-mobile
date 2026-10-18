@@ -31,6 +31,11 @@ import { adminRouter } from "./admin-router";
 import { experienceRouter } from "./experience-router";
 import { enforceDistributedRateLimit } from "./_core/distributed-rate-limit";
 import { calculateCouponDiscount } from "./domain/coupons";
+import {
+  createDeliveryCode,
+  deliveryCodesMatch,
+  resolveStoreAvailability,
+} from "../shared/pilot-ops";
 import { clampTipAmount, resolveFlashFulfillment } from "./domain/flash";
 import { DEFAULT_TIP_DESTINATION } from "./domain/tips";
 import { normalizeSaleUnit, SALE_UNITS } from "./domain/market-units";
@@ -364,6 +369,29 @@ export const appRouter = router({
             })),
           );
         }),
+      detail: publicProcedure
+        .input(z.object({ productId: z.number().int().positive() }))
+        .query(async ({ input }) => {
+          const product = await db.getProductById(input.productId);
+          if (!product || !product.available) return null;
+          const store = await db.getStoreById(product.storeId);
+          if (!store) return null;
+          const availability = resolveStoreAvailability({
+            isOpen: store.isOpen,
+            openingHours: store.openingHours,
+          });
+          const options = await db.listProductOptions(product.id);
+          return {
+            product,
+            storeName: store.name,
+            deliveryFee: store.deliveryFee,
+            storeKind: store.kind,
+            flashEnabled: store.flashEnabled,
+            storeOpen: availability.open,
+            nextOpenLabel: availability.nextOpenLabel,
+            options,
+          };
+        }),
       search: publicProcedure
         .input(
           z.object({
@@ -495,8 +523,14 @@ export const appRouter = router({
         .query(async ({ ctx, input }) => {
           const store = await db.getStoreById(input.storeId);
           if (!store) throw new Error("Estabelecimento não encontrado");
-          if (!store.isOpen)
-            throw new Error("Estabelecimento fechado no momento");
+          const availability = resolveStoreAvailability({
+            isOpen: store.isOpen,
+            openingHours: store.openingHours,
+          });
+          if (!availability.open)
+            throw new Error(
+              availability.nextOpenLabel ?? "Estabelecimento fechado no momento",
+            );
           if (store.kind === "market" && input.fulfillmentMode === "pickup")
             throw new Error(
               "Compras de mercado são entregues pelo Pediu Entregas; selecione um endereço.",
@@ -685,6 +719,7 @@ export const appRouter = router({
                 .optional()
                 .nullable(),
               isOpen: z.boolean().optional(),
+              openingHours: z.string().max(4000).optional(),
             })
             .refine(
               (input) =>
@@ -742,6 +777,10 @@ export const appRouter = router({
               vehicleType: z.enum(["bike", "moto", "car"]),
               vehiclePlate: z.string().trim().max(16).optional(),
               phone: z.string().trim().max(32).optional(),
+              documentNumber: z.string().trim().max(40).optional(),
+              documentPhoto: z.string().max(350_000).optional(),
+              vehiclePhoto: z.string().max(350_000).optional(),
+              selfiePhoto: z.string().max(350_000).optional(),
             }),
           )
           .mutation(({ ctx, input }) =>
@@ -753,9 +792,21 @@ export const appRouter = router({
             db.setCourierLocationConsent(ctx.user.id, input.accepted),
           ),
         availability: protectedProcedure
-          .input(z.object({ value: z.enum(["offline", "available", "busy"]) }))
+          .input(
+            z.object({
+              value: z.enum(["offline", "available", "busy"]),
+              latitude: z.number().min(-90).max(90).optional(),
+              longitude: z.number().min(-180).max(180).optional(),
+            }),
+          )
           .mutation(({ ctx, input }) =>
-            db.setCourierAvailability(ctx.user.id, input.value),
+            db.setCourierAvailability(
+              ctx.user.id,
+              input.value,
+              input.latitude != null && input.longitude != null
+                ? { latitude: input.latitude, longitude: input.longitude }
+                : undefined,
+            ),
           ),
       }),
       offers: protectedProcedure.query(({ ctx }) =>
@@ -779,8 +830,26 @@ export const appRouter = router({
             accept: false,
           }),
         ),
-      active: protectedProcedure.query(({ ctx }) =>
-        db.listActiveDeliveriesForCourier(ctx.user.id),
+      active: protectedProcedure.query(async ({ ctx }) => {
+        const rows = await db.listActiveDeliveriesForCourier(ctx.user.id);
+        return Promise.all(
+          rows.map(async (row) => {
+            const { deliveryCode: _hidden, deliveryPhoto: _photo, ...order } =
+              row.order;
+            const payment = await db.getPaymentForOrder(
+              row.order.id,
+              row.order.customerId,
+            );
+            return {
+              ...row,
+              order,
+              paymentMethod: payment?.method ?? null,
+            };
+          }),
+        );
+      }),
+      earnings: protectedProcedure.query(({ ctx }) =>
+        db.listCourierEarnings(ctx.user.id),
       ),
     }),
     ads: router({
@@ -913,14 +982,35 @@ export const appRouter = router({
               .optional(),
             inventoryTracked: z.boolean().default(false),
             stockQuantity: z.number().int().min(0).max(1_000_000).default(0),
+            imageData: z.string().max(350_000).optional(),
+            optionGroups: z
+              .array(
+                z.object({
+                  name: z.string().trim().min(1).max(80),
+                  required: z.boolean().default(false),
+                  choices: z
+                    .array(
+                      z.object({
+                        name: z.string().trim().min(1).max(80),
+                        priceDelta: z.string().regex(/^\d+(\.\d{1,2})?$/),
+                      }),
+                    )
+                    .min(1)
+                    .max(12),
+                }),
+              )
+              .max(6)
+              .optional(),
           }),
         )
         .mutation(async ({ ctx, input }) => {
           const store = await db.getStoreForOwner(ctx.user.id);
           if (store?.id !== input.storeId)
             throw new Error("Loja não autorizada");
-          return db.createProduct({
-            ...input,
+          const { optionGroups, imageData, ...productInput } = input;
+          const productId = await db.createProduct({
+            ...productInput,
+            imageData: imageData || null,
             saleUnit: normalizeSaleUnit(
               input.saleUnit ?? (store.kind === "market" ? "unit" : "unit"),
             ),
@@ -928,6 +1018,9 @@ export const appRouter = router({
             available: 1,
             inventoryTracked: input.inventoryTracked ? 1 : 0,
           });
+          if (optionGroups?.length)
+            await db.replaceProductOptions(productId, optionGroups);
+          return productId;
         }),
       availability: protectedProcedure
         .input(
@@ -1035,6 +1128,10 @@ export const appRouter = router({
             addressId: z.number().int().positive().optional(),
             deliveryAddress: z.string().trim().max(255).optional(),
             couponCode: z.string().trim().min(1).max(40).optional(),
+            changeFor: z
+              .string()
+              .regex(/^\d+(\.\d{1,2})?$/)
+              .optional(),
             items: z
               .array(
                 z.object({
@@ -1093,8 +1190,14 @@ export const appRouter = router({
           });
           const store = await db.getStoreById(input.storeId);
           if (!store) throw new Error("Estabelecimento não encontrado");
-          if (!store.isOpen)
-            throw new Error("Estabelecimento fechado no momento");
+          const availability = resolveStoreAvailability({
+            isOpen: store.isOpen,
+            openingHours: store.openingHours,
+          });
+          if (!availability.open)
+            throw new Error(
+              availability.nextOpenLabel ?? "Estabelecimento fechado no momento",
+            );
           if (store.kind === "market" && input.fulfillmentMode === "pickup")
             throw new Error(
               "Compras de mercado são entregues pelo Pediu Entregas; selecione um endereço.",
@@ -1176,6 +1279,14 @@ export const appRouter = router({
             Number(tipAmount);
           if (Math.abs(calculated - Number(input.total)) > 0.01)
             throw new Error("Total do pedido inválido");
+          if (
+            input.paymentMethod === "cash" &&
+            input.changeFor &&
+            Number(input.changeFor) + 0.001 < calculated
+          )
+            throw new Error(
+              "O valor para troco precisa cobrir o total do pedido.",
+            );
           const serverTotal = calculated.toFixed(2);
           const recoverConcurrentOrder = async () => {
             const racedOrder = await db.getOrderByIdempotencyKey(
@@ -1229,6 +1340,9 @@ export const appRouter = router({
                   tipDestination: DEFAULT_TIP_DESTINATION,
                   fulfillment: input.fulfillment,
                   idempotencyKey,
+                  deliveryCode: createDeliveryCode(),
+                  destinationLatitude: savedAddress?.latitude,
+                  destinationLongitude: savedAddress?.longitude,
                 },
                 input.items.map((item, i) => ({
                   productId: item.productId,
@@ -1281,6 +1395,11 @@ export const appRouter = router({
                 tipDestination: DEFAULT_TIP_DESTINATION,
                 fulfillment: input.fulfillment,
                 idempotencyKey,
+                deliveryCode: createDeliveryCode(),
+                changeFor:
+                  input.paymentMethod === "cash" ? input.changeFor : undefined,
+                destinationLatitude: savedAddress?.latitude,
+                destinationLongitude: savedAddress?.longitude,
               },
               input.items.map((item, i) => ({
                 productId: item.productId,

@@ -1,7 +1,10 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
+import { OpeningHoursEditor } from "@/components/opening-hours-editor";
+import { PinMap } from "@/components/pin-map";
 import { useAuth } from "@/hooks/use-auth";
+import { geocodeTypedAddress } from "@/lib/location";
 import { trpc } from "@/lib/trpc";
 import { Card, Page, PrimaryButton, Row, s } from "@/components/pediu-page";
 import { ThemePicker } from "@/components/theme-picker";
@@ -16,6 +19,11 @@ export default function SellerSettingsPage() {
   const [pixKey, setPixKey] = useState("");
   const [deliveryFee, setDeliveryFee] = useState("0.00");
   const [isOpen, setIsOpen] = useState(false);
+  const [pin, setPin] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [pinKey, setPinKey] = useState(0);
+  const [hoursJson, setHoursJson] = useState<string | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [mapMessage, setMapMessage] = useState("");
 
   useEffect(() => {
     setName(store.data?.name ?? "");
@@ -24,16 +32,51 @@ export default function SellerSettingsPage() {
     setPixKey(store.data?.pixKey ?? "");
     setDeliveryFee(store.data?.deliveryFee ?? "0.00");
     setIsOpen(Boolean(store.data?.isOpen));
-  }, [store.data?.id, store.data?.name, store.data?.phone, store.data?.address, store.data?.pixKey, store.data?.deliveryFee, store.data?.isOpen]);
+    const latitude = store.data?.latitude == null ? Number.NaN : Number(store.data.latitude);
+    const longitude = store.data?.longitude == null ? Number.NaN : Number(store.data.longitude);
+    setPin(
+      Number.isFinite(latitude) && Number.isFinite(longitude)
+        ? { latitude, longitude }
+        : null,
+    );
+  }, [store.data?.id, store.data?.name, store.data?.phone, store.data?.address, store.data?.pixKey, store.data?.deliveryFee, store.data?.isOpen, store.data?.latitude, store.data?.longitude]);
 
   if (!store.data) {
     return <Page title="Configurações da loja" eyebrow="MINHA OPERAÇÃO"><Card><Text style={s.sectionTitle}>Cadastre sua loja primeiro</Text><Text style={s.muted}>As configurações comerciais ficam disponíveis depois do onboarding.</Text></Card></Page>;
   }
 
+  const locate = async () => {
+    setMapMessage("");
+    setLocating(true);
+    try {
+      const point = await geocodeTypedAddress(`${address}, Brasil`);
+      if (!point) {
+        setMapMessage("Não achamos esse endereço. Confira rua, número e cidade.");
+        return;
+      }
+      setPin(point);
+      setPinKey((value) => value + 1);
+    } catch {
+      setMapMessage("Não foi possível consultar o mapa agora.");
+    } finally {
+      setLocating(false);
+    }
+  };
+
   const save = () => {
     const fee = deliveryFee.replace(",", ".").trim();
     if (name.trim().length < 2 || !/^\d+(\.\d{1,2})?$/.test(fee)) return;
-    update.mutate({ name: name.trim(), phone: phone.trim() || undefined, address: address.trim() || undefined, pixKey: pixKey.trim() || undefined, deliveryFee: fee, isOpen });
+    update.mutate({
+      name: name.trim(),
+      phone: phone.trim() || undefined,
+      address: address.trim() || undefined,
+      pixKey: pixKey.trim() || undefined,
+      deliveryFee: fee,
+      isOpen,
+      latitude: pin?.latitude ?? null,
+      longitude: pin?.longitude ?? null,
+      ...(hoursJson ? { openingHours: hoursJson } : {}),
+    });
   };
 
   return <Page title="Configurações da loja" eyebrow="MINHA OPERAÇÃO">
@@ -42,6 +85,11 @@ export default function SellerSettingsPage() {
       <Field label="NOME DA LOJA" value={name} onChangeText={setName} placeholder="Nome do seu negócio" />
       <Field label="WHATSAPP / TELEFONE" value={phone} onChangeText={setPhone} placeholder="(11) 99999-9999" keyboardType="phone-pad" />
       <Field label="ENDEREÇO" value={address} onChangeText={setAddress} placeholder="Rua, número e bairro" />
+      <Pressable onPress={() => void locate()}><Text style={{ color: PEDIU.coral, fontWeight: "900" }}>{locating ? "Procurando no mapa..." : "Ver endereço no mapa"}</Text></Pressable>
+      {pin ? <PinMap latitude={pin.latitude} longitude={pin.longitude} anchorKey={`${store.data.id}-${pinKey}`} label="Loja" onChange={setPin} /> : null}
+      {mapMessage ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{mapMessage}</Text> : null}
+      <Text style={s.muted}>Arraste o ponto até a porta da loja. Não precisa digitar latitude nem longitude.</Text>
+      <OpeningHoursEditor key={store.data.id} initial={store.data.openingHours} onChange={setHoursJson} />
       <Field label="CHAVE PIX" value={pixKey} onChangeText={setPixKey} placeholder="CPF, telefone ou e-mail" />
       <Field label="TAXA DE ENTREGA" value={deliveryFee} onChangeText={setDeliveryFee} placeholder="0.00" keyboardType="decimal-pad" />
       <Pressable onPress={() => setIsOpen((value) => !value)} style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 7 }}>

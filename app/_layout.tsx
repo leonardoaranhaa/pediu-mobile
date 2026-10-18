@@ -24,6 +24,7 @@ import {
   subscribeSafeAreaInsets,
 } from "@/lib/_core/manus-runtime";
 import { AuthPromptHost } from "@/components/auth-prompt";
+import { StoreOrderAlarm } from "@/components/store-order-alarm";
 import { CartProvider } from "@/providers/cart-provider";
 import {
   AppPreferencesProvider,
@@ -33,6 +34,7 @@ import {
 import {
   ONBOARDING_STORAGE_KEY,
   hasCompletedOnboarding,
+  onboardingRememberedComplete,
   shouldRedirectToOnboarding,
 } from "@/lib/onboarding-gate";
 
@@ -64,7 +66,9 @@ function OnboardingGate() {
     AsyncStorage.getItem(ONBOARDING_STORAGE_KEY)
       .then((value) => {
         if (!active) return;
-        setCompleted(hasCompletedOnboarding(value));
+        setCompleted(
+          hasCompletedOnboarding(value) || onboardingRememberedComplete(),
+        );
         setHydrated(true);
       })
       .catch(() => {
@@ -74,9 +78,13 @@ function OnboardingGate() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [pathname]);
 
   useEffect(() => {
+    if (onboardingRememberedComplete()) {
+      if (!completed) setCompleted(true);
+      return;
+    }
     if (
       shouldRedirectToOnboarding({
         hydrated,
@@ -160,6 +168,7 @@ export default function RootLayout() {
           <AppPreferencesProvider>
             <OnboardingGate />
             <AuthPromptHost />
+            <StoreOrderAlarm />
             <MascotNavigationBridge />
             <CartProvider>
               <Stack screenOptions={{ headerShown: false }}>

@@ -1,10 +1,13 @@
 import { router } from "expo-router";
 import { useState } from "react";
-import { Text, View } from "react-native";
+import { Image, Text, View } from "react-native";
+import { PinMap } from "@/components/pin-map";
 import { Card, Field, OutlineButton, Page, PEDIU, PrimaryButton, s } from "@/components/pediu-page";
 import { useAuth } from "@/hooks/use-auth";
 import * as Auth from "@/lib/_core/auth";
 import { clearAuthIntent, peekAuthIntent, signupSteps, takeAuthReturn, type SignupRole } from "@/lib/guest-access";
+import { geocodeTypedAddress } from "@/lib/location";
+import { pickPhotoDataUrl } from "@/lib/pick-photo";
 import { trpc } from "@/lib/trpc";
 
 function messageOf(error: unknown) {
@@ -39,6 +42,14 @@ export default function RegisterScreen() {
   const [storeAddress, setStoreAddress] = useState("");
   const [vehicleType, setVehicleType] = useState<"bike" | "moto" | "car">("moto");
   const [vehiclePlate, setVehiclePlate] = useState("");
+  const [documentNumber, setDocumentNumber] = useState("");
+  const [documentPhoto, setDocumentPhoto] = useState<string>();
+  const [vehiclePhoto, setVehiclePhoto] = useState<string>();
+  const [selfiePhoto, setSelfiePhoto] = useState<string>();
+  const [pin, setPin] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [pinKey, setPinKey] = useState(0);
+  const [locating, setLocating] = useState(false);
+  const [mapMessage, setMapMessage] = useState("");
 
   const finish = async (token: string) => {
     await Auth.setSessionToken(token);
@@ -117,15 +128,46 @@ export default function RegisterScreen() {
           <Field label="Nome da loja" value={storeName} onChangeText={setStoreName} />
           <Field label="Telefone da loja" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
           <Field label="Endereço" value={storeAddress} onChangeText={setStoreAddress} />
+          <OutlineButton
+            title={locating ? "Procurando no mapa..." : "Ver endereço no mapa"}
+            onPress={() => {
+              setMapMessage("");
+              setLocating(true);
+              void geocodeTypedAddress(`${storeAddress}, Brasil`)
+                .then((point) => {
+                  if (!point) {
+                    setMapMessage("Não achamos esse endereço. Confira rua, número e cidade.");
+                    return;
+                  }
+                  setPin(point);
+                  setPinKey((value) => value + 1);
+                })
+                .catch(() => setMapMessage("Não foi possível consultar o mapa agora."))
+                .finally(() => setLocating(false));
+            }}
+          />
+          {pin ? (
+            <PinMap
+              latitude={pin.latitude}
+              longitude={pin.longitude}
+              anchorKey={pinKey}
+              label="Loja"
+              onChange={setPin}
+            />
+          ) : null}
+          <Text style={s.muted}>Arraste o ponto até a porta da loja.</Text>
+          {mapMessage ? <Text style={{ color: PEDIU.coral, fontWeight: "700" }}>{mapMessage}</Text> : null}
           {createStore.error ? <Text style={{ color: PEDIU.coral, fontWeight: "700" }}>{messageOf(createStore.error)}</Text> : null}
           <PrimaryButton
             title={createStore.isPending ? "Salvando..." : "Abrir minha loja"}
-            disabled={createStore.isPending || storeName.trim().length < 2}
+            disabled={createStore.isPending || storeName.trim().length < 2 || !pin}
             onPress={() =>
               createStore.mutate({
                 name: storeName.trim(),
                 phone: phone.trim() || undefined,
                 address: storeAddress.trim() || undefined,
+                latitude: pin?.latitude,
+                longitude: pin?.longitude,
               })
             }
           />
@@ -145,15 +187,25 @@ export default function RegisterScreen() {
           {vehicleType !== "bike" ? (
             <Field label="Placa" value={vehiclePlate} onChangeText={setVehiclePlate} autoCapitalize="characters" />
           ) : null}
+          <Field label="Número da CNH" value={documentNumber} onChangeText={setDocumentNumber} keyboardType="number-pad" />
+          <OutlineButton title={documentPhoto ? "CNH adicionada" : "Foto da CNH"} onPress={() => void pickPhotoDataUrl().then((data) => data && setDocumentPhoto(data)).catch((error: unknown) => setMapMessage(error instanceof Error ? error.message : "Não foi possível usar essa foto."))} />
+          <OutlineButton title={vehiclePhoto ? "Veículo adicionado" : "Foto do veículo"} onPress={() => void pickPhotoDataUrl().then((data) => data && setVehiclePhoto(data)).catch((error: unknown) => setMapMessage(error instanceof Error ? error.message : "Não foi possível usar essa foto."))} />
+          <OutlineButton title={selfiePhoto ? "Sua foto adicionada" : "Sua foto"} onPress={() => void pickPhotoDataUrl().then((data) => data && setSelfiePhoto(data)).catch((error: unknown) => setMapMessage(error instanceof Error ? error.message : "Não foi possível usar essa foto."))} />
+          {documentPhoto ? <Image source={{ uri: documentPhoto }} style={{ width: 72, height: 72, borderRadius: 12 }} /> : null}
           {applyCourier.error ? <Text style={{ color: PEDIU.coral, fontWeight: "700" }}>{messageOf(applyCourier.error)}</Text> : null}
+          {mapMessage ? <Text style={{ color: PEDIU.coral, fontWeight: "700" }}>{mapMessage}</Text> : null}
           <PrimaryButton
             title={applyCourier.isPending ? "Enviando..." : "Enviar para análise"}
-            disabled={applyCourier.isPending}
+            disabled={applyCourier.isPending || !documentNumber.trim() || !documentPhoto || !vehiclePhoto || !selfiePhoto || (vehicleType !== "bike" && !vehiclePlate.trim())}
             onPress={() =>
               applyCourier.mutate({
                 vehicleType,
                 vehiclePlate: vehiclePlate.trim() || undefined,
                 phone: phone.trim() || undefined,
+                documentNumber: documentNumber.trim(),
+                documentPhoto,
+                vehiclePhoto,
+                selfiePhoto,
               })
             }
           />

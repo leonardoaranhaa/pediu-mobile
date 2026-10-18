@@ -24,6 +24,13 @@ const profile = {
   locationConsentAt: null,
   approvedAt: null,
   statusReason: null,
+  documentNumber: null,
+  documentPhoto: null,
+  vehiclePhoto: null,
+  selfiePhoto: null,
+  lastLatitude: null,
+  lastLongitude: null,
+  lastLocationAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 };

@@ -148,6 +148,7 @@ export const stores = pgTable(
     latitude: numeric("latitude", { precision: 10, scale: 7 }),
     longitude: numeric("longitude", { precision: 10, scale: 7 }),
     isOpen: integer("isOpen").default(1).notNull(),
+    openingHours: text("openingHours"),
     kind: varchar("kind", { length: 32 }).$type<"restaurant" | "market" | "service">()
       .default("restaurant")
       .notNull(),
@@ -186,6 +187,7 @@ export const products = pgTable(
       .notNull(),
     packSize: numeric("packSize", { precision: 10, scale: 3 }),
     available: integer("available").default(1).notNull(),
+    imageData: text("imageData"),
     inventoryTracked: integer("inventoryTracked").default(0).notNull(),
     stockQuantity: integer("stockQuantity").default(0).notNull(),
     reservedQuantity: integer("reservedQuantity").default(0).notNull(),
@@ -239,6 +241,12 @@ export const orders = pgTable(
     fulfillment: varchar("fulfillment", { length: 16 })
       .default("standard")
       .notNull(),
+    cancelReason: varchar("cancelReason", { length: 255 }),
+    deliveryCode: varchar("deliveryCode", { length: 4 }),
+    changeFor: numeric("changeFor", { precision: 10, scale: 2 }),
+    destinationLatitude: numeric("destinationLatitude", { precision: 10, scale: 7 }),
+    destinationLongitude: numeric("destinationLongitude", { precision: 10, scale: 7 }),
+    deliveryPhoto: text("deliveryPhoto"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
@@ -860,7 +868,7 @@ export const deliveryAssignments = pgTable(
     courierName: varchar("courierName", { length: 160 }).notNull(),
     courierPhone: varchar("courierPhone", { length: 32 }),
     etaMinutes: integer("etaMinutes"),
-    status: varchar("status", { length: 32 }).$type<"assigned" | "in_transit" | "delivered" | "cancelled">()
+    status: varchar("status", { length: 32 }).$type<"assigned" | "arrived" | "in_transit" | "delivered" | "cancelled">()
       .default("assigned")
       .notNull(),
     currentLatitude: numeric("currentLatitude", { precision: 10, scale: 7 }),
@@ -897,6 +905,13 @@ export const courierProfiles = pgTable(
       .default("offline")
       .notNull(),
     locationConsentAt: timestamp("locationConsentAt"),
+    documentNumber: varchar("documentNumber", { length: 40 }),
+    documentPhoto: text("documentPhoto"),
+    vehiclePhoto: text("vehiclePhoto"),
+    selfiePhoto: text("selfiePhoto"),
+    lastLatitude: numeric("lastLatitude", { precision: 10, scale: 7 }),
+    lastLongitude: numeric("lastLongitude", { precision: 10, scale: 7 }),
+    lastLocationAt: timestamp("lastLocationAt"),
     approvedAt: timestamp("approvedAt"),
     statusReason: varchar("statusReason", { length: 255 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -962,6 +977,9 @@ export const deliveryOffers = pgTable(
       .default("pending")
       .notNull(),
     etaMinutes: integer("etaMinutes"),
+    payoutAmount: numeric("payoutAmount", { precision: 10, scale: 2 }),
+    pickupDistanceKm: numeric("pickupDistanceKm", { precision: 6, scale: 2 }),
+    dropoffDistanceKm: numeric("dropoffDistanceKm", { precision: 6, scale: 2 }),
     message: varchar("message", { length: 255 }),
     idempotencyKey: varchar("idempotencyKey", { length: 160 }).notNull(),
     expiresAt: timestamp("expiresAt").notNull(),
@@ -1334,6 +1352,63 @@ export const loyaltyLedger = pgTable(
     ),
     accountIdx: index("pediu_loyalty_ledger_account_idx").on(table.accountId),
     orderIdx: index("pediu_loyalty_ledger_order_idx").on(table.orderId),
+  }),
+).enableRLS();
+
+export const productOptionGroups = pgTable(
+  "pediu_product_option_groups",
+  {
+    id: serial("id").primaryKey(),
+    productId: integer("productId")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 80 }).notNull(),
+    required: integer("required").default(0).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => ({
+    productIdx: index("pediu_product_option_groups_product_idx").on(
+      table.productId,
+    ),
+  }),
+).enableRLS();
+
+export const productOptions = pgTable(
+  "pediu_product_options",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("groupId")
+      .notNull()
+      .references(() => productOptionGroups.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 80 }).notNull(),
+    priceDelta: numeric("priceDelta", { precision: 10, scale: 2 })
+      .default("0.00")
+      .notNull(),
+  },
+  (table) => ({
+    groupIdx: index("pediu_product_options_group_idx").on(table.groupId),
+  }),
+).enableRLS();
+
+export const courierEarnings = pgTable(
+  "pediu_courier_earnings",
+  {
+    id: serial("id").primaryKey(),
+    courierUserId: integer("courierUserId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    orderId: integer("orderId")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => ({
+    orderUnique: unique("pediu_courier_earnings_order_unique").on(table.orderId),
+    courierCreatedIdx: index("pediu_courier_earnings_courier_created_idx").on(
+      table.courierUserId,
+      table.createdAt,
+    ),
   }),
 ).enableRLS();
 

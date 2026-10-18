@@ -319,3 +319,24 @@ O esqueleto do pedido existe: olhar a loja, criar conta por papel, pagar em dinh
 Para um piloto de um bairro, o mínimo que os apps de comparação já entregam no primeiro dia é: entrar sem laço, achar a loja pela busca, cravar o endereço no mapa, ver tempo e taxa antes de pedir, a cozinha ouvir o pedido, o motoboy ver distância e ganho e abrir o mapa, e os dois lados saberem que o dinheiro e a entrega acabaram. Hoje cada um desses pontos falha ou falta.
 
 Nada disso foi corrigido neste relatório. As capturas estão ao lado deste texto.
+
+---
+
+## O que mudou depois da aprovação
+
+Cada bloqueio da lista acima ficou com um estado. A avaliação original, com as capturas, continua valendo como registro do que foi visto.
+
+1. **Pronto.** Pular e Começar abrem a vitrine e a introdução não volta.
+2. **Pronto.** Buscar “pizza” não usa mais a faixa de preço 0–0. Sem filtro preenchido, o resultado não é cortado.
+3. **Pronto.** O endereço digitado vira um ponto no mapa. Dá para arrastar o ponto. Não há campo de latitude nem longitude. O mapa usa OpenStreetMap, sem chave paga.
+4. **Pronto.** O pedido só é cancelado sozinho se a loja não aceitar em 15 minutos, ainda em “Pendente”. Cliente e loja veem o motivo: a loja não aceitou a tempo. Os dois recebem aviso.
+5. **Pronto.** A aba Pedidos mostra o número, o valor em reais e o nome da loja.
+6. **Pronto.** A corrida mostra o tempo que falta, a distância até a loja, a distância até o cliente e o que o motoboy recebe (taxa de entrega mais gorjeta). O selo FLASH só aparece em pedido Flash.
+7. **Pronto.** O motoboy abre Google Maps ou Waze. O cliente vê um mapa de verdade com loja, motoboy e destino, no lugar da caixa cinza. No celular isso entra no próximo aplicativo publicado; no navegador já funciona.
+8. **Pronto.** Confirmar a entrega não quebra mais a tela. A corrida tem “Cheguei na loja”, “Pedido retirado”, o código de 4 dígitos que o cliente mostra, foto opcional e, no dinheiro, “Recebi o dinheiro”.
+9. **Pronto.** No dinheiro, o checkout pergunta “Troco para quanto?”. Quando o motoboy confirma que recebeu, o pagamento fica pago, o ganho entra para ele e a venda aparece no histórico da loja.
+10. **Pronto.** Com o aplicativo da loja aberto, um pedido pendente toca um som e vibra de novo a cada poucos segundos até ser aceito. Na hora em que o pedido chega, a loja também recebe uma notificação.
+11. **Pronto.** A loja marca o endereço no mapa, define o horário de cada dia, coloca foto e opcionais no produto. Loja fechada continua na lista, com “Fechado” e o próximo horário.
+12. **Pronto.** O motoboy envia CNH, veículo, placa e foto e fica pendente até o admin aprovar. A loja chama “motoboys por perto”, sem precisar do número da conta. Só entra quem está aprovado, online e perto.
+
+O servidor não aplica essa mudança de banco sozinho. O arquivo novo é `drizzle/0004_pediu_pilot_ops.sql`. Sem ele no Supabase, as telas novas não gravam horário, foto, código, troco nem ganho do motoboy.

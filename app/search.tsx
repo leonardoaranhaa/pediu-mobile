@@ -25,9 +25,10 @@ const VERTICALS = [
 ] as const;
 const QUICK = SEARCH_QUICK_CATEGORIES;
 
+import { parseOptionalPrice } from "@/shared/pilot-ops";
+
 function parsePrice(value: string) {
-  const parsed = Number(value.replace(",", "."));
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+  return parseOptionalPrice(value);
 }
 
 export default function SearchScreen() {
@@ -269,7 +270,8 @@ export default function SearchScreen() {
             </Text>
             <Text style={styles.resultMeta} numberOfLines={1}>
               {item.storeName} ·{" "}
-              {item.storeKind === "market" ? "Mercado" : item.category}
+              {item.storeOpen === false ? "Fechado" : item.storeKind === "market" ? "Mercado" : item.category}
+              {item.storeOpen === false && item.nextOpenLabel ? ` · ${item.nextOpenLabel}` : ""}
               {item.flashEnabled ? " · Flash" : ""}
             </Text>
             <Text style={styles.resultPrice}>

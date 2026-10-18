@@ -2,6 +2,7 @@ import { Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { trpc } from "@/lib/trpc";
 import { Page, Card, OutlineButton, PEDIU, s } from "@/components/pediu-page";
+import { RouteMap } from "@/components/pin-map";
 import { trackingEventLabel, trackingFreshnessLabel } from "@/lib/order-copy";
 
 function formatDate(value: Date | string) {
@@ -26,7 +27,20 @@ export default function TrackingMapPage() {
   const hasNetworkError = current.isError || events.isError;
   return <Page title="Acompanhar entrega" eyebrow="RASTREAMENTO">
     <Card>
-      <View style={{ height: 240, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "#F2F2F2", gap: 8, paddingHorizontal: 20 }}>
+      <RouteMap
+        markers={[
+          ...(current.data?.storePoint
+            ? [{ latitude: current.data.storePoint.latitude, longitude: current.data.storePoint.longitude, label: current.data.storePoint.name, color: "#E20D2A" }]
+            : []),
+          ...(current.data?.latestLocation
+            ? [{ latitude: Number(current.data.latestLocation.latitude), longitude: Number(current.data.latestLocation.longitude), label: "Entregador", color: "#111111" }]
+            : []),
+          ...(current.data?.destination
+            ? [{ latitude: current.data.destination.latitude, longitude: current.data.destination.longitude, label: "Entrega", color: "#0E7A45" }]
+            : []),
+        ]}
+      />
+      <View style={{ gap: 8, paddingHorizontal: 4 }}>
         <Text style={s.sectionTitle}>Acompanhamento da entrega</Text>
         {current.data?.assignment ? <Text style={s.muted}>Entregador: {current.data.assignment.courierName}{current.data.assignment.courierPhone ? ` · ${current.data.assignment.courierPhone}` : ""}</Text> : <Text style={s.muted}>Estamos procurando um entregador parceiro.</Text>}
         {current.data?.assignment?.etaMinutes != null ? <Text style={{ color: PEDIU.coral, fontSize: 14, fontWeight: "900" }}>Previsão: até {current.data.assignment.etaMinutes} min</Text> : null}

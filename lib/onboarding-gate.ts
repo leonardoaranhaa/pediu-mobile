@@ -10,8 +10,18 @@ const EXEMPT_PATHS = new Set([
   "/auth/mfa",
 ]);
 
+let rememberedComplete = false;
+
 export function hasCompletedOnboarding(value: string | null | undefined): boolean {
   return value === ONBOARDING_COMPLETE_VALUE;
+}
+
+export function rememberOnboardingComplete(): void {
+  rememberedComplete = true;
+}
+
+export function onboardingRememberedComplete(): boolean {
+  return rememberedComplete;
 }
 
 export function isOnboardingExemptPath(pathname: string): boolean {

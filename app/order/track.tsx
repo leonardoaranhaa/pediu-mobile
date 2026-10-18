@@ -225,7 +225,14 @@ export default function TrackOrderPage() {
           </View>
         ))}
         {query.data.status === "Cancelado" ? (
-          <Text style={s.muted}>Este pedido foi cancelado.</Text>
+          <Text style={s.muted}>
+            {query.data.cancelReason || "Este pedido foi cancelado."}
+          </Text>
+        ) : null}
+        {query.data.deliveryCode && query.data.status !== "Cancelado" ? (
+          <Text style={{ color: PEDIU.ink, fontSize: 22, fontWeight: "900" }}>
+            Código para o motoboy: {query.data.deliveryCode}
+          </Text>
         ) : null}
         {query.data.status !== "Cancelado" ? (
           <OutlineButton

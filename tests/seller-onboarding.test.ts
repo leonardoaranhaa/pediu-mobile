@@ -66,6 +66,7 @@ describe("Pediu seller onboarding", () => {
       flashEnabled: 0,
       flashEtaMaxMinutes: 30,
       flashFeeOverride: null,
+      openingHours: null,
       createdAt: new Date(),
     });
     const caller = appRouter.createCaller({

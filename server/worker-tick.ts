@@ -24,7 +24,7 @@ export async function runWorkerCatchUp() {
     limit: 100,
   });
   const inventory = await expireStaleInventoryReservations({
-    ttlMs: minutesToMs("INVENTORY_RESERVATION_TTL_MINUTES", 30),
+    ttlMs: minutesToMs("INVENTORY_RESERVATION_TTL_MINUTES", 15),
   });
   const buckets = await cleanExpiredRateLimitBuckets();
   let notifications = 0;

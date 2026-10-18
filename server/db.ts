@@ -99,7 +99,10 @@ import {
   paymentReconciliationRuns,
   paymentTransactions,
   privacyConsents,
+  productOptionGroups,
+  productOptions,
   products,
+  courierEarnings,
   pushTokens,
   rateLimitBuckets,
   sales,
@@ -117,6 +120,15 @@ import {
   rolesFromLegacy,
   type AccountRole,
 } from "../shared/account-roles";
+import {
+  CITY_OFFER_TTL_MS,
+  NEARBY_COURIER_RADIUS_KM,
+  STORE_NEVER_ACCEPTED_REASON,
+  courierEarning,
+  haversineKm,
+  ignoreEmptyPriceBand,
+  resolveStoreAvailability,
+} from "../shared/pilot-ops";
 import { postgresConnectionOptions } from "./postgres-url";
 import {
   DEFAULT_DISPATCH_OFFER_TTL_MS,
@@ -1201,6 +1213,7 @@ export async function setCourierLocationConsent(
 export async function setCourierAvailability(
   userId: number,
   availability: CourierProfile["availability"],
+  location?: { latitude: number; longitude: number },
 ): Promise<CourierProfile> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -1210,7 +1223,17 @@ export async function setCourierAvailability(
     throw new Error("O perfil precisa ser aprovado antes de ficar disponível");
   await db
     .update(courierProfiles)
-    .set({ availability, updatedAt: new Date() })
+    .set({
+      availability,
+      updatedAt: new Date(),
+      ...(location
+        ? {
+            lastLatitude: location.latitude.toFixed(7),
+            lastLongitude: location.longitude.toFixed(7),
+            lastLocationAt: new Date(),
+          }
+        : {}),
+    })
     .where(eq(courierProfiles.id, profile.id));
   const updated = await getCourierProfileByUser(userId);
   if (!updated)
@@ -1514,6 +1537,7 @@ export type UpdateStoreInput = Partial<
     | "latitude"
     | "longitude"
     | "isOpen"
+    | "openingHours"
     | "kind"
     | "flashEnabled"
     | "flashEtaMaxMinutes"
@@ -1778,8 +1802,9 @@ export async function archiveGeneratedAd(
 
 export type MarketplaceProduct = Omit<
   Product,
-  "inventoryTracked" | "stockQuantity" | "reservedQuantity"
+  "inventoryTracked" | "stockQuantity" | "reservedQuantity" | "imageData"
 > & {
+  imageData: string | null;
   storeName: string;
   deliveryFee: string;
   adId: number | null;
@@ -1790,6 +1815,8 @@ export type MarketplaceProduct = Omit<
   storeKind: Store["kind"];
   flashEnabled: number;
   flashEtaMaxMinutes: number;
+  storeOpen: boolean;
+  nextOpenLabel: string | null;
 };
 
 export type MarketplaceSearchInput = {
@@ -1813,9 +1840,9 @@ export async function searchAvailableProducts(
 }> {
   const db = await getDb();
   if (!db) return { items: [], hasMore: false, nextCursor: null };
+  const prices = ignoreEmptyPriceBand(input.minPrice, input.maxPrice);
   const filters = [
     eq(products.available, 1),
-    eq(stores.isOpen, 1),
     sql`(${products.inventoryTracked} = 0 OR ${products.stockQuantity} > ${products.reservedQuantity})`,
   ];
   if (input.category && input.category !== "Tudo")
@@ -1826,10 +1853,10 @@ export async function searchAvailableProducts(
       sql`(LOWER(${products.name}) LIKE ${pattern} OR LOWER(${products.category}) LIKE ${pattern} OR LOWER(${stores.name}) LIKE ${pattern})`,
     );
   }
-  if (input.minPrice !== undefined)
-    filters.push(sql`${products.price} >= ${input.minPrice.toFixed(2)}`);
-  if (input.maxPrice !== undefined)
-    filters.push(sql`${products.price} <= ${input.maxPrice.toFixed(2)}`);
+  if (prices.minPrice !== undefined)
+    filters.push(sql`${products.price} >= ${prices.minPrice.toFixed(2)}`);
+  if (prices.maxPrice !== undefined)
+    filters.push(sql`${products.price} <= ${prices.maxPrice.toFixed(2)}`);
   if (input.flash) filters.push(eq(stores.flashEnabled, 1));
   if (input.vertical) filters.push(eq(stores.kind, input.vertical));
   const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
@@ -1876,6 +1903,7 @@ export async function searchAvailableProducts(
       name: products.name,
       category: products.category,
       description: products.description,
+      imageData: products.imageData,
       price: products.price,
       saleUnit: products.saleUnit,
       packSize: products.packSize,
@@ -1891,6 +1919,8 @@ export async function searchAvailableProducts(
       storeKind: stores.kind,
       flashEnabled: stores.flashEnabled,
       flashEtaMaxMinutes: stores.flashEtaMaxMinutes,
+      storeIsOpen: stores.isOpen,
+      openingHours: stores.openingHours,
     })
     .from(products)
     .innerJoin(stores, eq(products.storeId, stores.id))
@@ -1906,7 +1936,19 @@ export async function searchAvailableProducts(
     .limit(limit + 1)
     .offset(cursor ? 0 : Math.max(input.offset ?? 0, 0));
 
-  const items = result.slice(0, limit);
+  const items = result.slice(0, limit).map((item) => {
+    const availability = resolveStoreAvailability({
+      isOpen: item.storeIsOpen,
+      openingHours: item.openingHours,
+    });
+    const { storeIsOpen: _storeIsOpen, openingHours: _openingHours, ...rest } =
+      item;
+    return {
+      ...rest,
+      storeOpen: availability.open,
+      nextOpenLabel: availability.nextOpenLabel,
+    };
+  });
   const hasMore = result.length > limit;
   const lastItem = items.at(-1);
   return {
@@ -2112,6 +2154,17 @@ async function adjustInventoryForOrder(
       )
       .where(eq(products.id, product.id));
   }
+}
+
+export async function getProductById(productId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db
+    .select()
+    .from(products)
+    .where(eq(products.id, productId))
+    .limit(1);
+  return result[0];
 }
 
 export async function getProductForStore(productId: number, storeId: number) {
@@ -2422,12 +2475,27 @@ export async function listOrdersForCustomer(
   customerId: number,
   limit = 50,
   offset = 0,
-): Promise<Order[]> {
+) {
   const db = await getDb();
   if (!db) return [];
   return db
-    .select()
+    .select({
+      id: orders.id,
+      customerId: orders.customerId,
+      storeId: orders.storeId,
+      storeName: stores.name,
+      status: orders.status,
+      total: orders.total,
+      cancelReason: orders.cancelReason,
+      deliveryCode: orders.deliveryCode,
+      changeFor: orders.changeFor,
+      deliveryAddress: orders.deliveryAddress,
+      fulfillmentMode: orders.fulfillmentMode,
+      createdAt: orders.createdAt,
+      updatedAt: orders.updatedAt,
+    })
     .from(orders)
+    .innerJoin(stores, eq(stores.id, orders.storeId))
     .where(eq(orders.customerId, customerId))
     .orderBy(desc(orders.updatedAt), desc(orders.id))
     .limit(Math.min(limit, 100))
@@ -2479,20 +2547,33 @@ export async function expireStaleInventoryReservations(
   const limit = Math.min(Math.max(input.limit ?? 100, 1), 500);
   const cutoff = inventoryReservationCutoff(now, ttlMs);
 
-  return db.transaction(async (tx) => {
+  const outcome = await db.transaction(async (tx) => {
     const staleOrders = await tx
-      .select({ id: orders.id })
+      .select({
+        id: orders.id,
+        customerId: orders.customerId,
+        storeId: orders.storeId,
+      })
       .from(orders)
       .where(and(eq(orders.status, "Pendente"), lte(orders.createdAt, cutoff)))
       .orderBy(orders.createdAt, orders.id)
       .limit(limit)
       .for("update");
     const expiredOrderIds: number[] = [];
+    const notices: Array<{
+      orderId: number;
+      customerId: number;
+      ownerId: number;
+    }> = [];
 
     for (const staleOrder of staleOrders) {
       const result = await tx
         .update(orders)
-        .set({ status: "Cancelado", updatedAt: now })
+        .set({
+          status: "Cancelado",
+          cancelReason: STORE_NEVER_ACCEPTED_REASON,
+          updatedAt: now,
+        })
         .where(
           and(eq(orders.id, staleOrder.id), eq(orders.status, "Pendente")),
         );
@@ -2513,10 +2594,46 @@ export async function expireStaleInventoryReservations(
         eventType: "Cancelado",
       });
       expiredOrderIds.push(staleOrder.id);
+      const owner = (
+        await tx
+          .select({ ownerId: stores.ownerId })
+          .from(stores)
+          .where(eq(stores.id, staleOrder.storeId))
+          .limit(1)
+      )[0];
+      if (owner) {
+        notices.push({
+          orderId: staleOrder.id,
+          customerId: staleOrder.customerId,
+          ownerId: owner.ownerId,
+        });
+      }
     }
 
-    return expiredOrderIds;
+    return { expiredOrderIds, notices };
   });
+
+  try {
+    const { sendPushToUser } = await import("./push");
+    for (const notice of outcome.notices) {
+      await sendPushToUser(
+        notice.customerId,
+        "Pedido cancelado",
+        STORE_NEVER_ACCEPTED_REASON,
+        { type: "order", orderId: notice.orderId },
+      );
+      await sendPushToUser(
+        notice.ownerId,
+        "Pedido cancelado",
+        `O pedido #${notice.orderId} foi cancelado porque a loja não aceitou a tempo.`,
+        { type: "order", orderId: notice.orderId, actionPath: "/seller/orders" },
+      );
+    }
+  } catch (error) {
+    console.warn("[Orders] Failed to notify about an expired order:", error);
+  }
+
+  return outcome.expiredOrderIds;
 }
 
 export async function createDeliveryEvent(
@@ -2720,6 +2837,7 @@ export async function updateDeliveryAssignmentStatus(
 
 export async function completeDelivery(
   orderId: number,
+  extra: { photo?: string; cashReceived?: boolean } = {},
 ): Promise<{ changed: boolean; status: Order["status"] }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -2738,6 +2856,73 @@ export async function completeDelivery(
       await tx
         .insert(deliveryEvents)
         .values({ orderId, eventType: "Entregue" });
+      const delivered = (
+        await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1)
+      )[0];
+      const assignment = (
+        await tx
+          .select()
+          .from(deliveryAssignments)
+          .where(eq(deliveryAssignments.orderId, orderId))
+          .limit(1)
+      )[0];
+      if (extra.photo && delivered) {
+        await tx
+          .update(orders)
+          .set({ deliveryPhoto: extra.photo })
+          .where(eq(orders.id, orderId));
+      }
+      const payment = (
+        await tx
+          .select()
+          .from(payments)
+          .where(eq(payments.orderId, orderId))
+          .limit(1)
+      )[0];
+      if (payment?.method === "cash" && extra.cashReceived) {
+        await tx
+          .update(payments)
+          .set({ status: "paid" })
+          .where(eq(payments.id, payment.id));
+      }
+      if (delivered) {
+        const existingSale = (
+          await tx
+            .select({ id: sales.id })
+            .from(sales)
+            .where(eq(sales.orderId, orderId))
+            .limit(1)
+        )[0];
+        if (!existingSale) {
+          await tx.insert(sales).values({
+            storeId: delivered.storeId,
+            customerId: delivered.customerId,
+            orderId,
+            total: delivered.total,
+            paymentMethod: payment?.method === "cash" ? "cash" : payment?.method === "fiado" ? "fiado" : "pix",
+            note: "Pedido entregue pelo aplicativo",
+          });
+        }
+        if (assignment) {
+          const existingEarning = (
+            await tx
+              .select({ id: courierEarnings.id })
+              .from(courierEarnings)
+              .where(eq(courierEarnings.orderId, orderId))
+              .limit(1)
+          )[0];
+          if (!existingEarning) {
+            await tx.insert(courierEarnings).values({
+              courierUserId: assignment.courierId,
+              orderId,
+              amount: courierEarning(
+                delivered.deliveryFeeSnapshot,
+                delivered.tipAmount,
+              ).toFixed(2),
+            });
+          }
+        }
+      }
       return { changed: true, status: "Entregue" as const };
     }
     const current = await tx
@@ -2765,6 +2950,83 @@ export async function completeDelivery(
     }
   }
   return outcome;
+}
+
+async function nearestOnlineCourier(
+  tx: DatabaseTransaction,
+  orderId: number,
+  storeId: number,
+) {
+  const matches = await listNearbyCouriers(tx, orderId, storeId);
+  return matches[0];
+}
+
+async function listNearbyCouriers(
+  tx: DatabaseTransaction,
+  orderId: number,
+  storeId: number,
+) {
+  const store = (
+    await tx.select().from(stores).where(eq(stores.id, storeId)).limit(1)
+  )[0];
+  const order = (
+    await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1)
+  )[0];
+  if (!store?.latitude || !store.longitude || !order) return [];
+  const storePoint = {
+    latitude: Number(store.latitude),
+    longitude: Number(store.longitude),
+  };
+  const drop =
+    order.destinationLatitude && order.destinationLongitude
+      ? {
+          latitude: Number(order.destinationLatitude),
+          longitude: Number(order.destinationLongitude),
+        }
+      : null;
+  const profiles = await tx
+    .select({
+      userId: courierProfiles.userId,
+      lastLatitude: courierProfiles.lastLatitude,
+      lastLongitude: courierProfiles.lastLongitude,
+    })
+    .from(courierProfiles)
+    .where(
+      and(
+        eq(courierProfiles.status, "approved"),
+        eq(courierProfiles.availability, "available"),
+      ),
+    );
+  const offered = await tx
+    .select({ courierUserId: deliveryOffers.courierUserId })
+    .from(deliveryOffers)
+    .where(eq(deliveryOffers.orderId, orderId));
+  const seen = new Set(offered.map((row) => row.courierUserId));
+  const payout = courierEarning(order.deliveryFeeSnapshot, order.tipAmount).toFixed(2);
+  const dropoff = drop ? haversineKm(storePoint, drop) : null;
+  return profiles
+    .flatMap((profile) => {
+      if (seen.has(profile.userId) || !profile.lastLatitude || !profile.lastLongitude)
+        return [];
+      const pickup = haversineKm(
+        {
+          latitude: Number(profile.lastLatitude),
+          longitude: Number(profile.lastLongitude),
+        },
+        storePoint,
+      );
+      if (pickup > NEARBY_COURIER_RADIUS_KM) return [];
+      return [
+        {
+          courierUserId: profile.userId,
+          payoutAmount: payout,
+          pickupDistanceKm: pickup.toFixed(2),
+          dropoffDistanceKm: dropoff == null ? undefined : dropoff.toFixed(2),
+          pickupKm: pickup,
+        },
+      ];
+    })
+    .sort((a, b) => a.pickupKm - b.pickupKm);
 }
 
 async function reofferDeliveryWithinTransaction(
@@ -2848,16 +3110,23 @@ async function reofferDeliveryWithinTransaction(
       .for("update")
       .limit(1)
   )[0];
-  if (!candidate) return undefined;
+  const nearby = candidate
+    ? undefined
+    : await nearestOnlineCourier(tx, input.orderId, input.storeId);
+  const courierUserId = candidate?.courierUserId ?? nearby?.courierUserId;
+  if (!courierUserId) return undefined;
 
   const idempotencyKey = dispatchReofferKey(
     input.orderId,
-    candidate.courierUserId,
+    courierUserId,
   );
   const result = await tx.insert(deliveryOffers).values({
     orderId: input.orderId,
     storeId: input.storeId,
-    courierUserId: candidate.courierUserId,
+    courierUserId,
+    payoutAmount: nearby?.payoutAmount,
+    pickupDistanceKm: nearby?.pickupDistanceKm,
+    dropoffDistanceKm: nearby?.dropoffDistanceKm,
     etaMinutes: undefined,
     message: "Nova oferta de entrega disponível",
     idempotencyKey,
@@ -2946,6 +3215,24 @@ export async function createDeliveryOffer(input: {
     )[0];
     if (assignment)
       throw new Error("O pedido já possui uma atribuição de entrega");
+    const storePoint =
+      store.latitude != null && store.longitude != null
+        ? { latitude: Number(store.latitude), longitude: Number(store.longitude) }
+        : null;
+    const courierPoint =
+      profile.lastLatitude != null && profile.lastLongitude != null
+        ? {
+            latitude: Number(profile.lastLatitude),
+            longitude: Number(profile.lastLongitude),
+          }
+        : null;
+    const destinationPoint =
+      order.destinationLatitude != null && order.destinationLongitude != null
+        ? {
+            latitude: Number(order.destinationLatitude),
+            longitude: Number(order.destinationLongitude),
+          }
+        : null;
     const result = await tx.insert(deliveryOffers).values({
       orderId: input.orderId,
       storeId: store.id,
@@ -2955,6 +3242,15 @@ export async function createDeliveryOffer(input: {
       idempotencyKey: input.idempotencyKey,
       expiresAt: input.expiresAt,
       status: "pending",
+      payoutAmount: courierEarning(order.deliveryFeeSnapshot, order.tipAmount).toFixed(2),
+      pickupDistanceKm:
+        storePoint && courierPoint
+          ? haversineKm(courierPoint, storePoint).toFixed(2)
+          : null,
+      dropoffDistanceKm:
+        storePoint && destinationPoint
+          ? haversineKm(storePoint, destinationPoint).toFixed(2)
+          : null,
     }).returning({ id: deliveryOffers.id });
     const id = getInsertId(result);
     const created = await tx
@@ -2965,6 +3261,198 @@ export async function createDeliveryOffer(input: {
     if (!created[0]) throw new Error("Oferta não encontrada após criação");
     return created[0];
   });
+}
+
+export async function dispatchNearbyOffers(ownerId: number, orderId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const store = (
+      await tx.select().from(stores).where(eq(stores.ownerId, ownerId)).limit(1)
+    )[0];
+    if (!store) throw new Error("Loja não encontrada");
+    if (!store.latitude || !store.longitude)
+      throw new Error("Marque o ponto da loja no mapa antes de chamar um motoboy.");
+    const order = (
+      await tx
+        .select()
+        .from(orders)
+        .where(and(eq(orders.id, orderId), eq(orders.storeId, store.id)))
+        .limit(1)
+    )[0];
+    if (!order || order.status !== "Pronto")
+      throw new Error("O pedido precisa estar pronto para chamar um motoboy.");
+    if (order.fulfillmentMode === "pickup")
+      throw new Error("Pedidos de retirada não passam pelo entregador.");
+    const assignment = (
+      await tx
+        .select({ id: deliveryAssignments.id })
+        .from(deliveryAssignments)
+        .where(eq(deliveryAssignments.orderId, orderId))
+        .limit(1)
+    )[0];
+    if (assignment) throw new Error("Este pedido já tem um motoboy.");
+    const nearby = await listNearbyCouriers(tx, orderId, store.id);
+    const created: number[] = [];
+    const expiresAt = new Date(Date.now() + CITY_OFFER_TTL_MS);
+    for (const courier of nearby) {
+      const idempotencyKey = `nearby-${orderId}-${courier.courierUserId}`;
+      const existing = (
+        await tx
+          .select({ id: deliveryOffers.id, status: deliveryOffers.status })
+          .from(deliveryOffers)
+          .where(eq(deliveryOffers.idempotencyKey, idempotencyKey))
+          .limit(1)
+      )[0];
+      if (existing) {
+        if (existing.status === "pending") created.push(courier.courierUserId);
+        continue;
+      }
+      await tx.insert(deliveryOffers).values({
+        orderId,
+        storeId: store.id,
+        courierUserId: courier.courierUserId,
+        payoutAmount: courier.payoutAmount,
+        pickupDistanceKm: courier.pickupDistanceKm,
+        dropoffDistanceKm: courier.dropoffDistanceKm,
+        message: "Corrida perto de você",
+        idempotencyKey,
+        expiresAt,
+        status: "pending",
+      });
+      created.push(courier.courierUserId);
+    }
+    return { courierUserIds: created };
+  });
+}
+
+export async function markCourierArrival(orderId: number, courierUserId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db
+    .update(deliveryAssignments)
+    .set({ status: "arrived", updatedAt: new Date() })
+    .where(
+      and(
+        eq(deliveryAssignments.orderId, orderId),
+        eq(deliveryAssignments.courierId, courierUserId),
+        eq(deliveryAssignments.status, "assigned"),
+      ),
+    );
+  if (getAffectedRows(result) !== 1)
+    throw new Error("Não foi possível marcar a chegada na loja.");
+  return { status: "arrived" as const };
+}
+
+export async function markCourierPickup(orderId: number, courierUserId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const assignment = (
+      await tx
+        .select()
+        .from(deliveryAssignments)
+        .where(
+          and(
+            eq(deliveryAssignments.orderId, orderId),
+            eq(deliveryAssignments.courierId, courierUserId),
+          ),
+        )
+        .limit(1)
+    )[0];
+    if (!assignment || !["assigned", "arrived"].includes(assignment.status))
+      throw new Error("Retire o pedido só depois de aceitar a corrida.");
+    await tx
+      .update(deliveryAssignments)
+      .set({ status: "in_transit", updatedAt: new Date() })
+      .where(eq(deliveryAssignments.id, assignment.id));
+    const updated = await tx
+      .update(orders)
+      .set({ status: "A caminho", updatedAt: new Date() })
+      .where(and(eq(orders.id, orderId), eq(orders.status, "Pronto")));
+    if (getAffectedRows(updated) === 1) {
+      await tx.insert(deliveryEvents).values({ orderId, eventType: "A caminho" });
+    }
+    return { status: "A caminho" as const };
+  });
+}
+
+export async function listCourierEarnings(courierUserId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(courierEarnings)
+    .where(eq(courierEarnings.courierUserId, courierUserId))
+    .orderBy(desc(courierEarnings.createdAt))
+    .limit(30);
+}
+
+export async function replaceProductOptions(
+  productId: number,
+  groups: Array<{
+    name: string;
+    required: boolean;
+    choices: Array<{ name: string; priceDelta: string }>;
+  }>,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.transaction(async (tx) => {
+    const existing = await tx
+      .select({ id: productOptionGroups.id })
+      .from(productOptionGroups)
+      .where(eq(productOptionGroups.productId, productId));
+    if (existing.length) {
+      await tx
+        .delete(productOptionGroups)
+        .where(eq(productOptionGroups.productId, productId));
+    }
+    for (const group of groups) {
+      const inserted = await tx
+        .insert(productOptionGroups)
+        .values({
+          productId,
+          name: group.name,
+          required: group.required ? 1 : 0,
+        })
+        .returning({ id: productOptionGroups.id });
+      const groupId = inserted[0]?.id;
+      if (!groupId) continue;
+      if (group.choices.length) {
+        await tx.insert(productOptions).values(
+          group.choices.map((choice) => ({
+            groupId,
+            name: choice.name,
+            priceDelta: choice.priceDelta,
+          })),
+        );
+      }
+    }
+  });
+}
+
+export async function listProductOptions(productId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const groups = await db
+    .select()
+    .from(productOptionGroups)
+    .where(eq(productOptionGroups.productId, productId));
+  if (!groups.length) return [];
+  const choices = await db
+    .select()
+    .from(productOptions)
+    .where(
+      inArray(
+        productOptions.groupId,
+        groups.map((group) => group.id),
+      ),
+    );
+  return groups.map((group) => ({
+    ...group,
+    choices: choices.filter((choice) => choice.groupId === group.id),
+  }));
 }
 
 export async function expireAndReofferDeliveryOffers(
@@ -3045,13 +3533,22 @@ export async function listPendingDeliveryOffers(courierUserId: number) {
       storeId: deliveryOffers.storeId,
       status: deliveryOffers.status,
       etaMinutes: deliveryOffers.etaMinutes,
+      payoutAmount: deliveryOffers.payoutAmount,
+      pickupDistanceKm: deliveryOffers.pickupDistanceKm,
+      dropoffDistanceKm: deliveryOffers.dropoffDistanceKm,
       message: deliveryOffers.message,
       expiresAt: deliveryOffers.expiresAt,
       createdAt: deliveryOffers.createdAt,
       storeName: stores.name,
       storeKind: stores.kind,
+      storeLatitude: stores.latitude,
+      storeLongitude: stores.longitude,
       deliveryAddress: orders.deliveryAddress,
-      total: orders.total,
+      destinationLatitude: orders.destinationLatitude,
+      destinationLongitude: orders.destinationLongitude,
+      isFlash: orders.isFlash,
+      deliveryFee: orders.deliveryFeeSnapshot,
+      tipAmount: orders.tipAmount,
     })
     .from(deliveryOffers)
     .innerJoin(stores, eq(stores.id, deliveryOffers.storeId))
@@ -3219,6 +3716,8 @@ export async function listActiveDeliveriesForCourier(courierUserId: number) {
         name: stores.name,
         phone: stores.phone,
         address: stores.address,
+        latitude: stores.latitude,
+        longitude: stores.longitude,
       },
     })
     .from(deliveryAssignments)
@@ -3227,7 +3726,11 @@ export async function listActiveDeliveriesForCourier(courierUserId: number) {
     .where(
       and(
         eq(deliveryAssignments.courierId, courierUserId),
-        inArray(deliveryAssignments.status, ["assigned", "in_transit"]),
+        inArray(deliveryAssignments.status, [
+          "assigned",
+          "arrived",
+          "in_transit",
+        ]),
       ),
     )
     .orderBy(desc(deliveryAssignments.updatedAt))
