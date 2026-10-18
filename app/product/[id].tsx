@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
+import { askToJoin } from "@/components/auth-prompt";
 import { Page, Card, PrimaryButton, PEDIU, s } from "@/components/pediu-page";
+import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
 import { useCart } from "@/providers/cart-provider";
 import { formatCatalogPrice, unitSubtitle } from "@/shared/market-units";
@@ -11,6 +13,7 @@ export default function ProductDetailPage() {
   const productId = Number(id);
   const query = trpc.pediu.marketplace.products.useQuery(undefined, { enabled: Number.isInteger(productId) && productId > 0, staleTime: 30_000 });
   const product = useMemo(() => (query.data ?? []).find((item) => item.id === productId), [query.data, productId]);
+  const { isAuthenticated } = useAuth();
   const { addItem, itemCount } = useCart();
   const [quantity, setQuantity] = useState(1);
   const [notice, setNotice] = useState("");
@@ -20,6 +23,10 @@ export default function ProductDetailPage() {
   if (query.isError || !product) return <Page title="Produto" eyebrow="CATÁLOGO"><Card><Text style={s.sectionTitle}>Produto indisponível</Text><Text style={s.muted}>O produto pode ter sido removido, estar indisponível ou a loja estar fechada.</Text></Card></Page>;
 
   const addToCart = () => {
+    if (!isAuthenticated) {
+      askToJoin({ action: "cart", returnTo: `/product/${product.id}` });
+      return;
+    }
     const result = addItem({
       id: product.id,
       storeId: product.storeId,
@@ -42,7 +49,15 @@ export default function ProductDetailPage() {
     setNotice(`${quantity} item(ns) adicionado(s) ao carrinho.`);
   };
 
-  return <Page title={product.name} eyebrow={product.storeName} back action={<Pressable onPress={() => router.push("/cart")}><Text style={{ color: PEDIU.coral, fontWeight: "900" }}>Carrinho ({itemCount})</Text></Pressable>}>
+  const openCart = () => {
+    if (!isAuthenticated) {
+      askToJoin({ action: "cart", returnTo: `/product/${product.id}` });
+      return;
+    }
+    router.push("/cart");
+  };
+
+  return <Page title={product.name} eyebrow={product.storeName} back action={<Pressable onPress={openCart}><Text style={{ color: PEDIU.coral, fontWeight: "900" }}>Carrinho ({itemCount})</Text></Pressable>}>
     <Card>
       <View style={{ width: "100%", height: 180, borderRadius: 18, backgroundColor: PEDIU.coralSoft, alignItems: "center", justifyContent: "center" }}>
         <Text style={{ fontSize: 58 }}>{product.category === "Lanches" ? "🍔" : product.category === "Doces" ? "🍰" : "🛠️"}</Text>
@@ -66,7 +81,7 @@ export default function ProductDetailPage() {
       </View>
       {notice ? <Text style={{ color: notice.includes("adicionado") ? PEDIU.green : PEDIU.coral, fontSize: 12 }}>{notice}</Text> : null}
       <PrimaryButton title={product.available ? "Adicionar ao carrinho" : "Produto indisponível"} disabled={!product.available} onPress={addToCart} />
-      {itemCount > 0 ? <Pressable onPress={() => router.push("/cart")}><Text style={{ color: PEDIU.ink, fontWeight: "900", textAlign: "center" }}>Ver carrinho</Text></Pressable> : null}
+      {itemCount > 0 ? <Pressable onPress={openCart}><Text style={{ color: PEDIU.ink, fontWeight: "900", textAlign: "center" }}>Ver carrinho</Text></Pressable> : null}
     </Card>
   </Page>;
 }

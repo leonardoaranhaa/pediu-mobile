@@ -107,6 +107,6 @@ Pedido, login, loja, motoboy e aviso pelo aplicativo da Expo não dependem do se
 
 Antes de gerar um aplicativo de loja, cadastre a mesma `EXPO_PUBLIC_API_BASE_URL` no ambiente **production** da Expo. Sem isso, o build de produção não sabe o endereço do servidor.
 
-O próximo APK precisa de um número de versão do Android maior que o já instalado. O arquivo `eas.json` já guarda essa numeração na Expo (`appVersionSource` remoto). O perfil de produção já sobe o número sozinho. No APK de teste, ou aumente `android.versionCode` no `app.config.ts`, ou ligue o mesmo aumento automático no perfil `preview`. Sem um número maior, o celular recusa instalar por cima.
+O APK de teste que já está no celular foi gerado com o número de versão 1. O arquivo `app.config.ts` agora declara `android.versionCode` 2, e o perfil `preview` do `eas.json` sobe esse número sozinho (`autoIncrement`), usando a numeração remota da Expo (`appVersionSource`). Assim o próximo APK instala por cima do que já está no celular. Sem um número maior, o Android recusa a instalação.
 
 Sem a URL https pública, o APK abre, mas não consegue criar conta nem entrar.

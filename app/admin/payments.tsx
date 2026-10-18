@@ -31,7 +31,7 @@ export default function AdminPaymentsPage() {
       <Page title="Pagamentos" eyebrow="OPERAÇÃO FINANCEIRA">
         <Card>
           <Text style={s.sectionTitle}>Cobranças</Text>
-          <Text style={s.muted}>Acompanhe o status das cobranças e identifique falhas. Estornos devem seguir a política financeira aprovada e o fluxo do provedor.</Text>
+          <Text style={s.muted}>Acompanhe as cobranças e o que falhou. Estornos seguem a regra de pagamento combinada.</Text>
         </Card>
       {query.isLoading ? <ActivityIndicator color={PEDIU.coral} /> : null}
       {query.error ? <Text style={{ color: PEDIU.coral, fontWeight: "700" }}>Falha ao carregar pagamentos.</Text> : null}

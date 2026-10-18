@@ -10,6 +10,7 @@ import {
   PEDIU,
   s,
 } from "@/components/pediu-page";
+import { askToJoin } from "@/components/auth-prompt";
 import { useAuth } from "@/hooks/use-auth";
 import { cartFlashEligible } from "@/lib/cart";
 import { cancellationPolicyCopy, deliverySummaryCopy } from "@/lib/checkout-copy";
@@ -213,9 +214,12 @@ export default function CheckoutScreen() {
         <Card>
           <Text style={s.sectionTitle}>Entre para continuar</Text>
           <Text style={s.muted}>
-            Sua sessão é necessária para criar um pedido e acompanhar o
-            pagamento.
+            Para fechar o pedido e acompanhar o pagamento, crie uma conta ou entre na sua.
           </Text>
+          <PrimaryButton
+            title="Criar conta ou entrar"
+            onPress={() => askToJoin({ action: "checkout", returnTo: "/checkout" })}
+          />
         </Card>
       </Page>
     );
@@ -264,7 +268,7 @@ export default function CheckoutScreen() {
         ) : null}
         {quote.data ? (
           <>
-            <Text style={s.muted}>Valores confirmados pelo servidor.</Text>
+            <Text style={s.muted}>Valores confirmados para este pedido.</Text>
             <View style={{ gap: 6, marginTop: 10 }}>
               {quote.data.items.map((item) => (
                 <View key={item.productId} style={row}>
@@ -325,8 +329,7 @@ export default function CheckoutScreen() {
           </>
         ) : (
           <Text style={s.muted}>
-            Total estimado localmente: {money(estimatedTotal)}. A confirmação
-            depende da cotação do servidor.
+            Total estimado: {money(estimatedTotal)}. O valor final aparece quando o endereço estiver escolhido.
           </Text>
         )}
       </Card>
@@ -370,7 +373,7 @@ export default function CheckoutScreen() {
         ) : null}
         <Text style={s.muted}>
           {effectiveFulfillmentMode === "delivery"
-            ? "A disponibilidade e a taxa são recalculadas pelo servidor conforme o endereço escolhido. O acompanhamento mostra as próximas atualizações depois que a loja aceitar o pedido."
+            ? "A taxa muda conforme o endereço escolhido. Depois que a loja aceitar, você acompanha cada etapa."
             : "A retirada não tem taxa de entrega. A loja avisa quando o pedido estiver pronto para você buscar."}
         </Text>
         {quote.data && effectiveFulfillmentMode === "delivery" ? (
@@ -472,7 +475,7 @@ export default function CheckoutScreen() {
           <Text style={s.sectionTitle}>Pediu Flash</Text>
           <Text style={s.muted}>
             {flashEligibleLocal
-              ? "Prioridade na fila da loja e do entregador. A taxa vem da cotação do servidor."
+              ? "Prioridade na fila da loja e do entregador. A taxa aparece depois que você escolhe o endereço."
               : "Esta loja não oferece Flash no momento."}
           </Text>
           <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
@@ -524,7 +527,7 @@ export default function CheckoutScreen() {
         <Card>
           <Text style={s.sectionTitle}>Gorjeta para a entrega</Text>
           <Text style={s.muted}>
-            O valor é enviado ao servidor e fica fora dos pontos do Clube.
+            A gorjeta vai para quem entrega e não vira ponto do Clube.
           </Text>
           <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
             {TIP_OPTIONS.map((value) => (
@@ -662,7 +665,7 @@ export default function CheckoutScreen() {
       <Card>
         <Text style={s.sectionTitle}>Confirmação</Text>
         <Text style={s.muted}>
-          O total exibido será enviado ao servidor: {money(quotedTotal)}.
+          Total deste pedido: {money(quotedTotal)}.
         </Text>
         {createOrder.error ? (
           <Text style={{ color: PEDIU.coral, fontSize: 12 }}>

@@ -72,7 +72,7 @@ export default function AdminDashboard() {
           <Metric label="Pagamentos pendentes" value={data.pendingPayments} tone="accent" />
           <Metric label="Pagamentos falhos" value={data.failedPayments} tone="primary" />
           <Metric label="Gorjetas liquidadas" value={data.tipsSettled} />
-          <Metric label="Volume tips" value={`R$ ${Number(data.tipsSettledAmount).toFixed(0)}`} tone="accent" />
+          <Metric label="Volume de gorjetas" value={`R$ ${Number(data.tipsSettledAmount).toFixed(0)}`} tone="accent" />
           <Metric label="Chamados abertos" value={data.openSupportTickets} />
           <Metric label="Lojas Flash" value={data.flashStores} tone="accent" />
         </View>
@@ -82,16 +82,16 @@ export default function AdminDashboard() {
       <Row icon="people-outline" title="Usuários" subtitle={data ? `${data.users} contas` : "Papéis e acesso"} onPress={() => router.push("/admin/users")} />
       <Row icon="storefront" title="Estabelecimentos" subtitle={data ? `${data.stores} lojas · ${data.flashStores} Flash` : "Flash, vertical e abertura"} onPress={() => router.push("/admin/stores")} />
       <Row icon="receipt-long" title="Pedidos" subtitle={data ? `${data.pendingOrders} na fila · ${data.flashOrdersToday} Flash hoje` : "Fila e filtros"} onPress={() => router.push("/admin/orders")} />
-      <Row icon="savings" title="Gorjetas / tips" subtitle={data ? `${data.tipsSettled} liquidadas · R$ ${Number(data.tipsSettledAmount).toFixed(2).replace(".", ",")}` : "Settlements pós-entrega"} onPress={() => router.push("/admin/tips")} />
+      <Row icon="savings" title="Gorjetas" subtitle={data ? `${data.tipsSettled} liquidadas · R$ ${Number(data.tipsSettledAmount).toFixed(2).replace(".", ",")}` : "Valores pagos depois da entrega"} onPress={() => router.push("/admin/tips")} />
       <Row icon="payments" title="Pagamentos" subtitle={data ? `${data.pendingPayments} pendentes · ${data.failedPayments} falhos` : "Cobranças e falhas"} onPress={() => router.push("/admin/payments")} />
       <Row icon="account-balance-wallet" title="Crédito / Fiado" subtitle={data ? `${data.creditAccounts} contas` : "Contas lojista"} onPress={() => router.push("/admin/credit")} />
       <Row icon="support-agent" title="Suporte" subtitle={data ? `${data.openSupportTickets} abertos` : "Chamados e respostas"} onPress={() => router.push("/admin/support")} />
       <Row icon="security" title="Auditoria" subtitle="Trilha de ações administrativas" onPress={() => router.push("/admin/audit")} />
 
       <Card>
-        <Text style={s.sectionTitle}>Domínio</Text>
+        <Text style={s.sectionTitle}>O que está no ar</Text>
         <Text style={s.muted}>
-          Flash, Club, Mercado, Sabor e tip settlements no ar. Pediu Junto modelado (host-pays) com flag OFF em produção.
+          Flash, Clube, Mercado e Sabor estão disponíveis. Pedido em grupo ainda não está liberado.
         </Text>
         <Pressable onPress={() => router.push("/flash")} style={styles.linkChip}>
           <Text style={styles.linkChipText}>Ver Flash no app</Text>

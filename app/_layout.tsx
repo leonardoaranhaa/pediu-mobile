@@ -23,6 +23,7 @@ import {
   initManusRuntime,
   subscribeSafeAreaInsets,
 } from "@/lib/_core/manus-runtime";
+import { AuthPromptHost } from "@/components/auth-prompt";
 import { CartProvider } from "@/providers/cart-provider";
 import {
   AppPreferencesProvider,
@@ -158,6 +159,7 @@ export default function RootLayout() {
           {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}
           <AppPreferencesProvider>
             <OnboardingGate />
+            <AuthPromptHost />
             <MascotNavigationBridge />
             <CartProvider>
               <Stack screenOptions={{ headerShown: false }}>

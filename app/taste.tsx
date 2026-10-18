@@ -43,8 +43,7 @@ export default function TasteScreen() {
   return (
     <Page title="Sabor do momento" eyebrow="DESCOBERTA">
       <Text style={s.muted}>
-        Humor → query canônica no servidor (`marketplace.taste`). Sem
-        personalização invasiva na v1.
+        Escolha um humor e veja sugestões de comida por perto.
       </Text>
 
       <View style={styles.grid}>

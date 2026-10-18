@@ -33,7 +33,7 @@ export default function AdminUsersPage() {
     <Page title="Usuários" eyebrow="OPERAÇÃO">
       <Card>
         <Text style={s.sectionTitle}>Contas da plataforma</Text>
-        <Text style={s.muted}>Leitura operacional. Impersonation não entra na v1.</Text>
+        <Text style={s.muted}>Lista de contas. Não dá para entrar na conta de outra pessoa por aqui.</Text>
       </Card>
       <Card>
         <Text style={s.sectionTitle}>Código de nova senha</Text>

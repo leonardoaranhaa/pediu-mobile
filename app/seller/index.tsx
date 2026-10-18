@@ -1,13 +1,13 @@
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
+import { askToJoin } from "@/components/auth-prompt";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
 import { useAppPreferences } from "@/lib/app-preferences";
 import {
   Card,
   Field,
-  OutlineButton,
   Page,
   PrimaryButton,
   s,
@@ -128,9 +128,9 @@ function SellerOrderCard({
       <OpsOrderLines
         lines={[
           order.tipAmount && Number(order.tipAmount) > 0
-            ? `Gorjeta congelada: ${money(order.tipAmount)}`
-            : "Itens e totais calculados pelo servidor",
-          isFlash ? "Prioridade Flash operacional" : "Entrega padrão da loja",
+            ? `Gorjeta incluída: ${money(order.tipAmount)}`
+            : "Valores do pedido",
+          isFlash ? "Entrega Flash" : "Entrega padrão da loja",
         ]}
       />
       {next || (isReady && delivery) ? (
@@ -267,12 +267,14 @@ export default function SellerHomePage() {
             A criação da loja e os pedidos ficam vinculados à sua conta segura.
           </Text>
           <PrimaryButton
-            title="Entrar"
-            onPress={() => router.push("/login")}
-          />
-          <OutlineButton
-            title="Criar uma conta"
-            onPress={() => router.push("/register")}
+            title="Criar conta ou entrar"
+            onPress={() =>
+              askToJoin({
+                action: "seller",
+                role: "merchant",
+                returnTo: "/seller",
+              })
+            }
           />
         </Card>
       </Page>

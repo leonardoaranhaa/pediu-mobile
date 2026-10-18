@@ -419,7 +419,7 @@ function PromoReel({
       image: FOOD_ASSETS.pizza,
       title: firstProduct?.name || "Chega mais rápido",
       subtitle:
-        firstProduct?.adOfferLabel || "Lojas Flash ligadas no servidor.",
+        firstProduct?.adOfferLabel || "Lojas com entrega mais rápida.",
       action: onSearch,
     },
     {

@@ -49,6 +49,6 @@ export const cancellationPolicyCopy = [
   },
   {
     title: "Pagamento pendente",
-    detail: "Se houver pagamento pendente, o servidor trata o cancelamento junto com a atualização do pedido.",
+    detail: "Se o pagamento ainda não foi concluído, o cancelamento do pedido também cancela essa cobrança.",
   },
 ] as const;

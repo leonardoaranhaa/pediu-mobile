@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Text, View } from "react-native";
 import { Card, Field, OutlineButton, Page, PEDIU, PrimaryButton, s } from "@/components/pediu-page";
 import { useAuth } from "@/hooks/use-auth";
+import { takeAuthReturn } from "@/lib/guest-access";
 import * as Auth from "@/lib/_core/auth";
 import { trpc } from "@/lib/trpc";
 
@@ -19,7 +20,7 @@ export default function LoginScreen() {
     onSuccess: async (result) => {
       await Auth.setSessionToken(result.token);
       await refresh();
-      router.replace("/(tabs)");
+      router.replace(takeAuthReturn() as never);
     },
   });
 
@@ -47,7 +48,7 @@ export default function LoginScreen() {
       </Card>
       <View style={{ backgroundColor: PEDIU.coralSoft, borderRadius: 18, padding: 15, flexDirection: "row", gap: 10 }}>
         <MaterialIcons name="lock" size={19} color={PEDIU.coral} />
-        <Text style={[s.muted, { flex: 1 }]}>A senha fica só no servidor. Neste celular guardamos a sessão, que pode ser encerrada quando você sair.</Text>
+        <Text style={[s.muted, { flex: 1 }]}>Use uma senha que só você conhece. Neste celular guardamos o acesso, e você pode encerrá-lo quando sair.</Text>
       </View>
     </Page>
   );

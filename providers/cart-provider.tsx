@@ -154,7 +154,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const addItem = useCallback(
     (product: CartProduct, quantity = 1) => {
       if (sessionUserId === undefined)
-        return { ok: false, error: "Aguarde a sincronização da sua sessão." };
+        return { ok: false, error: "Aguarde um instante e tente de novo." };
       if (sessionUserId === null)
         return { ok: false, error: "Entre para salvar itens no seu carrinho." };
       if (!hydrated)

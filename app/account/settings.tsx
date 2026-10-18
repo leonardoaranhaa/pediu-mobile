@@ -69,7 +69,7 @@ export default function SettingsPage() {
             }}
           />
           <Text style={{ color: theme.onDeep, fontSize: 11, fontWeight: "800" }}>
-            {theme.label} · {customization.mascotEnabled ? "mascote ativo" : "modo discreto"}
+            {theme.label} · {customization.mascotEnabled ? "mascote na tela" : "visual mais limpo"}
           </Text>
         </View>
       </View>
@@ -108,11 +108,8 @@ export default function SettingsPage() {
       ))}
 
       <Text style={s.muted}>
-        Temas, mascote e preferências de experiência ficam separados por conta
-        quando você está conectado; no modo visitante, ficam apenas neste
-        dispositivo.
+        Suas cores e o mascote ficam salvos nesta conta. Sem conta, ficam só neste celular.
       </Text>
-      <Text style={s.muted}>Versão do aplicativo: MVP · Pediu</Text>
     </Page>
   );
 }

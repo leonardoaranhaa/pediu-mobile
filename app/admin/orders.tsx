@@ -45,7 +45,7 @@ export default function AdminOrdersPage() {
         <Text style={s.muted}>
           {overview.data
             ? `${overview.data.pendingOrders} pendentes · ${overview.data.flashOrdersToday} Flash hoje`
-            : "Filtros por status e Flash — totais do servidor."}
+            : "Filtre por situação e por Flash para ver a fila."}
         </Text>
         <View style={styles.chips}>
           {STATUS_FILTERS.map((item) => {

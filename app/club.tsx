@@ -10,8 +10,8 @@ import { trpc } from "@/lib/trpc";
 const PERKS = [
   { title: "Pontos em todo pedido", body: "R$ 1 vira 1 ponto após entrega. No Prata, 1,2×." },
   { title: "Flash na frente", body: "Pedidos Flash elegíveis ganham prioridade na moto." },
-  { title: "Resgate em cupom", body: "100 pts → R$ 5 de crédito em cupom interno do servidor." },
-  { title: "Mercado relâmpago", body: "Vertical Mercado com SLA próprio no schema." },
+  { title: "Resgate em cupom", body: "100 pontos viram R$ 5 de desconto no próximo pedido." },
+  { title: "Mercado relâmpago", body: "Compras de mercado têm um prazo próprio de entrega." },
 ];
 
 export default function ClubScreen() {
@@ -38,12 +38,12 @@ export default function ClubScreen() {
         </Text>
         <Text style={styles.points}>{isAuthenticated ? points : "—"}</Text>
         <Text style={styles.pointsLabel}>
-          {isAuthenticated ? "pontos · saldo no ledger de loyalty" : "entre para ver seu saldo real"}
+          {isAuthenticated ? "pontos do Clube" : "entre para ver seus pontos"}
         </Text>
         <View style={styles.track}>
           <View style={[styles.fill, { width: `${isAuthenticated ? Math.max(8, progress) : 8}%` }]} />
         </View>
-        <Text style={styles.progressHint}>{isAuthenticated ? nextHint : "Domínio loyalty_* no servidor"}</Text>
+        <Text style={styles.progressHint}>{isAuthenticated ? nextHint : "Entre para acompanhar seu progresso."}</Text>
       </View>
 
       <View style={styles.stats}>
@@ -69,7 +69,7 @@ export default function ClubScreen() {
         <EmptyState
           icon="workspace-premium"
           title="Entre para acumular pontos"
-          body="O Clube usa sua conta Pediu. Pontos só creditam após entrega confirmada no servidor."
+          body="O Clube usa a sua conta. Os pontos entram depois que a entrega é confirmada."
           actionLabel="Ir ao perfil"
           onAction={() => router.replace("/")}
         />

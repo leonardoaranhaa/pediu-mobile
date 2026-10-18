@@ -11,7 +11,7 @@ export default function PersonalDataPage() {
   const profile = trpc.pediu.account.profile.mine.useQuery(undefined, { enabled: isAuthenticated });
   const update = trpc.pediu.account.profile.update.useMutation({ onSuccess: async () => { await profile.refetch(); await refresh(); Alert.alert("Perfil atualizado", "Seu nome foi salvo."); } });
   const requestEmailChange = trpc.pediu.account.profile.requestEmailChange.useMutation({
-    onSuccess: (result) => Alert.alert(result.verificationSent ? "Verifique seu e-mail" : "Verificação pendente", result.verificationSent ? "Enviamos um link de confirmação para o novo endereço." : "O provedor de e-mail ainda não está configurado; a alteração só será aplicada após o envio do token."),
+    onSuccess: (result) => Alert.alert(result.verificationSent ? "Verifique seu e-mail" : "Confirmação pendente", result.verificationSent ? "Enviamos um link de confirmação para o novo endereço." : "Ainda não conseguimos enviar o e-mail de confirmação. A troca do endereço só vale depois dessa confirmação."),
     onError: (error) => Alert.alert("E-mail", error.message),
   });
   const [name, setName] = useState("");

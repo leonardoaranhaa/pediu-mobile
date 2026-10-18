@@ -23,6 +23,6 @@ export default function PaymentMethodsPage() {
       </> : null}
       {update.error ? <Text style={{ color: theme.primary, fontSize: 12 }}>{update.error.message}</Text> : null}
     </Card>
-    <Card><Text style={s.sectionTitle}>Fiado</Text><Text style={s.muted}>Disponível apenas quando uma loja habilitar seu crédito. A aprovação fica registrada no servidor.</Text></Card>
+    <Card><Text style={s.sectionTitle}>Fiado</Text><Text style={s.muted}>A loja precisa liberar o fiado para você. Quando liberar, a opção aparece no pagamento.</Text></Card>
   </Page>;
 }

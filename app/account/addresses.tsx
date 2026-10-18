@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Alert, Pressable, Text, View } from "react-native";
+import { askToJoin } from "@/components/auth-prompt";
 import { Page, Card, Field, OutlineButton, PrimaryButton, s } from "@/components/pediu-page";
 import { router } from "expo-router";
 import { trpc } from "@/lib/trpc";
@@ -121,7 +122,7 @@ export default function AddressesPage() {
   ]);
 
   if (!isAuthenticated) {
-    return <Page title="Meus endereços" eyebrow="SUA CONTA" back><Card><Text style={s.sectionTitle}>Entre para sincronizar seus endereços</Text><Text style={s.muted}>Os endereços ficam vinculados à sua conta e podem ser usados no checkout.</Text></Card></Page>;
+    return <Page title="Meus endereços" eyebrow="SUA CONTA" back><Card><Text style={s.sectionTitle}>Entre para salvar seus endereços</Text><Text style={s.muted}>Os endereços ficam na sua conta e aparecem na hora de pedir.</Text><PrimaryButton title="Criar conta ou entrar" onPress={() => askToJoin({ action: "account", returnTo: "/account/addresses" })} /></Card></Page>;
   }
 
   return <Page title="Meus endereços" eyebrow="SUA CONTA" back>

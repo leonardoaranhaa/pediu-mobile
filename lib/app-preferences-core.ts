@@ -49,7 +49,7 @@ export type AppTheme = {
 export const APP_THEMES: AppTheme[] = [
   {
     id: "classic",
-    label: "Pediu 2.0",
+    label: "Clássico",
     tagline: "Vermelho vivo, calor local e muita atitude",
     primary: "#E20D2A",
     primarySoft: "#FFE7E7",

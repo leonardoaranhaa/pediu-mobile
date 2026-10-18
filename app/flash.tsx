@@ -52,8 +52,7 @@ export default function FlashScreen() {
         <MaterialIcons name="bolt" size={22} color={PEDIU_TOKENS.accent} />
         <Text style={styles.heroTitle}>Pedidos que pulam a fila</Text>
         <Text style={styles.heroBody}>
-          Só lojas com Flash ligado no servidor. A cotação valida `fulfillment:
-          flash` — o badge não é cosmético.
+          Lojas que entregam mais rápido. O prazo e a taxa aparecem antes de você confirmar.
         </Text>
       </View>
 

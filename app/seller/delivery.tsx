@@ -183,7 +183,7 @@ export default function SellerDeliveryPage() {
                 `${selectedOrder.status} · ${money(selectedOrder.total)}`,
                 selectedOrder.isFlash
                   ? `Previsão sugerida: ${selectedOrder.suggestedEtaMinutes ?? queueQuery.data?.flashEtaMaxMinutes ?? 20} min`
-                  : "Entrega da fila operacional",
+                  : "Entrega da fila da loja",
                 selectedOrder.deliveryAddress ??
                   "Endereço informado no pedido",
               ]}

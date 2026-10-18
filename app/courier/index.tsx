@@ -2,6 +2,7 @@ import * as Location from "expo-location";
 import { router } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
+import { askToJoin } from "@/components/auth-prompt";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
 import {
@@ -156,8 +157,14 @@ export default function CourierHomePage() {
             parceiras.
           </Text>
           <PrimaryButton
-            title="Entrar"
-            onPress={() => router.push("/login")}
+            title="Criar conta ou entrar"
+            onPress={() =>
+              askToJoin({
+                action: "courier",
+                role: "courier",
+                returnTo: "/courier",
+              })
+            }
           />
           <OutlineButton title="Voltar" onPress={() => router.back()} />
         </Card>
@@ -167,7 +174,7 @@ export default function CourierHomePage() {
 
   if (profile.isLoading)
     return (
-      <Page title="Central do entregador" eyebrow="PEDIU LOGÍSTICA">
+      <Page title="Central do entregador" eyebrow="ENTREGAS">
         <ActivityIndicator color={PEDIU.coral} />
       </Page>
     );
@@ -181,7 +188,7 @@ export default function CourierHomePage() {
             Você poderá escolher quando ficar disponível. A plataforma aprova o
             cadastro antes de liberar ofertas.
           </Text>
-          <Text style={s.label}>MODAL DE ENTREGA</Text>
+          <Text style={s.label}>COMO VOCÊ ENTREGA</Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
             {(Object.keys(vehicleLabels) as VehicleType[]).map((type) => (
               <OutlineButton
@@ -256,7 +263,7 @@ export default function CourierHomePage() {
       <Page title="Central do entregador" eyebrow="STATUS DO CADASTRO">
         <Card>
           <Text style={{ color: PEDIU.ink, fontSize: 28, fontWeight: "900" }}>
-            Conta #{user?.id}
+            Número para as lojas: {user?.id}
           </Text>
           <Text style={s.muted}>
             Guarde este número. A loja usa ele para colocar você na equipe.
@@ -342,7 +349,7 @@ export default function CourierHomePage() {
             fontWeight: "900",
           }}
         >
-          Conta #{user?.id}
+          Número para as lojas: {user?.id}
         </Text>
         <Text style={s.muted}>
           Passe este número para a loja vincular você à equipe.

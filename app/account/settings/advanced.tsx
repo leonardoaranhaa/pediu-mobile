@@ -67,7 +67,7 @@ export default function AdvancedSettingsPage() {
         <ToggleRow
           icon="bug-report"
           title="Diagnóstico"
-          subtitle="Permitir registros técnicos quando houver erro."
+          subtitle="Avisa a equipe do Pediu se o aplicativo falhar."
           value={customization.diagnosticsEnabled}
           onChange={(value) =>
             updateCustomization({ diagnosticsEnabled: value })
@@ -80,8 +80,7 @@ export default function AdvancedSettingsPage() {
           onPress={() => router.push("/account/privacy")}
         />
         <Text style={s.muted}>
-          Os controles acima são persistidos por usuário quando você está
-          conectado e separados para visitantes.
+          Essas escolhas ficam salvas na sua conta. Sem conta, ficam só neste celular.
         </Text>
       </Card>
       <Card>

@@ -33,6 +33,7 @@ describe("Pediu checkout confirmation cards", () => {
     });
     expect(cancellationPolicyCopy).toHaveLength(3);
     expect(cancellationPolicyCopy[1].detail).toContain("deixa de estar disponível");
-    expect(cancellationPolicyCopy[2].detail).toContain("pagamento pendente");
+    expect(cancellationPolicyCopy[2].detail).toContain("cancelamento do pedido");
+    expect(cancellationPolicyCopy[2].detail).toContain("cobrança");
   });
 });

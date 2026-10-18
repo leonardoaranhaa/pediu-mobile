@@ -103,7 +103,7 @@ export default function SellerAdsPage() {
 
   if (!isAuthenticated) {
     return (
-      <Page title="Estúdio de anúncios" eyebrow="PEDIU AI">
+      <Page title="Estúdio de anúncios" eyebrow="ANÚNCIOS">
         <Card>
           <MaterialIcons name="lock" size={26} color={theme.primary} />
           <Text style={s.sectionTitle}>
@@ -123,7 +123,7 @@ export default function SellerAdsPage() {
 
   if (!store.data) {
     return (
-      <Page title="Estúdio de anúncios" eyebrow="PEDIU AI">
+      <Page title="Estúdio de anúncios" eyebrow="ANÚNCIOS">
         <Card>
           <Text style={s.sectionTitle}>Crie sua loja primeiro</Text>
           <Text style={s.muted}>
@@ -152,7 +152,7 @@ export default function SellerAdsPage() {
   return (
     <Page
       title="Estúdio de anúncios"
-      eyebrow="PEDIU AI"
+      eyebrow="ANÚNCIOS"
       action={
         <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
           <MaterialIcons name="auto-awesome" size={17} color={theme.primary} />

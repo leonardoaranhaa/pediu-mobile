@@ -8,6 +8,7 @@ import {
   PrimaryButton,
   s,
 } from "@/components/pediu-page";
+import { askToJoin } from "@/components/auth-prompt";
 import { useAuth } from "@/hooks/use-auth";
 import { useCart } from "@/providers/cart-provider";
 
@@ -49,12 +50,11 @@ export default function CartPage() {
           <Text style={{ fontSize: 40 }}>🔐</Text>
           <Text style={s.sectionTitle}>Entre para acessar seu carrinho</Text>
           <Text style={s.muted}>
-            Seus itens ficam vinculados à sua conta para não misturar pedidos
-            entre pessoas e dispositivos.
+            Olhar as lojas é livre. O carrinho fica na sua conta para o pedido não se misturar com o de outra pessoa.
           </Text>
           <PrimaryButton
-            title="Entrar"
-            onPress={() => router.push("/login")}
+            title="Criar conta ou entrar"
+            onPress={() => askToJoin({ action: "cart", returnTo: "/cart" })}
           />
           <OutlineButton
             title="Continuar descobrindo"
@@ -230,8 +230,7 @@ export default function CartPage() {
             </View>
           </View>
           <Text style={s.muted}>
-            O total final será recalculado e confirmado pelo servidor no
-            checkout.
+            O valor final é confirmado na hora de fechar o pedido.
           </Text>
           <PrimaryButton
             title="Continuar para checkout"

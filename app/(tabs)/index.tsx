@@ -31,7 +31,10 @@ import {
   View,
 } from "react-native";
 
+import { askToJoin } from "@/components/auth-prompt";
+import { ProfileHome } from "@/components/profile-home";
 import { ScreenContainer } from "@/components/screen-container";
+import type { AccountAction, SignupRole } from "@/lib/guest-access";
 import type { MascotReaction } from "@/components/pediu-mascot";
 import { CartPeek } from "@/components/pediu/cart-peek";
 import { PediuMascotDock } from "@/components/pediu-companion";
@@ -146,7 +149,7 @@ const CATEGORIES = [
 ];
 
 export default function HomeScreen() {
-  const { user, isAuthenticated, logout, refresh: refreshAuth } = useAuth();
+  const { user, isAuthenticated, refresh: refreshAuth } = useAuth();
   const {
     theme,
     customization,
@@ -256,11 +259,6 @@ export default function HomeScreen() {
   const customerAddressesQuery = trpc.pediu.addresses.list.useQuery(undefined, {
     enabled: isAuthenticated && role === "customer",
   });
-  const loyaltyQuery = trpc.pediu.loyalty.me.useQuery(undefined, {
-    enabled: isAuthenticated && role === "customer",
-    staleTime: 20_000,
-  });
-  const couponsQuery = trpc.pediu.coupons.available.useQuery();
   const showMascotMoment = (nextReaction: MascotReaction) => {
     setMascotMoment(nextReaction);
     if (mascotResetTimer.current) clearTimeout(mascotResetTimer.current);
@@ -528,7 +526,7 @@ export default function HomeScreen() {
 
   const enterSellerMode = () => {
     if (!isAuthenticated) {
-      requestLogin();
+      requestLogin("seller", "merchant");
       return;
     }
     chooseMode("seller");
@@ -705,14 +703,13 @@ export default function HomeScreen() {
     setTimeout(() => setNotice(""), 2400);
   };
 
-  const requestLogin = () => {
-    router.push("/login");
+  const requestLogin = (action: AccountAction = "account", role?: SignupRole) => {
+    askToJoin({ action, role, returnTo: "/(tabs)" });
   };
 
   const addToCart = (product: Product) => {
     if (!isAuthenticated) {
-      notify("Entre para salvar itens no seu carrinho");
-      requestLogin();
+      requestLogin("cart");
       return;
     }
     const result = addGlobalItem({
@@ -750,7 +747,7 @@ export default function HomeScreen() {
   const openCheckout = () => {
     if (!cart.length) return;
     if (!isAuthenticated) {
-      requestLogin();
+      requestLogin("checkout");
       return;
     }
     setShowCart(false);
@@ -952,7 +949,7 @@ export default function HomeScreen() {
     if (!canRegisterSale(normalizedTotal, salePaymentMethod, customerId)) {
       void notifyWithHaptic(
         salePaymentMethod === "fiado"
-          ? "Informe o ID do cliente para lançar no fiado"
+          ? "Informe o número da conta do cliente para lançar no fiado"
           : "Informe um valor válido",
       );
       return;
@@ -973,7 +970,7 @@ export default function HomeScreen() {
 
   const createStore = () => {
     if (!isAuthenticated) {
-      requestLogin();
+      requestLogin("seller", "merchant");
       return;
     }
     if (!storeName.trim()) return;
@@ -1078,7 +1075,7 @@ export default function HomeScreen() {
                   orders={customerOrdersQuery.data ?? []}
                   loading={customerOrdersQuery.isLoading}
                   isAuthenticated={isAuthenticated}
-                  onLogin={requestLogin}
+                  onLogin={() => requestLogin("orders")}
                   onCancel={(orderId) =>
                     updateOrderStatusMutation.mutate({
                       orderId,
@@ -1088,29 +1085,7 @@ export default function HomeScreen() {
                   onDiscover={() => changeCustomerTab("discover")}
                 />
               )}
-              {customerTab === "profile" && (
-                <>
-                  <CustomerProfile
-                    user={user}
-                    isAuthenticated={isAuthenticated}
-                    theme={theme}
-                    onLogin={requestLogin}
-                    onLogout={() => void logout()}
-                    onSellerMode={enterSellerMode}
-                    loyalty={loyaltyQuery.data}
-                    addresses={customerAddressesQuery.data ?? []}
-                    coupons={couponsQuery.data ?? []}
-                    onAddressPress={() => router.push("/account/addresses")}
-                    onClubPress={() => router.push("/club")}
-                    onWalletPress={() =>
-                      notify(
-                        "Pediu Pay será habilitado quando a carteira estiver disponível",
-                      )
-                    }
-                    onHelpPress={() => router.push("/help")}
-                  />
-                </>
-              )}
+              {customerTab === "profile" && <ProfileHome />}
             </ScrollView>
             <CartPeek
               itemCount={globalCartCount}
@@ -2089,14 +2064,14 @@ function CustomerOrders({
         </View>
         <View style={styles.emptyState}>
           <Text style={styles.emptyTitle}>
-            Entre para consultar seus pedidos
+            Entre para ver seus pedidos
           </Text>
           <Text style={styles.emptyText}>
-            Sua conta precisa estar sincronizada para carregar o histórico real.
+            Seus pedidos ficam salvos na sua conta, neste celular e nos outros.
           </Text>
           <Pressable style={styles.primaryButton} onPress={onLogin}>
             <Text style={styles.primaryButtonText}>
-              Entrar
+              Entrar ou criar conta
             </Text>
           </Pressable>
         </View>
@@ -2200,315 +2175,6 @@ function CustomerOrders({
     </>
   );
 }
-function CustomerProfile({
-  user,
-  isAuthenticated,
-  theme,
-  onLogin,
-  onLogout,
-  onSellerMode,
-  loyalty,
-  addresses,
-  coupons,
-  onAddressPress,
-  onClubPress,
-  onWalletPress,
-  onHelpPress,
-}: {
-  user: { name: string | null; email: string | null } | null;
-  isAuthenticated: boolean;
-  theme: AppTheme;
-  onLogin: () => void;
-  onLogout: () => void;
-  onSellerMode: () => void;
-  loyalty?: {
-    points: number;
-    tierLabel: string;
-    progress: number;
-    pointsToNextTier: number;
-    nextTierLabel: string | null;
-  };
-  addresses: {
-    id: number;
-    label: string;
-    street: string;
-    number: string;
-    neighborhood: string;
-    city: string;
-    state: string;
-    isDefault: number;
-  }[];
-  coupons: {
-    code: string;
-    type: string;
-    value: string;
-    minSubtotal: string;
-    maxDiscount: string | null;
-  }[];
-  onAddressPress: () => void;
-  onClubPress: () => void;
-  onWalletPress: () => void;
-  onHelpPress: () => void;
-}) {
-  const profileName = user?.name?.trim() || "Você";
-  const tierLabel = loyalty?.tierLabel ?? "Inicial";
-  const points = loyalty?.points ?? 0;
-  const progress = Math.max(0, Math.min(1, loyalty?.progress ?? 0));
-  const couponLabel = (coupon: CustomerProfileProps["coupons"][number]) =>
-    coupon.type === "percent"
-      ? `${coupon.value}% na sacola`
-      : `R$ ${Number(coupon.value).toFixed(2).replace(".", ",")} off`;
-  return (
-    <>
-      <View style={styles.p3ProfileHeading}>
-        <View
-          style={[styles.p3ProfileAvatar, { backgroundColor: theme.primary }]}
-        >
-          <MaterialIcons name="person-outline" size={40} color={COLORS.white} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.p3ProfileName, { color: theme.ink }]}>
-            {profileName}
-          </Text>
-          <Text style={[styles.p3ProfileMeta, { color: theme.muted }]}>
-            Clube {tierLabel} · {points} pts
-          </Text>
-        </View>
-      </View>
-      <PediuPressable
-        onPress={onClubPress}
-        style={[styles.p3ClubCard, { backgroundColor: theme.ink }]}
-      >
-        <View style={styles.p3CardKickerRow}>
-          <MaterialIcons name="bolt" size={18} color={theme.highlight} />
-          <Text style={[styles.p3CardKicker, { color: theme.highlight }]}>
-            CLUBE PEDIU
-          </Text>
-        </View>
-        <Text style={styles.p3ClubTitle}>
-          {loyalty
-            ? `${loyalty.tierLabel} · ${loyalty.points} pontos`
-            : "Entre para desbloquear pontos"}
-        </Text>
-        <View style={styles.p3ProgressTrack}>
-          <View
-            style={[
-              styles.p3ProgressFill,
-              {
-                width: `${Math.max(4, progress * 100)}%`,
-                backgroundColor: theme.highlight,
-              },
-            ]}
-          />
-        </View>
-        <Text style={styles.p3ClubHint}>
-          {loyalty?.nextTierLabel
-            ? `${points} / ${points + (loyalty.pointsToNextTier ?? 0)} para ${loyalty.nextTierLabel}`
-            : "Pontos após a conclusão do pedido"}
-        </Text>
-      </PediuPressable>
-      <PediuPressable
-        onPress={onWalletPress}
-        style={[
-          styles.p3PayRow,
-          { backgroundColor: theme.card, borderColor: theme.line },
-        ]}
-      >
-        <View style={[styles.p3PayIcon, { backgroundColor: theme.highlight }]}>
-          <MaterialIcons
-            name="account-balance-wallet"
-            size={23}
-            color={theme.highlightText}
-          />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.p3PayTitle, { color: theme.ink }]}>
-            Pediu Pay
-          </Text>
-          <Text style={[styles.p3PaySubtitle, { color: theme.muted }]}>
-            Carteira · cashback 2%
-          </Text>
-        </View>
-        <Text style={[styles.p3PayAmount, { color: theme.ink }]}>—</Text>
-      </PediuPressable>
-      <PediuPressable
-        style={[
-          styles.p3NameCard,
-          { backgroundColor: theme.card, borderColor: theme.line },
-        ]}
-        onPress={() => router.push("/account/profile")}
-      >
-        <Text style={[styles.p3NameEyebrow, { color: theme.muted }]}>
-          COMO TE CHAMAMOS
-        </Text>
-        <Text style={[styles.p3NameValue, { color: theme.ink }]}>
-          {profileName}
-        </Text>
-      </PediuPressable>
-      <View style={styles.p3SectionHeading}>
-        <MaterialIcons name="location-on" size={22} color={theme.primary} />
-        <Text style={[styles.p3SectionTitle, { color: theme.ink }]}>
-          Endereços
-        </Text>
-      </View>
-      {addresses.length ? (
-        addresses.slice(0, 3).map((address) => (
-          <PediuPressable
-            key={address.id}
-            onPress={onAddressPress}
-            style={[
-              styles.p3AddressCard,
-              {
-                backgroundColor: address.isDefault ? theme.ink : theme.card,
-                borderColor: theme.line,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.p3AddressLabel,
-                { color: address.isDefault ? theme.canvas : theme.ink },
-              ]}
-            >
-              {address.label}
-            </Text>
-            <Text
-              numberOfLines={1}
-              style={[
-                styles.p3AddressText,
-                {
-                  color: address.isDefault
-                    ? "rgba(255,244,232,0.72)"
-                    : theme.muted,
-                },
-              ]}
-            >
-              {address.street}, {address.number} · {address.neighborhood}
-            </Text>
-          </PediuPressable>
-        ))
-      ) : (
-        <PediuPressable
-          onPress={onAddressPress}
-          style={[
-            styles.p3EmptyRow,
-            { backgroundColor: theme.card, borderColor: theme.line },
-          ]}
-        >
-          <Text style={[styles.p3AddressText, { color: theme.muted }]}>
-            Cadastre seu primeiro endereço
-          </Text>
-          <MaterialIcons name="chevron-right" size={20} color={theme.muted} />
-        </PediuPressable>
-      )}
-      <View style={styles.p3SectionHeading}>
-        <MaterialIcons
-          name="confirmation-number"
-          size={22}
-          color={theme.primary}
-        />
-        <Text style={[styles.p3SectionTitle, { color: theme.ink }]}>
-          Cupons
-        </Text>
-      </View>
-      {coupons.length ? (
-        coupons.slice(0, 4).map((coupon) => (
-          <PediuPressable
-            key={coupon.code}
-            onPress={() => router.push("/coupons")}
-            style={[
-              styles.p3CouponCard,
-              { backgroundColor: theme.card, borderColor: theme.line },
-            ]}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.p3CouponCode, { color: theme.ink }]}>
-                {coupon.code}
-              </Text>
-              <Text style={[styles.p3CouponHint, { color: theme.muted }]}>
-                Válido acima de R$ {Number(coupon.minSubtotal).toFixed(0)}
-              </Text>
-            </View>
-            <Text style={[styles.p3CouponValue, { color: theme.primary }]}>
-              {couponLabel(coupon)}
-            </Text>
-          </PediuPressable>
-        ))
-      ) : (
-        <View
-          style={[
-            styles.p3EmptyRow,
-            { backgroundColor: theme.card, borderColor: theme.line },
-          ]}
-        >
-          <Text style={[styles.p3AddressText, { color: theme.muted }]}>
-            Nenhum cupom disponível agora
-          </Text>
-        </View>
-      )}
-      <View style={styles.p3SectionHeading}>
-        <MaterialIcons name="favorite-border" size={23} color={theme.primary} />
-        <Text style={[styles.p3SectionTitle, { color: theme.ink }]}>
-          Favoritos
-        </Text>
-      </View>
-      <View
-        style={[
-          styles.p3EmptyRow,
-          { backgroundColor: theme.card, borderColor: theme.line },
-        ]}
-      >
-        <Text style={[styles.p3AddressText, { color: theme.muted }]}>
-          Nada salvo ainda. Toque no coração quando favoritos estiverem
-          disponíveis.
-        </Text>
-      </View>
-      <PediuPressable
-        onPress={onHelpPress}
-        style={[
-          styles.p3HelpRow,
-          { backgroundColor: theme.card, borderColor: theme.line },
-        ]}
-      >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <MaterialIcons name="help-outline" size={23} color={theme.ink} />
-          <Text style={[styles.p3HelpText, { color: theme.ink }]}>Ajuda</Text>
-        </View>
-        <MaterialIcons name="chevron-right" size={22} color={theme.muted} />
-      </PediuPressable>
-      {!isAuthenticated ? (
-        <PediuPressable
-          onPress={onLogin}
-          style={[styles.p3PrimaryButton, { backgroundColor: theme.primary }]}
-        >
-          <Text style={styles.p3PrimaryButtonText}>
-            Entrar para sincronizar
-          </Text>
-        </PediuPressable>
-      ) : (
-        <PediuPressable
-          onPress={onLogout}
-          style={[styles.p3OutlineButton, { borderColor: theme.primary }]}
-        >
-          <Text style={[styles.p3OutlineButtonText, { color: theme.primary }]}>
-            Sair da conta
-          </Text>
-        </PediuPressable>
-      )}
-      <PediuPressable onPress={onSellerMode} style={styles.p3SellerLink}>
-        <Text style={[styles.p3SellerLinkText, { color: theme.muted }]}>
-          Você também vende? Abrir modo lojista
-        </Text>
-      </PediuPressable>
-      <Text style={[styles.p3Footer, { color: theme.muted }]}>
-        Pediu · comida e mercado · São Paulo
-      </Text>
-    </>
-  );
-}
-
-type CustomerProfileProps = Parameters<typeof CustomerProfile>[0];
-
 function SellerHome({
   theme,
   store,
@@ -5745,11 +5411,11 @@ function SaleModal({
             style={styles.input}
             keyboardType="decimal-pad"
           />
-          <Text style={styles.fieldLabel}>ID DO CLIENTE (OPCIONAL)</Text>
+          <Text style={styles.fieldLabel}>NÚMERO DA CONTA (OPCIONAL)</Text>
           <TextInput
             value={customerId}
             onChangeText={onChangeCustomerId}
-            placeholder="Necessário para fiado"
+            placeholder="Necessário para fiado. É o número da conta."
             placeholderTextColor={COLORS.muted}
             style={styles.input}
             keyboardType="number-pad"

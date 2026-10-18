@@ -34,4 +34,32 @@ describe("Pediu user-facing UI copy", () => {
       expect(content).not.toContain(phrase);
     }
   });
+
+  it("keeps the account flow free of developer wording", () => {
+    const files = [
+      "app/login.tsx",
+      "app/register.tsx",
+      "app/onboarding.tsx",
+      "app/club.tsx",
+      "app/flash.tsx",
+      "app/taste.tsx",
+      "app/account/settings.tsx",
+      "app/account/profile.tsx",
+      "components/profile-home.tsx",
+      "components/auth-prompt.tsx",
+    ];
+    const content = files.map(source).join("\n").toLowerCase();
+    for (const phrase of [
+      "a senha fica",
+      "mascote ativo",
+      "pediu 2.0",
+      "servidor",
+      "query canônica",
+      "ledger",
+      "sincroniz",
+      "modal de entrega",
+    ]) {
+      expect(content, phrase).not.toContain(phrase);
+    }
+  });
 });

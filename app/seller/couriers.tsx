@@ -79,7 +79,7 @@ export default function SellerCouriersPage() {
           <Row
             key={courier.id}
             icon="two-wheeler"
-            title={courier.name ?? `Conta #${courier.courierUserId}`}
+            title={courier.name ?? `Número ${courier.courierUserId}`}
             subtitle={`${vehicleLabels[courier.vehicleType]} · ${courier.phone ?? "telefone não informado"}`}
             right={
               <View style={{ alignItems: "flex-end", gap: 3 }}>
@@ -102,7 +102,7 @@ export default function SellerCouriersPage() {
                       : "OFFLINE"}
                 </Text>
                 <Text style={{ color: PEDIU.ink, fontWeight: "900" }}>
-                  Conta #{courier.courierUserId}
+                  Número {courier.courierUserId}
                 </Text>
               </View>
             }

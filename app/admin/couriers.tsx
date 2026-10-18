@@ -69,14 +69,14 @@ export default function AdminCouriersPage() {
             }}
           >
             <Text style={{ color: PEDIU.ink, fontSize: 22, fontWeight: "900" }}>
-              Conta #{item.profile.userId}
+              Número {item.profile.userId}
             </Text>
             <Text style={s.muted}>
               Este é o número que a loja digita para vincular o motoboy.
             </Text>
             <Row
               icon="two-wheeler"
-              title={item.user.name ?? `Conta #${item.profile.userId}`}
+              title={item.user.name ?? `Número ${item.profile.userId}`}
               subtitle={`${vehicleLabels[item.profile.vehicleType]} · ${statusLabels[item.profile.status]}`}
               right={
                 <Text
@@ -148,8 +148,7 @@ export default function AdminCouriersPage() {
         ) : null}
       </Card>
       <Text style={s.muted}>
-        A aprovação é uma decisão operacional da plataforma. A configuração de
-        PSP, cobrança e repasse permanece pendente até a abertura do CNPJ.
+        A aprovação é uma decisão da equipe do Pediu. Cobrança automática e repasse ainda dependem da abertura do CNPJ.
       </Text>
     </Page>
   );

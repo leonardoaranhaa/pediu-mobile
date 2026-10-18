@@ -3,6 +3,7 @@ import { Text, View } from "react-native";
 import { router } from "expo-router";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
+import { askToJoin } from "@/components/auth-prompt";
 import { EmptyState } from "@/components/pediu/empty-state";
 import { Page, Card, PrimaryButton, Row, PEDIU, s } from "@/components/pediu-page";
 import { orderStatusCopy } from "@/lib/order-copy";
@@ -19,7 +20,7 @@ export default function OrdersPage() {
         <Text style={{ color: "#BCD0D1", fontSize: 12, lineHeight: 18 }}>Acompanhe cada etapa e volte a pedir seus favoritos quando quiser.</Text>
       </View>
       {!isAuthenticated ? (
-        <Card><Text style={s.sectionTitle}>Sincronize seu histórico</Text><Text style={s.muted}>Entre para consultar seus pedidos sincronizados em qualquer dispositivo.</Text><PrimaryButton title="Entrar" onPress={() => router.push("/login")} /></Card>
+        <Card><Text style={s.sectionTitle}>Entre para ver seus pedidos</Text><Text style={s.muted}>Seus pedidos ficam salvos na sua conta.</Text><PrimaryButton title="Criar conta ou entrar" onPress={() => askToJoin({ action: "orders", returnTo: "/orders" })} /></Card>
       ) : q.isLoading ? (
         <Card><Text style={s.muted}>Carregando pedidos...</Text></Card>
       ) : q.isError ? (

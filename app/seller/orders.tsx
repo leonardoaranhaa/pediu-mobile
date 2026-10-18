@@ -101,8 +101,7 @@ export default function SellerOrdersPage() {
           Pedidos
         </Text>
         <Text style={s.muted}>
-          A fila real da loja, com Flash em destaque e ações autorizadas pelo
-          servidor.
+          A fila da loja, com Flash em destaque e as ações que você pode fazer agora.
         </Text>
       </View>
       {q.isLoading ? (
@@ -213,10 +212,10 @@ export default function SellerOrdersPage() {
                           lines={[
                             order.tipAmount && Number(order.tipAmount) > 0
                               ? `Gorjeta: ${money(order.tipAmount)}`
-                              : "Total recalculado pelo servidor",
+                              : "Total do pedido",
                             isMarket
                               ? "Separação de mercado · pronto para coleta Pediu Entregas"
-                              : `Status operacional: ${order.status}`,
+                              : `Situação: ${order.status}`,
                           ]}
                         />
                         {next ? (
