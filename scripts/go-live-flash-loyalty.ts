@@ -444,9 +444,20 @@ async function main() {
       },
       merchantToken,
     );
+    const flashForCustomer = await callTrpc<{ deliveryCode: string | null }>(
+      "pediu.orders.get",
+      { orderId: flashOrder.orderId },
+      customerToken,
+      "query",
+    );
+    assert.match(flashForCustomer.deliveryCode ?? "", /^\d{4}$/);
     await callTrpc(
       "pediu.experience.delivery.complete",
-      { orderId: flashOrder.orderId },
+      {
+        orderId: flashOrder.orderId,
+        code: flashForCustomer.deliveryCode,
+        cashReceived: true,
+      },
       merchantToken,
     );
     const deliveredFlash = await callTrpc<any>(

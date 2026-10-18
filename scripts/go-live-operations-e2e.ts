@@ -346,6 +346,12 @@ async function main() {
       "A caminho",
     ]);
 
+    const shownToCourier = await callTrpc<{ deliveryCode: string | null }>(
+      "pediu.orders.get",
+      { orderId },
+      customerToken,
+    );
+    assert.match(shownToCourier.deliveryCode ?? "", /^\d{4}$/);
     const completions = await Promise.all(
       Array.from({ length: 2 }, () =>
         callTrpc<{
@@ -354,7 +360,11 @@ async function main() {
           duplicate?: boolean;
         }>(
           "pediu.experience.delivery.complete",
-          { orderId },
+          {
+            orderId,
+            code: shownToCourier.deliveryCode,
+            cashReceived: true,
+          },
           courierToken,
           "POST",
         ),
