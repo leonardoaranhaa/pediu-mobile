@@ -181,6 +181,42 @@ export function registerPaymentWebhookRoutes(app: Express) {
         !local ||
         !mercadoPagoPaymentMatchesLocal(canonical, local, paymentId)
       ) {
+        let purchase;
+        try {
+          purchase = await db.getCreditPurchaseByProvider(paymentId);
+        } catch {
+          purchase = undefined;
+        }
+        if (purchase) {
+          const expected = purchase.externalReference;
+          const canonicalAmount = amountInCents(canonical.transaction_amount);
+          const localAmount = amountInCents(purchase.amount);
+          const creditMatches =
+            String(canonical.id) === paymentId &&
+            canonical.external_reference === expected &&
+            expected.startsWith("pediu-credits-") &&
+            canonicalAmount !== undefined &&
+            localAmount !== undefined &&
+            canonicalAmount === localAmount &&
+            canonical.currency_id === "BRL";
+          if (!creditMatches) {
+            res
+              .status(422)
+              .json({ error: "Canonical payment does not match local order" });
+            return;
+          }
+          const creditStatus = statusFromCanonical(canonical.status);
+          if (!creditStatus || !WEBHOOK_STATUSES.has(creditStatus)) {
+            res.status(200).json({ ok: true, ignored: true });
+            return;
+          }
+          await db.applyCreditPurchaseStatus({
+            purchaseId: purchase.id,
+            status: creditStatus,
+          });
+          res.status(200).json({ ok: true, credits: true });
+          return;
+        }
         res
           .status(422)
           .json({ error: "Canonical payment does not match local order" });

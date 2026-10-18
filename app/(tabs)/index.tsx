@@ -13,7 +13,7 @@ import {
 import * as FileSystem from "expo-file-system/legacy";
 import { router, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/hooks/use-auth";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Animated,
   Easing,
@@ -36,12 +36,15 @@ import { PinMap } from "@/components/pin-map";
 import { ProductExtrasFields, type ProductExtras } from "@/components/product-extras-fields";
 import { askToJoin } from "@/components/auth-prompt";
 import { ProfileHome } from "@/components/profile-home";
+import { StoreSignupForm } from "@/components/store-signup-form";
+import { StoreTour } from "@/components/store-tour";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenContainer } from "@/components/screen-container";
 import type { AccountAction, SignupRole } from "@/lib/guest-access";
 import { geocodeTypedAddress } from "@/lib/location";
 import type { MascotReaction } from "@/components/pediu-mascot";
 import { CartPeek } from "@/components/pediu/cart-peek";
-import { PediuMascotDock } from "@/components/pediu-companion";
+import { PediuMascot } from "@/components/pediu-mascot";
 import {
   PediuPressable,
   PediuPulse,
@@ -155,7 +158,8 @@ const CATEGORIES = [
 ];
 
 export default function HomeScreen() {
-  const { user, isAuthenticated, refresh: refreshAuth } = useAuth();
+  const { user, nameConfirmed, isAuthenticated, refresh: refreshAuth } = useAuth();
+  const insets = useSafeAreaInsets();
   const {
     theme,
     customization,
@@ -187,14 +191,29 @@ export default function HomeScreen() {
       return;
     }
     let active = true;
+    const roles = user?.roles ?? [];
+    const merchant = user?.role === "merchant" || roles.includes("merchant");
+    const courier = user?.role === "courier" || roles.includes("courier");
+    if (user.usesCustomerApp !== 1 && merchant) {
+      setRole("seller");
+      void AsyncStorage.setItem("pediu:ui-mode", "seller");
+      return () => {
+        active = false;
+      };
+    }
+    if (user.usesCustomerApp !== 1 && courier && !merchant) {
+      router.replace("/courier");
+      return () => {
+        active = false;
+      };
+    }
     void AsyncStorage.getItem("pediu:ui-mode").then((stored) => {
       if (!active) return;
       if (stored === "seller" || stored === "customer") {
         setRole(stored);
         return;
       }
-      const roles = user?.roles ?? [];
-      if (user?.role === "merchant" || roles.includes("merchant")) {
+      if (merchant) {
         setRole("seller");
         void AsyncStorage.setItem("pediu:ui-mode", "seller");
       }
@@ -202,7 +221,7 @@ export default function HomeScreen() {
     return () => {
       active = false;
     };
-  }, [user?.id, user?.role, user?.roles]);
+  }, [user?.id, user?.role, user?.roles, user?.usesCustomerApp]);
 
   const [category, setCategory] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -1057,7 +1076,7 @@ export default function HomeScreen() {
                   error={marketplaceQuery.isError}
                   homeContext={effectiveHomeContext}
                   motionEnabled={customization.motionEnabled}
-                  userName={user?.name}
+                  userName={nameConfirmed ? user?.name : null}
                   searchQuery={searchQuery}
                   setSearchQuery={setSearchQuery}
                   onProductPress={setSelectedProduct}
@@ -1083,6 +1102,20 @@ export default function HomeScreen() {
                   notifications={notificationsQuery.data ?? []}
                   onReadNotification={(id) =>
                     markNotificationMutation.mutate({ notificationId: id })
+                  }
+                  mascot={
+                    customization.mascotEnabled ? (
+                      <PediuMascot
+                        theme={theme}
+                        styleId={customization.mascotStyle}
+                        reaction={mascotMoment?.reaction ?? "hungry"}
+                        motionEnabled={customization.motionEnabled}
+                        compact
+                        programmed={false}
+                        showSpeech={false}
+                        onPress={() => openVoiceAssistant("customer")}
+                      />
+                    ) : null
                   }
                 />
               )}
@@ -1115,8 +1148,7 @@ export default function HomeScreen() {
               active={customerTab}
               onChange={changeCustomerTab}
               onSearch={() => router.push("/search")}
-              onAssistant={() => openVoiceAssistant("customer")}
-              motionEnabled={customization.motionEnabled}
+              bottomInset={insets.bottom}
               theme={theme}
             />
           </>
@@ -1208,8 +1240,7 @@ export default function HomeScreen() {
             <SellerNav
               active={sellerTab}
               onChange={changeSellerTab}
-              onAssistant={() => openVoiceAssistant("seller")}
-              motionEnabled={customization.motionEnabled}
+              bottomInset={insets.bottom}
               theme={theme}
             />
           </>
@@ -1222,35 +1253,8 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
-        {role === "customer" &&
-        customerTab !== "profile" &&
-        !showVoice &&
-        !selectedProduct &&
-        !showCart &&
-        !showCheckout &&
-        !showAddProduct &&
-        !showSaleModal &&
-        !showSellerOnboarding ? (
-          <PediuMascotDock
-            theme={theme}
-            mascotStyle={customization.mascotStyle}
-            mascotEnabled={customization.mascotEnabled}
-            motionEnabled={customization.motionEnabled}
-            showHints={customization.showHints}
-            reaction={mascotMoment?.reaction ?? "hungry"}
-            bottom={globalCartCount > 0 ? 164 : 84}
-            onMascotPress={() =>
-              notify(
-                (mascotMoment?.reaction ?? "hungry") === "happy"
-                  ? "O mascote adorou essa escolha"
-                  : (mascotMoment?.reaction ?? "hungry") === "full"
-                    ? "Barriguinha cheia, coração tranquilo"
-                    : globalCartCount
-                      ? "Mais um pouquinho e fechamos seu pedido"
-                      : "Estou com fome de uma boa escolha",
-              )
-            }
-          />
+        {role === "seller" && sellerTab === "home" && user?.id && storeQuery.data ? (
+          <StoreTour userId={user.id} storeName={storeQuery.data.name} />
         ) : null}
 
         <Modal
@@ -1533,21 +1537,29 @@ export default function HomeScreen() {
           animationType="slide"
           onRequestClose={() => setShowSellerOnboarding(false)}
         >
-          <SellerOnboardingModal
-            isAuthenticated={isAuthenticated}
-            name={storeName}
-            phone={storePhone}
-            address={storeAddress}
-            pixKey={storePixKey}
-            onChangeName={setStoreName}
-            onChangePhone={setStorePhone}
-            onChangeAddress={setStoreAddress}
-            onChangePixKey={setStorePixKey}
-            onLogin={requestLogin}
-            onCreate={createStore}
-            onClose={() => setShowSellerOnboarding(false)}
-            busy={createStoreMutation.isPending}
-          />
+          <View style={styles.modalBackdrop}>
+            <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}>
+              {isAuthenticated ? (
+                <StoreSignupForm
+                  onCreated={() => {
+                    setShowSellerOnboarding(false);
+                    void storeQuery.refetch();
+                  }}
+                  onClose={() => setShowSellerOnboarding(false)}
+                />
+              ) : (
+                <View style={{ backgroundColor: "#fff", borderRadius: 20, padding: 16, gap: 8 }}>
+                  <Text style={styles.cardTitle}>Entre para cadastrar a loja</Text>
+                  <Pressable onPress={() => requestLogin("seller", "merchant")}>
+                    <Text style={styles.link}>Criar conta da loja</Text>
+                  </Pressable>
+                  <Pressable onPress={() => setShowSellerOnboarding(false)}>
+                    <Text style={styles.link}>Agora não</Text>
+                  </Pressable>
+                </View>
+              )}
+            </ScrollView>
+          </View>
         </Modal>
       </Animated.View>
     </ScreenContainer>
@@ -1675,6 +1687,7 @@ function CustomerDiscover({
   notifications,
   onReadNotification,
   theme,
+  mascot,
 }: {
   products: Product[];
   loading: boolean;
@@ -1706,6 +1719,7 @@ function CustomerDiscover({
   }[];
   onReadNotification: (notificationId: number) => void;
   theme: AppTheme;
+  mascot?: ReactNode;
 }) {
   const firstName = userName?.trim().split(/\s+/)[0];
   return (
@@ -1743,6 +1757,7 @@ function CustomerDiscover({
             {homeContext.subtitle}
           </Text>
         </View>
+        {mascot}
         <PediuPressable
           style={[
             styles.p3Bell,
@@ -2978,22 +2993,24 @@ function CustomerNav({
   active,
   onChange,
   onSearch,
-  onAssistant,
-  motionEnabled,
+  bottomInset,
   theme,
 }: {
   active: string;
   onChange: (value: "discover" | "orders" | "profile") => void;
   onSearch: () => void;
-  onAssistant: () => void;
-  motionEnabled: boolean;
+  bottomInset: number;
   theme: AppTheme;
 }) {
   return (
     <View
       style={[
         styles.bottomNav,
-        { borderColor: theme.ink, backgroundColor: theme.ink },
+        {
+          borderColor: theme.ink,
+          backgroundColor: theme.ink,
+          bottom: Math.max(bottomInset, 8),
+        },
       ]}
     >
       <PediuPressable
@@ -3014,7 +3031,7 @@ function CustomerNav({
             active === "discover" && styles.navLabelActive,
           ]}
         >
-          {"Descobrir"}
+          Início
         </Text>
       </PediuPressable>
       <PediuPressable
@@ -3026,11 +3043,6 @@ function CustomerNav({
         <MaterialIcons name="search" size={21} color={theme.muted} />
         <Text style={styles.navLabel}>Busca</Text>
       </PediuPressable>
-      <AssistantNavItem
-        motionEnabled={motionEnabled}
-        onPress={onAssistant}
-        theme={theme}
-      />
       <PediuPressable
         accessibilityRole="button"
         accessibilityLabel="Abrir pedidos"
@@ -3084,32 +3096,34 @@ function CustomerNav({
 function SellerNav({
   active,
   onChange,
-  onAssistant,
-  motionEnabled,
+  bottomInset,
   theme,
 }: {
   active: string;
   onChange: (
     value: "home" | "orders" | "catalog" | "clients" | "settings",
   ) => void;
-  onAssistant: () => void;
-  motionEnabled: boolean;
+  bottomInset: number;
   theme: AppTheme;
 }) {
   return (
     <View
       style={[
         styles.bottomNav,
-        { borderColor: theme.ink, backgroundColor: theme.ink },
+        {
+          borderColor: theme.ink,
+          backgroundColor: theme.ink,
+          bottom: Math.max(bottomInset, 8),
+        },
       ]}
     >
       {[
-        ["home", "home", "Início"],
+        ["home", "storefront", "Início"],
         ["orders", "receipt-long", "Pedidos"],
-        ["catalog", "inventory-2", "Catálogo"],
-        ["clients", "people", "Clientes"],
+        ["catalog", "restaurant-menu", "Cardápio"],
+        ["ads", "campaign", "Anúncios"],
         ["settings", "tune", "Ajustes"],
-      ].flatMap(([key, icon, label], index) => {
+      ].map(([key, icon, label]) => {
         const item = (
           <PediuPressable
             key={key}
@@ -3119,11 +3133,15 @@ function SellerNav({
               styles.navItem,
               active === key && { backgroundColor: theme.primary },
             ]}
-            onPress={() =>
+            onPress={() => {
+              if (key === "ads") {
+                router.push("/seller/ads");
+                return;
+              }
               onChange(
                 key as "home" | "orders" | "catalog" | "clients" | "settings",
-              )
-            }
+              );
+            }}
           >
             <MaterialIcons
               name={icon as any}
@@ -3137,17 +3155,7 @@ function SellerNav({
             </Text>
           </PediuPressable>
         );
-        return index === 1
-          ? [
-              item,
-              <AssistantNavItem
-                key="assistant"
-                motionEnabled={motionEnabled}
-                onPress={onAssistant}
-                theme={theme}
-              />,
-            ]
-          : [item];
+        return item;
       })}
     </View>
   );
@@ -4523,6 +4531,7 @@ function VoiceAssistantModal({
     };
     recognition.start();
   };
+  const insets = useSafeAreaInsets();
   const voiceActive = isListening || isRecording;
   const modeLabel =
     mode === "customer" ? "ASSISTENTE DO CLIENTE" : "ASSISTENTE DA LOJA";
@@ -4535,7 +4544,7 @@ function VoiceAssistantModal({
       : "Toque para falar";
   return (
     <View style={voiceStyles.backdrop}>
-      <View style={[voiceStyles.sheet, { backgroundColor: theme.card }]}>
+      <View style={[voiceStyles.sheet, { backgroundColor: theme.card, paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
         <ScrollView
           style={voiceStyles.sheetScroll}
           contentContainerStyle={voiceStyles.sheetContent}

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "../server/routers";
 import * as db from "../server/db";
 
-const user = { id: 20, openId: "customer-20", name: "Cliente", email: "customer@test.local", phone: null, passwordHash: null, loginMethod: "test", role: "user" as const, themePreference: "classic", lastSignedIn: new Date() };
+const user = { id: 20, openId: "customer-20", name: "Cliente", email: "customer@test.local", phone: null, passwordHash: null, loginMethod: "test", role: "user" as const, themePreference: "classic", usesCustomerApp: 0, lastSignedIn: new Date() };
 const profile = { ...user, createdAt: new Date(), updatedAt: new Date() };
 const preferences = { id: 3, userId: 20, pixEnabled: 1, cardEnabled: 0, cashEnabled: 1, updatedAt: new Date() } as any;
 

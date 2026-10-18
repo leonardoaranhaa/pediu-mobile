@@ -18,6 +18,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const login = trpc.auth.login.useMutation({
     onSuccess: async (result) => {
+      await Auth.clearUserInfo();
       await Auth.setSessionToken(result.token);
       await refresh();
       router.replace(takeAuthReturn() as never);

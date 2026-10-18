@@ -36,6 +36,13 @@
       "when": 1792326276082,
       "tag": "0004_pediu_pilot_ops",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792338218589,
+      "tag": "0005_pediu_signup_ai",
+      "breakpoints": true
     }
   ]
 }

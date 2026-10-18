@@ -215,7 +215,7 @@ export function PediuMascot({
   }, [bob, motionEnabled, scene.gesture, scene.reaction, wiggle]);
 
   useEffect(() => {
-    if (!motionEnabled) {
+    if (!motionEnabled || compact) {
       blink.stopAnimation();
       blink.setValue(0);
       return;
@@ -248,7 +248,7 @@ export function PediuMascot({
       if (timer) clearTimeout(timer);
       blink.stopAnimation();
     };
-  }, [blink, motionEnabled]);
+  }, [blink, compact, motionEnabled]);
 
   const size = compact ? 72 : 104;
   const bodySize = compact ? 54 : 76;

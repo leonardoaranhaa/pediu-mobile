@@ -22,6 +22,8 @@ export function ProfileHome() {
   const courier = trpc.pediu.courier.profile.mine.useQuery(undefined, { enabled: isAuthenticated });
   const isMerchant = roles.has("merchant") || Boolean(store.data);
   const isCourier = roles.has("courier") || Boolean(courier.data);
+  const showCustomer = user?.usesCustomerApp === 1 || (!isMerchant && !isCourier);
+  const enableCustomer = trpc.pediu.account.profile.useAsCustomer.useMutation();
   const courierStatus =
     courier.data?.status === "approved"
       ? "Aprovado para receber entregas"
@@ -51,16 +53,15 @@ export function ProfileHome() {
       <View style={{ backgroundColor: PEDIU.ink, borderRadius: 24, padding: 18, gap: 4 }}>
         <Text style={{ color: PEDIU.white, fontSize: 22, fontWeight: "900" }}>{user?.name?.trim() || "Sua conta"}</Text>
         <Text style={{ color: "#F3E6D8", fontSize: 14 }}>{user?.email || "E-mail não informado"}</Text>
-        <Text style={{ color: PEDIU.yellow, fontSize: 13, fontWeight: "800", marginTop: 6 }}>
-          Número para as lojas chamarem você: {user?.id}
-        </Text>
       </View>
 
-      <Section title="CLIENTE">
-        <Row icon="receipt-long" title="Meus pedidos" subtitle="Acompanhe o que você pediu" onPress={() => router.push("/orders")} />
-        <Row icon="location-on" title="Endereços" subtitle="Onde a entrega chega" onPress={() => router.push("/account/addresses")} />
-        <Row icon="credit-card" title="Pagamentos" subtitle="Como você prefere pagar" onPress={() => router.push("/account/payment-methods")} />
-      </Section>
+      {showCustomer ? (
+        <Section title="CLIENTE">
+          <Row icon="receipt-long" title="Meus pedidos" subtitle="Acompanhe o que você pediu" onPress={() => router.push("/orders")} />
+          <Row icon="location-on" title="Endereços" subtitle="Onde a entrega chega" onPress={() => router.push("/account/addresses")} />
+          <Row icon="credit-card" title="Pagamentos" subtitle="Como você prefere pagar" onPress={() => router.push("/account/payment-methods")} />
+        </Section>
+      ) : null}
 
       {isMerchant ? (
         <Section title="MINHA LOJA">
@@ -69,26 +70,25 @@ export function ProfileHome() {
           <Row icon="receipt-long" title="Pedidos da loja" subtitle="O que chegou para preparar" onPress={() => router.push("/seller/orders")} />
           <Row icon="schedule" title="Horários e entrega" subtitle="Quando a loja atende" onPress={() => router.push("/seller/settings")} />
         </Section>
-      ) : (
-        <Card>
-          <Text style={s.sectionTitle}>Quero vender no Pediu</Text>
-          <Text style={s.muted}>Abra sua loja com o nome, o telefone e o endereço. O cardápio vem em seguida.</Text>
-          <PrimaryButton title="Cadastrar minha loja" onPress={() => router.push("/seller")} />
-        </Card>
-      )}
+      ) : null}
 
       {isCourier ? (
         <Section title="ENTREGADOR">
           <Row icon="two-wheeler" title="Central do entregador" subtitle={courierStatus || "Seu cadastro"} onPress={() => router.push("/courier")} />
           <Row icon="local-shipping" title="Ofertas e ganhos" subtitle="Entregas disponíveis e o que você já fez" onPress={() => router.push("/courier")} />
         </Section>
-      ) : (
+      ) : null}
+
+      {(isMerchant || isCourier) && !showCustomer ? (
         <Card>
-          <Text style={s.sectionTitle}>Quero ser entregador</Text>
-          <Text style={s.muted}>Informe o veículo. A equipe do Pediu analisa o cadastro antes de liberar as ofertas.</Text>
-          <PrimaryButton title="Começar cadastro" onPress={() => router.push("/courier")} />
+          <Text style={s.sectionTitle}>Também quero pedir</Text>
+          <Text style={s.muted}>Isso libera a parte de cliente nesta conta, sem misturar com a loja ou as entregas.</Text>
+          <PrimaryButton
+            title={enableCustomer.isPending ? "Salvando..." : "Usar também como cliente"}
+            onPress={() => enableCustomer.mutate(undefined, { onSuccess: () => router.replace("/(tabs)") })}
+          />
         </Card>
-      )}
+      ) : null}
 
       {isAdmin ? (
         <Section title="ADMINISTRAÇÃO">

@@ -2,6 +2,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import type { ComponentProps, ReactNode } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppPreferences } from "@/lib/app-preferences";
 import { PEDIU_TOKENS } from "@/lib/pediu-tokens";
 import { PediuPressable, PediuReveal } from "@/components/pediu-motion";
@@ -25,6 +26,7 @@ export function OpsShell({
   dock: ReactNode;
 }) {
   const { theme } = useAppPreferences();
+  const insets = useSafeAreaInsets();
   return (
     <View style={[styles.root, { backgroundColor: theme.canvas }]}>
       <View
@@ -45,7 +47,10 @@ export function OpsShell({
       />
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: 126 + Math.max(insets.bottom, 8) },
+        ]}
       >
         {children}
       </ScrollView>
@@ -261,17 +266,28 @@ export type OpsDockItem = {
   icon: IconName;
   to: string;
   active?: boolean;
+  onPress?: () => void;
 };
 
 export function OpsDock({ items }: { items: OpsDockItem[] }) {
   const { theme } = useAppPreferences();
+  const insets = useSafeAreaInsets();
   return (
-    <View pointerEvents="box-none" style={styles.dockWrap}>
+    <View
+      pointerEvents="box-none"
+      style={[styles.dockWrap, { bottom: Math.max(insets.bottom, 8) }]}
+    >
       <View style={styles.dock}>
         {items.map((item) => (
           <PediuPressable
             key={item.label}
-            onPress={() => router.push(item.to as never)}
+            onPress={() => {
+              if (item.onPress) {
+                item.onPress();
+                return;
+              }
+              router.push(item.to as never);
+            }}
             style={[
               styles.dockItem,
               item.active ? { backgroundColor: theme.highlight } : null,
@@ -480,7 +496,8 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   dockItem: {
-    minWidth: 92,
+    flex: 1,
+    minWidth: 0,
     minHeight: 68,
     borderRadius: 34,
     alignItems: "center",

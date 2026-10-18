@@ -26,6 +26,7 @@ function createAuthContext(): {
     loginMethod: "password",
     role: "user",
     themePreference: "classic",
+    usesCustomerApp: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
     lastSignedIn: new Date(),

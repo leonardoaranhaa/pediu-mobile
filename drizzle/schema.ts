@@ -32,6 +32,7 @@ export const users = pgTable(
     role: varchar("role", { length: 32 }).$type<"user" | "merchant" | "courier" | "admin">()
       .default("user")
       .notNull(),
+    usesCustomerApp: integer("usesCustomerApp").default(0).notNull(),
     themePreference: varchar("themePreference", { length: 16 })
       .default("classic")
       .notNull(),
@@ -149,6 +150,24 @@ export const stores = pgTable(
     longitude: numeric("longitude", { precision: 10, scale: 7 }),
     isOpen: integer("isOpen").default(1).notNull(),
     openingHours: text("openingHours"),
+    legalName: varchar("legalName", { length: 160 }),
+    taxId: varchar("taxId", { length: 18 }),
+    taxIdKind: varchar("taxIdKind", { length: 8 }).$type<"cnpj" | "cpf">(),
+    fiscalAddress: varchar("fiscalAddress", { length: 255 }),
+    storefrontAddress: varchar("storefrontAddress", { length: 255 }),
+    responsibleName: varchar("responsibleName", { length: 160 }),
+    responsibleTaxId: varchar("responsibleTaxId", { length: 14 }),
+    responsiblePhone: varchar("responsiblePhone", { length: 32 }),
+    courierMode: varchar("courierMode", { length: 16 }).$type<"own" | "pediu">()
+      .default("pediu")
+      .notNull(),
+    minOrder: numeric("minOrder", { precision: 10, scale: 2 }).default("0.00").notNull(),
+    prepMinutes: integer("prepMinutes").default(20).notNull(),
+    logoData: text("logoData"),
+    stateRegistration: varchar("stateRegistration", { length: 32 }),
+    cityRegistration: varchar("cityRegistration", { length: 32 }),
+    taxRegime: varchar("taxRegime", { length: 40 }),
+    cnae: varchar("cnae", { length: 16 }),
     kind: varchar("kind", { length: 32 }).$type<"restaurant" | "market" | "service">()
       .default("restaurant")
       .notNull(),
@@ -912,6 +931,9 @@ export const courierProfiles = pgTable(
     lastLatitude: numeric("lastLatitude", { precision: 10, scale: 7 }),
     lastLongitude: numeric("lastLongitude", { precision: 10, scale: 7 }),
     lastLocationAt: timestamp("lastLocationAt"),
+    pixKey: varchar("pixKey", { length: 255 }),
+    workArea: varchar("workArea", { length: 160 }),
+    workHours: varchar("workHours", { length: 160 }),
     approvedAt: timestamp("approvedAt"),
     statusReason: varchar("statusReason", { length: 255 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -1268,6 +1290,51 @@ export const adCredits = pgTable(
   }),
 ).enableRLS();
 
+export const adCreditPurchases = pgTable(
+  "pediu_ad_credit_purchases",
+  {
+    id: serial("id").primaryKey(),
+    storeId: integer("storeId")
+      .notNull()
+      .references(() => stores.id, { onDelete: "cascade" }),
+    credits: integer("credits").notNull(),
+    amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+    status: varchar("status", { length: 32 }).$type<"pending" | "paid" | "failed" | "cancelled">()
+      .default("pending")
+      .notNull(),
+    providerTransactionId: varchar("providerTransactionId", { length: 120 }),
+    externalReference: varchar("externalReference", { length: 80 }).notNull(),
+    idempotencyKey: varchar("idempotencyKey", { length: 160 }).notNull(),
+    qrCode: text("qrCode"),
+    qrCodeBase64: text("qrCodeBase64"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    paidAt: timestamp("paidAt"),
+  },
+  (table) => ({
+    storeIdx: index("pediu_ad_credit_purchases_store_idx").on(table.storeId),
+    providerUnique: unique("pediu_ad_credit_purchases_provider_unique").on(
+      table.providerTransactionId,
+    ),
+    idempotencyUnique: unique("pediu_ad_credit_purchases_idempotency_unique").on(
+      table.idempotencyKey,
+    ),
+  }),
+).enableRLS();
+
+export const platformSettings = pgTable(
+  "pediu_platform_settings",
+  {
+    id: integer("id").primaryKey(),
+    textModel: varchar("textModel", { length: 80 }).default("gpt-5-mini").notNull(),
+    imageModel: varchar("imageModel", { length: 80 }).default("gpt-image-2").notNull(),
+    imageQuality: varchar("imageQuality", { length: 16 }).default("medium").notNull(),
+    speechModel: varchar("speechModel", { length: 80 }).default("whisper-1").notNull(),
+    creditPrice: numeric("creditPrice", { precision: 10, scale: 2 }).default("1.00").notNull(),
+    dailyCap: integer("dailyCap").default(40).notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
+  },
+).enableRLS();
+
 export const generatedAds = pgTable(
   "pediu_generated_ads",
   {
@@ -1278,9 +1345,11 @@ export const generatedAds = pgTable(
     productId: integer("productId").references(() => products.id, {
       onDelete: "set null",
     }),
-    status: varchar("status", { length: 32 }).$type<"draft" | "published" | "archived">()
+    status: varchar("status", { length: 32 }).$type<"draft" | "published" | "archived" | "review">()
       .default("draft")
       .notNull(),
+    moderationNote: varchar("moderationNote", { length: 255 }),
+    imageData: text("imageData"),
     headline: varchar("headline", { length: 120 }).notNull(),
     description: varchar("description", { length: 500 }).notNull(),
     cta: varchar("cta", { length: 80 }).notNull(),
@@ -1491,6 +1560,9 @@ export type InsertNotificationPreferences =
   typeof notificationPreferences.$inferInsert;
 export type AdCredit = typeof adCredits.$inferSelect;
 export type InsertAdCredit = typeof adCredits.$inferInsert;
+export type AdCreditPurchase = typeof adCreditPurchases.$inferSelect;
+export type InsertAdCreditPurchase = typeof adCreditPurchases.$inferInsert;
+export type PlatformSettings = typeof platformSettings.$inferSelect;
 export type GeneratedAd = typeof generatedAds.$inferSelect;
 export type InsertGeneratedAd = typeof generatedAds.$inferInsert;
 export type LoyaltyAccount = typeof loyaltyAccounts.$inferSelect;

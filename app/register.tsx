@@ -1,7 +1,7 @@
 import { router } from "expo-router";
 import { useState } from "react";
 import { Image, Text, View } from "react-native";
-import { PinMap } from "@/components/pin-map";
+import { StoreSignupForm } from "@/components/store-signup-form";
 import { Card, Field, OutlineButton, Page, PEDIU, PrimaryButton, s } from "@/components/pediu-page";
 import { useAuth } from "@/hooks/use-auth";
 import * as Auth from "@/lib/_core/auth";
@@ -46,12 +46,16 @@ export default function RegisterScreen() {
   const [documentPhoto, setDocumentPhoto] = useState<string>();
   const [vehiclePhoto, setVehiclePhoto] = useState<string>();
   const [selfiePhoto, setSelfiePhoto] = useState<string>();
+  const [courierPix, setCourierPix] = useState("");
+  const [workArea, setWorkArea] = useState("");
+  const [workHours, setWorkHours] = useState("");
   const [pin, setPin] = useState<{ latitude: number; longitude: number } | null>(null);
   const [pinKey, setPinKey] = useState(0);
   const [locating, setLocating] = useState(false);
   const [mapMessage, setMapMessage] = useState("");
 
   const finish = async (token: string) => {
+    await Auth.clearUserInfo();
     await Auth.setSessionToken(token);
     await refresh();
   };
@@ -114,6 +118,7 @@ export default function RegisterScreen() {
                 email: email.trim(),
                 phone: phone.trim() || undefined,
                 password,
+                intent: role === "customer" ? "customer" : role,
               })
             }
           />
@@ -122,56 +127,12 @@ export default function RegisterScreen() {
       ) : null}
 
       {step === "store" ? (
-        <Card>
-          <Text style={s.sectionTitle}>Sua loja</Text>
-          <Text style={s.muted}>O nome aparece para quem está por perto. Endereço e telefone ajudam na entrega.</Text>
-          <Field label="Nome da loja" value={storeName} onChangeText={setStoreName} />
-          <Field label="Telefone da loja" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
-          <Field label="Endereço" value={storeAddress} onChangeText={setStoreAddress} />
-          <OutlineButton
-            title={locating ? "Procurando no mapa..." : "Ver endereço no mapa"}
-            onPress={() => {
-              setMapMessage("");
-              setLocating(true);
-              void geocodeTypedAddress(`${storeAddress}, Brasil`)
-                .then((point) => {
-                  if (!point) {
-                    setMapMessage("Não achamos esse endereço. Confira rua, número e cidade.");
-                    return;
-                  }
-                  setPin(point);
-                  setPinKey((value) => value + 1);
-                })
-                .catch(() => setMapMessage("Não foi possível consultar o mapa agora."))
-                .finally(() => setLocating(false));
-            }}
-          />
-          {pin ? (
-            <PinMap
-              latitude={pin.latitude}
-              longitude={pin.longitude}
-              anchorKey={pinKey}
-              label="Loja"
-              onChange={setPin}
-            />
-          ) : null}
-          <Text style={s.muted}>Arraste o ponto até a porta da loja.</Text>
-          {mapMessage ? <Text style={{ color: PEDIU.coral, fontWeight: "700" }}>{mapMessage}</Text> : null}
-          {createStore.error ? <Text style={{ color: PEDIU.coral, fontWeight: "700" }}>{messageOf(createStore.error)}</Text> : null}
-          <PrimaryButton
-            title={createStore.isPending ? "Salvando..." : "Abrir minha loja"}
-            disabled={createStore.isPending || storeName.trim().length < 2 || !pin}
-            onPress={() =>
-              createStore.mutate({
-                name: storeName.trim(),
-                phone: phone.trim() || undefined,
-                address: storeAddress.trim() || undefined,
-                latitude: pin?.latitude,
-                longitude: pin?.longitude,
-              })
-            }
-          />
-        </Card>
+        <StoreSignupForm
+          onCreated={() => {
+            clearAuthIntent();
+            router.replace("/seller" as never);
+          }}
+        />
       ) : null}
 
       {step === "vehicle" ? (
@@ -188,6 +149,9 @@ export default function RegisterScreen() {
             <Field label="Placa" value={vehiclePlate} onChangeText={setVehiclePlate} autoCapitalize="characters" />
           ) : null}
           <Field label="Número da CNH" value={documentNumber} onChangeText={setDocumentNumber} keyboardType="number-pad" />
+          <Field label="Chave PIX" value={courierPix} onChangeText={setCourierPix} autoCapitalize="none" />
+          <Field label="Cidade ou bairros" value={workArea} onChangeText={setWorkArea} />
+          <Field label="Dias e horários" value={workHours} onChangeText={setWorkHours} placeholder="Seg a sex, 11h às 23h" />
           <OutlineButton title={documentPhoto ? "CNH adicionada" : "Foto da CNH"} onPress={() => void pickPhotoDataUrl().then((data) => data && setDocumentPhoto(data)).catch((error: unknown) => setMapMessage(error instanceof Error ? error.message : "Não foi possível usar essa foto."))} />
           <OutlineButton title={vehiclePhoto ? "Veículo adicionado" : "Foto do veículo"} onPress={() => void pickPhotoDataUrl().then((data) => data && setVehiclePhoto(data)).catch((error: unknown) => setMapMessage(error instanceof Error ? error.message : "Não foi possível usar essa foto."))} />
           <OutlineButton title={selfiePhoto ? "Sua foto adicionada" : "Sua foto"} onPress={() => void pickPhotoDataUrl().then((data) => data && setSelfiePhoto(data)).catch((error: unknown) => setMapMessage(error instanceof Error ? error.message : "Não foi possível usar essa foto."))} />
@@ -196,7 +160,7 @@ export default function RegisterScreen() {
           {mapMessage ? <Text style={{ color: PEDIU.coral, fontWeight: "700" }}>{mapMessage}</Text> : null}
           <PrimaryButton
             title={applyCourier.isPending ? "Enviando..." : "Enviar para análise"}
-            disabled={applyCourier.isPending || !documentNumber.trim() || !documentPhoto || !vehiclePhoto || !selfiePhoto || (vehicleType !== "bike" && !vehiclePlate.trim())}
+            disabled={applyCourier.isPending || !documentNumber.trim() || !documentPhoto || !vehiclePhoto || !selfiePhoto || !courierPix.trim() || !workArea.trim() || !workHours.trim() || (vehicleType !== "bike" && !vehiclePlate.trim())}
             onPress={() =>
               applyCourier.mutate({
                 vehicleType,
@@ -206,6 +170,9 @@ export default function RegisterScreen() {
                 documentPhoto,
                 vehiclePhoto,
                 selfiePhoto,
+                pixKey: courierPix.trim(),
+                workArea: workArea.trim(),
+                workHours: workHours.trim(),
               })
             }
           />

@@ -2,7 +2,7 @@
 
 Relatório para o dono do Pediu. Linguagem simples. Data: 18 de outubro de 2026.
 
-Isto olha o aplicativo que o Leonardo testou no celular Android: APK versão 3, commit `761e62a`. Nada desta lista foi construído agora. É só o mapa do que já funciona, do que engana, e do que fazer em seguida.
+A seção 1 descreve o aplicativo que o Leonardo testou no celular Android: APK versão 3, commit `761e62a`. A seção 7 diz, item por item, o que a Fase 1 e a Fase 2 fizeram depois dessa aprovação. O celular só mostra a tela nova depois de um APK novo. O banco novo (migration `0005`) precisa ser aplicado no Supabase à mão: o servidor não faz isso sozinho ao ligar.
 
 ## Como ler
 
@@ -125,7 +125,7 @@ Isto olha o aplicativo que o Leonardo testou no celular Android: APK versão 3, 
 | Saudação “Bom almoço, Leonardo” | Parcial | Não é nome de mentira escrito na tela. “Bom almoço” é a frase das 11h às 15h. O nome é a primeira palavra do nome da conta. Ver a explicação logo abaixo. |
 | Barra de baixo e botão “Fechar assistente” | Parcial | Os dois ficam por baixo dos botões do Android. A barra funciona, mas o dedo erra e o botão de fechar some. |
 
-**Contagem desta tabela:** 42 reais, 22 parciais, 22 de mentira. São 86 funções. O piloto de pedido (pedir, aceitar, entregar, receber em dinheiro) está na coluna Real. O que o Leonardo viu no celular — perfil misturado, mascote, barra, cadastro curto, anúncio e assistente — está em Parcial ou Mock.
+**Contagem desta tabela, no APK versão 3:** 42 reais, 22 parciais, 22 de mentira. São 86 funções. O piloto de pedido (pedir, aceitar, entregar, receber em dinheiro) está na coluna Real. O que o Leonardo viu no celular — perfil misturado, mascote, barra, cadastro curto, anúncio e assistente — estava em Parcial ou Mock. O que mudou está na seção 7, sem uma contagem nova inventada.
 
 ### De onde sai o nome “Leonardo”
 
@@ -330,3 +330,47 @@ Tamanho: grande. Cada item fala com um serviço de fora e com regra fiscal ou ba
 ### O que não fazer na Fase 1
 
 Não emitir nota. Não prometer prazo de entrega que o mapa não calculou. Não colocar a chave de IA dentro do APK. Não deixar o perfil mostrar papel que a conta não tem.
+
+---
+
+## 7. Status depois da aprovação da Fase 1 e da Fase 2
+
+Isto vale para o código desta atualização, não para o APK versão 3. **Pronto** significa que a tela e o servidor fazem a coisa. **Parcial** significa que o caminho existe, mas falta uma chave, um APK novo, ou um pedaço que ficou de propósito para a Fase 3.
+
+### Fase 1
+
+| Item | Status | O que ficou |
+| --- | --- | --- |
+| Mascote, barra e “Fechar assistente” na área segura do Android | Pronto | A barra sobe acima dos botões do sistema. O painel do assistente reserva espaço embaixo. A introdução também respeita o entalhe e a borda de baixo. |
+| Mascote num canto, sem cobrir card, carrossel ou botão | Pronto | Ele fica na linha da saudação, pequeno, sem balão e sem ficar por cima da página. O toque abre o assistente. A faixa da introdução ainda tem altura fixa, então um celular muito baixo pode apertar essa tela. |
+| Perfil só com o papel da conta | Pronto | Loja e motoboy não nascem como cliente. A seção CLIENTE só aparece se a pessoa também pediu para usar o app como cliente, ou se a conta não é loja nem motoboy. |
+| Some o “número para as lojas chamarem você” | Pronto | Esse número interno não aparece mais. |
+| Saudação só com o nome que o servidor confirmou | Pronto | O nome antigo do aparelho não é pintado antes da resposta. Entrar, sair ou trocar a senha apaga o nome guardado. Se a consulta falhar, a saudação fica sem nome em vez de usar o nome velho. |
+| Cadastro da loja, passos 1 a 8 | Pronto | Conta, nome fantasia, razão social, CNPJ ou CPF, endereço fiscal com pino, segundo endereço se o balcão for outro, responsável, raio, motoboy próprio ou do Pediu, pedido mínimo, tempo de preparo, retirada, chave PIX e foto opcional. |
+| Dados fiscais guardados, sem emitir nota | Pronto | Inscrição estadual, inscrição municipal, regime e CNAE podem ser preenchidos. Não há botão de nota. Banco, agência e conta continuam de fora, como combinado. |
+| Cadastro do motoboy com PIX, área e horário | Pronto | A chave PIX, a cidade ou os bairros e os dias e horários são obrigatórios junto com CNH, veículo e fotos. O ganho ainda não cai sozinho no PIX. |
+| Tour de cinco passos | Pronto | As cinco frases combinadas aparecem depois do cadastro, com Próximo e Pular. Concluir ou pular não traz o tour de volta naquele celular. Se a pessoa trocar de aparelho, o tour pode aparecer de novo, porque essa memória fica no telefone. |
+| Abas separadas por papel | Pronto | Cliente: Início, Busca, Pedidos, Perfil. O assistente é o mascote, não um ícone no meio da barra. Lojista: Início, Pedidos, Cardápio, Anúncios, Ajustes. Motoboy: Ofertas, Corrida, Ganhos, Conta. Quem tem dois papéis troca no perfil. Conta só de loja não vê a seção de cliente. |
+
+### Fase 2
+
+| Item | Status | O que ficou |
+| --- | --- | --- |
+| Trocar o corredor interno pela chave da OpenAI, só no servidor | Pronto no código, parcial no ar | Texto, imagem e voz passam pela chave do servidor. O aplicativo não recebe a chave. Sem a chave, a pessoa vê que a inteligência ainda não está disponível e os atalhos continuam. O painel diz “falta configurar” ou “ligada”. Guardar foto de produto e aviso no celular continuam no caminho que já existia. |
+| Créditos comprados com PIX | Pronto no código, parcial no ar | Pacotes de 10, 30 e 100. O saldo só sobe quando o aviso de pagamento confirma o PIX. A resposta de “criei a cobrança” não libera crédito. Sem a chave do Mercado Pago, a loja vê que a compra por PIX ainda não está disponível. |
+| Crédito de volta se a imagem falhar | Pronto | O saldo desce 1 antes de pedir a imagem. Se a criação falhar, o crédito volta e a loja vê uma frase dizendo isso. |
+| Publicar no Explorar | Pronto | Publicar não gasta outro crédito. Só anúncio publicado aparece na vitrine. |
+| Compartilhar a imagem no WhatsApp | Pronto | O botão abre o compartilhar do celular, com a imagem. A pessoa escolhe o WhatsApp. Não usa a API oficial do WhatsApp. |
+| Moderação | Pronto | Lista local mais a moderação da OpenAI. Se a moderação de fora falhar, a lista local ainda vale e o anúncio não fica preso por isso. Suspeito vai para “em análise”. A loja vê o motivo em uma frase. O administrador publica ou tira do ar. |
+| Teto diário | Pronto, com um detalhe | O limite padrão é 40 anúncios por loja a cada 24 horas, não meia-noite em São Paulo. O administrador pode mudar o número. |
+| Ajustes do administrador | Pronto | Dá para ver e salvar o modelo de texto, o de imagem, o de voz, o preço do crédito e o limite. A qualidade da imagem que a loja gera fica média. A chave não aparece. |
+| Mensagem amigável quando falta chave | Pronto | Sem texto de programador na tela. O administrador vê “falta configurar”. |
+
+### O que esta atualização não fez
+
+- Não emite nota fiscal.
+- Não faz o PIX do motoboy ou da loja sair sozinho.
+- Não garante GPS com o aplicativo fechado.
+- A foto da loja fica guardada. Ela ainda não veste a vitrine.
+- Carrossel de enfeite, texto “perto de você”, lugar “Casa”, e-mail de senha, verificação em duas etapas e pedido em grupo continuam como na seção 1.
+- O APK versão 3 não contém esta tela. Precisa de uma compilação nova.

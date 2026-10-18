@@ -31,6 +31,9 @@ const profile = {
   lastLatitude: null,
   lastLongitude: null,
   lastLocationAt: null,
+  pixKey: null,
+  workArea: null,
+  workHours: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 };

@@ -2,6 +2,8 @@ import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 import { askToJoin } from "@/components/auth-prompt";
+import { StoreSignupForm } from "@/components/store-signup-form";
+import { StoreTour } from "@/components/store-tour";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
 import { useAppPreferences } from "@/lib/app-preferences";
@@ -207,7 +209,7 @@ function SellerOrderCard({
 }
 
 export default function SellerHomePage() {
-  const { isAuthenticated, refresh } = useAuth();
+  const { user, isAuthenticated, refresh } = useAuth();
   const { theme } = useAppPreferences();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -298,49 +300,7 @@ export default function SellerHomePage() {
             Depois de salvar, sua conta será habilitada como prestador e você
             poderá publicar produtos e receber pedidos.
           </Text>
-          <Field
-            label="NOME DA LOJA"
-            value={name}
-            onChangeText={setName}
-            placeholder="Nome do seu negócio"
-          />
-          <Field
-            label="WHATSAPP / TELEFONE"
-            value={phone}
-            onChangeText={setPhone}
-            placeholder="(11) 99999-9999"
-            keyboardType="phone-pad"
-          />
-          <Field
-            label="ENDEREÇO"
-            value={address}
-            onChangeText={setAddress}
-            placeholder="Rua, número e bairro"
-          />
-          <Field
-            label="CHAVE PIX"
-            value={pixKey}
-            onChangeText={setPixKey}
-            placeholder="CPF, telefone ou e-mail"
-          />
-          <PrimaryButton
-            title={createStore.isPending ? "Salvando..." : "Criar minha loja"}
-            disabled={createStore.isPending || name.trim().length < 2}
-            onPress={() =>
-              createStore.mutate({
-                name: name.trim(),
-                phone: phone.trim() || undefined,
-                address: address.trim() || undefined,
-                pixKey: pixKey.trim() || undefined,
-                deliveryFee: "0.00",
-              })
-            }
-          />
-          {createStore.error ? (
-            <Text style={{ color: theme.primary, fontSize: 12 }}>
-              {createStore.error.message}
-            </Text>
-          ) : null}
+          <StoreSignupForm onCreated={() => void store.refetch()} />
         </Card>
       </Page>
     );
@@ -351,18 +311,11 @@ export default function SellerHomePage() {
       dock={
         <OpsDock
           items={[
-            {
-              label: "Cozinha",
-              icon: "restaurant",
-              to: "/seller",
-              active: true,
-            },
-            {
-              label: "Cardápio",
-              icon: "restaurant-menu",
-              to: "/seller/catalog",
-            },
-            { label: "Cliente", icon: "home", to: "/" },
+            { label: "Início", icon: "storefront", to: "/seller", active: true },
+            { label: "Pedidos", icon: "receipt-long", to: "/seller/orders" },
+            { label: "Cardápio", icon: "restaurant-menu", to: "/seller/catalog" },
+            { label: "Anúncios", icon: "campaign", to: "/seller/ads" },
+            { label: "Ajustes", icon: "tune", to: "/seller/settings" },
           ]}
         />
       }
@@ -486,10 +439,9 @@ export default function SellerHomePage() {
           onPress={() => router.push("/seller/settings")}
         />
       </OpsCard>
-      <Text style={s.muted}>
-        A mesma conta pode pedir como cliente e entregar como motoboy. O modo
-        cliente fica na tela inicial.
-      </Text>
+      {user?.id && store.data ? (
+        <StoreTour userId={user.id} storeName={store.data.name} />
+      ) : null}
     </OpsShell>
   );
 }

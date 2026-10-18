@@ -95,6 +95,7 @@ export async function signupAccount(input: {
   email: string;
   phone?: string;
   password: string;
+  intent?: "customer" | "merchant" | "courier";
 }) {
   const email = normalizeEmail(input.email);
   const phone = normalizePhone(input.phone);
@@ -112,6 +113,8 @@ export async function signupAccount(input: {
       passwordHash,
       loginMethod: "password",
       role: admin ? "admin" : "user",
+      usesCustomerApp:
+        input.intent === "merchant" || input.intent === "courier" ? 0 : 1,
     });
   } catch (error) {
     if (isUniqueConstraintError(error)) throw new Error(SIGNUP_ERROR);

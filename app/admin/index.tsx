@@ -87,6 +87,7 @@ export default function AdminDashboard() {
       <Row icon="account-balance-wallet" title="Crédito / Fiado" subtitle={data ? `${data.creditAccounts} contas` : "Contas lojista"} onPress={() => router.push("/admin/credit")} />
       <Row icon="support-agent" title="Suporte" subtitle={data ? `${data.openSupportTickets} abertos` : "Chamados e respostas"} onPress={() => router.push("/admin/support")} />
       <Row icon="security" title="Auditoria" subtitle="Trilha de ações administrativas" onPress={() => router.push("/admin/audit")} />
+      <Row icon="auto-awesome" title="Inteligência e créditos" subtitle="Modelos, preço e o que falta configurar" onPress={() => router.push("/admin/intelligence" as never)} />
 
       <Card>
         <Text style={s.sectionTitle}>O que está no ar</Text>

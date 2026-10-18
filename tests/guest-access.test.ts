@@ -55,10 +55,11 @@ describe("guest browsing and role signup", () => {
       expect(accountFields(role)).toEqual(["name", "email", "phone", "password"]);
     }
     const register = readFileSync("app/register.tsx", "utf8");
+    const storeForm = readFileSync("components/store-signup-form.tsx", "utf8");
     expect(register).toContain("Cliente");
     expect(register).toContain("Lojista");
     expect(register).toContain("Motoboy");
-    expect(register).toContain("Sua loja");
+    expect(storeForm).toContain("Nome fantasia");
     expect(register).toContain("Como você entrega");
     expect(register).toContain("Cadastro em análise");
   });

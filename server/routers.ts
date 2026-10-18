@@ -18,10 +18,12 @@ import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { systemRouter } from "./_core/systemRouter";
 import { interpretVoiceCommand } from "./voice";
+import { localModerationNote } from "../shared/ad-moderation";
+import { openAiFlagged } from "./_core/openai";
+import { createPixCharge, mercadoPagoConfigured } from "./payments";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import { storageGetSignedUrl, storagePut } from "./storage";
 import { sendPushToUser } from "./push";
-import { createPixCharge } from "./payments";
 import { canCustomerCancelOrder, canTransitionOrder } from "./order-state";
 import {
   isUniqueConstraintError,
@@ -98,6 +100,12 @@ function hasAudioSignature(audio: Buffer, mimeType: string): boolean {
   return false;
 }
 
+async function publicAdImage(ad: { imageData?: string | null; imageKey?: string | null }) {
+  if (ad.imageData) return ad.imageData;
+  if (!ad.imageKey) return null;
+  return storageGetSignedUrl(ad.imageKey).catch(() => null);
+}
+
 function setSessionCookie(
   ctx: { req: Parameters<typeof getSessionCookieOptions>[0]; res: { cookie?: Function } },
   token: string,
@@ -125,6 +133,7 @@ export const appRouter = router({
           email: z.string().trim().email().max(320),
           phone: z.string().trim().max(32).optional(),
           password: z.string().min(8).max(72),
+          intent: z.enum(["customer", "merchant", "courier"]).optional(),
         }),
       )
       .mutation(async ({ ctx, input }) => {
@@ -285,6 +294,11 @@ export const appRouter = router({
     }),
     account: router({
       profile: router({
+        useAsCustomer: protectedProcedure.mutation(async ({ ctx }) => {
+          await db.setUsesCustomerApp(ctx.user.id, true);
+          await db.grantAccountRole(ctx.user.id, "customer");
+          return { success: true as const };
+        }),
         mine: protectedProcedure.query(({ ctx }) =>
           db.getUserProfile(ctx.user.id),
         ),
@@ -363,9 +377,11 @@ export const appRouter = router({
           return Promise.all(
             products.map(async (item) => ({
               ...item,
-              adImageUrl: item.adImageKey
-                ? await storageGetSignedUrl(item.adImageKey).catch(() => null)
-                : null,
+              adImageUrl: item.adImageData
+                ? item.adImageData
+                : item.adImageKey
+                  ? await storageGetSignedUrl(item.adImageKey).catch(() => null)
+                  : null,
             })),
           );
         }),
@@ -425,9 +441,11 @@ export const appRouter = router({
           const items = await Promise.all(
             result.items.map(async (item) => ({
               ...item,
-              adImageUrl: item.adImageKey
-                ? await storageGetSignedUrl(item.adImageKey).catch(() => null)
-                : null,
+              adImageUrl: item.adImageData
+                ? item.adImageData
+                : item.adImageKey
+                  ? await storageGetSignedUrl(item.adImageKey).catch(() => null)
+                  : null,
             })),
           );
           return { ...result, items };
@@ -455,9 +473,11 @@ export const appRouter = router({
           const items = await Promise.all(
             result.items.map(async (item) => ({
               ...item,
-              adImageUrl: item.adImageKey
-                ? await storageGetSignedUrl(item.adImageKey).catch(() => null)
-                : null,
+              adImageUrl: item.adImageData
+                ? item.adImageData
+                : item.adImageKey
+                  ? await storageGetSignedUrl(item.adImageKey).catch(() => null)
+                  : null,
             })),
           );
           return { mood, moods: TASTE_MOODS, ...result, items };
@@ -658,6 +678,22 @@ export const appRouter = router({
               .regex(/^\d+(\.\d{1,2})?$/)
               .optional()
               .nullable(),
+            legalName: z.string().trim().min(2).max(160).optional(),
+            taxId: z.string().trim().max(18).optional(),
+            taxIdKind: z.enum(["cnpj", "cpf"]).optional(),
+            fiscalAddress: z.string().trim().max(255).optional(),
+            storefrontAddress: z.string().trim().max(255).optional(),
+            responsibleName: z.string().trim().min(2).max(160).optional(),
+            responsibleTaxId: z.string().trim().max(14).optional(),
+            responsiblePhone: z.string().trim().max(32).optional(),
+            courierMode: z.enum(["own", "pediu"]).optional(),
+            minOrder: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
+            prepMinutes: z.number().int().min(1).max(240).optional(),
+            logoData: z.string().max(350_000).optional(),
+            stateRegistration: z.string().trim().max(32).optional(),
+            cityRegistration: z.string().trim().max(32).optional(),
+            taxRegime: z.string().trim().max(40).optional(),
+            cnae: z.string().trim().max(16).optional(),
           }),
         )
         .mutation(async ({ ctx, input }) => {
@@ -720,6 +756,22 @@ export const appRouter = router({
                 .nullable(),
               isOpen: z.boolean().optional(),
               openingHours: z.string().max(4000).optional(),
+              legalName: z.string().trim().min(2).max(160).optional(),
+              taxId: z.string().trim().max(18).optional(),
+              taxIdKind: z.enum(["cnpj", "cpf"]).optional(),
+              fiscalAddress: z.string().trim().max(255).optional(),
+              storefrontAddress: z.string().trim().max(255).optional(),
+              responsibleName: z.string().trim().min(2).max(160).optional(),
+              responsibleTaxId: z.string().trim().max(14).optional(),
+              responsiblePhone: z.string().trim().max(32).optional(),
+              courierMode: z.enum(["own", "pediu"]).optional(),
+              minOrder: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
+              prepMinutes: z.number().int().min(1).max(240).optional(),
+              logoData: z.string().max(350_000).optional(),
+              stateRegistration: z.string().trim().max(32).optional(),
+              cityRegistration: z.string().trim().max(32).optional(),
+              taxRegime: z.string().trim().max(40).optional(),
+              cnae: z.string().trim().max(16).optional(),
             })
             .refine(
               (input) =>
@@ -781,6 +833,9 @@ export const appRouter = router({
               documentPhoto: z.string().max(350_000).optional(),
               vehiclePhoto: z.string().max(350_000).optional(),
               selfiePhoto: z.string().max(350_000).optional(),
+              pixKey: z.string().trim().min(3).max(255).optional(),
+              workArea: z.string().trim().min(2).max(160).optional(),
+              workHours: z.string().trim().min(2).max(160).optional(),
             }),
           )
           .mutation(({ ctx, input }) =>
@@ -866,9 +921,7 @@ export const appRouter = router({
         return Promise.all(
           ads.map(async (ad) => ({
             ...ad,
-            imageUrl: ad.imageKey
-              ? await storageGetSignedUrl(ad.imageKey).catch(() => null)
-              : null,
+            imageUrl: await publicAdImage(ad),
           })),
         );
       }),
@@ -899,23 +952,49 @@ export const appRouter = router({
             store.id,
           );
           if (!product) throw new Error("Produto não pertence à sua loja");
-          const creative = await withConcurrencyLimit("ads:generate", 2, () =>
-            withTimeout(
-              generateAdCreative({
-                storeName: store.name,
-                productName: product.name,
-                category: product.category,
-                productDescription: product.description,
-                price: product.price,
-                offerLabel: input.offerLabel,
-                audience: input.audience,
-                tone: input.tone,
-              }),
-              90_000,
-              "A criação do anúncio demorou para responder. Tente novamente.",
-            ),
-          );
-          const ad = await db.createGeneratedAdWithCredit({
+          const settings = await db.getPlatformSettings();
+          const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          const recent = await db.countRecentGeneratedAds(store.id, since);
+          if (recent >= settings.dailyCap) {
+            throw new Error(
+              "A loja atingiu o limite de anúncios de hoje. Tente amanhã.",
+            );
+          }
+          await db.debitAdCredit(store.id, 1);
+          let creative;
+          try {
+            creative = await withConcurrencyLimit("ads:generate", 2, () =>
+              withTimeout(
+                generateAdCreative(
+                  {
+                    storeName: store.name,
+                    productName: product.name,
+                    category: product.category,
+                    productDescription: product.description,
+                    price: product.price,
+                    offerLabel: input.offerLabel,
+                    audience: input.audience,
+                    tone: input.tone,
+                  },
+                  {
+                    textModel: settings.textModel,
+                    imageModel: settings.imageModel,
+                    imageQuality: settings.imageQuality,
+                  },
+                ),
+                90_000,
+                "A criação do anúncio demorou para responder. Tente novamente.",
+              ),
+            );
+          } catch (error) {
+            await db.refundAdCredit(store.id, 1);
+            throw new Error(
+              error instanceof Error
+                ? error.message
+                : "Não consegui criar a imagem. O crédito voltou para a sua loja.",
+            );
+          }
+          const ad = await db.saveGeneratedAd({
             storeId: store.id,
             productId: product.id,
             status: "draft",
@@ -925,14 +1004,13 @@ export const appRouter = router({
             offerLabel: creative.offerLabel,
             visualPrompt: creative.visualPrompt,
             imageKey: creative.imageKey,
+            imageData: creative.imageData,
             model: creative.model,
             generationCost: 1,
           });
           return {
             ...ad,
-            imageUrl: ad.imageKey
-              ? await storageGetSignedUrl(ad.imageKey).catch(() => null)
-              : null,
+            imageUrl: await publicAdImage(ad),
           };
         }),
       publish: protectedProcedure
@@ -940,12 +1018,76 @@ export const appRouter = router({
         .mutation(async ({ ctx, input }) => {
           const store = await db.getStoreForOwner(ctx.user.id);
           if (!store) throw new Error("Loja não encontrada");
+          const current = await db.getGeneratedAdForStore(store.id, input.adId);
+          if (!current) throw new Error("Anúncio não encontrado");
+          const localNote = localModerationNote(
+            `${current.headline} ${current.description} ${current.visualPrompt}`,
+          );
+          const flagged = await openAiFlagged(
+            `${current.headline}\n${current.description}`,
+          );
+          if (localNote || flagged) {
+            const held = await db.holdGeneratedAdForReview(
+              store.id,
+              input.adId,
+              localNote ??
+                "Este anúncio precisa de uma revisão da equipe antes de aparecer no Explorar.",
+            );
+            return { ...held, imageUrl: await publicAdImage(held) };
+          }
           const ad = await db.publishGeneratedAd(store.id, input.adId);
           return {
             ...ad,
-            imageUrl: ad.imageKey
-              ? await storageGetSignedUrl(ad.imageKey).catch(() => null)
-              : null,
+            imageUrl: await publicAdImage(ad),
+          };
+        }),
+      buy: protectedProcedure
+        .input(
+          z.object({
+            credits: z.union([z.literal(10), z.literal(30), z.literal(100)]),
+          }),
+        )
+        .mutation(async ({ ctx, input }) => {
+          const store = await db.getStoreForOwner(ctx.user.id);
+          if (!store) throw new Error("Cadastre sua loja antes de comprar créditos");
+          if (!mercadoPagoConfigured()) {
+            throw new Error(
+              "A compra de créditos por PIX ainda não está disponível.",
+            );
+          }
+          const settings = await db.getPlatformSettings();
+          const unit = Number(settings.creditPrice);
+          if (!Number.isFinite(unit) || unit <= 0) {
+            throw new Error("A compra de créditos por PIX ainda não está disponível.");
+          }
+          const amount = (unit * input.credits).toFixed(2);
+          const purchase = await db.createCreditPurchase({
+            storeId: store.id,
+            credits: input.credits,
+            amount,
+            idempotencyKey: `credits-${store.id}-${input.credits}-${Date.now()}`,
+          });
+          const charge = await createPixCharge({
+            orderId: purchase.id,
+            amount,
+            payerEmail: ctx.user.email || "loja@pediu.app",
+            idempotencyKey: purchase.idempotencyKey,
+            externalReference: purchase.externalReference,
+          });
+          if (!charge.providerChargeId || !charge.qrCode) {
+            throw new Error("Não consegui gerar o PIX agora. Tente de novo.");
+          }
+          await db.attachCreditPurchaseCharge(purchase.id, {
+            providerTransactionId: charge.providerChargeId,
+            qrCode: charge.qrCode,
+            qrCodeBase64: charge.qrCodeBase64,
+          });
+          return {
+            purchaseId: purchase.id,
+            credits: input.credits,
+            amount,
+            qrCode: charge.qrCode,
+            qrCodeBase64: charge.qrCodeBase64 ?? null,
           };
         }),
       archive: protectedProcedure
@@ -1784,9 +1926,14 @@ export const appRouter = router({
             message:
               "Limite de comandos de voz atingido. Tente novamente em alguns minutos.",
           });
+          const settings = await db.getPlatformSettings().catch(() => null);
           return withConcurrencyLimit("voice:interpret", 4, () =>
             withTimeout(
-              interpretVoiceCommand(input.mode, input.command),
+              interpretVoiceCommand(
+                input.mode,
+                input.command,
+                settings?.textModel,
+              ),
               15_000,
               "O assistente demorou para responder. Tente novamente.",
             ),
@@ -1839,14 +1986,25 @@ export const appRouter = router({
             input.mimeType,
           );
           const signedUrl = await storageGetSignedUrl(upload.key);
+          const settings = await db.getPlatformSettings().catch(() => null);
           const result = await withConcurrencyLimit("voice:transcribe", 2, () =>
             withTimeout(
-              transcribeAudio({ audioUrl: signedUrl, language: "pt" }),
+              transcribeAudio({
+                audioUrl: signedUrl,
+                language: "pt",
+                model: settings?.speechModel,
+              }),
               45_000,
               "A transcrição demorou para responder. Tente novamente.",
             ),
           );
-          if ("error" in result) throw new Error(result.error);
+          if ("error" in result) {
+            throw new Error(
+              result.error.includes("ainda não está disponível")
+                ? result.error
+                : "Não consegui ouvir o áudio. Digite o pedido ou use um atalho.",
+            );
+          }
           return { text: result.text, language: result.language };
         }),
     }),

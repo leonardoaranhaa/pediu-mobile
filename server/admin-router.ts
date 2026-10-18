@@ -3,7 +3,8 @@ import { z } from "zod";
 import { adminProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { issuePasswordReset } from "./password-auth";
-import { requestPixRefund } from "./payments";
+import { mercadoPagoConfigured, requestPixRefund } from "./payments";
+import { openAiConfigured } from "./_core/openai";
 
 const pagination = z.object({
   limit: z.number().int().min(1).max(100).default(50),
@@ -304,5 +305,72 @@ export const adminRouter = router({
         }),
       });
       return profile;
+    }),
+
+  intelligence: adminProcedure.query(async () => {
+    const settings = await db.getPlatformSettings();
+    return {
+      ai: openAiConfigured() ? "ligada" : "falta configurar",
+      payments: mercadoPagoConfigured() ? "ligada" : "falta configurar",
+      textModel: settings.textModel,
+      imageModel: settings.imageModel,
+      imageQuality: settings.imageQuality,
+      speechModel: settings.speechModel,
+      creditPrice: settings.creditPrice,
+      dailyCap: settings.dailyCap,
+    };
+  }),
+
+  intelligenceUpdate: adminProcedure
+    .input(
+      z.object({
+        textModel: z.string().trim().min(2).max(80),
+        imageModel: z.string().trim().min(2).max(80),
+        imageQuality: z.enum(["low", "medium", "high"]),
+        speechModel: z.string().trim().min(2).max(80),
+        creditPrice: z.string().regex(/^\d+(\.\d{1,2})?$/),
+        dailyCap: z.number().int().min(1).max(500),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const settings = await db.updatePlatformSettings(input);
+      await db.createAdminAuditLog({
+        actorId: ctx.user.id,
+        action: "ai_settings_updated",
+        entityType: "platform_settings",
+        entityId: 1,
+        metadata: JSON.stringify({
+          textModel: input.textModel,
+          imageModel: input.imageModel,
+          dailyCap: input.dailyCap,
+        }),
+      });
+      return settings;
+    }),
+
+  adsReview: adminProcedure.query(() => db.listAdsForReview(50)),
+
+  adResolve: adminProcedure
+    .input(
+      z.object({
+        adId: z.number().int().positive(),
+        storeId: z.number().int().positive(),
+        decision: z.enum(["publish", "archive"]),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (input.decision === "archive") {
+        await db.archiveGeneratedAd(input.storeId, input.adId);
+      } else {
+        await db.publishGeneratedAd(input.storeId, input.adId);
+      }
+      await db.createAdminAuditLog({
+        actorId: ctx.user.id,
+        action: `ad_${input.decision}`,
+        entityType: "generated_ad",
+        entityId: input.adId,
+        metadata: JSON.stringify({ storeId: input.storeId }),
+      });
+      return { success: true as const };
     }),
 });

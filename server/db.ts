@@ -16,6 +16,8 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import {
   AdCredit,
+  AdCreditPurchase,
+  PlatformSettings,
   AdminAuditLog,
   ChatMessage,
   CourierProfile,
@@ -69,6 +71,8 @@ import {
   User,
   accountRoles,
   adCredits,
+  adCreditPurchases,
+  platformSettings,
   adminAuditLogs,
   chatMessages,
   coupons,
@@ -1538,6 +1542,22 @@ export type UpdateStoreInput = Partial<
     | "longitude"
     | "isOpen"
     | "openingHours"
+    | "legalName"
+    | "taxId"
+    | "taxIdKind"
+    | "fiscalAddress"
+    | "storefrontAddress"
+    | "responsibleName"
+    | "responsibleTaxId"
+    | "responsiblePhone"
+    | "courierMode"
+    | "minOrder"
+    | "prepMinutes"
+    | "logoData"
+    | "stateRegistration"
+    | "cityRegistration"
+    | "taxRegime"
+    | "cnae"
     | "kind"
     | "flashEnabled"
     | "flashEtaMaxMinutes"
@@ -1662,6 +1682,255 @@ export async function getAdCreditsForStore(storeId: number): Promise<AdCredit> {
     .limit(1);
   if (!created[0]) throw new Error("Ad credits not found after creation");
   return created[0];
+}
+
+export async function debitAdCredit(storeId: number, creditCost = 1) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await getAdCreditsForStore(storeId);
+  const updated = await db
+    .update(adCredits)
+    .set({
+      balance: sql`${adCredits.balance} - ${creditCost}`,
+      lifetimeUsed: sql`${adCredits.lifetimeUsed} + ${creditCost}`,
+    })
+    .where(
+      sql`${adCredits.storeId} = ${storeId} AND ${adCredits.balance} >= ${creditCost}`,
+    );
+  if (getAffectedRows(updated) !== 1) {
+    throw new Error("Você ficou sem créditos de anúncio. Compre um pacote para continuar.");
+  }
+}
+
+export async function refundAdCredit(storeId: number, creditCost = 1) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(adCredits)
+    .set({
+      balance: sql`${adCredits.balance} + ${creditCost}`,
+      lifetimeUsed: sql`GREATEST(${adCredits.lifetimeUsed} - ${creditCost}, 0)`,
+    })
+    .where(eq(adCredits.storeId, storeId));
+}
+
+export async function grantAdCredits(storeId: number, credits: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await getAdCreditsForStore(storeId);
+  await db
+    .update(adCredits)
+    .set({
+      balance: sql`${adCredits.balance} + ${credits}`,
+      lifetimeGranted: sql`${adCredits.lifetimeGranted} + ${credits}`,
+    })
+    .where(eq(adCredits.storeId, storeId));
+}
+
+export async function countRecentGeneratedAds(storeId: number, since: Date) {
+  const db = await getDb();
+  if (!db) return 0;
+  const rows = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(generatedAds)
+    .where(
+      and(eq(generatedAds.storeId, storeId), gte(generatedAds.createdAt, since)),
+    );
+  return rows[0]?.total ?? 0;
+}
+
+export async function saveGeneratedAd(input: InsertGeneratedAd): Promise<GeneratedAd> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db
+    .insert(generatedAds)
+    .values(input)
+    .returning({ id: generatedAds.id });
+  const adId = getInsertId(result);
+  const rows = await db
+    .select()
+    .from(generatedAds)
+    .where(eq(generatedAds.id, adId))
+    .limit(1);
+  if (!rows[0]) throw new Error("Anúncio não encontrado após criação");
+  return rows[0];
+}
+
+export async function holdGeneratedAdForReview(
+  storeId: number,
+  adId: number,
+  note: string,
+): Promise<GeneratedAd> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(generatedAds)
+    .set({ status: "review", moderationNote: note, updatedAt: new Date() })
+    .where(sql`${generatedAds.id} = ${adId} AND ${generatedAds.storeId} = ${storeId}`);
+  const updated = await getGeneratedAdForStore(storeId, adId);
+  if (!updated) throw new Error("Anúncio não encontrado");
+  return updated;
+}
+
+const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
+  id: 1,
+  textModel: "gpt-5-mini",
+  imageModel: "gpt-image-2",
+  imageQuality: "medium",
+  speechModel: "whisper-1",
+  creditPrice: "1.00",
+  dailyCap: 40,
+  updatedAt: new Date(),
+};
+
+export async function getPlatformSettings(): Promise<PlatformSettings> {
+  const db = await getDb();
+  if (!db) return DEFAULT_PLATFORM_SETTINGS;
+  const rows = await db.select().from(platformSettings).where(eq(platformSettings.id, 1)).limit(1);
+  return rows[0] ?? DEFAULT_PLATFORM_SETTINGS;
+}
+
+export async function updatePlatformSettings(
+  input: Partial<Omit<PlatformSettings, "id" | "updatedAt">>,
+): Promise<PlatformSettings> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .insert(platformSettings)
+    .values({ id: 1, ...input })
+    .onConflictDoUpdate({
+      target: platformSettings.id,
+      set: { ...input, updatedAt: new Date() },
+    });
+  return getPlatformSettings();
+}
+
+export async function createCreditPurchase(input: {
+  storeId: number;
+  credits: number;
+  amount: string;
+  idempotencyKey: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await db
+    .select()
+    .from(adCreditPurchases)
+    .where(eq(adCreditPurchases.idempotencyKey, input.idempotencyKey))
+    .limit(1);
+  if (existing[0]) return existing[0];
+  const result = await db
+    .insert(adCreditPurchases)
+    .values({
+      storeId: input.storeId,
+      credits: input.credits,
+      amount: input.amount,
+      idempotencyKey: input.idempotencyKey,
+      externalReference: "pending",
+      status: "pending",
+    })
+    .returning({ id: adCreditPurchases.id });
+  const id = getInsertId(result);
+  const reference = `pediu-credits-${id}`;
+  await db
+    .update(adCreditPurchases)
+    .set({ externalReference: reference })
+    .where(eq(adCreditPurchases.id, id));
+  const rows = await db
+    .select()
+    .from(adCreditPurchases)
+    .where(eq(adCreditPurchases.id, id))
+    .limit(1);
+  if (!rows[0]) throw new Error("Não foi possível iniciar a compra de créditos.");
+  return rows[0];
+}
+
+export async function attachCreditPurchaseCharge(
+  purchaseId: number,
+  charge: { providerTransactionId: string; qrCode?: string; qrCodeBase64?: string },
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(adCreditPurchases)
+    .set({
+      providerTransactionId: charge.providerTransactionId,
+      qrCode: charge.qrCode ?? null,
+      qrCodeBase64: charge.qrCodeBase64 ?? null,
+    })
+    .where(eq(adCreditPurchases.id, purchaseId));
+}
+
+export async function getCreditPurchaseByProvider(providerTransactionId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select()
+    .from(adCreditPurchases)
+    .where(eq(adCreditPurchases.providerTransactionId, providerTransactionId))
+    .limit(1);
+  return rows[0];
+}
+
+export async function applyCreditPurchaseStatus(input: {
+  purchaseId: number;
+  status: "pending" | "paid" | "failed" | "cancelled";
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(adCreditPurchases)
+      .where(eq(adCreditPurchases.id, input.purchaseId))
+      .limit(1);
+    const purchase = rows[0];
+    if (!purchase) throw new Error("Compra de créditos não encontrada");
+    if (purchase.status === "paid") return purchase;
+    if (input.status !== "paid") {
+      await tx
+        .update(adCreditPurchases)
+        .set({ status: input.status })
+        .where(eq(adCreditPurchases.id, purchase.id));
+      return { ...purchase, status: input.status };
+    }
+    await tx
+      .insert(adCredits)
+      .values({ storeId: purchase.storeId })
+      .onConflictDoNothing({ target: adCredits.storeId });
+    await tx
+      .update(adCredits)
+      .set({
+        balance: sql`${adCredits.balance} + ${purchase.credits}`,
+        lifetimeGranted: sql`${adCredits.lifetimeGranted} + ${purchase.credits}`,
+      })
+      .where(eq(adCredits.storeId, purchase.storeId));
+    await tx
+      .update(adCreditPurchases)
+      .set({ status: "paid", paidAt: new Date() })
+      .where(eq(adCreditPurchases.id, purchase.id));
+    return { ...purchase, status: "paid" as const };
+  });
+}
+
+export async function setUsesCustomerApp(userId: number, enabled: boolean) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(users)
+    .set({ usesCustomerApp: enabled ? 1 : 0 })
+    .where(eq(users.id, userId));
+}
+
+export async function listAdsForReview(limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(generatedAds)
+    .where(eq(generatedAds.status, "review"))
+    .orderBy(desc(generatedAds.updatedAt))
+    .limit(limit);
 }
 
 export async function listGeneratedAdsForStore(
@@ -1812,6 +2081,7 @@ export type MarketplaceProduct = Omit<
   adDescription: string | null;
   adOfferLabel: string | null;
   adImageKey: string | null;
+  adImageData: string | null;
   storeKind: Store["kind"];
   flashEnabled: number;
   flashEtaMaxMinutes: number;
@@ -1916,6 +2186,7 @@ export async function searchAvailableProducts(
       adDescription: generatedAds.description,
       adOfferLabel: generatedAds.offerLabel,
       adImageKey: generatedAds.imageKey,
+      adImageData: generatedAds.imageData,
       storeKind: stores.kind,
       flashEnabled: stores.flashEnabled,
       flashEtaMaxMinutes: stores.flashEtaMaxMinutes,

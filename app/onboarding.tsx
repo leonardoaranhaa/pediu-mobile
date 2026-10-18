@@ -29,11 +29,13 @@ import {
   type OnboardingSlide,
 } from "@/lib/onboarding-content";
 import { useReducedMotion } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const SLIDES = ONBOARDING_SLIDES;
 
 export default function OnboardingScreen() {
   const { theme, customization } = useAppPreferences();
+  const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const reducedMotion = useReducedMotion();
   const shouldAnimate = customization.motionEnabled && !reducedMotion;
@@ -196,7 +198,15 @@ export default function OnboardingScreen() {
         style={[styles.orb, styles.orbTwo, { backgroundColor: "#E0F2EA" }]}
       />
 
-      <View style={styles.content}>
+      <View
+        style={[
+          styles.content,
+          {
+            paddingTop: Math.max(insets.top, 16),
+            paddingBottom: Math.max(insets.bottom, 16),
+          },
+        ]}
+      >
         <Animated.View
           style={[
             styles.mascotWrap,
@@ -317,8 +327,8 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingTop: 56,
-    paddingBottom: 36,
+    paddingTop: 16,
+    paddingBottom: 16,
     justifyContent: "space-between",
   },
   mascotWrap: {

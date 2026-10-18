@@ -43,8 +43,20 @@ function mercadoPagoApiBase() {
   return MERCADO_PAGO_API;
 }
 
+export function mercadoPagoAccessToken() {
+  return (
+    process.env.MERCADOPAGO_ACCESS_TOKEN?.trim() ||
+    process.env.MERCADO_PAGO_ACCESS_TOKEN?.trim() ||
+    ""
+  );
+}
+
+export function mercadoPagoConfigured() {
+  return Boolean(mercadoPagoAccessToken()) && configuredProvider() === "mercado_pago";
+}
+
 function accessToken() {
-  const token = process.env.MERCADO_PAGO_ACCESS_TOKEN?.trim();
+  const token = mercadoPagoAccessToken();
   if (!token) {
     throw new Error(
       "MERCADO_PAGO_ACCESS_TOKEN precisa estar configurado no servidor.",
@@ -72,6 +84,7 @@ export async function createPixCharge(input: {
   amount: string;
   payerEmail: string;
   idempotencyKey: string;
+  externalReference?: string;
 }): Promise<PixChargeResult> {
   const provider = configuredProvider();
   if (provider === "manual") {
@@ -93,7 +106,8 @@ export async function createPixCharge(input: {
 
   const payerEmail = input.payerEmail.trim();
   if (!payerEmail) throw new Error("E-mail do pagador é obrigatório para PIX.");
-  const externalReference = `pediu-order-${input.orderId}`;
+  const externalReference =
+    input.externalReference ?? `pediu-order-${input.orderId}`;
   const notificationUrl = process.env.MERCADO_PAGO_NOTIFICATION_URL?.trim();
   if (!notificationUrl) {
     throw new Error(

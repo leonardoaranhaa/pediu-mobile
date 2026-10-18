@@ -10,6 +10,7 @@ export type User = {
   loginMethod: string | null;
   role?: "user" | "merchant" | "courier" | "admin";
   roles?: Array<"customer" | "merchant" | "courier" | "admin">;
+  usesCustomerApp?: number;
   themePreference?: "classic" | "ocean" | "sunset";
   lastSignedIn: Date;
 };

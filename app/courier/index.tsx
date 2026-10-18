@@ -97,12 +97,16 @@ export default function CourierHomePage() {
   const [documentPhoto, setDocumentPhoto] = useState<string>();
   const [vehiclePhoto, setVehiclePhoto] = useState<string>();
   const [selfiePhoto, setSelfiePhoto] = useState<string>();
+  const [pixKey, setPixKey] = useState("");
+  const [workArea, setWorkArea] = useState("");
+  const [workHours, setWorkHours] = useState("");
   const [tracking, setTracking] = useState(false);
   const [locationError, setLocationError] = useState("");
   const [deliveryCode, setDeliveryCode] = useState("");
   const [cashReceived, setCashReceived] = useState(false);
   const [deliveryPhoto, setDeliveryPhoto] = useState<string>();
   const [now, setNow] = useState(() => new Date());
+  const [tab, setTab] = useState<"offers" | "ride" | "earnings" | "account">("offers");
   const watcher = useRef<Location.LocationSubscription | null>(null);
   const lastLocationAt = useRef(0);
   const locationSequence = useRef(0);
@@ -133,6 +137,7 @@ export default function CourierHomePage() {
   });
   const accept = trpc.pediu.courier.acceptOffer.useMutation({
     onSuccess: async () => {
+      setTab("ride");
       await offers.refetch();
       await active.refetch();
       await profile.refetch();
@@ -252,7 +257,10 @@ export default function CourierHomePage() {
       documentPhoto &&
       vehiclePhoto &&
       selfiePhoto &&
-      (vehicleType === "bike" || vehiclePlate.trim()),
+      (vehicleType === "bike" || vehiclePlate.trim()) &&
+      pixKey.trim() &&
+      workArea.trim() &&
+      workHours.trim(),
   );
 
   const submitApplication = () => {
@@ -265,6 +273,9 @@ export default function CourierHomePage() {
       documentPhoto,
       vehiclePhoto,
       selfiePhoto,
+      pixKey: pixKey.trim(),
+      workArea: workArea.trim(),
+      workHours: workHours.trim(),
     });
   };
 
@@ -351,11 +362,14 @@ export default function CourierHomePage() {
           autoCapitalize="characters"
         />
       ) : null}
+      <Field label="CHAVE PIX" value={pixKey} onChangeText={setPixKey} autoCapitalize="none" />
+      <Field label="CIDADE OU BAIRROS" value={workArea} onChangeText={setWorkArea} />
+      <Field label="DIAS E HORÁRIOS" value={workHours} onChangeText={setWorkHours} placeholder="Seg a sex, 11h às 23h" />
       <PhotoButton title="Foto da CNH" value={documentPhoto} onPick={setDocumentPhoto} />
       <PhotoButton title="Foto do veículo" value={vehiclePhoto} onPick={setVehiclePhoto} />
       <PhotoButton title="Sua foto" value={selfiePhoto} onPick={setSelfiePhoto} />
       {!documentsReady ? (
-        <Text style={s.muted}>Faltam a CNH, as fotos e o telefone para enviar.</Text>
+        <Text style={s.muted}>Faltam a CNH, as fotos, a chave PIX, a área e o horário.</Text>
       ) : null}
       {apply.error ? <Text style={{ color: PEDIU.coral }}>{apply.error.message}</Text> : null}
       <PrimaryButton
@@ -436,8 +450,34 @@ export default function CourierHomePage() {
       dock={
         <OpsDock
           items={[
-            { label: "Radar", icon: "two-wheeler", to: "/courier", active: true },
-            { label: "Cliente", icon: "home", to: "/" },
+            {
+              label: "Ofertas",
+              icon: "radar",
+              to: "/courier",
+              active: tab === "offers",
+              onPress: () => setTab("offers"),
+            },
+            {
+              label: "Corrida",
+              icon: "two-wheeler",
+              to: "/courier",
+              active: tab === "ride",
+              onPress: () => setTab("ride"),
+            },
+            {
+              label: "Ganhos",
+              icon: "payments",
+              to: "/courier",
+              active: tab === "earnings",
+              onPress: () => setTab("earnings"),
+            },
+            {
+              label: "Conta",
+              icon: "person",
+              to: "/courier",
+              active: tab === "account",
+              onPress: () => setTab("account"),
+            },
           ]}
         />
       }
@@ -464,7 +504,9 @@ export default function CourierHomePage() {
         <OpsMetric value={offers.data?.length ?? 0} label="no radar" dark />
         <OpsMetric value={formatMoney(earned)} label="a receber" />
       </View>
-      <OpsSectionTitle title="Radar" count={offers.data?.length ?? 0} />
+      {tab === "offers" ? (
+      <>
+      <OpsSectionTitle title="Ofertas" count={offers.data?.length ?? 0} />
       {offers.isLoading ? (
         <OpsCard>
           <ActivityIndicator color={PEDIU.coral} />
@@ -532,8 +574,12 @@ export default function CourierHomePage() {
       {offers.isError ? (
         <Text style={{ color: PEDIU.coral, fontFamily: "Nunito" }}>{offers.error.message}</Text>
       ) : null}
+      </>
+      ) : null}
 
-      <OpsSectionTitle title="Entrega ativa" count={active.data?.length ?? 0} />
+      {tab === "ride" ? (
+      <>
+      <OpsSectionTitle title="Corrida" count={active.data?.length ?? 0} />
       {current ? (
         <OpsCard>
           <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
@@ -668,7 +714,51 @@ export default function CourierHomePage() {
           <Text style={s.muted}>Quando você aceitar uma corrida, a retirada e a entrega aparecem aqui.</Text>
         </OpsCard>
       )}
-      <OpsButton title="Voltar ao perfil" variant="ghost" onPress={() => router.back()} />
+      </>
+      ) : null}
+
+      {tab === "earnings" ? (
+        <>
+          <OpsSectionTitle title="Ganhos" count={earnings.data?.length ?? 0} />
+          <OpsCard>
+            <Text style={{ fontFamily: "Fredoka", fontSize: 28, fontWeight: "900", color: "#111111" }}>
+              {formatMoney(earned)}
+            </Text>
+            <Text style={s.muted}>Soma do que já ficou registrado nas entregas concluídas. O PIX automático ainda não sai sozinho.</Text>
+          </OpsCard>
+          {(earnings.data ?? []).map((row) => (
+            <OpsCard key={row.id}>
+              <Text style={{ fontFamily: "Fredoka", fontSize: 20, fontWeight: "900", color: "#111111" }}>
+                {formatMoney(row.amount)}
+              </Text>
+              <Text style={s.muted}>Pedido {row.orderId}</Text>
+            </OpsCard>
+          ))}
+          {!earnings.data?.length ? (
+            <OpsCard>
+              <Text style={s.muted}>Ainda não há ganho registrado.</Text>
+            </OpsCard>
+          ) : null}
+        </>
+      ) : null}
+
+      {tab === "account" ? (
+        <OpsCard>
+          <OpsSectionTitle title="Conta" />
+          <OpsOrderLines
+            lines={[
+              `Veículo: ${vehicleLabels[approvedProfile.vehicleType]}`,
+              approvedProfile.vehiclePlate ? `Placa: ${approvedProfile.vehiclePlate}` : "Sem placa",
+              `PIX: ${approvedProfile.pixKey || "Ainda não informado"}`,
+              `Área: ${approvedProfile.workArea || "Ainda não informado"}`,
+              `Horário: ${approvedProfile.workHours || "Ainda não informado"}`,
+            ]}
+          />
+          {user?.usesCustomerApp === 1 ? (
+            <OpsButton title="Pedir como cliente" variant="outline" onPress={() => router.replace("/(tabs)")} />
+          ) : null}
+        </OpsCard>
+      ) : null}
     </OpsShell>
   );
 }

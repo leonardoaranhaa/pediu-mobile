@@ -16,6 +16,7 @@ export default function ChangePasswordScreen() {
   const [nextPassword, setNextPassword] = useState("");
   const change = trpc.auth.changePassword.useMutation({
     onSuccess: async (result) => {
+      await Auth.clearUserInfo();
       await Auth.setSessionToken(result.token);
       await refresh();
       router.back();
