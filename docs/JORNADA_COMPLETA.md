@@ -335,7 +335,7 @@ Cada bloqueio da lista acima ficou com um estado. A avaliação original, com as
 7. **Pronto.** O motoboy abre Google Maps ou Waze. O cliente vê um mapa de verdade com loja, motoboy e destino, no lugar da caixa cinza. No celular isso entra no próximo aplicativo publicado; no navegador já funciona.
 8. **Pronto.** Confirmar a entrega não quebra mais a tela. A corrida tem “Cheguei na loja”, “Pedido retirado”, o código de 4 dígitos que o cliente mostra, foto opcional e, no dinheiro, “Recebi o dinheiro”.
 9. **Pronto.** No dinheiro, o checkout pergunta “Troco para quanto?”. Quando o motoboy confirma que recebeu, o pagamento fica pago, o ganho entra para ele e a venda aparece no histórico da loja.
-10. **Pronto.** Com o aplicativo da loja aberto, um pedido pendente toca um som e vibra de novo a cada poucos segundos até ser aceito. Na hora em que o pedido chega, a loja também recebe uma notificação.
+10. **Pronto, com um limite.** Com o aplicativo da loja aberto, um pedido pendente toca um som e vibra de novo a cada poucos segundos até ser aceito. Com o aplicativo fechado, chega uma notificação na hora do pedido. Ela não se repete sozinha a cada poucos segundos.
 11. **Pronto.** A loja marca o endereço no mapa, define o horário de cada dia, coloca foto e opcionais no produto. Loja fechada continua na lista, com “Fechado” e o próximo horário.
 12. **Pronto.** O motoboy envia CNH, veículo, placa e foto e fica pendente até o admin aprovar. A loja chama “motoboys por perto”, sem precisar do número da conta. Só entra quem está aprovado, online e perto.
 
