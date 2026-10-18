@@ -298,6 +298,20 @@ async function main() {
       courierToken,
       "POST",
     );
+    const arrived = await callTrpc<{ status: string }>(
+      "pediu.experience.delivery.arrive",
+      { orderId },
+      courierToken,
+      "POST",
+    );
+    assert.equal(arrived.status, "arrived");
+    const pickedUp = await callTrpc<{ status: string }>(
+      "pediu.experience.delivery.pickup",
+      { orderId },
+      courierToken,
+      "POST",
+    );
+    assert.equal(pickedUp.status, "A caminho");
 
     const location = await callTrpc<{
       locationId: number;

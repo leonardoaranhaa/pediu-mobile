@@ -433,6 +433,18 @@ async function main() {
       },
       merchantToken,
     );
+    const arrived = await callTrpc<{ status: string }>(
+      "pediu.experience.delivery.arrive",
+      { orderId: flashOrder.orderId },
+      merchantToken,
+    );
+    assert.equal(arrived.status, "arrived");
+    const pickedUp = await callTrpc<{ status: string }>(
+      "pediu.experience.delivery.pickup",
+      { orderId: flashOrder.orderId },
+      merchantToken,
+    );
+    assert.equal(pickedUp.status, "A caminho");
     await callTrpc(
       "pediu.experience.delivery.location",
       {

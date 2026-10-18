@@ -604,7 +604,10 @@ export const experienceRouter = router({
         )
           throw new Error("A entrega ainda não foi atribuída a este operador");
         if (!deliveryCodesMatch(order.deliveryCode, input.code ?? ""))
-          throw new Error("O código não confere com o que o cliente mostrou.");
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "O código não confere com o que o cliente mostrou.",
+          });
         const payment = await data.getPaymentForOrder(
           order.id,
           order.customerId,
