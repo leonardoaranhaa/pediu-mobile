@@ -161,21 +161,6 @@ export function buildDevicePreflightReport(
         : "API do bundle não é um endpoint HTTPS público alcançável por dispositivo",
   });
 
-  const appId = env.EXPO_PUBLIC_APP_ID?.trim();
-  checks.push({
-    id: "app-id-alignment",
-    status: !appId
-      ? "NOT_CONFIGURED"
-      : appId === env.VITE_APP_ID?.trim()
-        ? "PASS"
-        : "BLOCKED",
-    message: !appId
-      ? "EXPO_PUBLIC_APP_ID não configurado"
-      : appId === env.VITE_APP_ID?.trim()
-        ? "App ID público coincide com o ID do backend"
-        : "EXPO_PUBLIC_APP_ID difere de VITE_APP_ID",
-  });
-
   checks.push({
     id: "eas-profiles",
     status:
@@ -189,12 +174,7 @@ export function buildDevicePreflightReport(
   });
 
   checks.push(
-    externalCheck("oauth", "OAuth real", env, [
-      "EXPO_PUBLIC_OAUTH_PORTAL_URL",
-      "EXPO_PUBLIC_OAUTH_SERVER_URL",
-      "OAUTH_SERVER_URL",
-    ]),
-    externalCheck("push", "Push externo", env, [
+    externalCheck("push", "Serviços Forge opcionais", env, [
       "BUILT_IN_FORGE_API_URL",
       "BUILT_IN_FORGE_API_KEY",
     ]),

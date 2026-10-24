@@ -1,7 +1,8 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import { Image, Pressable, Text, View } from "react-native";
+import { Image, Pressable, Share, Text, View } from "react-native";
+import * as FileSystem from "expo-file-system/legacy";
 
 import {
   Page,
@@ -14,7 +15,21 @@ import {
 } from "@/components/pediu-page";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
+import { SellerDock } from "@/components/seller-dock";
 import { useAppPreferences } from "@/lib/app-preferences";
+
+async function shareAdImage(imageUrl: string, headline: string) {
+  let url = imageUrl;
+  if (imageUrl.startsWith("data:")) {
+    const base64 = imageUrl.split(",")[1] ?? "";
+    const path = `${FileSystem.cacheDirectory}anuncio-pediu.png`;
+    await FileSystem.writeAsStringAsync(path, base64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    url = path;
+  }
+  await Share.share({ url, message: headline });
+}
 
 const tones = [
   {
@@ -34,7 +49,7 @@ const tones = [
 type Ad = {
   id: number;
   productId: number | null;
-  status: "draft" | "published" | "archived";
+  status: "draft" | "published" | "archived" | "review";
   headline: string;
   description: string;
   cta: string;
@@ -46,6 +61,7 @@ type Ad = {
 function statusLabel(status: Ad["status"]) {
   if (status === "published") return "Publicado";
   if (status === "archived") return "Arquivado";
+  if (status === "review") return "Em análise";
   return "Rascunho";
 }
 
@@ -90,6 +106,7 @@ export default function SellerAdsPage() {
       void ads.refetch();
     },
   });
+  const buy = trpc.pediu.ads.buy.useMutation();
   const archive = trpc.pediu.ads.archive.useMutation({
     onSuccess: () => {
       setSelectedAd(null);
@@ -103,7 +120,7 @@ export default function SellerAdsPage() {
 
   if (!isAuthenticated) {
     return (
-      <Page title="Estúdio de anúncios" eyebrow="PEDIU AI">
+      <Page title="Estúdio de anúncios" eyebrow="ANÚNCIOS" dock={<SellerDock active="ads" />}>
         <Card>
           <MaterialIcons name="lock" size={26} color={theme.primary} />
           <Text style={s.sectionTitle}>
@@ -123,7 +140,7 @@ export default function SellerAdsPage() {
 
   if (!store.data) {
     return (
-      <Page title="Estúdio de anúncios" eyebrow="PEDIU AI">
+      <Page title="Estúdio de anúncios" eyebrow="ANÚNCIOS" dock={<SellerDock active="ads" />}>
         <Card>
           <Text style={s.sectionTitle}>Crie sua loja primeiro</Text>
           <Text style={s.muted}>
@@ -152,7 +169,7 @@ export default function SellerAdsPage() {
   return (
     <Page
       title="Estúdio de anúncios"
-      eyebrow="PEDIU AI"
+      eyebrow="ANÚNCIOS"
       action={
         <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
           <MaterialIcons name="auto-awesome" size={17} color={theme.primary} />
@@ -374,12 +391,33 @@ export default function SellerAdsPage() {
           disabled={generate.isPending || !productId || !credits.data?.balance}
           onPress={submit}
         />
+        <Text style={s.muted}>Cada imagem usa 1 crédito. Publicar no Explorar não gasta outro.</Text>
+        {credits.data?.purchaseAvailable ? (
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            {[10, 30, 100].map((pack) => {
+              const price = (Number(credits.data?.unitPrice ?? 0) * pack).toFixed(2).replace(".", ",");
+              return (
+                <OutlineButton
+                  key={pack}
+                  title={buy.isPending ? "..." : `${pack} créditos · R$ ${price}`}
+                  onPress={() => buy.mutate({ credits: pack as 10 | 30 | 100 })}
+                />
+              );
+            })}
+          </View>
+        ) : (
+          <Text style={s.muted}>A compra de créditos por PIX ainda não está disponível.</Text>
+        )}
+        {buy.data?.qrCode ? (
+          <Text style={s.muted}>PIX de R$ {buy.data.amount.replace(".", ",")} para {buy.data.credits} créditos. O saldo entra quando o pagamento for confirmado.</Text>
+        ) : null}
+        {buy.data?.qrCodeBase64 ? (
+          <Image source={{ uri: `data:image/png;base64,${buy.data.qrCodeBase64}` }} style={{ width: 180, height: 180 }} />
+        ) : null}
+        {buy.error ? <Text style={{ color: PEDIU.coral }}>{buy.error.message}</Text> : null}
         {!credits.data?.balance ? (
-          <Text
-            style={{ color: theme.primary, fontSize: 12, fontWeight: "800" }}
-          >
-            Seus créditos acabaram. Em breve você poderá contratar novos pacotes
-            no Pediu.
+          <Text style={{ color: theme.primary, fontSize: 12, fontWeight: "800" }}>
+            Sem créditos no momento. Compre um pacote para criar outra imagem.
           </Text>
         ) : null}
       </Card>
@@ -556,9 +594,15 @@ function CreativePreview({
         <Text style={{ color: theme.primary, fontSize: 13, fontWeight: "900" }}>
           {ad.cta}
         </Text>
+        {ad.imageUrl ? (
+          <OutlineButton
+            title="Compartilhar no WhatsApp"
+            onPress={() => void shareAdImage(ad.imageUrl!, ad.headline)}
+          />
+        ) : null}
         {ad.status === "draft" ? (
           <PrimaryButton
-            title={busy ? "Salvando..." : "Publicar no marketplace"}
+            title={busy ? "Salvando..." : "Publicar no Explorar"}
             disabled={busy}
             onPress={onPublish}
           />

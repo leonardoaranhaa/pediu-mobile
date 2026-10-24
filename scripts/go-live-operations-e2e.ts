@@ -7,8 +7,6 @@ const apiBaseUrl = (
 const databaseUrl = process.env.DATABASE_URL?.trim() ?? "";
 if (!databaseUrl)
   throw new Error("DATABASE_URL is required for the operations E2E smoke.");
-if (!process.env.VITE_APP_ID?.trim())
-  throw new Error("VITE_APP_ID is required for the operations E2E smoke.");
 if (!process.env.JWT_SECRET?.trim())
   throw new Error("JWT_SECRET is required for the operations E2E smoke.");
 
@@ -57,8 +55,8 @@ function insertId(result: any): number {
 }
 
 async function main() {
-  const mysql = await import("mysql2/promise");
-  const connection = await mysql.createConnection(databaseUrl);
+  const { createConnection } = await import("./pg-client");
+  const connection = await createConnection(databaseUrl);
   const runId = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
   const customerOpenId = `ci-ops-customer-${runId}`;
   const merchantOpenId = `ci-ops-merchant-${runId}`;
@@ -300,6 +298,20 @@ async function main() {
       courierToken,
       "POST",
     );
+    const arrived = await callTrpc<{ status: string }>(
+      "pediu.experience.delivery.arrive",
+      { orderId },
+      courierToken,
+      "POST",
+    );
+    assert.equal(arrived.status, "arrived");
+    const pickedUp = await callTrpc<{ status: string }>(
+      "pediu.experience.delivery.pickup",
+      { orderId },
+      courierToken,
+      "POST",
+    );
+    assert.equal(pickedUp.status, "A caminho");
 
     const location = await callTrpc<{
       locationId: number;
@@ -348,6 +360,12 @@ async function main() {
       "A caminho",
     ]);
 
+    const shownToCourier = await callTrpc<{ deliveryCode: string | null }>(
+      "pediu.orders.get",
+      { orderId },
+      customerToken,
+    );
+    assert.match(shownToCourier.deliveryCode ?? "", /^\d{4}$/);
     const completions = await Promise.all(
       Array.from({ length: 2 }, () =>
         callTrpc<{
@@ -356,7 +374,11 @@ async function main() {
           duplicate?: boolean;
         }>(
           "pediu.experience.delivery.complete",
-          { orderId },
+          {
+            orderId,
+            code: shownToCourier.deliveryCode,
+            cashReceived: true,
+          },
           courierToken,
           "POST",
         ),
@@ -434,9 +456,14 @@ async function main() {
   }
 }
 
-void main().catch((error) => {
-  console.error(
-    `Go-Live operations E2E failed: ${error instanceof Error ? error.message : "unknown error"}`,
-  );
-  process.exitCode = 1;
-});
+void main()
+  .catch((error) => {
+    console.error(
+      `Go-Live operations E2E failed: ${error instanceof Error ? error.message : "unknown error"}`,
+    );
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    const { finishDatabaseScript } = await import("./finish-database-script");
+    await finishDatabaseScript();
+  });

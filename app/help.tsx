@@ -4,7 +4,7 @@ import { Page, Card, PEDIU, s } from "@/components/pediu-page";
 
 const FAQ = [
   ["Onde está meu pedido?", "Abra o pedido no histórico para acompanhar o status e, quando disponível, o rastreio."],
-  ["Meu pagamento falhou", "Verifique o método selecionado e tente novamente. Cobranças PIX devem ser confirmadas pelo provedor."],
+  ["Meu pagamento falhou", "Confira a forma de pagamento e tente de novo. No PIX, conclua o pagamento na hora indicada."],
   ["Quero cancelar um pedido", "O cancelamento depende do estado atual do pedido e das regras da loja."],
 ];
 

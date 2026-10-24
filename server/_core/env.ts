@@ -1,18 +1,27 @@
 export const ENV = {
-  appId: process.env.VITE_APP_ID ?? "",
   cookieSecret: process.env.JWT_SECRET ?? "",
   databaseUrl: process.env.DATABASE_URL ?? "",
-  oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
-  ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
 };
 
+export function adminEmailSet(): Set<string> {
+  return new Set(
+    (process.env.ADMIN_EMAILS ?? "")
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+export function isAdminEmail(email: string): boolean {
+  return adminEmailSet().has(email.trim().toLowerCase());
+}
+
 export function assertRuntimeConfig() {
   if (!ENV.isProduction) return;
   const missing = [
-    !ENV.appId && "VITE_APP_ID",
     !ENV.cookieSecret && "JWT_SECRET",
     !ENV.databaseUrl && "DATABASE_URL",
     !process.env.ALLOWED_ORIGINS?.trim() && "ALLOWED_ORIGINS",

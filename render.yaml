@@ -1,0 +1,38 @@
+# Servidor do Pediu na Render, plano gratuito.
+# Uma instância só. Ela desliga depois de cerca de 15 minutos sem visita.
+# O banco é o Postgres do Supabase. Cole a connection string no painel.
+# A região virginia é a disponível no plano free. O banco continua em São Paulo.
+# Este arquivo não contém senhas.
+services:
+  - type: web
+    name: pediu-api
+    runtime: node
+    plan: free
+    region: virginia
+    branch: main
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "20"
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: OBSERVABILITY_TOKEN
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: PIX_PROVIDER
+        value: manual
+      - key: MERCADO_PAGO_ACCESS_TOKEN
+        sync: false
+      - key: MERCADO_PAGO_WEBHOOK_SECRET
+        sync: false
+      - key: MERCADO_PAGO_NOTIFICATION_URL
+        sync: false

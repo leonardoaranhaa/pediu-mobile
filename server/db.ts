@@ -3,6 +3,7 @@ import {
   desc,
   eq,
   gt,
+  gte,
   inArray,
   isNull,
   lte,
@@ -10,9 +11,13 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
+import crypto from "node:crypto";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
 import {
   AdCredit,
+  AdCreditPurchase,
+  PlatformSettings,
   AdminAuditLog,
   ChatMessage,
   CourierProfile,
@@ -44,6 +49,8 @@ import {
   InsertSupportTicketMessage,
   InsertUser,
   LedgerEntry,
+  LoyaltyAccount,
+  LoyaltyLedgerEntry,
   Notification,
   NotificationOutbox,
   NotificationPreferences,
@@ -60,8 +67,13 @@ import {
   StoreCourier,
   SupportTicket,
   SupportTicketMessage,
+  TipSettlement,
   User,
+  accountRoles,
+  accountPrefs,
   adCredits,
+  adCreditPurchases,
+  platformSettings,
   adminAuditLogs,
   chatMessages,
   coupons,
@@ -76,6 +88,8 @@ import {
   emailVerificationTokens,
   generatedAds,
   ledgerEntries,
+  loyaltyAccounts,
+  loyaltyLedger,
   commissionEntries,
   commissionRules,
   financialLedger,
@@ -90,7 +104,10 @@ import {
   paymentReconciliationRuns,
   paymentTransactions,
   privacyConsents,
+  productOptionGroups,
+  productOptions,
   products,
+  courierEarnings,
   pushTokens,
   rateLimitBuckets,
   sales,
@@ -98,17 +115,34 @@ import {
   stores,
   supportTicketMessages,
   supportTickets,
+  tipSettlements,
   users,
   webhookEvents,
   refunds,
 } from "../drizzle/schema";
-import { ENV } from "./_core/env";
+import {
+  mergeAccountRoles,
+  rolesFromLegacy,
+  type AccountRole,
+} from "../shared/account-roles";
+import {
+  CITY_OFFER_TTL_MS,
+  NEARBY_COURIER_RADIUS_KM,
+  STORE_NEVER_ACCEPTED_REASON,
+  courierEarning,
+  haversineKm,
+  ignoreEmptyPriceBand,
+  resolveStoreAvailability,
+} from "../shared/pilot-ops";
+import { postgresConnectionOptions } from "./postgres-url";
 import {
   DEFAULT_DISPATCH_OFFER_TTL_MS,
   boundedDispatchOfferTtl,
   dispatchOfferExpiresAt,
   dispatchReofferKey,
+  offerStillBlocksCourier,
 } from "./domain/dispatch";
+import { paymentMethodLabel } from "./domain/order-options";
 import { isTrackingCapturedAtAcceptable } from "./domain/tracking";
 import { isUniqueConstraintError } from "./domain/idempotency";
 import {
@@ -139,8 +173,24 @@ import {
   encodeMarketplaceCursor,
   marketplaceFilterKey,
 } from "./domain/marketplace-cursor";
+import {
+  calculateEarnPoints,
+  LOYALTY_TIER_LABELS,
+  planLoyaltyRedeem,
+  pointsToNextTier,
+  progressToNextTier,
+  resolveLoyaltyTier,
+  type LoyaltyTier,
+} from "./domain/loyalty";
+import {
+  DEFAULT_TIP_DESTINATION,
+  normalizeTipDestination,
+  planTipSettlement,
+  resolveTipRecipientUserId,
+} from "./domain/tips";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _client: ReturnType<typeof postgres> | null = null;
 
 type AppDatabase = NonNullable<Awaited<ReturnType<typeof getDb>>>;
 type DatabaseTransaction = Parameters<AppDatabase["transaction"]>[0] extends (
@@ -151,35 +201,55 @@ type DatabaseTransaction = Parameters<AppDatabase["transaction"]>[0] extends (
   : never;
 
 function getInsertId(result: unknown): number {
-  const header = Array.isArray(result) ? result[0] : result;
-  const insertId = Number(
-    (header as { insertId?: number | string } | undefined)?.insertId,
-  );
+  const row = Array.isArray(result) ? result[0] : undefined;
+  const insertId = Number((row as { id?: number | string } | undefined)?.id);
   if (!Number.isInteger(insertId) || insertId <= 0) {
-    throw new Error("MySQL insert did not return a valid insertId");
+    throw new Error("Postgres insert did not return an id");
   }
   return insertId;
 }
 
 function getAffectedRows(result: unknown): number {
-  const header = Array.isArray(result) ? result[0] : result;
-  return Number(
-    (header as { affectedRows?: number | string } | undefined)?.affectedRows ??
-      0,
-  );
+  if (result && typeof result === "object") {
+    const value = result as {
+      count?: number;
+      rowCount?: number;
+      affectedRows?: number | string;
+    };
+    if (typeof value.count === "number") return value.count;
+    if (typeof value.rowCount === "number") return value.rowCount;
+    if (value.affectedRows !== undefined) return Number(value.affectedRows);
+  }
+  return 0;
 }
 
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      const options = postgresConnectionOptions(process.env.DATABASE_URL);
+      const client = postgres(options.url, {
+        prepare: options.prepare,
+        max: options.max,
+        ssl: options.ssl,
+        connect_timeout: 20,
+      });
+      _client = client;
+      _db = drizzle(client);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
     }
   }
   return _db;
+}
+
+/** Closes the pool opened by one-shot scripts so Node can exit. */
+export async function closeDb() {
+  const client = _client;
+  _client = null;
+  _db = null;
+  if (client) await client.end({ timeout: 5 });
 }
 
 export async function consumeDistributedRateLimit(input: {
@@ -204,9 +274,7 @@ export async function consumeDistributedRateLimit(input: {
         windowStartedAt: now,
         expiresAt: now,
       })
-      .onDuplicateKeyUpdate({
-        set: { bucketKey: sql`bucketKey` },
-      });
+      .onConflictDoNothing({ target: rateLimitBuckets.bucketKey });
 
     const rows = await tx
       .select()
@@ -385,7 +453,7 @@ export async function getCustomerPaymentPreferences(
   await db
     .insert(customerPaymentPreferences)
     .values({ userId })
-    .onDuplicateKeyUpdate({ set: { userId } });
+    .onConflictDoNothing({ target: customerPaymentPreferences.userId });
   const created = await db
     .select()
     .from(customerPaymentPreferences)
@@ -501,7 +569,7 @@ export async function createSupportTicket(input: {
 }): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(supportTickets).values(input);
+  const result = await db.insert(supportTickets).values(input).returning({ id: supportTickets.id });
   return getInsertId(result);
 }
 
@@ -572,7 +640,7 @@ export async function createSupportTicketMessage(
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   try {
-    const result = await db.insert(supportTicketMessages).values(input);
+    const result = await db.insert(supportTicketMessages).values(input).returning({ id: supportTicketMessages.id });
     return { id: getInsertId(result), duplicate: false };
   } catch (error) {
     const existing = input.idempotencyKey
@@ -631,7 +699,7 @@ export async function createOrderReview(
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   try {
-    const result = await db.insert(orderReviews).values(input);
+    const result = await db.insert(orderReviews).values(input).returning({ id: orderReviews.id });
     return { id: getInsertId(result), duplicate: false };
   } catch (error) {
     const existing = input.idempotencyKey
@@ -639,6 +707,51 @@ export async function createOrderReview(
       : undefined;
     if (existing) return { id: existing.id, duplicate: true };
     throw error;
+  }
+}
+
+export async function listAccountRoles(
+  userId: number,
+  legacyRole?: string | null,
+): Promise<AccountRole[]> {
+  const fallback = rolesFromLegacy(legacyRole);
+  try {
+    const db = await getDb();
+    if (!db) return fallback;
+    const rows = await db
+      .select({ role: accountRoles.role })
+      .from(accountRoles)
+      .where(eq(accountRoles.userId, userId));
+    if (!rows.length) return fallback;
+    return mergeAccountRoles(
+      rows.map((row) => row.role),
+      legacyRole,
+    );
+  } catch (error) {
+    console.warn("[AccountRoles] Falling back to legacy role", error);
+    return fallback;
+  }
+}
+
+export async function grantAccountRole(
+  userId: number,
+  role: AccountRole,
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .insert(accountRoles)
+    .values({ userId, role })
+    .onConflictDoNothing({
+      target: [accountRoles.userId, accountRoles.role],
+    });
+  if (role !== "customer") {
+    await db
+      .insert(accountRoles)
+      .values({ userId, role: "customer" })
+      .onConflictDoNothing({
+        target: [accountRoles.userId, accountRoles.role],
+      });
   }
 }
 
@@ -673,9 +786,6 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     if (user.role !== undefined) {
       values.role = user.role;
       updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
-      values.role = "admin";
-      updateSet.role = "admin";
     }
 
     if (!values.lastSignedIn) values.lastSignedIn = new Date();
@@ -685,7 +795,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     await db
       .insert(users)
       .values(values)
-      .onDuplicateKeyUpdate({ set: updateSet });
+      .onConflictDoUpdate({ target: users.openId, set: updateSet });
   } catch (error) {
     console.error("[Database] Failed to upsert user:", error);
     throw error;
@@ -716,10 +826,47 @@ export async function listAdminStores(limit = 50, offset = 0) {
   return db.select().from(stores).limit(limit).offset(offset);
 }
 
-export async function listAdminOrders(limit = 50, offset = 0) {
+export async function listAdminOrders(
+  limit = 50,
+  offset = 0,
+  filters?: { status?: Order["status"]; flash?: boolean },
+) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(orders).limit(limit).offset(offset);
+  const clauses = [];
+  if (filters?.status) clauses.push(eq(orders.status, filters.status));
+  if (filters?.flash === true) clauses.push(eq(orders.isFlash, 1));
+  if (filters?.flash === false) clauses.push(eq(orders.isFlash, 0));
+  return db
+    .select()
+    .from(orders)
+    .where(clauses.length ? and(...clauses) : undefined)
+    .orderBy(desc(orders.createdAt), desc(orders.id))
+    .limit(limit)
+    .offset(offset);
+}
+
+export async function listAdminTipSettlements(
+  limit = 50,
+  offset = 0,
+  filters?: {
+    status?: TipSettlement["status"];
+    destination?: TipSettlement["destination"];
+  },
+): Promise<TipSettlement[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const clauses = [];
+  if (filters?.status) clauses.push(eq(tipSettlements.status, filters.status));
+  if (filters?.destination)
+    clauses.push(eq(tipSettlements.destination, filters.destination));
+  return db
+    .select()
+    .from(tipSettlements)
+    .where(clauses.length ? and(...clauses) : undefined)
+    .orderBy(desc(tipSettlements.createdAt), desc(tipSettlements.id))
+    .limit(limit)
+    .offset(offset);
 }
 
 export async function listAdminPayments(limit = 50, offset = 0) {
@@ -795,7 +942,7 @@ export async function createAdminAuditLog(
 ): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(adminAuditLogs).values(input);
+  const result = await db.insert(adminAuditLogs).values(input).returning({ id: adminAuditLogs.id });
   return getInsertId(result);
 }
 
@@ -806,6 +953,146 @@ export async function listAdminAuditLogs(
   const db = await getDb();
   if (!db) return [];
   return db.select().from(adminAuditLogs).limit(limit).offset(offset);
+}
+
+export async function getAdminOverview() {
+  const db = await getDb();
+  if (!db) {
+    return {
+      users: 0,
+      stores: 0,
+      openStores: 0,
+      flashStores: 0,
+      orders: 0,
+      pendingOrders: 0,
+      flashOrdersToday: 0,
+      payments: 0,
+      pendingPayments: 0,
+      failedPayments: 0,
+      openSupportTickets: 0,
+      creditAccounts: 0,
+      tipSettlements: 0,
+      tipsSettled: 0,
+      tipsPending: 0,
+      tipsSettledAmount: "0.00",
+    };
+  }
+
+  const [usersCount] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(users);
+  const [storesCount] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(stores);
+  const [openStores] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(stores)
+    .where(eq(stores.isOpen, 1));
+  const [flashStores] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(stores)
+    .where(and(eq(stores.flashEnabled, 1), eq(stores.isOpen, 1)));
+  const [ordersCount] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(orders);
+  const [pendingOrders] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(orders)
+    .where(eq(orders.status, "Pendente"));
+  const [flashOrdersToday] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(orders)
+    .where(
+      and(eq(orders.isFlash, 1), sql`DATE(${orders.createdAt}) = CURRENT_DATE`),
+    );
+  const [paymentsCount] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(payments);
+  const [pendingPayments] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(payments)
+    .where(eq(payments.status, "pending"));
+  const [failedPayments] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(payments)
+    .where(eq(payments.status, "failed"));
+  const [openSupportTickets] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(supportTickets)
+    .where(sql`${supportTickets.status} in ('open','in_progress')`);
+  const [creditAccounts] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(customers);
+  const [tipSettlementsCount] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(tipSettlements);
+  const [tipsSettled] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(tipSettlements)
+    .where(eq(tipSettlements.status, "settled"));
+  const [tipsPending] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(tipSettlements)
+    .where(eq(tipSettlements.status, "pending"));
+  const [tipsSettledAmount] = await db
+    .select({ value: sql<string>`coalesce(sum(${tipSettlements.amount}), 0)` })
+    .from(tipSettlements)
+    .where(eq(tipSettlements.status, "settled"));
+
+  return {
+    users: Number(usersCount?.value ?? 0),
+    stores: Number(storesCount?.value ?? 0),
+    openStores: Number(openStores?.value ?? 0),
+    flashStores: Number(flashStores?.value ?? 0),
+    orders: Number(ordersCount?.value ?? 0),
+    pendingOrders: Number(pendingOrders?.value ?? 0),
+    flashOrdersToday: Number(flashOrdersToday?.value ?? 0),
+    payments: Number(paymentsCount?.value ?? 0),
+    pendingPayments: Number(pendingPayments?.value ?? 0),
+    failedPayments: Number(failedPayments?.value ?? 0),
+    openSupportTickets: Number(openSupportTickets?.value ?? 0),
+    creditAccounts: Number(creditAccounts?.value ?? 0),
+    tipSettlements: Number(tipSettlementsCount?.value ?? 0),
+    tipsSettled: Number(tipsSettled?.value ?? 0),
+    tipsPending: Number(tipsPending?.value ?? 0),
+    tipsSettledAmount: Number(tipsSettledAmount?.value ?? 0).toFixed(2),
+  };
+}
+
+export async function adminUpdateStore(
+  storeId: number,
+  input: Partial<
+    Pick<
+      Store,
+      | "isOpen"
+      | "flashEnabled"
+      | "flashEtaMaxMinutes"
+      | "flashFeeOverride"
+      | "kind"
+    >
+  >,
+): Promise<Store> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const current = await db
+    .select()
+    .from(stores)
+    .where(eq(stores.id, storeId))
+    .limit(1);
+  if (!current[0]) throw new Error("Estabelecimento não encontrado");
+  const changes = Object.fromEntries(
+    Object.entries(input).filter(([, value]) => value !== undefined),
+  );
+  if (!Object.keys(changes).length) return current[0];
+  await db.update(stores).set(changes).where(eq(stores.id, storeId));
+  const updated = await db
+    .select()
+    .from(stores)
+    .where(eq(stores.id, storeId))
+    .limit(1);
+  if (!updated[0])
+    throw new Error("Estabelecimento não encontrado após atualização");
+  return updated[0];
 }
 
 export async function getUserByOpenId(openId: string) {
@@ -881,7 +1168,19 @@ export async function upsertCourierProfile(
     }
     const result = await tx
       .insert(courierProfiles)
-      .values({ ...input, status: "pending", availability: "offline" });
+      .values({ ...input, status: "pending", availability: "offline" }).returning({ id: courierProfiles.id });
+    await tx
+      .insert(accountRoles)
+      .values({ userId: input.userId, role: "courier" })
+      .onConflictDoNothing({
+        target: [accountRoles.userId, accountRoles.role],
+      });
+    await tx
+      .insert(accountRoles)
+      .values({ userId: input.userId, role: "customer" })
+      .onConflictDoNothing({
+        target: [accountRoles.userId, accountRoles.role],
+      });
     const profileId = getInsertId(result);
     const created = await tx
       .select()
@@ -921,6 +1220,7 @@ export async function setCourierLocationConsent(
 export async function setCourierAvailability(
   userId: number,
   availability: CourierProfile["availability"],
+  location?: { latitude: number; longitude: number },
 ): Promise<CourierProfile> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -930,7 +1230,17 @@ export async function setCourierAvailability(
     throw new Error("O perfil precisa ser aprovado antes de ficar disponível");
   await db
     .update(courierProfiles)
-    .set({ availability, updatedAt: new Date() })
+    .set({
+      availability,
+      updatedAt: new Date(),
+      ...(location
+        ? {
+            lastLatitude: location.latitude.toFixed(7),
+            lastLongitude: location.longitude.toFixed(7),
+            lastLocationAt: new Date(),
+          }
+        : {}),
+    })
     .where(eq(courierProfiles.id, profile.id));
   const updated = await getCourierProfileByUser(userId);
   if (!updated)
@@ -983,11 +1293,18 @@ export async function reviewCourierProfile(
         updatedAt: new Date(),
       })
       .where(eq(courierProfiles.id, profileId));
-    if (status === "approved")
-      await tx
-        .update(users)
-        .set({ role: "courier", updatedAt: new Date() })
-        .where(and(eq(users.id, current[0].userId), eq(users.role, "user")));
+    await tx
+      .insert(accountRoles)
+      .values({ userId: current[0].userId, role: "courier" })
+      .onConflictDoNothing({
+        target: [accountRoles.userId, accountRoles.role],
+      });
+    await tx
+      .insert(accountRoles)
+      .values({ userId: current[0].userId, role: "customer" })
+      .onConflictDoNothing({
+        target: [accountRoles.userId, accountRoles.role],
+      });
     const updated = await tx
       .select()
       .from(courierProfiles)
@@ -1050,10 +1367,15 @@ export async function createCustomerAddress(
         .update(customerAddresses)
         .set({ isDefault: 0 })
         .where(eq(customerAddresses.userId, userId));
+    if (input.latitude == null || input.longitude == null) {
+      throw new Error(
+        "Marque o endereço no mapa antes de salvar. Confira rua, número e cidade, ou use o GPS.",
+      );
+    }
     const { isDefault: _requestedDefault, ...fields } = input;
     const result = await tx
       .insert(customerAddresses)
-      .values({ ...fields, userId, isDefault: isDefault ? 1 : 0 });
+      .values({ ...fields, userId, isDefault: isDefault ? 1 : 0 }).returning({ id: customerAddresses.id });
     return getInsertId(result);
   });
 }
@@ -1075,6 +1397,13 @@ export async function updateCustomerAddress(
       .limit(1);
     if (!current[0]) throw new Error("Endereço não encontrado");
     const { isDefault, ...fields } = input;
+    const latitude = fields.latitude === undefined ? current[0].latitude : fields.latitude;
+    const longitude = fields.longitude === undefined ? current[0].longitude : fields.longitude;
+    if (latitude == null || longitude == null || latitude === "" || longitude === "") {
+      throw new Error(
+        "Este endereço ainda não tem um ponto no mapa. Salve de novo com GPS ou com um endereço que o mapa reconheça.",
+      );
+    }
     if (isDefault === true)
       await tx
         .update(customerAddresses)
@@ -1183,12 +1512,20 @@ export async function createStore(input: InsertStore): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.transaction(async (tx) => {
-    const result = await tx.insert(stores).values(input);
+    const result = await tx.insert(stores).values(input).returning({ id: stores.id });
     const storeId = getInsertId(result);
     await tx
-      .update(users)
-      .set({ role: "merchant", updatedAt: new Date() })
-      .where(and(eq(users.id, input.ownerId), eq(users.role, "user")));
+      .insert(accountRoles)
+      .values({ userId: input.ownerId, role: "merchant" })
+      .onConflictDoNothing({
+        target: [accountRoles.userId, accountRoles.role],
+      });
+    await tx
+      .insert(accountRoles)
+      .values({ userId: input.ownerId, role: "customer" })
+      .onConflictDoNothing({
+        target: [accountRoles.userId, accountRoles.role],
+      });
     return storeId;
   });
 }
@@ -1207,6 +1544,27 @@ export type UpdateStoreInput = Partial<
     | "latitude"
     | "longitude"
     | "isOpen"
+    | "openingHours"
+    | "legalName"
+    | "taxId"
+    | "taxIdKind"
+    | "fiscalAddress"
+    | "storefrontAddress"
+    | "responsibleName"
+    | "responsibleTaxId"
+    | "responsiblePhone"
+    | "courierMode"
+    | "minOrder"
+    | "prepMinutes"
+    | "logoData"
+    | "stateRegistration"
+    | "cityRegistration"
+    | "taxRegime"
+    | "cnae"
+    | "kind"
+    | "flashEnabled"
+    | "flashEtaMaxMinutes"
+    | "flashFeeOverride"
   >
 >;
 
@@ -1271,7 +1629,7 @@ export async function linkCourierToStore(
     courierUserId,
     status: "active",
     invitedBy: ownerId,
-  });
+  }).returning({ id: storeCouriers.id });
   const id = getInsertId(result);
   const created = await db
     .select()
@@ -1329,6 +1687,255 @@ export async function getAdCreditsForStore(storeId: number): Promise<AdCredit> {
   return created[0];
 }
 
+export async function debitAdCredit(storeId: number, creditCost = 1) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await getAdCreditsForStore(storeId);
+  const updated = await db
+    .update(adCredits)
+    .set({
+      balance: sql`${adCredits.balance} - ${creditCost}`,
+      lifetimeUsed: sql`${adCredits.lifetimeUsed} + ${creditCost}`,
+    })
+    .where(
+      sql`${adCredits.storeId} = ${storeId} AND ${adCredits.balance} >= ${creditCost}`,
+    );
+  if (getAffectedRows(updated) !== 1) {
+    throw new Error("Você ficou sem créditos de anúncio. Compre um pacote para continuar.");
+  }
+}
+
+export async function refundAdCredit(storeId: number, creditCost = 1) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(adCredits)
+    .set({
+      balance: sql`${adCredits.balance} + ${creditCost}`,
+      lifetimeUsed: sql`GREATEST(${adCredits.lifetimeUsed} - ${creditCost}, 0)`,
+    })
+    .where(eq(adCredits.storeId, storeId));
+}
+
+export async function grantAdCredits(storeId: number, credits: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await getAdCreditsForStore(storeId);
+  await db
+    .update(adCredits)
+    .set({
+      balance: sql`${adCredits.balance} + ${credits}`,
+      lifetimeGranted: sql`${adCredits.lifetimeGranted} + ${credits}`,
+    })
+    .where(eq(adCredits.storeId, storeId));
+}
+
+export async function countRecentGeneratedAds(storeId: number, since: Date) {
+  const db = await getDb();
+  if (!db) return 0;
+  const rows = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(generatedAds)
+    .where(
+      and(eq(generatedAds.storeId, storeId), gte(generatedAds.createdAt, since)),
+    );
+  return rows[0]?.total ?? 0;
+}
+
+export async function saveGeneratedAd(input: InsertGeneratedAd): Promise<GeneratedAd> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db
+    .insert(generatedAds)
+    .values(input)
+    .returning({ id: generatedAds.id });
+  const adId = getInsertId(result);
+  const rows = await db
+    .select()
+    .from(generatedAds)
+    .where(eq(generatedAds.id, adId))
+    .limit(1);
+  if (!rows[0]) throw new Error("Anúncio não encontrado após criação");
+  return rows[0];
+}
+
+export async function holdGeneratedAdForReview(
+  storeId: number,
+  adId: number,
+  note: string,
+): Promise<GeneratedAd> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(generatedAds)
+    .set({ status: "review", moderationNote: note, updatedAt: new Date() })
+    .where(sql`${generatedAds.id} = ${adId} AND ${generatedAds.storeId} = ${storeId}`);
+  const updated = await getGeneratedAdForStore(storeId, adId);
+  if (!updated) throw new Error("Anúncio não encontrado");
+  return updated;
+}
+
+const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
+  id: 1,
+  textModel: "gpt-5-mini",
+  imageModel: "gpt-image-2",
+  imageQuality: "medium",
+  speechModel: "whisper-1",
+  creditPrice: "1.00",
+  dailyCap: 40,
+  updatedAt: new Date(),
+};
+
+export async function getPlatformSettings(): Promise<PlatformSettings> {
+  const db = await getDb();
+  if (!db) return DEFAULT_PLATFORM_SETTINGS;
+  const rows = await db.select().from(platformSettings).where(eq(platformSettings.id, 1)).limit(1);
+  return rows[0] ?? DEFAULT_PLATFORM_SETTINGS;
+}
+
+export async function updatePlatformSettings(
+  input: Partial<Omit<PlatformSettings, "id" | "updatedAt">>,
+): Promise<PlatformSettings> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .insert(platformSettings)
+    .values({ id: 1, ...input })
+    .onConflictDoUpdate({
+      target: platformSettings.id,
+      set: { ...input, updatedAt: new Date() },
+    });
+  return getPlatformSettings();
+}
+
+export async function createCreditPurchase(input: {
+  storeId: number;
+  credits: number;
+  amount: string;
+  idempotencyKey: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await db
+    .select()
+    .from(adCreditPurchases)
+    .where(eq(adCreditPurchases.idempotencyKey, input.idempotencyKey))
+    .limit(1);
+  if (existing[0]) return existing[0];
+  const result = await db
+    .insert(adCreditPurchases)
+    .values({
+      storeId: input.storeId,
+      credits: input.credits,
+      amount: input.amount,
+      idempotencyKey: input.idempotencyKey,
+      externalReference: "pending",
+      status: "pending",
+    })
+    .returning({ id: adCreditPurchases.id });
+  const id = getInsertId(result);
+  const reference = `pediu-credits-${id}`;
+  await db
+    .update(adCreditPurchases)
+    .set({ externalReference: reference })
+    .where(eq(adCreditPurchases.id, id));
+  const rows = await db
+    .select()
+    .from(adCreditPurchases)
+    .where(eq(adCreditPurchases.id, id))
+    .limit(1);
+  if (!rows[0]) throw new Error("Não foi possível iniciar a compra de créditos.");
+  return rows[0];
+}
+
+export async function attachCreditPurchaseCharge(
+  purchaseId: number,
+  charge: { providerTransactionId: string; qrCode?: string; qrCodeBase64?: string },
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(adCreditPurchases)
+    .set({
+      providerTransactionId: charge.providerTransactionId,
+      qrCode: charge.qrCode ?? null,
+      qrCodeBase64: charge.qrCodeBase64 ?? null,
+    })
+    .where(eq(adCreditPurchases.id, purchaseId));
+}
+
+export async function getCreditPurchaseByProvider(providerTransactionId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select()
+    .from(adCreditPurchases)
+    .where(eq(adCreditPurchases.providerTransactionId, providerTransactionId))
+    .limit(1);
+  return rows[0];
+}
+
+export async function applyCreditPurchaseStatus(input: {
+  purchaseId: number;
+  status: "pending" | "paid" | "failed" | "cancelled";
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(adCreditPurchases)
+      .where(eq(adCreditPurchases.id, input.purchaseId))
+      .limit(1);
+    const purchase = rows[0];
+    if (!purchase) throw new Error("Compra de créditos não encontrada");
+    if (purchase.status === "paid") return purchase;
+    if (input.status !== "paid") {
+      await tx
+        .update(adCreditPurchases)
+        .set({ status: input.status })
+        .where(eq(adCreditPurchases.id, purchase.id));
+      return { ...purchase, status: input.status };
+    }
+    await tx
+      .insert(adCredits)
+      .values({ storeId: purchase.storeId })
+      .onConflictDoNothing({ target: adCredits.storeId });
+    await tx
+      .update(adCredits)
+      .set({
+        balance: sql`${adCredits.balance} + ${purchase.credits}`,
+        lifetimeGranted: sql`${adCredits.lifetimeGranted} + ${purchase.credits}`,
+      })
+      .where(eq(adCredits.storeId, purchase.storeId));
+    await tx
+      .update(adCreditPurchases)
+      .set({ status: "paid", paidAt: new Date() })
+      .where(eq(adCreditPurchases.id, purchase.id));
+    return { ...purchase, status: "paid" as const };
+  });
+}
+
+export async function setUsesCustomerApp(userId: number, enabled: boolean) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(users)
+    .set({ usesCustomerApp: enabled ? 1 : 0 })
+    .where(eq(users.id, userId));
+}
+
+export async function listAdsForReview(limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(generatedAds)
+    .where(eq(generatedAds.status, "review"))
+    .orderBy(desc(generatedAds.updatedAt))
+    .limit(limit);
+}
+
 export async function listGeneratedAdsForStore(
   storeId: number,
 ): Promise<GeneratedAd[]> {
@@ -1382,14 +1989,12 @@ export async function createGeneratedAdWithCredit(
       .where(
         sql`${adCredits.storeId} = ${input.storeId} AND ${adCredits.balance} >= ${creditCost}`,
       );
-    const affectedRows = Number(
-      (updatedCredit as { affectedRows?: number }).affectedRows ?? 0,
-    );
+    const affectedRows = getAffectedRows(updatedCredit);
     if (affectedRows !== 1)
       throw new Error("Você ficou sem créditos de criação de anúncio");
     const result = await tx
       .insert(generatedAds)
-      .values({ ...input, generationCost: creditCost });
+      .values({ ...input, generationCost: creditCost }).returning({ id: generatedAds.id });
     const adId = getInsertId(result);
     const rows = await tx
       .select()
@@ -1463,16 +2068,15 @@ export async function archiveGeneratedAd(
     .where(
       sql`${generatedAds.id} = ${adId} AND ${generatedAds.storeId} = ${storeId}`,
     );
-  const affectedRows = Number(
-    (result as { affectedRows?: number }).affectedRows ?? 0,
-  );
+  const affectedRows = getAffectedRows(result);
   if (affectedRows !== 1) throw new Error("Anúncio não encontrado");
 }
 
 export type MarketplaceProduct = Omit<
   Product,
-  "inventoryTracked" | "stockQuantity" | "reservedQuantity"
+  "inventoryTracked" | "stockQuantity" | "reservedQuantity" | "imageData"
 > & {
+  imageData: string | null;
   storeName: string;
   deliveryFee: string;
   adId: number | null;
@@ -1480,6 +2084,12 @@ export type MarketplaceProduct = Omit<
   adDescription: string | null;
   adOfferLabel: string | null;
   adImageKey: string | null;
+  adImageData: string | null;
+  storeKind: Store["kind"];
+  flashEnabled: number;
+  flashEtaMaxMinutes: number;
+  storeOpen: boolean;
+  nextOpenLabel: string | null;
 };
 
 export type MarketplaceSearchInput = {
@@ -1487,6 +2097,8 @@ export type MarketplaceSearchInput = {
   query?: string;
   minPrice?: number;
   maxPrice?: number;
+  flash?: boolean;
+  vertical?: Store["kind"];
   limit?: number;
   cursor?: string;
   offset?: number;
@@ -1501,9 +2113,9 @@ export async function searchAvailableProducts(
 }> {
   const db = await getDb();
   if (!db) return { items: [], hasMore: false, nextCursor: null };
+  const prices = ignoreEmptyPriceBand(input.minPrice, input.maxPrice);
   const filters = [
     eq(products.available, 1),
-    eq(stores.isOpen, 1),
     sql`(${products.inventoryTracked} = 0 OR ${products.stockQuantity} > ${products.reservedQuantity})`,
   ];
   if (input.category && input.category !== "Tudo")
@@ -1514,10 +2126,12 @@ export async function searchAvailableProducts(
       sql`(LOWER(${products.name}) LIKE ${pattern} OR LOWER(${products.category}) LIKE ${pattern} OR LOWER(${stores.name}) LIKE ${pattern})`,
     );
   }
-  if (input.minPrice !== undefined)
-    filters.push(sql`${products.price} >= ${input.minPrice.toFixed(2)}`);
-  if (input.maxPrice !== undefined)
-    filters.push(sql`${products.price} <= ${input.maxPrice.toFixed(2)}`);
+  if (prices.minPrice !== undefined)
+    filters.push(sql`${products.price} >= ${prices.minPrice.toFixed(2)}`);
+  if (prices.maxPrice !== undefined)
+    filters.push(sql`${products.price} <= ${prices.maxPrice.toFixed(2)}`);
+  if (input.flash) filters.push(eq(stores.flashEnabled, 1));
+  if (input.vertical) filters.push(eq(stores.kind, input.vertical));
   const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
   const filterKey = marketplaceFilterKey(input);
   const cursor = input.cursor ? decodeMarketplaceCursor(input.cursor) : null;
@@ -1530,7 +2144,7 @@ export async function searchAvailableProducts(
         ? and(
             isNull(generatedAds.id),
             or(
-              sql`${products.createdAt} < ${cursorCreatedAt}`,
+              sql`${products.createdAt} < ${cursorCreatedAt.toISOString()}`,
               and(
                 eq(products.createdAt, cursorCreatedAt),
                 sql`${products.id} < ${cursor.productId}`,
@@ -1543,7 +2157,7 @@ export async function searchAvailableProducts(
             and(
               eq(generatedAds.id, cursor.adId),
               or(
-                sql`${products.createdAt} < ${cursorCreatedAt}`,
+                sql`${products.createdAt} < ${cursorCreatedAt.toISOString()}`,
                 and(
                   eq(products.createdAt, cursorCreatedAt),
                   sql`${products.id} < ${cursor.productId}`,
@@ -1562,7 +2176,10 @@ export async function searchAvailableProducts(
       name: products.name,
       category: products.category,
       description: products.description,
+      imageData: products.imageData,
       price: products.price,
+      saleUnit: products.saleUnit,
+      packSize: products.packSize,
       available: products.available,
       createdAt: products.createdAt,
       storeName: stores.name,
@@ -1572,6 +2189,12 @@ export async function searchAvailableProducts(
       adDescription: generatedAds.description,
       adOfferLabel: generatedAds.offerLabel,
       adImageKey: generatedAds.imageKey,
+      adImageData: generatedAds.imageData,
+      storeKind: stores.kind,
+      flashEnabled: stores.flashEnabled,
+      flashEtaMaxMinutes: stores.flashEtaMaxMinutes,
+      storeIsOpen: stores.isOpen,
+      openingHours: stores.openingHours,
     })
     .from(products)
     .innerJoin(stores, eq(products.storeId, stores.id))
@@ -1587,7 +2210,19 @@ export async function searchAvailableProducts(
     .limit(limit + 1)
     .offset(cursor ? 0 : Math.max(input.offset ?? 0, 0));
 
-  const items = result.slice(0, limit);
+  const items = result.slice(0, limit).map((item) => {
+    const availability = resolveStoreAvailability({
+      isOpen: item.storeIsOpen,
+      openingHours: item.openingHours,
+    });
+    const { storeIsOpen: _storeIsOpen, openingHours: _openingHours, ...rest } =
+      item;
+    return {
+      ...rest,
+      storeOpen: availability.open,
+      nextOpenLabel: availability.nextOpenLabel,
+    };
+  });
   const hasMore = result.length > limit;
   const lastItem = items.at(-1);
   return {
@@ -1633,7 +2268,7 @@ export async function createProduct(input: InsertProduct): Promise<number> {
   if (input.inventoryTracked) {
     normalizeInventoryQuantity(input.stockQuantity ?? 0);
   }
-  const result = await db.insert(products).values(input);
+  const result = await db.insert(products).values(input).returning({ id: products.id });
   return getInsertId(result);
 }
 
@@ -1648,6 +2283,30 @@ export async function listProductsForStore(
     .where(eq(products.storeId, storeId))
     .orderBy(products.createdAt, products.id)
     .limit(200);
+}
+
+export async function updateStoreProduct(
+  storeId: number,
+  productId: number,
+  patch: {
+    name: string;
+    category: string;
+    description?: string | null;
+    price: string;
+    saleUnit?: Product["saleUnit"];
+    packSize?: string | null;
+    inventoryTracked: number;
+    stockQuantity: number;
+    imageData?: string | null;
+  },
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const updated = await db
+    .update(products)
+    .set(patch)
+    .where(and(eq(products.id, productId), eq(products.storeId, storeId)));
+  if (getAffectedRows(updated) !== 1) throw new Error("Produto não encontrado");
 }
 
 export async function updateProductAvailability(
@@ -1795,6 +2454,17 @@ async function adjustInventoryForOrder(
   }
 }
 
+export async function getProductById(productId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db
+    .select()
+    .from(products)
+    .where(eq(products.id, productId))
+    .limit(1);
+  return result[0];
+}
+
 export async function getProductForStore(productId: number, storeId: number) {
   const db = await getDb();
   if (!db) return undefined;
@@ -1862,7 +2532,7 @@ export async function getOrderForUser(orderId: number, userId: number) {
     .select()
     .from(orders)
     .where(
-      sql`${orders.id} = ${orderId} AND (${orders.customerId} = ${userId} OR ${orders.storeId} IN (SELECT id FROM pediu_stores WHERE ownerId = ${userId}) OR ${orders.id} IN (SELECT orderId FROM pediu_delivery_assignments WHERE courierId = ${userId}))`,
+      sql`${orders.id} = ${orderId} AND (${orders.customerId} = ${userId} OR ${orders.storeId} IN (SELECT id FROM pediu_stores WHERE "ownerId" = ${userId}) OR ${orders.id} IN (SELECT "orderId" FROM pediu_delivery_assignments WHERE "courierId" = ${userId}))`,
     )
     .limit(1);
   return result[0];
@@ -1977,7 +2647,7 @@ export async function createOrder(
   if (!db) throw new Error("Database not available");
   return db.transaction(async (tx) => {
     await reserveInventory(tx, items);
-    const result = await tx.insert(orders).values(input);
+    const result = await tx.insert(orders).values(input).returning({ id: orders.id });
     const orderId = getInsertId(result);
     if (items.length > 0)
       await tx
@@ -2004,13 +2674,13 @@ export async function createOrderWithPayment(
 
   return db.transaction(async (tx) => {
     await reserveInventory(tx, items);
-    const orderResult = await tx.insert(orders).values(input);
+    const orderResult = await tx.insert(orders).values(input).returning({ id: orders.id });
     const orderId = getInsertId(orderResult);
     const itemRows = items.map((item) => ({ ...item, orderId }));
     await tx.insert(orderItems).values(itemRows);
     const paymentResult = await tx
       .insert(payments)
-      .values({ orderId, method: paymentMethod, status: "pending" });
+      .values({ orderId, method: paymentMethod, status: "pending" }).returning({ id: payments.id });
     const paymentId = getInsertId(paymentResult);
     await tx.insert(deliveryEvents).values({ orderId, eventType: "Pendente" });
     return { orderId, paymentId };
@@ -2069,7 +2739,7 @@ export async function createOrderWithFiado(
     }
 
     await reserveInventory(tx, items);
-    const result = await tx.insert(orders).values(input);
+    const result = await tx.insert(orders).values(input).returning({ id: orders.id });
     const orderId = getInsertId(result);
     await tx
       .insert(orderItems)
@@ -2103,12 +2773,27 @@ export async function listOrdersForCustomer(
   customerId: number,
   limit = 50,
   offset = 0,
-): Promise<Order[]> {
+) {
   const db = await getDb();
   if (!db) return [];
   return db
-    .select()
+    .select({
+      id: orders.id,
+      customerId: orders.customerId,
+      storeId: orders.storeId,
+      storeName: stores.name,
+      status: orders.status,
+      total: orders.total,
+      cancelReason: orders.cancelReason,
+      deliveryCode: orders.deliveryCode,
+      changeFor: orders.changeFor,
+      deliveryAddress: orders.deliveryAddress,
+      fulfillmentMode: orders.fulfillmentMode,
+      createdAt: orders.createdAt,
+      updatedAt: orders.updatedAt,
+    })
     .from(orders)
+    .innerJoin(stores, eq(stores.id, orders.storeId))
     .where(eq(orders.customerId, customerId))
     .orderBy(desc(orders.updatedAt), desc(orders.id))
     .limit(Math.min(limit, 100))
@@ -2160,20 +2845,33 @@ export async function expireStaleInventoryReservations(
   const limit = Math.min(Math.max(input.limit ?? 100, 1), 500);
   const cutoff = inventoryReservationCutoff(now, ttlMs);
 
-  return db.transaction(async (tx) => {
+  const outcome = await db.transaction(async (tx) => {
     const staleOrders = await tx
-      .select({ id: orders.id })
+      .select({
+        id: orders.id,
+        customerId: orders.customerId,
+        storeId: orders.storeId,
+      })
       .from(orders)
       .where(and(eq(orders.status, "Pendente"), lte(orders.createdAt, cutoff)))
       .orderBy(orders.createdAt, orders.id)
       .limit(limit)
       .for("update");
     const expiredOrderIds: number[] = [];
+    const notices: Array<{
+      orderId: number;
+      customerId: number;
+      ownerId: number;
+    }> = [];
 
     for (const staleOrder of staleOrders) {
       const result = await tx
         .update(orders)
-        .set({ status: "Cancelado", updatedAt: now })
+        .set({
+          status: "Cancelado",
+          cancelReason: STORE_NEVER_ACCEPTED_REASON,
+          updatedAt: now,
+        })
         .where(
           and(eq(orders.id, staleOrder.id), eq(orders.status, "Pendente")),
         );
@@ -2194,10 +2892,46 @@ export async function expireStaleInventoryReservations(
         eventType: "Cancelado",
       });
       expiredOrderIds.push(staleOrder.id);
+      const owner = (
+        await tx
+          .select({ ownerId: stores.ownerId })
+          .from(stores)
+          .where(eq(stores.id, staleOrder.storeId))
+          .limit(1)
+      )[0];
+      if (owner) {
+        notices.push({
+          orderId: staleOrder.id,
+          customerId: staleOrder.customerId,
+          ownerId: owner.ownerId,
+        });
+      }
     }
 
-    return expiredOrderIds;
+    return { expiredOrderIds, notices };
   });
+
+  try {
+    const { sendPushToUser } = await import("./push");
+    for (const notice of outcome.notices) {
+      await sendPushToUser(
+        notice.customerId,
+        "Pedido cancelado",
+        STORE_NEVER_ACCEPTED_REASON,
+        { type: "order", orderId: notice.orderId },
+      );
+      await sendPushToUser(
+        notice.ownerId,
+        "Pedido cancelado",
+        `O pedido #${notice.orderId} foi cancelado porque a loja não aceitou a tempo.`,
+        { type: "order", orderId: notice.orderId, actionPath: "/seller/orders" },
+      );
+    }
+  } catch (error) {
+    console.warn("[Orders] Failed to notify about an expired order:", error);
+  }
+
+  return outcome.expiredOrderIds;
 }
 
 export async function createDeliveryEvent(
@@ -2205,7 +2939,7 @@ export async function createDeliveryEvent(
 ): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(deliveryEvents).values(input);
+  const result = await db.insert(deliveryEvents).values(input).returning({ id: deliveryEvents.id });
   return getInsertId(result);
 }
 
@@ -2254,7 +2988,7 @@ export async function upsertDeliveryAssignment(
       throw new Error("Atribuição de entrega não encontrada após atualização");
     return updated;
   }
-  const result = await db.insert(deliveryAssignments).values(input);
+  const result = await db.insert(deliveryAssignments).values(input).returning({ id: deliveryAssignments.id });
   const id = getInsertId(result);
   const created = await db
     .select()
@@ -2305,7 +3039,7 @@ export async function recordDeliveryLocation(
 
     let location: DeliveryLocation;
     try {
-      const result = await tx.insert(deliveryLocations).values(input);
+      const result = await tx.insert(deliveryLocations).values(input).returning({ id: deliveryLocations.id });
       const id = getInsertId(result);
       const created = await tx
         .select()
@@ -2401,10 +3135,11 @@ export async function updateDeliveryAssignmentStatus(
 
 export async function completeDelivery(
   orderId: number,
+  extra: { photo?: string; cashReceived?: boolean } = {},
 ): Promise<{ changed: boolean; status: Order["status"] }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  return db.transaction(async (tx) => {
+  const outcome = await db.transaction(async (tx) => {
     const result = await tx
       .update(orders)
       .set({ status: "Entregue", updatedAt: new Date() })
@@ -2419,6 +3154,73 @@ export async function completeDelivery(
       await tx
         .insert(deliveryEvents)
         .values({ orderId, eventType: "Entregue" });
+      const delivered = (
+        await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1)
+      )[0];
+      const assignment = (
+        await tx
+          .select()
+          .from(deliveryAssignments)
+          .where(eq(deliveryAssignments.orderId, orderId))
+          .limit(1)
+      )[0];
+      if (extra.photo && delivered) {
+        await tx
+          .update(orders)
+          .set({ deliveryPhoto: extra.photo })
+          .where(eq(orders.id, orderId));
+      }
+      const payment = (
+        await tx
+          .select()
+          .from(payments)
+          .where(eq(payments.orderId, orderId))
+          .limit(1)
+      )[0];
+      if (payment?.method === "cash" && extra.cashReceived) {
+        await tx
+          .update(payments)
+          .set({ status: "paid" })
+          .where(eq(payments.id, payment.id));
+      }
+      if (delivered) {
+        const existingSale = (
+          await tx
+            .select({ id: sales.id })
+            .from(sales)
+            .where(eq(sales.orderId, orderId))
+            .limit(1)
+        )[0];
+        if (!existingSale) {
+          await tx.insert(sales).values({
+            storeId: delivered.storeId,
+            customerId: delivered.customerId,
+            orderId,
+            total: delivered.total,
+            paymentMethod: payment?.method === "cash" ? "cash" : payment?.method === "fiado" ? "fiado" : "pix",
+            note: "Pedido entregue pelo aplicativo",
+          });
+        }
+        if (assignment) {
+          const existingEarning = (
+            await tx
+              .select({ id: courierEarnings.id })
+              .from(courierEarnings)
+              .where(eq(courierEarnings.orderId, orderId))
+              .limit(1)
+          )[0];
+          if (!existingEarning) {
+            await tx.insert(courierEarnings).values({
+              courierUserId: assignment.courierId,
+              orderId,
+              amount: courierEarning(
+                delivered.deliveryFeeSnapshot,
+                delivered.tipAmount,
+              ).toFixed(2),
+            });
+          }
+        }
+      }
       return { changed: true, status: "Entregue" as const };
     }
     const current = await tx
@@ -2430,6 +3232,180 @@ export async function completeDelivery(
       return { changed: false, status: "Entregue" as const };
     throw new Error("A entrega não está pronta para ser encerrada");
   });
+  if (outcome.changed) {
+    try {
+      await creditLoyaltyForDeliveredOrder(orderId);
+    } catch (error) {
+      console.warn(
+        "[Loyalty] Failed to credit points for delivered order:",
+        error,
+      );
+    }
+    try {
+      await settleTipForDeliveredOrder(orderId);
+    } catch (error) {
+      console.warn("[Tips] Failed to settle tip for delivered order:", error);
+    }
+  }
+  return outcome;
+}
+
+async function listNearbyCouriers(
+  tx: DatabaseTransaction,
+  orderId: number,
+  storeId: number,
+) {
+  const store = (
+    await tx.select().from(stores).where(eq(stores.id, storeId)).limit(1)
+  )[0];
+  const order = (
+    await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1)
+  )[0];
+  if (!store?.latitude || !store.longitude || !order) return [];
+  const storePoint = {
+    latitude: Number(store.latitude),
+    longitude: Number(store.longitude),
+  };
+  const drop =
+    order.destinationLatitude && order.destinationLongitude
+      ? {
+          latitude: Number(order.destinationLatitude),
+          longitude: Number(order.destinationLongitude),
+        }
+      : null;
+  const profiles = await tx
+    .select({
+      userId: courierProfiles.userId,
+      lastLatitude: courierProfiles.lastLatitude,
+      lastLongitude: courierProfiles.lastLongitude,
+    })
+    .from(courierProfiles)
+    .where(
+      and(
+        eq(courierProfiles.status, "approved"),
+        eq(courierProfiles.availability, "available"),
+      ),
+    );
+  const offered = await tx
+    .select({
+      courierUserId: deliveryOffers.courierUserId,
+      status: deliveryOffers.status,
+      expiresAt: deliveryOffers.expiresAt,
+    })
+    .from(deliveryOffers)
+    .where(eq(deliveryOffers.orderId, orderId));
+  const now = new Date();
+  const seen = new Set(
+    offered
+      .filter((row) =>
+        offerStillBlocksCourier(row.status, row.expiresAt, now),
+      )
+      .map((row) => row.courierUserId),
+  );
+  const payout = courierEarning(order.deliveryFeeSnapshot, order.tipAmount).toFixed(2);
+  const dropoff = drop ? haversineKm(storePoint, drop) : null;
+  return profiles
+    .flatMap((profile) => {
+      if (seen.has(profile.userId) || !profile.lastLatitude || !profile.lastLongitude)
+        return [];
+      const pickup = haversineKm(
+        {
+          latitude: Number(profile.lastLatitude),
+          longitude: Number(profile.lastLongitude),
+        },
+        storePoint,
+      );
+      if (pickup > NEARBY_COURIER_RADIUS_KM) return [];
+      return [
+        {
+          courierUserId: profile.userId,
+          payoutAmount: payout,
+          pickupDistanceKm: pickup.toFixed(2),
+          dropoffDistanceKm: dropoff == null ? undefined : dropoff.toFixed(2),
+          pickupKm: pickup,
+        },
+      ];
+    })
+    .sort((a, b) => a.pickupKm - b.pickupKm);
+}
+
+async function upsertCourierOffer(
+  tx: DatabaseTransaction,
+  input: {
+    orderId: number;
+    storeId: number;
+    courierUserId: number;
+    idempotencyKey: string;
+    expiresAt: Date;
+    now: Date;
+    payoutAmount?: string | null;
+    pickupDistanceKm?: string | null;
+    dropoffDistanceKm?: string | null;
+    message: string;
+  },
+): Promise<"live" | "accepted" | "revived" | "created"> {
+  const existing = (
+    await tx
+      .select()
+      .from(deliveryOffers)
+      .where(eq(deliveryOffers.idempotencyKey, input.idempotencyKey))
+      .limit(1)
+  )[0];
+  const others = await tx
+    .select({
+      id: deliveryOffers.id,
+      status: deliveryOffers.status,
+      expiresAt: deliveryOffers.expiresAt,
+    })
+    .from(deliveryOffers)
+    .where(
+      and(
+        eq(deliveryOffers.orderId, input.orderId),
+        eq(deliveryOffers.courierUserId, input.courierUserId),
+      ),
+    );
+  const blocking = others.filter(
+    (row) =>
+      row.id !== existing?.id &&
+      offerStillBlocksCourier(row.status, row.expiresAt, input.now),
+  );
+  if (blocking.some((row) => row.status === "accepted")) return "accepted";
+  if (existing?.status === "accepted") return "accepted";
+  if (blocking.length > 0) return "live";
+  if (
+    existing &&
+    offerStillBlocksCourier(existing.status, existing.expiresAt, input.now)
+  ) {
+    return "live";
+  }
+  if (existing) {
+    await tx
+      .update(deliveryOffers)
+      .set({
+        status: "pending",
+        expiresAt: input.expiresAt,
+        respondedAt: null,
+        payoutAmount: input.payoutAmount ?? existing.payoutAmount,
+        pickupDistanceKm: input.pickupDistanceKm ?? existing.pickupDistanceKm,
+        dropoffDistanceKm: input.dropoffDistanceKm ?? existing.dropoffDistanceKm,
+        message: input.message,
+      })
+      .where(eq(deliveryOffers.id, existing.id));
+    return "revived";
+  }
+  await tx.insert(deliveryOffers).values({
+    orderId: input.orderId,
+    storeId: input.storeId,
+    courierUserId: input.courierUserId,
+    payoutAmount: input.payoutAmount,
+    pickupDistanceKm: input.pickupDistanceKm,
+    dropoffDistanceKm: input.dropoffDistanceKm,
+    message: input.message,
+    idempotencyKey: input.idempotencyKey,
+    expiresAt: input.expiresAt,
+    status: "pending",
+  });
+  return "created";
 }
 
 async function reofferDeliveryWithinTransaction(
@@ -2439,6 +3415,7 @@ async function reofferDeliveryWithinTransaction(
     storeId: number;
     now: Date;
     ttlMs: number;
+    excludeCourierUserId?: number;
   },
 ): Promise<DeliveryOffer | undefined> {
   const order = (
@@ -2471,6 +3448,7 @@ async function reofferDeliveryWithinTransaction(
         and(
           eq(deliveryOffers.orderId, input.orderId),
           eq(deliveryOffers.status, "pending"),
+          gt(deliveryOffers.expiresAt, input.now),
         ),
       )
       .limit(1)
@@ -2496,6 +3474,9 @@ async function reofferDeliveryWithinTransaction(
           eq(storeCouriers.status, "active"),
           eq(courierProfiles.status, "approved"),
           eq(courierProfiles.availability, "available"),
+          input.excludeCourierUserId
+            ? sql`${storeCouriers.courierUserId} <> ${input.excludeCourierUserId}`
+            : sql`1 = 1`,
           notExists(
             tx
               .select({ id: deliveryOffers.id })
@@ -2504,6 +3485,13 @@ async function reofferDeliveryWithinTransaction(
                 and(
                   eq(deliveryOffers.orderId, input.orderId),
                   eq(deliveryOffers.courierUserId, storeCouriers.courierUserId),
+                  or(
+                    eq(deliveryOffers.status, "accepted"),
+                    and(
+                      eq(deliveryOffers.status, "pending"),
+                      gt(deliveryOffers.expiresAt, input.now),
+                    ),
+                  ),
                 ),
               ),
           ),
@@ -2513,30 +3501,38 @@ async function reofferDeliveryWithinTransaction(
       .for("update")
       .limit(1)
   )[0];
-  if (!candidate) return undefined;
-
-  const idempotencyKey = dispatchReofferKey(
-    input.orderId,
-    candidate.courierUserId,
+  const nearbyMatches = candidate
+    ? []
+    : await listNearbyCouriers(tx, input.orderId, input.storeId);
+  const nearby = nearbyMatches.find(
+    (match) => match.courierUserId !== input.excludeCourierUserId,
   );
-  const result = await tx.insert(deliveryOffers).values({
+  const courierUserId = candidate?.courierUserId ?? nearby?.courierUserId;
+  if (!courierUserId || courierUserId === input.excludeCourierUserId) return undefined;
+
+  const idempotencyKey = dispatchReofferKey(input.orderId, courierUserId);
+  const expiresAt = dispatchOfferExpiresAt(input.now, input.ttlMs);
+  const outcome = await upsertCourierOffer(tx, {
     orderId: input.orderId,
     storeId: input.storeId,
-    courierUserId: candidate.courierUserId,
-    etaMinutes: undefined,
-    message: "Nova oferta de entrega disponível",
+    courierUserId,
     idempotencyKey,
-    expiresAt: dispatchOfferExpiresAt(input.now, input.ttlMs),
-    status: "pending",
+    expiresAt,
+    now: input.now,
+    payoutAmount: nearby?.payoutAmount,
+    pickupDistanceKm: nearby?.pickupDistanceKm,
+    dropoffDistanceKm: nearby?.dropoffDistanceKm,
+    message: "Nova oferta de entrega disponível",
   });
-  const id = getInsertId(result);
-  const created = await tx
-    .select()
-    .from(deliveryOffers)
-    .where(eq(deliveryOffers.id, id))
-    .limit(1);
-  if (!created[0]) throw new Error("Reoferta não encontrada após criação");
-  return created[0];
+  if (outcome === "accepted") return undefined;
+  const created = (
+    await tx
+      .select()
+      .from(deliveryOffers)
+      .where(eq(deliveryOffers.idempotencyKey, idempotencyKey))
+      .limit(1)
+  )[0];
+  return created;
 }
 
 export async function createDeliveryOffer(input: {
@@ -2611,6 +3607,24 @@ export async function createDeliveryOffer(input: {
     )[0];
     if (assignment)
       throw new Error("O pedido já possui uma atribuição de entrega");
+    const storePoint =
+      store.latitude != null && store.longitude != null
+        ? { latitude: Number(store.latitude), longitude: Number(store.longitude) }
+        : null;
+    const courierPoint =
+      profile.lastLatitude != null && profile.lastLongitude != null
+        ? {
+            latitude: Number(profile.lastLatitude),
+            longitude: Number(profile.lastLongitude),
+          }
+        : null;
+    const destinationPoint =
+      order.destinationLatitude != null && order.destinationLongitude != null
+        ? {
+            latitude: Number(order.destinationLatitude),
+            longitude: Number(order.destinationLongitude),
+          }
+        : null;
     const result = await tx.insert(deliveryOffers).values({
       orderId: input.orderId,
       storeId: store.id,
@@ -2620,7 +3634,16 @@ export async function createDeliveryOffer(input: {
       idempotencyKey: input.idempotencyKey,
       expiresAt: input.expiresAt,
       status: "pending",
-    });
+      payoutAmount: courierEarning(order.deliveryFeeSnapshot, order.tipAmount).toFixed(2),
+      pickupDistanceKm:
+        storePoint && courierPoint
+          ? haversineKm(courierPoint, storePoint).toFixed(2)
+          : null,
+      dropoffDistanceKm:
+        storePoint && destinationPoint
+          ? haversineKm(storePoint, destinationPoint).toFixed(2)
+          : null,
+    }).returning({ id: deliveryOffers.id });
     const id = getInsertId(result);
     const created = await tx
       .select()
@@ -2629,6 +3652,299 @@ export async function createDeliveryOffer(input: {
       .limit(1);
     if (!created[0]) throw new Error("Oferta não encontrada após criação");
     return created[0];
+  });
+}
+
+export async function dispatchNearbyOffers(ownerId: number, orderId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const store = (
+      await tx.select().from(stores).where(eq(stores.ownerId, ownerId)).limit(1)
+    )[0];
+    if (!store) throw new Error("Loja não encontrada");
+    if (!store.latitude || !store.longitude)
+      throw new Error("Marque o ponto da loja no mapa antes de chamar um motoboy.");
+    const order = (
+      await tx
+        .select()
+        .from(orders)
+        .where(and(eq(orders.id, orderId), eq(orders.storeId, store.id)))
+        .limit(1)
+    )[0];
+    if (!order || order.status !== "Pronto")
+      throw new Error("O pedido precisa estar pronto para chamar um motoboy.");
+    if (order.fulfillmentMode === "pickup")
+      throw new Error("Pedidos de retirada não passam pelo entregador.");
+    const assignment = (
+      await tx
+        .select({ id: deliveryAssignments.id })
+        .from(deliveryAssignments)
+        .where(eq(deliveryAssignments.orderId, orderId))
+        .limit(1)
+    )[0];
+    if (assignment) throw new Error("Este pedido já tem um motoboy.");
+    const nearby = await listNearbyCouriers(tx, orderId, store.id);
+    const created: number[] = [];
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + CITY_OFFER_TTL_MS);
+    for (const courier of nearby) {
+      const outcome = await upsertCourierOffer(tx, {
+        orderId,
+        storeId: store.id,
+        courierUserId: courier.courierUserId,
+        idempotencyKey: `nearby-${orderId}-${courier.courierUserId}`,
+        expiresAt,
+        now,
+        payoutAmount: courier.payoutAmount,
+        pickupDistanceKm: courier.pickupDistanceKm,
+        dropoffDistanceKm: courier.dropoffDistanceKm,
+        message: "Corrida perto de você",
+      });
+      if (outcome === "accepted") continue;
+      created.push(courier.courierUserId);
+    }
+    return { courierUserIds: created };
+  });
+}
+
+export async function markCourierArrival(orderId: number, courierUserId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db
+    .update(deliveryAssignments)
+    .set({ status: "arrived", updatedAt: new Date() })
+    .where(
+      and(
+        eq(deliveryAssignments.orderId, orderId),
+        eq(deliveryAssignments.courierId, courierUserId),
+        eq(deliveryAssignments.status, "assigned"),
+      ),
+    );
+  if (getAffectedRows(result) !== 1)
+    throw new Error("Não foi possível marcar a chegada na loja.");
+  return { status: "arrived" as const };
+}
+
+export async function markCourierPickup(orderId: number, courierUserId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const assignment = (
+      await tx
+        .select()
+        .from(deliveryAssignments)
+        .where(
+          and(
+            eq(deliveryAssignments.orderId, orderId),
+            eq(deliveryAssignments.courierId, courierUserId),
+          ),
+        )
+        .limit(1)
+    )[0];
+    if (!assignment || !["assigned", "arrived"].includes(assignment.status))
+      throw new Error("Retire o pedido só depois de aceitar a corrida.");
+    await tx
+      .update(deliveryAssignments)
+      .set({ status: "in_transit", updatedAt: new Date() })
+      .where(eq(deliveryAssignments.id, assignment.id));
+    const updated = await tx
+      .update(orders)
+      .set({ status: "A caminho", updatedAt: new Date() })
+      .where(and(eq(orders.id, orderId), eq(orders.status, "Pronto")));
+    if (getAffectedRows(updated) === 1) {
+      await tx.insert(deliveryEvents).values({ orderId, eventType: "A caminho" });
+    }
+    return { status: "A caminho" as const };
+  });
+}
+
+export async function listCourierEarnings(courierUserId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(courierEarnings)
+    .where(eq(courierEarnings.courierUserId, courierUserId))
+    .orderBy(desc(courierEarnings.createdAt))
+    .limit(30);
+}
+
+export async function replaceProductOptions(
+  productId: number,
+  groups: Array<{
+    name: string;
+    required: boolean;
+    choices: Array<{ name: string; priceDelta: string }>;
+  }>,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.transaction(async (tx) => {
+    const existing = await tx
+      .select({ id: productOptionGroups.id })
+      .from(productOptionGroups)
+      .where(eq(productOptionGroups.productId, productId));
+    if (existing.length) {
+      await tx
+        .delete(productOptionGroups)
+        .where(eq(productOptionGroups.productId, productId));
+    }
+    for (const group of groups) {
+      const inserted = await tx
+        .insert(productOptionGroups)
+        .values({
+          productId,
+          name: group.name,
+          required: group.required ? 1 : 0,
+        })
+        .returning({ id: productOptionGroups.id });
+      const groupId = inserted[0]?.id;
+      if (!groupId) continue;
+      if (group.choices.length) {
+        await tx.insert(productOptions).values(
+          group.choices.map((choice) => ({
+            groupId,
+            name: choice.name,
+            priceDelta: choice.priceDelta,
+          })),
+        );
+      }
+    }
+  });
+}
+
+export async function listProductOptions(productId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const groups = await db
+    .select()
+    .from(productOptionGroups)
+    .where(eq(productOptionGroups.productId, productId));
+  if (!groups.length) return [];
+  const choices = await db
+    .select()
+    .from(productOptions)
+    .where(
+      inArray(
+        productOptions.groupId,
+        groups.map((group) => group.id),
+      ),
+    );
+  return groups.map((group) => ({
+    ...group,
+    choices: choices.filter((choice) => choice.groupId === group.id),
+  }));
+}
+
+function isMissingRelation(error: unknown) {
+  const queue: unknown[] = [error];
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current || typeof current !== "object") continue;
+    const record = current as { code?: string; cause?: unknown };
+    if (record.code === "42P01") return true;
+    if (record.cause) queue.push(record.cause);
+  }
+  return false;
+}
+
+export async function getStoreTourDone(userId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    const row = (
+      await db
+        .select({ storeTourDone: accountPrefs.storeTourDone })
+        .from(accountPrefs)
+        .where(eq(accountPrefs.userId, userId))
+        .limit(1)
+    )[0];
+    return row?.storeTourDone === 1;
+  } catch (error) {
+    if (isMissingRelation(error)) return false;
+    throw error;
+  }
+}
+
+export async function setStoreTourDone(userId: number) {
+  const db = await getDb();
+  if (!db) return;
+  try {
+    await db
+      .insert(accountPrefs)
+      .values({ userId, storeTourDone: 1, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: accountPrefs.userId,
+        set: { storeTourDone: 1, updatedAt: new Date() },
+      });
+  } catch (error) {
+    if (isMissingRelation(error)) return;
+    throw error;
+  }
+}
+
+export type StoreOrderLine = {
+  productId: number;
+  name: string;
+  quantity: number;
+  unitPrice: string;
+  note: string | null;
+};
+
+export async function enrichOrdersForStore<
+  T extends { id: number; customerId: number },
+>(rows: T[]) {
+  const empty = rows.map((order) => ({
+    ...order,
+    lines: [] as StoreOrderLine[],
+    customerName: null as string | null,
+    paymentMethod: null as string | null,
+    paymentLabel: paymentMethodLabel(null),
+  }));
+  const db = await getDb();
+  if (!db || rows.length === 0) return empty;
+  const orderIds = rows.map((order) => order.id);
+  const customerIds = [...new Set(rows.map((order) => order.customerId))];
+  const lines = await db
+    .select({
+      orderId: orderItems.orderId,
+      productId: orderItems.productId,
+      quantity: orderItems.quantity,
+      unitPrice: orderItems.unitPrice,
+      note: orderItems.note,
+      name: products.name,
+    })
+    .from(orderItems)
+    .innerJoin(products, eq(products.id, orderItems.productId))
+    .where(inArray(orderItems.orderId, orderIds));
+  const names = await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(inArray(users.id, customerIds));
+  const pays = await db
+    .select({ orderId: payments.orderId, method: payments.method })
+    .from(payments)
+    .where(inArray(payments.orderId, orderIds));
+  const nameById = new Map(names.map((row) => [row.id, row.name]));
+  const payByOrder = new Map(pays.map((row) => [row.orderId, row.method]));
+  return rows.map((order) => {
+    const method = payByOrder.get(order.id) ?? null;
+    return {
+      ...order,
+      lines: lines
+        .filter((line) => line.orderId === order.id)
+        .map((line) => ({
+          productId: line.productId,
+          name: line.name,
+          quantity: line.quantity,
+          unitPrice: line.unitPrice,
+          note: line.note,
+        })),
+      customerName: nameById.get(order.customerId) ?? null,
+      paymentMethod: method,
+      paymentLabel: paymentMethodLabel(method),
+    };
   });
 }
 
@@ -2710,12 +4026,22 @@ export async function listPendingDeliveryOffers(courierUserId: number) {
       storeId: deliveryOffers.storeId,
       status: deliveryOffers.status,
       etaMinutes: deliveryOffers.etaMinutes,
+      payoutAmount: deliveryOffers.payoutAmount,
+      pickupDistanceKm: deliveryOffers.pickupDistanceKm,
+      dropoffDistanceKm: deliveryOffers.dropoffDistanceKm,
       message: deliveryOffers.message,
       expiresAt: deliveryOffers.expiresAt,
       createdAt: deliveryOffers.createdAt,
       storeName: stores.name,
+      storeKind: stores.kind,
+      storeLatitude: stores.latitude,
+      storeLongitude: stores.longitude,
       deliveryAddress: orders.deliveryAddress,
-      total: orders.total,
+      destinationLatitude: orders.destinationLatitude,
+      destinationLongitude: orders.destinationLongitude,
+      isFlash: orders.isFlash,
+      deliveryFee: orders.deliveryFeeSnapshot,
+      tipAmount: orders.tipAmount,
     })
     .from(deliveryOffers)
     .innerJoin(stores, eq(stores.id, deliveryOffers.storeId))
@@ -2782,6 +4108,7 @@ export async function respondToDeliveryOffer(input: {
         storeId: offer.storeId,
         now: new Date(),
         ttlMs: DEFAULT_DISPATCH_OFFER_TTL_MS,
+        excludeCourierUserId: input.courierUserId,
       });
       return { offer: rejected, ...(reoffer ? { reoffer } : {}) };
     }
@@ -2832,7 +4159,7 @@ export async function respondToDeliveryOffer(input: {
       courierPhone: profile.phone,
       etaMinutes: offer.etaMinutes,
       status: "assigned",
-    });
+    }).returning({ id: deliveryAssignments.id });
     const assignmentId = getInsertId(assignmentResult);
     await tx
       .update(deliveryOffers)
@@ -2883,6 +4210,8 @@ export async function listActiveDeliveriesForCourier(courierUserId: number) {
         name: stores.name,
         phone: stores.phone,
         address: stores.address,
+        latitude: stores.latitude,
+        longitude: stores.longitude,
       },
     })
     .from(deliveryAssignments)
@@ -2891,7 +4220,11 @@ export async function listActiveDeliveriesForCourier(courierUserId: number) {
     .where(
       and(
         eq(deliveryAssignments.courierId, courierUserId),
-        inArray(deliveryAssignments.status, ["assigned", "in_transit"]),
+        inArray(deliveryAssignments.status, [
+          "assigned",
+          "arrived",
+          "in_transit",
+        ]),
       ),
     )
     .orderBy(desc(deliveryAssignments.updatedAt))
@@ -2933,7 +4266,7 @@ export async function createChatMessage(
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   try {
-    const result = await db.insert(chatMessages).values(input);
+    const result = await db.insert(chatMessages).values(input).returning({ id: chatMessages.id });
     return { id: getInsertId(result), duplicate: false };
   } catch (error) {
     const existing = input.idempotencyKey
@@ -3012,7 +4345,7 @@ export async function createPendingPixPayment(
     status: "pending",
     pixKey,
     transactionId,
-  });
+  }).returning({ id: payments.id });
   return getInsertId(result);
 }
 
@@ -3108,7 +4441,7 @@ export async function createMercadoPagoPaymentTransaction(input: {
         qrCode: input.qrCode,
         qrCodeBase64: input.qrCodeBase64,
         ticketUrl: input.ticketUrl,
-      });
+      }).returning({ id: paymentTransactions.id });
       const transactionId = getInsertId(result);
       await tx
         .update(payments)
@@ -3171,7 +4504,7 @@ export async function createOrderPayment(
   if (!db) throw new Error("Database not available");
   const result = await db
     .insert(payments)
-    .values({ orderId, method, status: "pending" });
+    .values({ orderId, method, status: "pending" }).returning({ id: payments.id });
   return getInsertId(result);
 }
 
@@ -3193,7 +4526,7 @@ export async function getPaymentForUser(
     .from(payments)
     .innerJoin(orders, eq(payments.orderId, orders.id))
     .where(
-      sql`${payments.id} = ${paymentId} AND (${orders.customerId} = ${userId} OR ${orders.storeId} IN (SELECT id FROM pediu_stores WHERE ownerId = ${userId}))`,
+      sql`${payments.id} = ${paymentId} AND (${orders.customerId} = ${userId} OR ${orders.storeId} IN (SELECT id FROM pediu_stores WHERE "ownerId" = ${userId}))`,
     )
     .limit(1);
   const payment = result[0]?.payment;
@@ -3311,7 +4644,7 @@ export async function applyPaymentWebhook(input: {
           providerEventId: input.providerEventId,
           eventType: input.eventType,
           status: "received",
-        });
+        }).returning({ id: webhookEvents.id });
         const eventId = getInsertId(result);
         const rows = await tx
           .select()
@@ -3385,25 +4718,44 @@ export async function applyPaymentWebhook(input: {
         const providerTransactionId =
           input.transactionId ?? payment.transactionId ?? null;
         const transactionIdempotencyKey = `webhook:${input.provider}:${input.providerEventId}`;
-        await tx
-          .insert(paymentTransactions)
-          .values({
-            paymentId: payment.id,
-            provider: input.provider,
-            providerTransactionId,
-            status: "paid",
-            amount: order.total,
-            currency,
-            idempotencyKey: transactionIdempotencyKey,
-          })
-          .onDuplicateKeyUpdate({
-            set: {
-              paymentId: payment.id,
-              status: "paid",
-              amount: order.total,
-              currency,
-            },
-          });
+        const paidTransaction = {
+          paymentId: payment.id,
+          provider: input.provider,
+          providerTransactionId,
+          status: "paid" as const,
+          amount: order.total,
+          currency,
+          idempotencyKey: transactionIdempotencyKey,
+        };
+        const paidTransactionUpdate = {
+          paymentId: payment.id,
+          status: "paid" as const,
+          amount: order.total,
+          currency,
+        };
+        if (providerTransactionId) {
+          await tx
+            .insert(paymentTransactions)
+            .values(paidTransaction)
+            .onConflictDoUpdate({
+              target: [
+                paymentTransactions.provider,
+                paymentTransactions.providerTransactionId,
+              ],
+              set: paidTransactionUpdate,
+            });
+        } else {
+          await tx
+            .insert(paymentTransactions)
+            .values(paidTransaction)
+            .onConflictDoUpdate({
+              target: [
+                paymentTransactions.provider,
+                paymentTransactions.idempotencyKey,
+              ],
+              set: paidTransactionUpdate,
+            });
+        }
 
         const commissionRows = await tx
           .select()
@@ -3595,7 +4947,7 @@ export async function createPaymentRefund(
         amount: formatCents(amountCents),
         currency: "BRL",
         reason: input.reason,
-      });
+      }).returning({ id: refunds.id });
       const refundId = getInsertId(result);
       const created = await tx
         .select()
@@ -3716,7 +5068,7 @@ export async function reconcilePaymentRecords(input: {
         periodStart: input.periodStart,
         periodEnd: input.periodEnd,
         status: "running",
-      });
+      }).returning({ id: paymentReconciliationRuns.id });
       const runId = getInsertId(result);
       const [created] = await tx
         .select()
@@ -3815,8 +5167,8 @@ export async function reconcilePaymentRecords(input: {
       .where(
         and(
           eq(paymentTransactions.provider, input.provider),
-          sql`${paymentTransactions.createdAt} >= ${input.periodStart}`,
-          sql`${paymentTransactions.createdAt} <= ${input.periodEnd}`,
+          gte(paymentTransactions.createdAt, input.periodStart),
+          lte(paymentTransactions.createdAt, input.periodEnd),
         ),
       )
       .limit(500);
@@ -3915,7 +5267,7 @@ export async function listCustomersForStore(
 export async function createCustomer(input: InsertCustomer): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(customers).values(input);
+  const result = await db.insert(customers).values(input).returning({ id: customers.id });
   return getInsertId(result);
 }
 
@@ -3965,7 +5317,7 @@ export async function createLedgerEntry(
 
     const result = await tx
       .insert(ledgerEntries)
-      .values({ ...input, balanceAfter: newBalance.toFixed(2) });
+      .values({ ...input, balanceAfter: newBalance.toFixed(2) }).returning({ id: ledgerEntries.id });
     await tx
       .update(customers)
       .set({ balance: newBalance.toFixed(2) })
@@ -3990,7 +5342,7 @@ export async function listSalesForStore(storeId: number): Promise<Sale[]> {
 export async function createSale(input: InsertSale): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(sales).values(input);
+  const result = await db.insert(sales).values(input).returning({ id: sales.id });
   return getInsertId(result);
 }
 
@@ -4000,7 +5352,8 @@ export async function registerPushToken(input: InsertPushToken): Promise<void> {
   await db
     .insert(pushTokens)
     .values(input)
-    .onDuplicateKeyUpdate({
+    .onConflictDoUpdate({
+      target: pushTokens.token,
       set: { userId: input.userId, platform: input.platform },
     });
 }
@@ -4018,7 +5371,7 @@ export async function createNotification(
 ): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(notifications).values(input);
+  const result = await db.insert(notifications).values(input).returning({ id: notifications.id });
   return getInsertId(result);
 }
 
@@ -4031,13 +5384,13 @@ export async function createNotificationWithOutbox(input: {
   return db.transaction(async (tx) => {
     const notificationResult = await tx
       .insert(notifications)
-      .values(input.notification);
+      .values(input.notification).returning({ id: notifications.id });
     const notificationId = getInsertId(notificationResult);
     const outboxResult = await tx.insert(notificationOutbox).values({
       notificationId,
       userId: input.notification.userId,
       payload: input.payload,
-    });
+    }).returning({ id: notificationOutbox.id });
     return { notificationId, outboxId: getInsertId(outboxResult) };
   });
 }
@@ -4049,7 +5402,7 @@ export async function enqueueNotificationOutbox(input: {
 }): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(notificationOutbox).values(input);
+  const result = await db.insert(notificationOutbox).values(input).returning({ id: notificationOutbox.id });
   return getInsertId(result);
 }
 
@@ -4213,7 +5566,7 @@ export async function getNotificationPreferences(
   await db
     .insert(notificationPreferences)
     .values({ userId })
-    .onDuplicateKeyUpdate({ set: { userId } });
+    .onConflictDoNothing({ target: notificationPreferences.userId });
   const created = await db
     .select()
     .from(notificationPreferences)
@@ -4248,4 +5601,367 @@ export async function updateNotificationPreferences(
   if (!updated[0])
     throw new Error("Notification preferences not found after update");
   return updated[0];
+}
+
+export async function ensureLoyaltyAccount(
+  userId: number,
+): Promise<LoyaltyAccount> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await db
+    .select()
+    .from(loyaltyAccounts)
+    .where(eq(loyaltyAccounts.userId, userId))
+    .limit(1);
+  if (existing[0]) return existing[0];
+  await db
+    .insert(loyaltyAccounts)
+    .values({ userId })
+    .onConflictDoUpdate({
+      target: loyaltyAccounts.userId,
+      set: { userId },
+    });
+  const created = await db
+    .select()
+    .from(loyaltyAccounts)
+    .where(eq(loyaltyAccounts.userId, userId))
+    .limit(1);
+  if (!created[0]) throw new Error("Conta de fidelidade não encontrada");
+  return created[0];
+}
+
+export async function getLoyaltySummary(userId: number) {
+  const account = await ensureLoyaltyAccount(userId);
+  const next = pointsToNextTier(account.lifetimePoints);
+  return {
+    points: account.points,
+    lifetimePoints: account.lifetimePoints,
+    tier: account.tier as LoyaltyTier,
+    tierLabel: LOYALTY_TIER_LABELS[account.tier as LoyaltyTier],
+    progress: progressToNextTier(account.lifetimePoints),
+    nextTier: next.nextTier,
+    nextTierLabel: next.nextTier ? LOYALTY_TIER_LABELS[next.nextTier] : null,
+    pointsToNextTier: next.pointsNeeded,
+    redeemBlockPoints: 100,
+    redeemCreditBrl: "5.00",
+  };
+}
+
+export async function listLoyaltyHistory(
+  userId: number,
+  limit = 50,
+  offset = 0,
+): Promise<LoyaltyLedgerEntry[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(loyaltyLedger)
+    .where(eq(loyaltyLedger.userId, userId))
+    .orderBy(desc(loyaltyLedger.createdAt), desc(loyaltyLedger.id))
+    .limit(Math.min(limit, 100))
+    .offset(Math.max(offset, 0));
+}
+
+export async function redeemLoyaltyPoints(
+  userId: number,
+  blocks = 1,
+  idempotencyKey: string,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const duplicateResult = (existing: LoyaltyLedgerEntry, balance: number) => ({
+    duplicate: true as const,
+    pointsSpent: existing.points,
+    creditAmount: ((existing.points / 100) * 5).toFixed(2),
+    couponCode: existing.note?.replace("coupon:", "") ?? null,
+    balance,
+  });
+
+  try {
+    return await db.transaction(async (tx) => {
+      // Upsert locks the unique user key; FOR UPDATE serializes concurrent
+      // redemptions against the same balance.
+      await tx
+        .insert(loyaltyAccounts)
+        .values({ userId })
+        .onConflictDoUpdate({
+          target: loyaltyAccounts.userId,
+          set: { userId },
+        });
+      const account = (
+        await tx
+          .select()
+          .from(loyaltyAccounts)
+          .where(eq(loyaltyAccounts.userId, userId))
+          .for("update")
+          .limit(1)
+      )[0];
+      if (!account) throw new Error("Conta de fidelidade não encontrada");
+
+      const existing = (
+        await tx
+          .select()
+          .from(loyaltyLedger)
+          .where(eq(loyaltyLedger.idempotencyKey, idempotencyKey))
+          .for("update")
+          .limit(1)
+      )[0];
+      if (existing) {
+        if (existing.userId !== userId)
+          throw new Error("Chave de idempotência já usada por outro usuário");
+        return duplicateResult(existing, account.points);
+      }
+
+      const plan = planLoyaltyRedeem(account.points, blocks);
+      if (!plan.ok) throw new Error(plan.reason);
+      const couponCode = `CLUBE${userId}${crypto
+        .randomBytes(12)
+        .toString("hex")}`.slice(0, 40);
+      await tx.insert(coupons).values({
+        code: couponCode,
+        type: "fixed",
+        value: plan.creditAmount,
+        minSubtotal: "0.00",
+        maxDiscount: plan.creditAmount,
+        active: 1,
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60_000),
+      });
+
+      const newPoints = account.points - plan.pointsSpent;
+      await tx
+        .update(loyaltyAccounts)
+        .set({ points: newPoints, updatedAt: new Date() })
+        .where(eq(loyaltyAccounts.id, account.id));
+      await tx.insert(loyaltyLedger).values({
+        accountId: account.id,
+        userId,
+        direction: "debit",
+        points: plan.pointsSpent,
+        reason: "redeem",
+        note: `coupon:${couponCode}`,
+        idempotencyKey,
+      });
+
+      return {
+        duplicate: false as const,
+        pointsSpent: plan.pointsSpent,
+        creditAmount: plan.creditAmount,
+        couponCode,
+        balance: newPoints,
+      };
+    });
+  } catch (error) {
+    // A concurrent request can win the unique ledger constraint after this
+    // transaction started. Resolve that retry only for the same user.
+    if (isUniqueConstraintError(error)) {
+      const existing = await db
+        .select()
+        .from(loyaltyLedger)
+        .where(eq(loyaltyLedger.idempotencyKey, idempotencyKey))
+        .limit(1);
+      if (existing[0]) {
+        if (existing[0].userId !== userId)
+          throw new Error("Chave de idempotência já usada por outro usuário");
+        const account = await ensureLoyaltyAccount(userId);
+        return duplicateResult(existing[0], account.points);
+      }
+    }
+    throw error;
+  }
+}
+
+/** Credits Club points after a delivered order. Tip is excluded from eligible spend. */
+export async function creditLoyaltyForDeliveredOrder(
+  orderId: number,
+): Promise<{ credited: boolean; points: number }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const idempotencyKey = `loyalty-earn-order-${orderId}`;
+  const existing = await db
+    .select()
+    .from(loyaltyLedger)
+    .where(eq(loyaltyLedger.idempotencyKey, idempotencyKey))
+    .limit(1);
+  if (existing[0]) return { credited: false, points: existing[0].points };
+
+  const orderRows = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.id, orderId))
+    .limit(1);
+  const order = orderRows[0];
+  if (!order || order.status !== "Entregue")
+    return { credited: false, points: 0 };
+  const eligible = Math.max(
+    0,
+    Number(order.total) - Number(order.tipAmount ?? 0),
+  );
+
+  return db.transaction(async (tx) => {
+    const concurrent = await tx
+      .select()
+      .from(loyaltyLedger)
+      .where(eq(loyaltyLedger.idempotencyKey, idempotencyKey))
+      .for("update")
+      .limit(1);
+    if (concurrent[0]) return { credited: false, points: concurrent[0].points };
+
+    // The unique-key upsert plus row lock prevents two delivered orders from
+    // losing points while creating or updating the same account.
+    await tx
+      .insert(loyaltyAccounts)
+      .values({ userId: order.customerId })
+      .onConflictDoUpdate({
+        target: loyaltyAccounts.userId,
+        set: { userId: order.customerId },
+      });
+    const account = (
+      await tx
+        .select()
+        .from(loyaltyAccounts)
+        .where(eq(loyaltyAccounts.userId, order.customerId))
+        .for("update")
+        .limit(1)
+    )[0];
+    if (!account) throw new Error("Conta de fidelidade não encontrada");
+
+    const points = calculateEarnPoints(eligible, account.tier as LoyaltyTier);
+    if (points <= 0) return { credited: false, points: 0 };
+    const lifetimePoints = account.lifetimePoints + points;
+    const tier = resolveLoyaltyTier(lifetimePoints);
+    await tx
+      .update(loyaltyAccounts)
+      .set({
+        points: account.points + points,
+        lifetimePoints,
+        tier,
+        updatedAt: new Date(),
+      })
+      .where(eq(loyaltyAccounts.id, account.id));
+    await tx.insert(loyaltyLedger).values({
+      accountId: account.id,
+      userId: order.customerId,
+      orderId,
+      direction: "credit",
+      points,
+      reason: "order_delivered",
+      note: `Pedido #${orderId}`,
+      idempotencyKey,
+    });
+    return { credited: true, points };
+  });
+}
+
+/** Settles a delivered-order tip exactly once; the destination is frozen on the order. */
+export async function settleTipForDeliveredOrder(orderId: number): Promise<{
+  settled: boolean;
+  duplicate?: boolean;
+  amount?: string;
+  destination?: string;
+  recipientUserId?: number | null;
+  settlementId?: number;
+}> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const idempotencyKey = `tip-settle-order-${orderId}`;
+  const existing = await db
+    .select()
+    .from(tipSettlements)
+    .where(eq(tipSettlements.idempotencyKey, idempotencyKey))
+    .limit(1);
+  if (existing[0])
+    return {
+      settled: false,
+      duplicate: true,
+      amount: existing[0].amount,
+      destination: existing[0].destination,
+      recipientUserId: existing[0].recipientUserId,
+      settlementId: existing[0].id,
+    };
+
+  const order = (
+    await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
+  )[0];
+  if (!order || order.status !== "Entregue") return { settled: false };
+  const plan = planTipSettlement(
+    order.tipAmount,
+    order.tipDestination ?? DEFAULT_TIP_DESTINATION,
+  );
+  if (!plan.ok) return { settled: false };
+
+  const assignment = await getDeliveryAssignmentByOrder(orderId);
+  const store = await getStoreById(order.storeId);
+  const destination = normalizeTipDestination(plan.destination);
+  const recipientUserId = resolveTipRecipientUserId({
+    destination,
+    courierUserId: assignment?.courierId,
+    storeOwnerId: store?.ownerId,
+  });
+
+  return db.transaction(async (tx) => {
+    const concurrent = await tx
+      .select()
+      .from(tipSettlements)
+      .where(eq(tipSettlements.idempotencyKey, idempotencyKey))
+      .for("update")
+      .limit(1);
+    if (concurrent[0])
+      return {
+        settled: false,
+        duplicate: true,
+        amount: concurrent[0].amount,
+        destination: concurrent[0].destination,
+        recipientUserId: concurrent[0].recipientUserId,
+        settlementId: concurrent[0].id,
+      };
+
+    const result = await tx
+      .insert(tipSettlements)
+      .values({
+        orderId,
+        storeId: order.storeId,
+        amount: plan.amount,
+        destination,
+        recipientUserId,
+        status: "settled",
+        idempotencyKey,
+        note: plan.note,
+        settledAt: new Date(),
+      })
+      .returning({ id: tipSettlements.id });
+    const settlementId = getInsertId(result);
+    if (destination === "store") {
+      await tx.insert(financialLedger).values({
+        storeId: order.storeId,
+        orderId,
+        type: "tip",
+        direction: "credit",
+        amount: plan.amount,
+        currency: "BRL",
+        referenceId: idempotencyKey,
+        note: plan.note,
+      });
+    }
+    return {
+      settled: true,
+      amount: plan.amount,
+      destination,
+      recipientUserId,
+      settlementId,
+    };
+  });
+}
+
+export async function getTipSettlementForOrder(
+  orderId: number,
+): Promise<TipSettlement | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select()
+    .from(tipSettlements)
+    .where(eq(tipSettlements.orderId, orderId))
+    .limit(1);
+  return rows[0];
 }

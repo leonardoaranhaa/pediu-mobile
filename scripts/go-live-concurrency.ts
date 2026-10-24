@@ -16,8 +16,6 @@ const concurrency = Math.min(
 
 if (!databaseUrl)
   throw new Error("DATABASE_URL is required for concurrency smoke.");
-if (!process.env.VITE_APP_ID?.trim())
-  throw new Error("VITE_APP_ID is required for concurrency smoke.");
 if (!process.env.JWT_SECRET?.trim())
   throw new Error("JWT_SECRET is required for concurrency smoke.");
 if (!webhookSecret)
@@ -91,8 +89,8 @@ async function postWebhook(body: string, eventId: string, paymentId: string) {
 }
 
 async function main() {
-  const mysql = await import("mysql2/promise");
-  const connection = await mysql.createConnection(databaseUrl);
+  const { createConnection } = await import("./pg-client");
+  const connection = await createConnection(databaseUrl);
   const runId = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
   const customerOpenId = `ci-concurrency-customer-${runId}`;
   const merchantOpenId = `ci-concurrency-merchant-${runId}`;
@@ -385,9 +383,14 @@ async function main() {
   }
 }
 
-void main().catch((error) => {
-  console.error(
-    `Go-Live concurrency smoke failed: ${error instanceof Error ? error.message : "unknown error"}`,
-  );
-  process.exitCode = 1;
-});
+void main()
+  .catch((error) => {
+    console.error(
+      `Go-Live concurrency smoke failed: ${error instanceof Error ? error.message : "unknown error"}`,
+    );
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    const { finishDatabaseScript } = await import("./finish-database-script");
+    await finishDatabaseScript();
+  });

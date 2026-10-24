@@ -1,6 +1,6 @@
 import { expireStaleInventoryReservations } from "./db";
 
-const DEFAULT_TTL_MINUTES = 30;
+const DEFAULT_TTL_MINUTES = 15;
 const DEFAULT_INTERVAL_SECONDS = 60;
 
 function positiveNumberFromEnv(

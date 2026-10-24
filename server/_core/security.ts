@@ -34,6 +34,26 @@ export function isUnsafeMethod(method: string): boolean {
   return ["POST", "PUT", "PATCH", "DELETE"].includes(method.toUpperCase());
 }
 
+const PUBLIC_PASSWORD_AUTH = new Set([
+  "/api/trpc/auth.signup",
+  "/api/trpc/auth.login",
+  "/api/trpc/auth.resetPassword",
+  "/api/trpc/auth.refresh",
+]);
+
+/** Mobile login has no browser Origin and no session cookie yet. */
+export function isPublicPasswordAuth(req: {
+  originalUrl?: string;
+  url?: string;
+  baseUrl?: string;
+  path: string;
+}): boolean {
+  const candidates = [req.originalUrl, req.url, `${req.baseUrl ?? ""}${req.path}`, req.path]
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.split("?")[0]);
+  return candidates.some((path) => PUBLIC_PASSWORD_AUTH.has(path));
+}
+
 type RateLimitState = { count: number; resetAt: number };
 const rateLimitBuckets = new Map<string, RateLimitState>();
 const concurrencyBuckets = new Map<string, number>();

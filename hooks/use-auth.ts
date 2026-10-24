@@ -8,6 +8,7 @@ type UseAuthOptions = { autoFetch?: boolean };
 export function useAuth(options?: UseAuthOptions) {
   const { autoFetch = true } = options ?? {};
   const [user, setUser] = useState<Auth.User | null>(null);
+  const [nameConfirmed, setNameConfirmed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
@@ -25,10 +26,13 @@ export function useAuth(options?: UseAuthOptions) {
           email: apiUser.email,
           loginMethod: apiUser.loginMethod,
           role: apiUser.role,
+          roles: apiUser.roles,
+          usesCustomerApp: apiUser.usesCustomerApp,
           themePreference: apiUser.themePreference,
           lastSignedIn: new Date(apiUser.lastSignedIn),
         };
         setUser(userInfo);
+        setNameConfirmed(true);
         await Auth.setUserInfo(userInfo);
         return;
       }
@@ -40,7 +44,14 @@ export function useAuth(options?: UseAuthOptions) {
           return;
         }
         const cachedUser = await Auth.getUserInfo();
-        setUser(cachedUser);
+        if (cachedUser) {
+          const unnamed = { ...cachedUser, name: null };
+          setUser(unnamed);
+          await Auth.setUserInfo(unnamed);
+        } else {
+          setUser(null);
+        }
+        setNameConfirmed(false);
         return;
       }
 
@@ -64,6 +75,7 @@ export function useAuth(options?: UseAuthOptions) {
       await Auth.removeSessionToken();
       await Auth.clearUserInfo();
       setUser(null);
+      setNameConfirmed(false);
       setError(null);
     }
   }, []);
@@ -77,13 +89,7 @@ export function useAuth(options?: UseAuthOptions) {
     }
 
     if (Platform.OS !== "web") {
-      void Auth.getUserInfo().then((cachedUser) => {
-        if (cachedUser) {
-          setUser(cachedUser);
-          setLoading(false);
-        }
-        void fetchUser();
-      });
+      void fetchUser();
       return;
     }
 
@@ -92,6 +98,7 @@ export function useAuth(options?: UseAuthOptions) {
 
   return {
     user,
+    nameConfirmed,
     loading,
     error,
     isAuthenticated,

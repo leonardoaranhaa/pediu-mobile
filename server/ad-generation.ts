@@ -1,5 +1,4 @@
-import { generateImage } from "./_core/imageGeneration";
-import { invokeLLM } from "./_core/llm";
+import { openAiChat, openAiConfigured, openAiImage, AI_UNAVAILABLE } from "./_core/openai";
 
 export type AdGenerationInput = {
   storeName: string;
@@ -18,6 +17,7 @@ export type GeneratedAdCreative = {
   cta: string;
   visualPrompt: string;
   imageKey: string | null;
+  imageData: string | null;
   model: string;
   offerLabel: string | null;
 };
@@ -43,14 +43,20 @@ function cleanInput(input: AdGenerationInput) {
 
 export async function generateAdCreative(
   input: AdGenerationInput,
+  models?: { textModel?: string; imageModel?: string; imageQuality?: string },
 ): Promise<GeneratedAdCreative> {
+  if (!openAiConfigured()) throw new Error(AI_UNAVAILABLE);
+  const textModel = models?.textModel || "gpt-5-mini";
+  const imageModel = models?.imageModel || "gpt-image-2";
+  const imageQuality = models?.imageQuality || "medium";
   const data = cleanInput(input);
   if (!data.storeName || !data.productName || !data.category || !data.price) {
     throw new Error("Dados insuficientes para criar o anúncio");
   }
 
-  const response = await invokeLLM({
-    model: "gpt-5-mini",
+  const content = await openAiChat({
+    model: textModel,
+    maxTokens: 900,
     messages: [
       {
         role: "system",
@@ -78,11 +84,8 @@ export async function generateAdCreative(
         }),
       },
     ],
-    response_format: {
-      type: "json_schema",
-      json_schema: {
+    jsonSchema: {
         name: "pediu_ad_creative",
-        strict: true,
         schema: {
           type: "object",
           properties: {
@@ -94,15 +97,8 @@ export async function generateAdCreative(
           required: ["headline", "description", "cta", "visualPrompt"],
           additionalProperties: false,
         },
-      },
     },
-    reasoning: { effort: "minimal" },
-    maxTokens: 900,
   });
-
-  const content = response.choices[0]?.message?.content;
-  if (typeof content !== "string")
-    throw new Error("A IA não retornou um criativo válido");
 
   let copy: {
     headline: string;
@@ -129,18 +125,29 @@ export async function generateAdCreative(
     throw new Error("A IA retornou um criativo fora dos limites de qualidade");
   }
 
-  const image = await generateImage({
-    prompt: `${visualPrompt}. Produto real: ${data.productName}. Categoria: ${data.category}. Não inserir palavras, letras, preços, selos ou logotipos na imagem.`,
-    quality: "medium",
-  });
+  let imageData: string | null = null;
+  try {
+    imageData = await openAiImage({
+      model: imageModel,
+      quality: imageQuality,
+      prompt: `${visualPrompt}. Produto real: ${data.productName}. Categoria: ${data.category}. Não inserir palavras, letras, preços, selos ou logotipos na imagem.`,
+    });
+  } catch (error) {
+    throw new Error(
+      error instanceof Error && error.message.includes("crédito")
+        ? error.message
+        : "Não consegui criar a imagem. O crédito voltou para a sua loja.",
+    );
+  }
 
   return {
     headline,
     description,
     cta,
     visualPrompt,
-    imageKey: image.key ?? null,
-    model: "gpt-5-mini + MODEL_GPT_IMAGE_2",
+    imageKey: null,
+    imageData,
+    model: `${textModel} + ${imageModel}`,
     offerLabel: data.offerLabel || null,
   };
 }

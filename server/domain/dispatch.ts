@@ -20,3 +20,15 @@ export function dispatchOfferExpiresAt(
 export function dispatchReofferKey(orderId: number, courierUserId: number) {
   return `dispatch-reoffer-${orderId}-${courierUserId}`;
 }
+
+export function offerStillBlocksCourier(
+  status: string,
+  expiresAt: Date | string | null | undefined,
+  now: Date,
+) {
+  if (status === "accepted") return true;
+  if (status !== "pending") return false;
+  if (!expiresAt) return true;
+  const expiry = expiresAt instanceof Date ? expiresAt : new Date(expiresAt);
+  return expiry.getTime() > now.getTime();
+}

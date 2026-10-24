@@ -1,2 +1,0 @@
-ALTER TABLE `pediu_order_reviews` ADD `idempotencyKey` varchar(160);--> statement-breakpoint
-ALTER TABLE `pediu_order_reviews` ADD CONSTRAINT `pediu_review_idempotency_unique` UNIQUE(`idempotencyKey`);

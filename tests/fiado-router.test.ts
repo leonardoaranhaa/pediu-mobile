@@ -167,7 +167,7 @@ describe("Pediu Fiado contract", () => {
       status: "Pendente",
     });
     expect(createFiado).toHaveBeenCalledWith(
-      {
+      expect.objectContaining({
         customerId: 20,
         storeId: 7,
         total: "30.00",
@@ -177,7 +177,12 @@ describe("Pediu Fiado contract", () => {
         fulfillmentMode: "pickup",
         deliveryFeeSnapshot: "0.00",
         idempotencyKey: "test-fiado-order",
-      },
+        isFlash: 0,
+        tipAmount: "0.00",
+        tipDestination: "courier",
+        fulfillment: "standard",
+        deliveryCode: expect.stringMatching(/^\d{4}$/),
+      }),
       [{ productId: 101, quantity: 1, unitPrice: "30.00" }],
       301,
       7,

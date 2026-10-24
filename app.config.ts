@@ -20,6 +20,7 @@ const bundleId = rawBundleId
 const config: ExpoConfig = {
   name: "Pediu",
   slug: "pediu-mobile",
+  owner: "canuc-avais-organization",
   version: "1.0.0",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
@@ -74,6 +75,15 @@ const config: ExpoConfig = {
       },
     ],
     ["expo-notifications", { color: "#E20D2A" }],
+    [
+      "expo-image-picker",
+      {
+        photosPermission:
+          "Permita que o Pediu use suas fotos para o cardápio e o cadastro do entregador.",
+        cameraPermission:
+          "Permita que o Pediu use a câmera para a foto da entrega e dos documentos.",
+      },
+    ],
     "expo-font",
     [
       "expo-video",
@@ -100,6 +110,9 @@ const config: ExpoConfig = {
     ],
   ],
   experiments: { typedRoutes: true, reactCompiler: true },
+  extra: {
+    eas: { projectId: "b48a8601-ffae-43b9-9fc4-d0d027f932cd" },
+  },
 };
 
 export default config;

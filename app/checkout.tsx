@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { MaterialIcons } from "@expo/vector-icons";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   Card,
   Field,
@@ -9,11 +10,17 @@ import {
   PEDIU,
   s,
 } from "@/components/pediu-page";
+import { askToJoin } from "@/components/auth-prompt";
 import { useAuth } from "@/hooks/use-auth";
+import { cartFlashEligible } from "@/lib/cart";
+import { cancellationPolicyCopy, deliverySummaryCopy } from "@/lib/checkout-copy";
 import { useCart } from "@/providers/cart-provider";
 import { trpc } from "@/lib/trpc";
 
 type PaymentMethod = "pix" | "cash";
+type Fulfillment = "standard" | "flash";
+
+const TIP_OPTIONS = [0, 2, 5, 8] as const;
 
 function money(value: number | string) {
   return `R$ ${Number(value).toFixed(2).replace(".", ",")}`;
@@ -27,32 +34,61 @@ export default function CheckoutScreen() {
   const { isAuthenticated } = useAuth();
   const params = useLocalSearchParams<{ coupon?: string }>();
   const { items, total: estimatedTotal, hydrated, clear } = useCart();
+  const flags = trpc.pediu.experience.flags.useQuery(undefined, {
+    staleTime: 60_000,
+  });
   const addresses = trpc.pediu.addresses.list.useQuery(undefined, {
     enabled: isAuthenticated,
   });
+  useFocusEffect(
+    useCallback(() => {
+      if (isAuthenticated) void addresses.refetch();
+    }, [addresses.refetch, isAuthenticated]),
+  );
   const [fulfillmentMode, setFulfillmentMode] = useState<"delivery" | "pickup">(
     "delivery",
   );
   const [address, setAddress] = useState("");
   const [addressId, setAddressId] = useState<number | undefined>();
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix");
+  const [changeFor, setChangeFor] = useState("");
+  const [changeError, setChangeError] = useState("");
   const [idempotencyKey, setIdempotencyKey] = useState("");
   const [couponCode, setCouponCode] = useState("");
   const [appliedCouponCode, setAppliedCouponCode] = useState("");
+  const [fulfillment, setFulfillment] = useState<Fulfillment>("standard");
+  const [tipAmount, setTipAmount] = useState(0);
   const normalizedCouponInput = couponCode.trim().toUpperCase();
+  const tipEnabled = flags.data?.tip !== false;
+  const flashFlagOn = flags.data?.flash !== false;
+  const flashEligibleLocal = cartFlashEligible(items);
+  const marketCart = items[0]?.storeKind === "market";
+  const effectiveFulfillmentMode = marketCart ? "delivery" : fulfillmentMode;
   const quoteInput = useMemo(
     () => ({
       storeId: items[0]?.storeId ?? 1,
-      addressId: fulfillmentMode === "delivery" ? addressId : undefined,
-      fulfillmentMode,
+      addressId:
+        effectiveFulfillmentMode === "delivery" ? addressId : undefined,
+      fulfillmentMode: effectiveFulfillmentMode,
+      fulfillment,
+      tipAmount: tipEnabled ? tipAmount : 0,
       items: items.map((item) => ({
         productId: item.id,
         quantity: item.quantity,
         note: item.note,
+        optionIds: item.options?.map((option) => option.id),
       })),
       couponCode: appliedCouponCode || undefined,
     }),
-    [addressId, appliedCouponCode, fulfillmentMode, items],
+    [
+      addressId,
+      appliedCouponCode,
+      effectiveFulfillmentMode,
+      fulfillment,
+      items,
+      tipAmount,
+      tipEnabled,
+    ],
   );
   const quote = trpc.pediu.checkout.quote.useQuery(quoteInput, {
     enabled: isAuthenticated && hydrated && items.length > 0,
@@ -116,6 +152,23 @@ export default function CheckoutScreen() {
     }
   }, [address, addresses.data]);
 
+  useEffect(() => {
+    if (marketCart && fulfillmentMode !== "delivery") {
+      setFulfillmentMode("delivery");
+    }
+  }, [fulfillmentMode, marketCart]);
+
+  useEffect(() => {
+    if (
+      fulfillment !== "flash" ||
+      fulfillmentMode !== "delivery" ||
+      !quote.isError
+    )
+      return;
+    if ((quote.error?.message ?? "").toLowerCase().includes("flash"))
+      setFulfillment("standard");
+  }, [fulfillment, fulfillmentMode, quote.error?.message, quote.isError]);
+
   const applyCoupon = () => {
     if (appliedCouponCode && normalizedCouponInput === appliedCouponCode) {
       setAppliedCouponCode("");
@@ -128,27 +181,42 @@ export default function CheckoutScreen() {
   const submit = () => {
     if (
       !items.length ||
-      (fulfillmentMode === "delivery" && !addressId) ||
+      (effectiveFulfillmentMode === "delivery" && !addressId) ||
       !idempotencyKey ||
       !quote.data ||
       quote.isFetching
     )
       return;
+    const changeValue = changeFor.replace(",", ".").trim();
+    if (
+      paymentMethod === "cash" &&
+      changeValue &&
+      (!/^\d+(\.\d{1,2})?$/.test(changeValue) ||
+        Number(changeValue) + 0.001 < Number(quote.data.total))
+    ) {
+      setChangeError("O valor para troco precisa cobrir o total do pedido.");
+      return;
+    }
+    setChangeError("");
     createOrder.mutate({
       idempotencyKey,
       storeId: quote.data.storeId,
       total: quote.data.total,
       paymentMethod,
-      fulfillmentMode,
-      ...(fulfillmentMode === "delivery"
+      ...(paymentMethod === "cash" && changeValue ? { changeFor: changeValue } : {}),
+      fulfillmentMode: effectiveFulfillmentMode,
+      fulfillment: quote.data.fulfillment,
+      tipAmount: Number(quote.data.tipAmount),
+      ...(effectiveFulfillmentMode === "delivery"
         ? { addressId, deliveryAddress: address.trim() }
         : {}),
       couponCode: quote.data.couponCode,
-      items: quote.data.items.map((item) => ({
+      items: quote.data.items.map((item, index) => ({
         productId: item.productId,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
-        note: item.note,
+        note: items[index]?.note,
+        optionIds: items[index]?.options?.map((option) => option.id) ?? item.optionIds,
       })),
     });
   };
@@ -167,9 +235,12 @@ export default function CheckoutScreen() {
         <Card>
           <Text style={s.sectionTitle}>Entre para continuar</Text>
           <Text style={s.muted}>
-            Sua sessão é necessária para criar um pedido e acompanhar o
-            pagamento.
+            Para fechar o pedido e acompanhar o pagamento, crie uma conta ou entre na sua.
           </Text>
+          <PrimaryButton
+            title="Criar conta ou entrar"
+            onPress={() => askToJoin({ action: "checkout", returnTo: "/checkout" })}
+          />
         </Card>
       </Page>
     );
@@ -187,6 +258,11 @@ export default function CheckoutScreen() {
     );
 
   const quotedTotal = quote.data ? Number(quote.data.total) : estimatedTotal;
+  const deliverySummary = deliverySummaryCopy({
+    mode: effectiveFulfillmentMode,
+    isFlash: quote.data?.isFlash,
+    flashEtaMaxMinutes: quote.data?.flashEtaMaxMinutes,
+  });
   const couponCanBeRemoved = Boolean(
     appliedCouponCode && normalizedCouponInput === appliedCouponCode,
   );
@@ -213,7 +289,7 @@ export default function CheckoutScreen() {
         ) : null}
         {quote.data ? (
           <>
-            <Text style={s.muted}>Valores confirmados pelo servidor.</Text>
+            <Text style={s.muted}>Valores confirmados para este pedido.</Text>
             <View style={{ gap: 6, marginTop: 10 }}>
               {quote.data.items.map((item) => (
                 <View key={item.productId} style={row}>
@@ -274,8 +350,7 @@ export default function CheckoutScreen() {
           </>
         ) : (
           <Text style={s.muted}>
-            Total estimado localmente: {money(estimatedTotal)}. A confirmação
-            depende da cotação do servidor.
+            Total estimado: {money(estimatedTotal)}. O valor final aparece quando o endereço estiver escolhido.
           </Text>
         )}
       </Card>
@@ -311,8 +386,34 @@ export default function CheckoutScreen() {
       </Card>
       <Card>
         <Text style={s.sectionTitle}>Como receber?</Text>
+        {marketCart ? (
+          <Text style={s.muted}>
+            Compras de mercado entram na rota Pediu Entregas: o mercado separa e
+            um entregador parceiro leva até seu endereço.
+          </Text>
+        ) : null}
+        <Text style={s.muted}>
+          {effectiveFulfillmentMode === "delivery"
+            ? "A taxa muda conforme o endereço escolhido. Depois que a loja aceitar, você acompanha cada etapa."
+            : "A retirada não tem taxa de entrega. A loja avisa quando o pedido estiver pronto para você buscar."}
+        </Text>
+        {quote.data && effectiveFulfillmentMode === "delivery" ? (
+          <View style={{ backgroundColor: PEDIU.peach, borderRadius: 13, padding: 11, gap: 3 }}>
+            <Text style={{ color: PEDIU.ink, fontWeight: "900" }}>
+              Taxa de entrega: {money(quote.data.deliveryFee)}
+            </Text>
+            <Text style={s.muted}>
+              {quote.data.isFlash && quote.data.flashEtaMaxMinutes
+                ? `Flash: previsão de até ${quote.data.flashEtaMaxMinutes} min após a confirmação.`
+                : "O prazo final depende do preparo da loja e da disponibilidade de um entregador."}
+            </Text>
+          </View>
+        ) : null}
         <View style={{ flexDirection: "row", gap: 8 }}>
-          {(["delivery", "pickup"] as const).map((mode) => (
+          {(marketCart
+            ? (["delivery"] as const)
+            : (["delivery", "pickup"] as const)
+          ).map((mode) => (
             <Pressable
               key={mode}
               onPress={() => setFulfillmentMode(mode)}
@@ -342,12 +443,143 @@ export default function CheckoutScreen() {
             </Pressable>
           ))}
         </View>
-        {fulfillmentMode === "pickup" ? (
-          <Text style={s.muted}>
-            Retirada sem taxa. A loja confirmará quando o pedido estiver pronto.
-          </Text>
+        {!marketCart && effectiveFulfillmentMode === "pickup" ? (
+          <Text style={s.muted}>Você receberá a confirmação quando o pedido estiver pronto para retirada.</Text>
         ) : null}
       </Card>
+      <Card>
+        <Text style={s.sectionTitle}>Antes de confirmar</Text>
+        <View
+          style={[
+            checkoutStyles.infoPanel,
+            { backgroundColor: PEDIU.peach, borderColor: PEDIU.line },
+          ]}
+        >
+          <View style={[checkoutStyles.infoIcon, { backgroundColor: PEDIU.white }]}>
+            <MaterialIcons name={deliverySummary.icon} size={21} color={PEDIU.coral} />
+          </View>
+          <View style={checkoutStyles.infoBody}>
+            <Text style={s.sectionTitle}>{deliverySummary.title}</Text>
+            <Text style={checkoutStyles.infoLabel}>{deliverySummary.label}</Text>
+            <Text style={s.muted}>
+              {quote.isLoading
+                ? "Conferindo as condições reais deste endereço..."
+                : deliverySummary.detail}
+            </Text>
+          </View>
+        </View>
+        <View
+          style={[
+            checkoutStyles.infoPanel,
+            { backgroundColor: PEDIU.coralSoft, borderColor: "#F6C5C5" },
+          ]}
+        >
+          <View style={[checkoutStyles.infoIcon, { backgroundColor: PEDIU.white }]}>
+            <MaterialIcons name="event-busy" size={21} color={PEDIU.coral} />
+          </View>
+          <View style={checkoutStyles.infoBody}>
+            <Text style={s.sectionTitle}>Cancelamento transparente</Text>
+            {cancellationPolicyCopy.map((policy) => (
+              <View key={policy.title} style={checkoutStyles.policyRow}>
+                <View style={[checkoutStyles.policyDot, { backgroundColor: PEDIU.coral }]} />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={checkoutStyles.policyTitle}>{policy.title}</Text>
+                  <Text style={s.muted}>{policy.detail}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+      </Card>
+      {flashFlagOn ? (
+        <Card>
+          <Text style={s.sectionTitle}>Pediu Flash</Text>
+          <Text style={s.muted}>
+            {flashEligibleLocal
+              ? "Prioridade na fila da loja e do entregador. A taxa aparece depois que você escolhe o endereço."
+              : "Esta loja não oferece Flash no momento."}
+          </Text>
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+            {(["standard", "flash"] as const).map((option) => {
+              const selected = fulfillment === option;
+              const disabled =
+                option === "flash" &&
+                (!flashEligibleLocal || fulfillmentMode !== "delivery");
+              return (
+                <Pressable
+                  key={option}
+                  disabled={disabled}
+                  onPress={() => setFulfillment(option)}
+                  style={{
+                    flex: 1,
+                    minHeight: 52,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderWidth: 1,
+                    borderColor: selected ? PEDIU.coral : PEDIU.line,
+                    backgroundColor: selected ? PEDIU.coralSoft : PEDIU.white,
+                    borderRadius: 14,
+                    opacity: disabled ? 0.45 : 1,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: selected ? PEDIU.coral : PEDIU.muted,
+                      fontWeight: "900",
+                    }}
+                  >
+                    {option === "flash" ? "Flash" : "Padrão"}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          {fulfillment === "flash" && quote.data?.isFlash ? (
+            <Text
+              style={{ color: PEDIU.green, fontSize: 12, fontWeight: "800" }}
+            >
+              Flash ativo · até{" "}
+              {quote.data.flashEtaMaxMinutes ?? "o prazo informado"} min
+            </Text>
+          ) : null}
+        </Card>
+      ) : null}
+      {tipEnabled ? (
+        <Card>
+          <Text style={s.sectionTitle}>Gorjeta para a entrega</Text>
+          <Text style={s.muted}>
+            A gorjeta vai para quem entrega e não vira ponto do Clube.
+          </Text>
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+            {TIP_OPTIONS.map((value) => (
+              <Pressable
+                key={value}
+                onPress={() => setTipAmount(value)}
+                style={{
+                  flex: 1,
+                  minHeight: 46,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderWidth: 1,
+                  borderColor: tipAmount === value ? PEDIU.coral : PEDIU.line,
+                  backgroundColor:
+                    tipAmount === value ? PEDIU.coralSoft : PEDIU.white,
+                  borderRadius: 12,
+                }}
+              >
+                <Text
+                  style={{
+                    color: tipAmount === value ? PEDIU.coral : PEDIU.muted,
+                    fontWeight: "900",
+                  }}
+                >
+                  {value ? money(value) : "Sem gorjeta"}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </Card>
+      ) : null}
       {fulfillmentMode === "delivery" ? (
         <Card>
           <Text style={s.sectionTitle}>Endereço de entrega</Text>
@@ -391,15 +623,34 @@ export default function CheckoutScreen() {
             </View>
           ) : null}
           <Field
-            label="ENDEREÇO"
+            label="ENDEREÇO ESCOLHIDO"
             value={address}
-            onChangeText={(value) => {
-              setAddressId(undefined);
-              setAddress(value);
-            }}
-            placeholder="Rua, número, bairro e cidade"
+            onChangeText={() => undefined}
+            placeholder="Escolha um endereço salvo com ponto no mapa"
             multiline
+            editable={false}
           />
+          <PrimaryButton
+            title={
+              addresses.data?.length
+                ? "Cadastrar ou corrigir endereço"
+                : "Cadastrar endereço"
+            }
+            onPress={() => router.push("/account/addresses")}
+          />
+          <Text style={s.muted}>
+            A entrega usa um endereço salvo, com um ponto no mapa. Se o ponto
+            faltar, abra o endereço e marque a porta no mapa.
+          </Text>
+          {addresses.data?.some(
+            (saved) =>
+              saved.id === addressId && (!saved.latitude || !saved.longitude),
+          ) ? (
+            <Text style={{ color: PEDIU.coral, fontSize: 12 }}>
+              Este endereço ainda não tem um ponto no mapa. Abra Meus endereços
+              e salve de novo, ou use o GPS.
+            </Text>
+          ) : null}
           {addresses.isError ? (
             <Text style={{ color: PEDIU.coral, fontSize: 12 }}>
               {addresses.error.message}
@@ -438,11 +689,21 @@ export default function CheckoutScreen() {
             </Pressable>
           ))}
         </View>
+        {paymentMethod === "cash" ? (
+          <Field
+            label="TROCO PARA QUANTO?"
+            value={changeFor}
+            onChangeText={setChangeFor}
+            placeholder="Ex.: 50,00. Deixe em branco se não precisar."
+            keyboardType="decimal-pad"
+          />
+        ) : null}
+        {changeError ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{changeError}</Text> : null}
       </Card>
       <Card>
         <Text style={s.sectionTitle}>Confirmação</Text>
         <Text style={s.muted}>
-          O total exibido será enviado ao servidor: {money(quotedTotal)}.
+          Total deste pedido: {money(quotedTotal)}.
         </Text>
         {createOrder.error ? (
           <Text style={{ color: PEDIU.coral, fontSize: 12 }}>
@@ -483,3 +744,25 @@ const row = {
   justifyContent: "space-between" as const,
 };
 const value = { color: PEDIU.ink, fontWeight: "800" as const };
+const checkoutStyles = StyleSheet.create({
+  infoPanel: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 11,
+    borderWidth: 1,
+    borderRadius: 19,
+    padding: 13,
+  },
+  infoIcon: {
+    width: 39,
+    height: 39,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  infoBody: { flex: 1, gap: 5 },
+  infoLabel: { color: PEDIU.coral, fontSize: 13, fontWeight: "900" },
+  policyRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
+  policyDot: { width: 7, height: 7, borderRadius: 4, marginTop: 6 },
+  policyTitle: { color: PEDIU.ink, fontSize: 12, fontWeight: "900" },
+});

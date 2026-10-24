@@ -25,12 +25,13 @@
  * });
  * ```
  */
-import { ENV } from "./env";
+import { AI_UNAVAILABLE, openAiConfigured, openAiTranscribe } from "./openai";
 
 export type TranscribeOptions = {
-  audioUrl: string; // URL to the audio file (e.g., S3 URL)
-  language?: string; // Optional: specify language code (e.g., "en", "es", "zh")
-  prompt?: string; // Optional: custom prompt for the transcription
+  audioUrl: string;
+  language?: string;
+  prompt?: string;
+  model?: string;
 };
 
 // Native Whisper API segment format
@@ -80,18 +81,11 @@ export async function transcribeAudio(
 ): Promise<TranscriptionResponse | TranscriptionError> {
   try {
     // Step 1: Validate environment configuration
-    if (!ENV.forgeApiUrl) {
+    if (!openAiConfigured()) {
       return {
-        error: "Voice transcription service is not configured",
+        error: AI_UNAVAILABLE,
         code: "SERVICE_ERROR",
-        details: "BUILT_IN_FORGE_API_URL is not set",
-      };
-    }
-    if (!ENV.forgeApiKey) {
-      return {
-        error: "Voice transcription service authentication is missing",
-        code: "SERVICE_ERROR",
-        details: "BUILT_IN_FORGE_API_KEY is not set",
+        details: "missing",
       };
     }
 
@@ -128,62 +122,18 @@ export async function transcribeAudio(
       };
     }
 
-    // Step 3: Create FormData for multipart upload to Whisper API
-    const formData = new FormData();
-
-    // Create a Blob from the buffer and append to form
-    const filename = `audio.${getFileExtension(mimeType)}`;
-    const audioBlob = new Blob([new Uint8Array(audioBuffer)], { type: mimeType });
-    formData.append("file", audioBlob, filename);
-
-    formData.append("model", "whisper-1");
-    formData.append("response_format", "verbose_json");
-
-    // Add prompt - use custom prompt if provided, otherwise generate based on language
-    const prompt =
-      options.prompt ||
-      (options.language
-        ? `Transcribe the user's voice to text, the user's working language is ${getLanguageName(options.language)}`
-        : "Transcribe the user's voice to text");
-    formData.append("prompt", prompt);
-
-    // Step 4: Call the transcription service
-    const baseUrl = ENV.forgeApiUrl.endsWith("/") ? ENV.forgeApiUrl : `${ENV.forgeApiUrl}/`;
-
-    const fullUrl = new URL("v1/audio/transcriptions", baseUrl).toString();
-
-    const response = await fetch(fullUrl, {
-      method: "POST",
-      signal: AbortSignal.timeout(30_000),
-      headers: {
-        authorization: `Bearer ${ENV.forgeApiKey}`,
-        "Accept-Encoding": "identity",
-      },
-      body: formData,
+    const text = await openAiTranscribe({
+      audio: audioBuffer,
+      mimeType,
+      model: options.model || "whisper-1",
     });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => "");
-      return {
-        error: "Transcription service request failed",
-        code: "TRANSCRIPTION_FAILED",
-        details: `${response.status} ${response.statusText}${errorText ? `: ${errorText}` : ""}`,
-      };
-    }
-
-    // Step 5: Parse and return the transcription result
-    const whisperResponse = (await response.json()) as WhisperResponse;
-
-    // Validate response structure
-    if (!whisperResponse.text || typeof whisperResponse.text !== "string") {
-      return {
-        error: "Invalid transcription response",
-        code: "SERVICE_ERROR",
-        details: "Transcription service returned an invalid response format",
-      };
-    }
-
-    return whisperResponse; // Return native Whisper API response directly
+    return {
+      task: "transcribe" as const,
+      text,
+      language: options.language ?? "pt",
+      duration: 0,
+      segments: [],
+    };
   } catch (error) {
     // Handle unexpected errors
     return {

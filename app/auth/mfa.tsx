@@ -7,9 +7,7 @@ export default function MfaPage() {
     <Page title="Verificação indisponível" eyebrow="SEGURANÇA">
       <Card>
         <Text style={s.body}>
-          A verificação em duas etapas ainda não está habilitada. O servidor não
-          valida códigos nesta versão; nenhum código digitado seria uma prova de
-          identidade.
+          A verificação em duas etapas ainda não está disponível. Entre com seu e-mail e senha.
         </Text>
         <PrimaryButton
           title="Voltar ao login"

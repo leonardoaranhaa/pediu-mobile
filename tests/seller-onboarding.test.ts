@@ -40,6 +40,10 @@ describe("Pediu seller onboarding", () => {
       deliveryRadiusKm: "10.00",
       latitude: undefined,
       longitude: undefined,
+      kind: "restaurant",
+      flashEnabled: 0,
+      flashEtaMaxMinutes: 30,
+      flashFeeOverride: undefined,
     });
   });
 
@@ -58,6 +62,27 @@ describe("Pediu seller onboarding", () => {
       latitude: null,
       longitude: null,
       isOpen: 0,
+      kind: "restaurant",
+      flashEnabled: 0,
+      flashEtaMaxMinutes: 30,
+      flashFeeOverride: null,
+      openingHours: null,
+      legalName: null,
+      taxId: null,
+      taxIdKind: null,
+      fiscalAddress: null,
+      storefrontAddress: null,
+      responsibleName: null,
+      responsibleTaxId: null,
+      responsiblePhone: null,
+      courierMode: "pediu",
+      minOrder: "0.00",
+      prepMinutes: 20,
+      logoData: null,
+      stateRegistration: null,
+      cityRegistration: null,
+      taxRegime: null,
+      cnae: null,
       createdAt: new Date(),
     });
     const caller = appRouter.createCaller({
