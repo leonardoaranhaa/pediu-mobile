@@ -15,14 +15,41 @@ type Choice = { name: string; price: string };
 
 export function ProductExtrasFields({
   onChange,
+  seed = 0,
+  initial,
 }: {
   onChange: (extras: ProductExtras) => void;
+  seed?: number;
+  initial?: ProductExtras | null;
 }) {
-  const [imageData, setImageData] = useState<string | null>(null);
-  const [groupName, setGroupName] = useState("");
-  const [required, setRequired] = useState(false);
-  const [choices, setChoices] = useState<Choice[]>([{ name: "", price: "0" }]);
+  const [imageData, setImageData] = useState<string | null>(initial?.imageData ?? null);
+  const [groupName, setGroupName] = useState(initial?.optionGroups?.[0]?.name ?? "");
+  const [required, setRequired] = useState(Boolean(initial?.optionGroups?.[0]?.required));
+  const [choices, setChoices] = useState<Choice[]>(
+    initial?.optionGroups?.[0]?.choices.length
+      ? initial.optionGroups[0].choices.map((choice) => ({
+          name: choice.name,
+          price: choice.priceDelta.replace(".", ","),
+        }))
+      : [{ name: "", price: "0" }],
+  );
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    const group = initial?.optionGroups?.[0];
+    setImageData(initial?.imageData ?? null);
+    setGroupName(group?.name ?? "");
+    setRequired(Boolean(group?.required));
+    setChoices(
+      group?.choices.length
+        ? group.choices.map((choice) => ({
+            name: choice.name,
+            price: choice.priceDelta.replace(".", ","),
+          }))
+        : [{ name: "", price: "0" }],
+    );
+    setMessage("");
+  }, [seed]);
 
   useEffect(() => {
     const cleaned = choices

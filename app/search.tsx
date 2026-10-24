@@ -11,8 +11,9 @@ import {
 } from "react-native";
 import { EmptyState } from "@/components/pediu/empty-state";
 import { Page, PEDIU, s } from "@/components/pediu-page";
+import { OpsDock } from "@/components/pediu-ops-ui";
 import { SEARCH_QUICK_CATEGORIES } from "@/lib/catalog-copy";
-import { assetForCategory, PEDIU_TOKENS } from "@/lib/pediu-tokens";
+import { PEDIU_TOKENS } from "@/lib/pediu-tokens";
 import { trpc } from "@/lib/trpc";
 import { formatCatalogPrice } from "@/shared/market-units";
 
@@ -92,7 +93,30 @@ export default function SearchScreen() {
   };
 
   return (
-    <Page title="Buscar" eyebrow="DESCUBRA" back={false}>
+    <Page
+      title="Buscar"
+      eyebrow="DESCUBRA"
+      dock={
+        <OpsDock
+          items={[
+            { label: "Início", icon: "explore", to: "/(tabs)", onPress: () => router.replace("/(tabs)") },
+            { label: "Busca", icon: "search", to: "/search", active: true },
+            {
+              label: "Pedidos",
+              icon: "receipt-long",
+              to: "/(tabs)",
+              onPress: () => router.replace({ pathname: "/(tabs)", params: { tab: "orders" } }),
+            },
+            {
+              label: "Perfil",
+              icon: "person",
+              to: "/(tabs)",
+              onPress: () => router.replace({ pathname: "/(tabs)", params: { tab: "profile" } }),
+            },
+          ]}
+        />
+      }
+    >
       <View style={styles.searchRow}>
         <View style={styles.searchBox}>
           <MaterialIcons name="search" size={20} color={PEDIU_TOKENS.muted} />
@@ -260,10 +284,13 @@ export default function SearchScreen() {
             pressed && { opacity: 0.92 },
           ]}
         >
-          <Image
-            source={assetForCategory(item.category, item.id)}
-            style={styles.resultImg}
-          />
+          {item.imageData ? (
+            <Image source={{ uri: item.imageData }} style={styles.resultImg} />
+          ) : (
+            <View style={[styles.resultImg, { alignItems: "center", justifyContent: "center", backgroundColor: PEDIU_TOKENS.canvas }]}>
+              <MaterialIcons name="restaurant" size={28} color={PEDIU_TOKENS.muted} />
+            </View>
+          )}
           <View style={{ flex: 1, gap: 3 }}>
             <Text style={styles.resultName} numberOfLines={2}>
               {item.name}

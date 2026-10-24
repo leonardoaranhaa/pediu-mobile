@@ -53,6 +53,7 @@ import {
 import { PediuV2Discovery } from "@/components/pediu-v2-discovery";
 import { ThemePicker } from "@/components/theme-picker";
 import { trpc } from "@/lib/trpc";
+import type { CartOption } from "@/lib/cart";
 import { canRegisterSale, cartTotal, pixPaymentLabel } from "@/lib/pediu-mvp";
 import { useCart } from "@/providers/cart-provider";
 import { useAppPreferences, type AppTheme } from "@/lib/app-preferences";
@@ -167,7 +168,7 @@ export default function HomeScreen() {
     setMascotMoment,
     updateCustomization,
   } = useAppPreferences();
-  const params = useLocalSearchParams<{ assistant?: string }>();
+  const params = useLocalSearchParams<{ assistant?: string; tab?: string }>();
   const {
     items: globalCartItems,
     itemCount: globalCartCount,
@@ -182,6 +183,11 @@ export default function HomeScreen() {
   const [customerTab, setCustomerTab] = useState<
     "discover" | "orders" | "profile"
   >("discover");
+  useEffect(() => {
+    if (params.tab === "orders" || params.tab === "profile" || params.tab === "discover") {
+      setCustomerTab(params.tab);
+    }
+  }, [params.tab]);
   const [sellerTab, setSellerTab] = useState<
     "home" | "orders" | "catalog" | "clients" | "settings"
   >("home");
@@ -739,20 +745,24 @@ export default function HomeScreen() {
     askToJoin({ action, role, returnTo: "/(tabs)" });
   };
 
-  const addToCart = (product: Product) => {
+  const addToCart = (product: Product, options: CartOption[] = [], unitPrice?: string) => {
     if (!isAuthenticated) {
       requestLogin("cart");
       return;
     }
+    const optionLabel = options.map((option) => option.name).join(", ");
     const result = addGlobalItem({
       id: product.id,
       storeId: product.storeId ?? 0,
-      name: product.name,
+      name: optionLabel ? `${product.name} (${optionLabel})` : product.name,
       storeName: product.store,
       category: product.category,
-      price: String(cartTotal([product.price]).toFixed(2)),
+      price: unitPrice ?? String(cartTotal([product.price]).toFixed(2)),
       deliveryFee: String(product.deliveryFee ?? "0.00"),
       emoji: product.emoji,
+      storeKind: product.storeKind,
+      flashEnabled: Boolean(product.flashEnabled),
+      options,
     });
     if (!result.ok) {
       notify(result.error ?? "Não foi possível adicionar o produto");
@@ -791,20 +801,25 @@ export default function HomeScreen() {
       void notifyWithHaptic("Informe o endereço de entrega", false);
       return;
     }
-    const itemsTotal = cartTotal(cart.map((item) => item.price));
-    const deliveryFee = Number(cart[0]?.deliveryFee ?? 0);
+    const itemsTotal = globalCartItems.reduce(
+      (sum, item) => sum + Number(item.price) * item.quantity,
+      0,
+    );
+    const deliveryFee = Number(globalCartItems[0]?.deliveryFee ?? 0);
     const total = (itemsTotal + deliveryFee).toFixed(2);
     createOrderMutation.mutate({
       idempotencyKey: checkoutIdempotencyKey,
-      storeId: cart[0]?.storeId ?? 1,
+      storeId: globalCartItems[0]?.storeId ?? 1,
       total,
       paymentMethod: checkoutPayment,
       addressId: deliveryAddressId,
       deliveryAddress: deliveryAddress.trim(),
-      items: cart.map((item) => ({
+      items: globalCartItems.map((item) => ({
         productId: item.id,
-        quantity: 1,
-        unitPrice: cartTotal([item.price]).toFixed(2),
+        quantity: item.quantity,
+        unitPrice: Number(item.price).toFixed(2),
+        note: item.note,
+        optionIds: item.options?.map((option) => option.id),
       })),
     });
   };
@@ -1267,7 +1282,7 @@ export default function HomeScreen() {
             <ProductModal
               product={selectedProduct}
               onClose={() => setSelectedProduct(null)}
-              onAdd={() => addToCart(selectedProduct)}
+              onAdd={(options, unitPrice) => addToCart(selectedProduct, options, unitPrice)}
             />
           ) : null}
         </Modal>
@@ -1977,8 +1992,38 @@ function ProductModal({
 }: {
   product: Product;
   onClose: () => void;
-  onAdd: () => void;
+  onAdd: (options: CartOption[], unitPrice: string) => void;
 }) {
+  const detail = trpc.pediu.marketplace.detail.useQuery({ productId: product.id });
+  const [selected, setSelected] = useState<Record<number, number>>({});
+  const [choiceNotice, setChoiceNotice] = useState("");
+  const groups = detail.data?.options ?? [];
+  const base = Number(detail.data?.product.price ?? 0);
+  const extra = groups.reduce((sum, group) => {
+    const choice = group.choices.find((item) => item.id === selected[group.id]);
+    return sum + Number(choice?.priceDelta ?? 0);
+  }, 0);
+  const unitPrice = (Number.isFinite(base) ? base + extra : 0).toFixed(2);
+  const confirm = () => {
+    if (detail.isLoading || !detail.data) return;
+    const missing = groups.find((group) => group.required && !selected[group.id]);
+    if (missing) {
+      setChoiceNotice(`Escolha ${missing.name} para continuar.`);
+      return;
+    }
+    const options = groups.flatMap((group) => {
+      const choice = group.choices.find((item) => item.id === selected[group.id]);
+      if (!choice) return [];
+      return [{
+        id: choice.id,
+        groupId: group.id,
+        groupName: group.name,
+        name: choice.name,
+        priceDelta: String(choice.priceDelta),
+      }];
+    });
+    onAdd(options, unitPrice);
+  };
   return (
     <View style={styles.modalBackdrop}>
       <View style={[styles.sheet, styles.sheetTall]}>
@@ -2026,17 +2071,54 @@ function ProductModal({
               <Text style={styles.modalOfferText}>{product.adOfferLabel}</Text>
             </View>
           ) : null}
+          {detail.isLoading ? <Text style={styles.muted}>Carregando opções...</Text> : null}
+          {groups.map((group) => (
+            <View key={group.id} style={{ gap: 8 }}>
+              <Text style={styles.cardTitle}>
+                {group.name}
+                {group.required ? " · obrigatório" : " · opcional"}
+              </Text>
+              {group.choices.map((choice) => {
+                const on = selected[group.id] === choice.id;
+                const delta = Number(choice.priceDelta);
+                return (
+                  <Pressable
+                    key={choice.id}
+                    onPress={() => {
+                      setChoiceNotice("");
+                      setSelected((current) => ({ ...current, [group.id]: choice.id }));
+                    }}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: on ? COLORS.coral : COLORS.line,
+                      backgroundColor: on ? COLORS.coralSoft : COLORS.white,
+                      borderRadius: 12,
+                      padding: 10,
+                    }}
+                  >
+                    <Text style={styles.cardTitle}>
+                      {choice.name}
+                      {delta > 0 ? ` · +R$ ${delta.toFixed(2).replace(".", ",")}` : ""}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ))}
+          {choiceNotice ? <Text style={{ color: COLORS.coral, fontWeight: "800" }}>{choiceNotice}</Text> : null}
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Preço</Text>
-            <Text style={styles.totalValue}>{product.price}</Text>
+            <Text style={styles.totalValue}>
+              {detail.data ? `R$ ${unitPrice.replace(".", ",")}` : product.price}
+            </Text>
           </View>
           <PediuPressable
-            disabled={!product.available}
+            disabled={!product.available || detail.isLoading || !detail.data}
             style={[
               styles.primaryButton,
-              !product.available && styles.disabledButton,
+              (!product.available || detail.isLoading) && styles.disabledButton,
             ]}
-            onPress={onAdd}
+            onPress={confirm}
           >
             <Text style={styles.primaryButtonText}>
               {product.available
@@ -2301,12 +2383,12 @@ function SellerHome({
           <Text style={[styles.aiTitle, { color: theme.ink }]}>
             Crie um anúncio que chama atenção
           </Text>
-          <Text style={styles.aiText}>
+          <Text style={[styles.aiText, { color: "#3A2A22" }]}>
             Imagem e copy prontas para você revisar e publicar.
           </Text>
         </View>
         <Pressable
-          style={[styles.smallLightButton, { backgroundColor: theme.primary }]}
+          style={styles.smallLightButton}
           onPress={onAds}
         >
           <Text style={styles.smallLightButtonText}>Criar</Text>
@@ -2399,6 +2481,15 @@ function SellerOrders({
   orders: {
     id: number;
     customerId: number;
+    customerName?: string | null;
+    paymentLabel?: string | null;
+    lines?: Array<{
+      productId: number;
+      name: string;
+      quantity: number;
+      unitPrice: string;
+      note: string | null;
+    }>;
     total: string;
     status: string;
     deliveryAddress: string | null;
@@ -2464,25 +2555,33 @@ function SellerOrders({
 
           return (
             <View style={styles.sellerOrderCard} key={order.id}>
-              <View style={styles.orderTop}>
+              <Pressable style={styles.orderTop} onPress={() => router.push("/seller/orders")}>
                 <View>
                   <Text style={styles.eyebrow}>
                     {order.status.toUpperCase()} · #{order.id}
                   </Text>
                   <Text style={styles.orderStore}>
-                    Cliente #{order.customerId}
+                    {order.customerName?.trim() || "Cliente"}
                   </Text>
                 </View>
                 <Text style={styles.price}>
                   R$ {Number(order.total).toFixed(2).replace(".", ",")}
                 </Text>
-              </View>
+              </Pressable>
               <Text style={styles.muted}>
                 {order.fulfillmentMode === "pickup"
                   ? "Retirada na loja"
                   : order.deliveryAddress ||
                     "Endereço de entrega não informado"}
               </Text>
+              {(order.lines ?? []).map((line) => (
+                <Text key={`${order.id}-${line.productId}-${line.note ?? ""}`} style={styles.muted}>
+                  {line.quantity}× {line.name}
+                  {line.note ? ` · ${line.note}` : ""} · R${" "}
+                  {Number(line.unitPrice).toFixed(2).replace(".", ",")}
+                </Text>
+              ))}
+              <Text style={styles.muted}>{order.paymentLabel || "Pagamento a confirmar"}</Text>
 
               {next ? (
                 <View style={styles.orderActions}>
@@ -2918,7 +3017,7 @@ function SellerSettings({
               {isOpen ? "Loja aberta" : "Loja fechada"}
             </Text>
             <Text style={styles.muted}>
-              Controla a disponibilidade no marketplace
+              Define se a loja aparece para quem pede
             </Text>
           </View>
           <View style={[styles.stockSwitch, isOpen && styles.stockSwitchOn]}>

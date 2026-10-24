@@ -105,13 +105,13 @@ describe("guest browsing and role signup", () => {
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
-  it("raises the preview Android version above the installed build", () => {
+  it("lets the store build own the Android version code", () => {
     const config = readFileSync("app.config.ts", "utf8");
     const eas = JSON.parse(readFileSync("eas.json", "utf8")) as {
       cli: { appVersionSource: string };
       build: { preview: { autoIncrement: boolean } };
     };
-    expect(config).toContain("versionCode: 2");
+    expect(config).not.toContain("versionCode");
     expect(eas.cli.appVersionSource).toBe("remote");
     expect(eas.build.preview.autoIncrement).toBe(true);
   });

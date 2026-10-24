@@ -117,6 +117,16 @@ export default function TrackOrderPage() {
         <Text style={[s.muted, { marginTop: 2 }]}>
           Total: R$ {Number(query.data.total).toFixed(2).replace(".", ",")}
         </Text>
+        {query.data.lines?.map((line) => (
+          <Text key={`${line.productId}-${line.note ?? ""}`} style={s.muted}>
+            {line.quantity}× {line.name}
+            {line.note ? ` · ${line.note}` : ""} · R${" "}
+            {Number(line.unitPrice).toFixed(2).replace(".", ",")}
+          </Text>
+        ))}
+        {query.data.paymentLabel ? (
+          <Text style={s.muted}>Pagamento: {query.data.paymentLabel}</Text>
+        ) : null}
         <Text style={[s.muted, { marginTop: 2 }]}>{currentCopy.detail}</Text>
         {query.data.deliveryAddress ? (
           <Text style={s.muted}>Entrega: {query.data.deliveryAddress}</Text>

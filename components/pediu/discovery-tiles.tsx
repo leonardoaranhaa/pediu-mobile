@@ -22,7 +22,7 @@ const TILES = [
   {
     key: "market",
     title: "Mercado Flash",
-    subtitle: "Até 25 min",
+    subtitle: "Mercado perto de você",
     href: "/market" as const,
     icon: "storefront" as const,
     bg: PEDIU_TOKENS.inkDeep,

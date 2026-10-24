@@ -69,4 +69,22 @@ describe("cart domain", () => {
     expect(updateCartNote(current, burger.id, "  sem cebola  ")[0]?.note).toBe("sem cebola");
     expect(updateCartNote(current, burger.id, "   ")[0]?.note).toBeUndefined();
   });
+
+  it("keeps two sizes of the same product on separate lines", () => {
+    const grande = {
+      ...burger,
+      price: "28.00",
+      options: [{ id: 12, groupId: 1, groupName: "Tamanho", name: "Grande", priceDelta: "10.00" }],
+    };
+    const broto = {
+      ...burger,
+      options: [{ id: 11, groupId: 1, groupName: "Tamanho", name: "Broto", priceDelta: "0.00" }],
+    };
+    const bag = addProductToCart(addProductToCart([], grande).items, broto).items;
+    expect(bag).toHaveLength(2);
+    expect(cartSubtotal(bag)).toBe(46);
+    const again = addProductToCart(bag, grande).items;
+    expect(again).toHaveLength(2);
+    expect(again.find((item) => item.options?.[0]?.id === 12)?.quantity).toBe(2);
+  });
 });

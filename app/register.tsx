@@ -108,6 +108,7 @@ export default function RegisterScreen() {
           <Field label="E-mail" value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" />
           <Field label="Telefone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
           <Field label="Senha" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" />
+          <Text style={s.muted}>A senha precisa ter pelo menos 8 caracteres.</Text>
           {signup.error ? <Text style={{ color: PEDIU.coral, fontWeight: "700" }}>{messageOf(signup.error)}</Text> : null}
           <PrimaryButton
             title={signup.isPending ? "Criando..." : role === "customer" ? "Criar conta" : "Continuar"}
@@ -140,9 +141,9 @@ export default function RegisterScreen() {
           <Text style={s.sectionTitle}>Como você entrega</Text>
           <Text style={s.muted}>A equipe do Pediu analisa o cadastro antes de liberar ofertas.</Text>
           <View style={{ gap: 8 }}>
-            <OutlineButton title="Bicicleta" onPress={() => setVehicleType("bike")} />
-            <OutlineButton title="Moto" onPress={() => setVehicleType("moto")} />
-            <OutlineButton title="Carro" onPress={() => setVehicleType("car")} />
+            <OutlineButton title="Bicicleta" selected={vehicleType === "bike"} onPress={() => setVehicleType("bike")} />
+            <OutlineButton title="Moto" selected={vehicleType === "moto"} onPress={() => setVehicleType("moto")} />
+            <OutlineButton title="Carro" selected={vehicleType === "car"} onPress={() => setVehicleType("car")} />
           </View>
           <Text style={s.muted}>Escolhido: {vehicleType === "bike" ? "Bicicleta" : vehicleType === "moto" ? "Moto" : "Carro"}</Text>
           {vehicleType !== "bike" ? (

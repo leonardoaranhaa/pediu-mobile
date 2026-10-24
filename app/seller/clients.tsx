@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Text, View } from "react-native";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
+import { SellerDock } from "@/components/seller-dock";
 import { Card, Field, Page, PrimaryButton, OutlineButton, Row, s } from "@/components/pediu-page";
 
 export default function SellerClientsPage() {
@@ -33,7 +34,7 @@ export default function SellerClientsPage() {
   };
 
   return (
-    <Page title="Clientes e fiado" eyebrow="RELACIONAMENTO">
+    <Page title="Clientes e fiado" eyebrow="RELACIONAMENTO" dock={<SellerDock active="home" />}>
       <Card>
         <Text style={s.sectionTitle}>Saldo em aberto</Text>
         <Text style={{ color: "#FF8A3D", fontSize: 28, fontWeight: "900" }}>R$ {totalOwed.toFixed(2).replace(".", ",")}</Text>

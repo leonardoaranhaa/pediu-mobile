@@ -21,6 +21,10 @@ import { interpretVoiceCommand } from "./voice";
 import { localModerationNote } from "../shared/ad-moderation";
 import { openAiFlagged } from "./_core/openai";
 import { createPixCharge, mercadoPagoConfigured } from "./payments";
+import {
+  composeItemNote,
+  priceSelectedOptions,
+} from "./domain/order-options";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import { storageGetSignedUrl, storagePut } from "./storage";
 import { sendPushToUser } from "./push";
@@ -334,6 +338,15 @@ export const appRouter = router({
             }
             return { verificationSent, unchanged: false as const };
           }),
+        tour: router({
+          mine: protectedProcedure.query(async ({ ctx }) => ({
+            storeTourDone: await db.getStoreTourDone(ctx.user.id),
+          })),
+          complete: protectedProcedure.mutation(async ({ ctx }) => {
+            await db.setStoreTourDone(ctx.user.id);
+            return { success: true as const };
+          }),
+        }),
         theme: router({
           update: protectedProcedure
             .input(
@@ -532,6 +545,10 @@ export const appRouter = router({
                   productId: z.number().int().positive(),
                   quantity: z.number().int().positive().max(50),
                   note: z.string().trim().max(500).optional(),
+                  optionIds: z
+                    .array(z.number().int().positive())
+                    .max(12)
+                    .optional(),
                 }),
               )
               .min(1),
@@ -586,14 +603,20 @@ export const appRouter = router({
                 throw new Error(
                   "Há produto inválido ou indisponível no carrinho",
                 );
-              const unitPrice = Number(product.price);
+              const selected = priceSelectedOptions(
+                product.price,
+                await db.listProductOptions(product.id),
+                item.optionIds,
+              );
+              if (!selected.ok) throw new Error(selected.message);
               return {
                 productId: product.id,
                 name: product.name,
                 quantity: item.quantity,
-                unitPrice: unitPrice.toFixed(2),
-                lineTotal: (unitPrice * item.quantity).toFixed(2),
-                note: item.note,
+                unitPrice: selected.unitPrice,
+                lineTotal: (Number(selected.unitPrice) * item.quantity).toFixed(2),
+                note: composeItemNote(selected.label, item.note),
+                optionIds: selected.optionIds,
               };
             }),
           );
@@ -912,7 +935,14 @@ export const appRouter = router({
         const store = await db.getStoreForOwner(ctx.user.id);
         if (!store)
           throw new Error("Cadastre sua loja antes de criar anúncios");
-        return db.getAdCreditsForStore(store.id);
+        const credits = await db.getAdCreditsForStore(store.id);
+        const settings = await db.getPlatformSettings();
+        const unit = Number(settings.creditPrice);
+        return {
+          ...credits,
+          unitPrice: settings.creditPrice,
+          purchaseAvailable: mercadoPagoConfigured() && Number.isFinite(unit) && unit > 0,
+        };
       }),
       mine: protectedProcedure.query(async ({ ctx }) => {
         const store = await db.getStoreForOwner(ctx.user.id);
@@ -1164,6 +1194,74 @@ export const appRouter = router({
             await db.replaceProductOptions(productId, optionGroups);
           return productId;
         }),
+      detail: protectedProcedure
+        .input(z.object({ productId: z.number().int().positive() }))
+        .query(async ({ ctx, input }) => {
+          const store = await db.getStoreForOwner(ctx.user.id);
+          if (!store) throw new Error("Loja não encontrada");
+          const product = await db.getProductForStore(input.productId, store.id);
+          if (!product) throw new Error("Produto não encontrado");
+          return {
+            ...product,
+            options: await db.listProductOptions(product.id),
+          };
+        }),
+      update: protectedProcedure
+        .input(
+          z.object({
+            productId: z.number().int().positive(),
+            name: z.string().min(2).max(180),
+            category: z.string().min(2).max(80),
+            description: z.string().max(1000).optional(),
+            price: z.string().regex(/^\d+(\.\d{1,2})?$/),
+            saleUnit: z.enum(SALE_UNITS).optional(),
+            packSize: z
+              .string()
+              .regex(/^\d+(\.\d{1,3})?$/)
+              .nullable()
+              .optional(),
+            inventoryTracked: z.boolean().default(false),
+            stockQuantity: z.number().int().min(0).max(1_000_000).default(0),
+            imageData: z.string().max(350_000).nullable().optional(),
+            optionGroups: z
+              .array(
+                z.object({
+                  name: z.string().trim().min(1).max(80),
+                  required: z.boolean().default(false),
+                  choices: z
+                    .array(
+                      z.object({
+                        name: z.string().trim().min(1).max(80),
+                        priceDelta: z.string().regex(/^\d+(\.\d{1,2})?$/),
+                      }),
+                    )
+                    .min(1)
+                    .max(12),
+                }),
+              )
+              .max(6)
+              .optional(),
+          }),
+        )
+        .mutation(async ({ ctx, input }) => {
+          const store = await db.getStoreForOwner(ctx.user.id);
+          if (!store) throw new Error("Loja não encontrada");
+          const { optionGroups, productId, imageData, ...productInput } = input;
+          await db.updateStoreProduct(store.id, productId, {
+            name: productInput.name,
+            category: productInput.category,
+            description: productInput.description ?? null,
+            price: productInput.price,
+            saleUnit: normalizeSaleUnit(productInput.saleUnit ?? "unit"),
+            packSize: productInput.packSize ?? null,
+            inventoryTracked: productInput.inventoryTracked ? 1 : 0,
+            stockQuantity: productInput.stockQuantity,
+            ...(imageData !== undefined ? { imageData: imageData || null } : {}),
+          });
+          if (optionGroups)
+            await db.replaceProductOptions(productId, optionGroups);
+          return { success: true as const };
+        }),
       availability: protectedProcedure
         .input(
           z.object({
@@ -1236,7 +1334,8 @@ export const appRouter = router({
           const order = await db.getOrderForUser(input.orderId, ctx.user.id);
           if (!order)
             throw new Error("Pedido não encontrado ou não autorizado");
-          return order;
+          const [enriched] = await db.enrichOrdersForStore([order]);
+          return enriched;
         }),
       storeMine: protectedProcedure
         .input(
@@ -1249,13 +1348,14 @@ export const appRouter = router({
         )
         .query(async ({ ctx, input }) => {
           const store = await db.getStoreForOwner(ctx.user.id);
-          return store
-            ? db.listOrdersForStore(
+          const rows = store
+            ? await db.listOrdersForStore(
                 store.id,
                 input?.limit ?? 50,
                 input?.offset ?? 0,
               )
             : [];
+          return db.enrichOrdersForStore(rows);
         }),
       create: protectedProcedure
         .input(
@@ -1281,6 +1381,10 @@ export const appRouter = router({
                   quantity: z.number().int().positive().max(50),
                   unitPrice: z.string().regex(/^\d+(\.\d{1,2})?$/),
                   note: z.string().trim().max(500).optional(),
+                  optionIds: z
+                    .array(z.number().int().positive())
+                    .max(12)
+                    .optional(),
                 }),
               )
               .min(1),
@@ -1388,17 +1492,33 @@ export const appRouter = router({
               .filter(Boolean)
               .join(", ");
           }
-          const products = await Promise.all(
-            input.items.map((item) =>
-              db.getAvailableProductForStore(item.productId, input.storeId, {
-                allowOutOfStock: true,
-              }),
-            ),
+          const pricedItems = await Promise.all(
+            input.items.map(async (item) => {
+              const product = await db.getAvailableProductForStore(
+                item.productId,
+                input.storeId,
+                { allowOutOfStock: true },
+              );
+              if (!product)
+                throw new Error("Há produto inválido ou de outro estabelecimento");
+              const selected = priceSelectedOptions(
+                product.price,
+                await db.listProductOptions(product.id),
+                item.optionIds,
+              );
+              if (!selected.ok) throw new Error(selected.message);
+              return {
+                productId: product.id,
+                name: product.name,
+                quantity: item.quantity,
+                unitPrice: selected.unitPrice,
+                note: composeItemNote(selected.label, item.note),
+                optionIds: selected.optionIds,
+              };
+            }),
           );
-          if (products.some((p) => !p))
-            throw new Error("Há produto inválido ou de outro estabelecimento");
-          const subtotal = input.items.reduce(
-            (sum, item, i) => sum + Number(products[i]!.price) * item.quantity,
+          const subtotal = pricedItems.reduce(
+            (sum, item) => sum + Number(item.unitPrice) * item.quantity,
             0,
           );
           const tipAmount = clampTipAmount(input.tipAmount, subtotal);
@@ -1486,10 +1606,10 @@ export const appRouter = router({
                   destinationLatitude: savedAddress?.latitude,
                   destinationLongitude: savedAddress?.longitude,
                 },
-                input.items.map((item, i) => ({
+                pricedItems.map((item) => ({
                   productId: item.productId,
                   quantity: item.quantity,
-                  unitPrice: String(products[i]!.price),
+                  unitPrice: item.unitPrice,
                   ...(item.note ? { note: item.note } : {}),
                 })),
                 customer.id,
@@ -1543,10 +1663,10 @@ export const appRouter = router({
                 destinationLatitude: savedAddress?.latitude,
                 destinationLongitude: savedAddress?.longitude,
               },
-              input.items.map((item, i) => ({
+              pricedItems.map((item) => ({
                 productId: item.productId,
                 quantity: item.quantity,
-                unitPrice: String(products[i]!.price),
+                unitPrice: item.unitPrice,
                 ...(item.note ? { note: item.note } : {}),
               })),
               input.paymentMethod,

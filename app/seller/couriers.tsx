@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
+import { SellerDock } from "@/components/seller-dock";
 import {
   Card,
   Field,
@@ -39,14 +40,14 @@ export default function SellerCouriersPage() {
   const allowed = Boolean(user);
   if (!allowed)
     return (
-      <Page title="Entregadores" eyebrow="OPERAÇÃO DA LOJA">
+      <Page title="Entregadores" eyebrow="OPERAÇÃO DA LOJA" dock={<SellerDock active="home" />}>
         <Card>
           <Text style={s.rowTitle}>Entre para vincular motoboys à sua loja.</Text>
         </Card>
       </Page>
     );
   return (
-    <Page title="Entregadores" eyebrow="OPERAÇÃO DA LOJA">
+    <Page title="Entregadores" eyebrow="OPERAÇÃO DA LOJA" dock={<SellerDock active="home" />}>
       <Card>
         <Text style={s.sectionTitle}>Vincular entregador aprovado</Text>
         <Text style={s.muted}>

@@ -43,6 +43,13 @@
       "when": 1792338218589,
       "tag": "0005_pediu_signup_ai",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792862324177,
+      "tag": "0006_pediu_account_prefs",
+      "breakpoints": true
     }
   ]
 }

@@ -5,11 +5,11 @@ import { trpc } from "@/lib/trpc";
 import { useAppPreferences } from "@/lib/app-preferences";
 import { EmptyState } from "@/components/pediu/empty-state";
 import { s } from "@/components/pediu-page";
+import { SellerDock } from "@/components/seller-dock";
 import {
   OpsBadge,
   OpsButton,
   OpsCard,
-  OpsDock,
   OpsOrderLines,
   OpsSectionTitle,
   OpsShell,
@@ -58,24 +58,7 @@ export default function SellerOrdersPage() {
 
   return (
     <OpsShell
-      dock={
-        <OpsDock
-          items={[
-            {
-              label: "Cozinha",
-              icon: "restaurant",
-              to: "/seller/orders",
-              active: true,
-            },
-            {
-              label: "Cardápio",
-              icon: "restaurant-menu",
-              to: "/seller/catalog",
-            },
-            { label: "Cliente", icon: "home", to: "/" },
-          ]}
-        />
-      }
+      dock={<SellerDock active="orders" />}
     >
       <View style={{ gap: 5 }}>
         <Text
@@ -208,14 +191,21 @@ export default function SellerOrdersPage() {
                             <OpsBadge tone="muted">RETIRADA</OpsBadge>
                           ) : null}
                         </View>
+                        <Text style={{ color: theme.ink, fontFamily: "Nunito", fontWeight: "800" }}>
+                          {order.customerName?.trim() || "Cliente"}
+                        </Text>
                         <OpsOrderLines
                           lines={[
+                            ...(order.lines ?? []).map(
+                              (line) =>
+                                `${line.quantity}× ${line.name}${line.note ? ` · ${line.note}` : ""} · ${money(line.unitPrice)}`,
+                            ),
+                            order.paymentLabel || "Pagamento a confirmar",
                             order.tipAmount && Number(order.tipAmount) > 0
                               ? `Gorjeta: ${money(order.tipAmount)}`
-                              : "Total do pedido",
-                            isMarket
-                              ? "Separação de mercado · pronto para coleta Pediu Entregas"
-                              : `Situação: ${order.status}`,
+                              : isMarket
+                                ? "Separação de mercado"
+                                : `Situação: ${order.status}`,
                           ]}
                         />
                         {next ? (

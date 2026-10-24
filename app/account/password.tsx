@@ -30,6 +30,7 @@ export default function ChangePasswordScreen() {
         <Text style={s.muted}>Ao trocar, as outras sessões deixam de valer. Este aparelho continua conectado.</Text>
         <Field label="Senha atual" value={currentPassword} onChangeText={setCurrentPassword} secureTextEntry autoCapitalize="none" />
         <Field label="Nova senha" value={nextPassword} onChangeText={setNextPassword} secureTextEntry autoCapitalize="none" />
+        <Text style={s.muted}>A senha precisa ter pelo menos 8 caracteres.</Text>
         {change.error ? <Text style={{ color: PEDIU.coral, fontWeight: "700" }}>{messageOf(change.error)}</Text> : null}
         <PrimaryButton
           title={change.isPending ? "Salvando..." : "Salvar nova senha"}

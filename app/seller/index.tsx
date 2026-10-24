@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 import { askToJoin } from "@/components/auth-prompt";
 import { StoreSignupForm } from "@/components/store-signup-form";
+import { SellerDock } from "@/components/seller-dock";
 import { StoreTour } from "@/components/store-tour";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
@@ -18,7 +19,6 @@ import {
   OpsBadge,
   OpsButton,
   OpsCard,
-  OpsDock,
   OpsHeader,
   OpsMetric,
   OpsOrderLines,
@@ -57,6 +57,15 @@ function SellerOrderCard({
     isFlash: number;
     tipAmount: string | null;
     fulfillmentMode: string | null;
+    customerName?: string | null;
+    paymentLabel?: string | null;
+    lines?: Array<{
+      productId: number;
+      name: string;
+      quantity: number;
+      unitPrice: string;
+      note: string | null;
+    }>;
   };
   onUpdate: (status: NonNullable<(typeof nextStatus)[string]>) => void;
   onCancel: () => void;
@@ -97,6 +106,11 @@ function SellerOrderCard({
             Pedido #{order.id}
           </Text>
           <Text
+            style={{ fontFamily: "Nunito", fontSize: 17, color: "#111111", fontWeight: "800" }}
+          >
+            {order.customerName?.trim() || "Cliente"}
+          </Text>
+          <Text
             style={{ fontFamily: "Nunito", fontSize: 17, color: "#6E635A" }}
           >
             {order.deliveryAddress ?? "Endereço informado no checkout"}
@@ -129,11 +143,22 @@ function SellerOrderCard({
       </View>
       <OpsOrderLines
         lines={[
+          ...(order.lines ?? []).map(
+            (line) =>
+              `${line.quantity}× ${line.name}${line.note ? ` · ${line.note}` : ""} · ${money(line.unitPrice)}`,
+          ),
+          order.paymentLabel || "Pagamento a confirmar",
           order.tipAmount && Number(order.tipAmount) > 0
             ? `Gorjeta incluída: ${money(order.tipAmount)}`
-            : "Valores do pedido",
-          isFlash ? "Entrega Flash" : "Entrega padrão da loja",
+            : isFlash
+              ? "Entrega Flash"
+              : "Entrega padrão da loja",
         ]}
+      />
+      <OpsButton
+        title="Ver pedido"
+        variant="ghost"
+        onPress={() => router.push("/seller/orders")}
       />
       {next || (isReady && delivery) ? (
         <View style={{ flexDirection: "row", gap: 10 }}>
@@ -308,16 +333,11 @@ export default function SellerHomePage() {
 
   return (
     <OpsShell
-      dock={
-        <OpsDock
-          items={[
-            { label: "Início", icon: "storefront", to: "/seller", active: true },
-            { label: "Pedidos", icon: "receipt-long", to: "/seller/orders" },
-            { label: "Cardápio", icon: "restaurant-menu", to: "/seller/catalog" },
-            { label: "Anúncios", icon: "campaign", to: "/seller/ads" },
-            { label: "Ajustes", icon: "tune", to: "/seller/settings" },
-          ]}
-        />
+      dock={<SellerDock active="home" />}
+      overlay={
+        user?.id && store.data ? (
+          <StoreTour userId={user.id} storeName={store.data.name} />
+        ) : null
       }
     >
       <OpsHeader
@@ -438,10 +458,12 @@ export default function SellerHomePage() {
           variant="ghost"
           onPress={() => router.push("/seller/settings")}
         />
+        <OpsButton
+          title="Minha conta"
+          variant="ghost"
+          onPress={() => router.push("/account/profile")}
+        />
       </OpsCard>
-      {user?.id && store.data ? (
-        <StoreTour userId={user.id} storeName={store.data.name} />
-      ) : null}
     </OpsShell>
   );
 }

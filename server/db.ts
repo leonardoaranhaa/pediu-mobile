@@ -70,6 +70,7 @@ import {
   TipSettlement,
   User,
   accountRoles,
+  accountPrefs,
   adCredits,
   adCreditPurchases,
   platformSettings,
@@ -139,7 +140,9 @@ import {
   boundedDispatchOfferTtl,
   dispatchOfferExpiresAt,
   dispatchReofferKey,
+  offerStillBlocksCourier,
 } from "./domain/dispatch";
+import { paymentMethodLabel } from "./domain/order-options";
 import { isTrackingCapturedAtAcceptable } from "./domain/tracking";
 import { isUniqueConstraintError } from "./domain/idempotency";
 import {
@@ -2282,6 +2285,30 @@ export async function listProductsForStore(
     .limit(200);
 }
 
+export async function updateStoreProduct(
+  storeId: number,
+  productId: number,
+  patch: {
+    name: string;
+    category: string;
+    description?: string | null;
+    price: string;
+    saleUnit?: Product["saleUnit"];
+    packSize?: string | null;
+    inventoryTracked: number;
+    stockQuantity: number;
+    imageData?: string | null;
+  },
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const updated = await db
+    .update(products)
+    .set(patch)
+    .where(and(eq(products.id, productId), eq(products.storeId, storeId)));
+  if (getAffectedRows(updated) !== 1) throw new Error("Produto não encontrado");
+}
+
 export async function updateProductAvailability(
   productId: number,
   available: boolean,
@@ -3223,15 +3250,6 @@ export async function completeDelivery(
   return outcome;
 }
 
-async function nearestOnlineCourier(
-  tx: DatabaseTransaction,
-  orderId: number,
-  storeId: number,
-) {
-  const matches = await listNearbyCouriers(tx, orderId, storeId);
-  return matches[0];
-}
-
 async function listNearbyCouriers(
   tx: DatabaseTransaction,
   orderId: number,
@@ -3269,10 +3287,21 @@ async function listNearbyCouriers(
       ),
     );
   const offered = await tx
-    .select({ courierUserId: deliveryOffers.courierUserId })
+    .select({
+      courierUserId: deliveryOffers.courierUserId,
+      status: deliveryOffers.status,
+      expiresAt: deliveryOffers.expiresAt,
+    })
     .from(deliveryOffers)
     .where(eq(deliveryOffers.orderId, orderId));
-  const seen = new Set(offered.map((row) => row.courierUserId));
+  const now = new Date();
+  const seen = new Set(
+    offered
+      .filter((row) =>
+        offerStillBlocksCourier(row.status, row.expiresAt, now),
+      )
+      .map((row) => row.courierUserId),
+  );
   const payout = courierEarning(order.deliveryFeeSnapshot, order.tipAmount).toFixed(2);
   const dropoff = drop ? haversineKm(storePoint, drop) : null;
   return profiles
@@ -3300,6 +3329,85 @@ async function listNearbyCouriers(
     .sort((a, b) => a.pickupKm - b.pickupKm);
 }
 
+async function upsertCourierOffer(
+  tx: DatabaseTransaction,
+  input: {
+    orderId: number;
+    storeId: number;
+    courierUserId: number;
+    idempotencyKey: string;
+    expiresAt: Date;
+    now: Date;
+    payoutAmount?: string | null;
+    pickupDistanceKm?: string | null;
+    dropoffDistanceKm?: string | null;
+    message: string;
+  },
+): Promise<"live" | "accepted" | "revived" | "created"> {
+  const existing = (
+    await tx
+      .select()
+      .from(deliveryOffers)
+      .where(eq(deliveryOffers.idempotencyKey, input.idempotencyKey))
+      .limit(1)
+  )[0];
+  const others = await tx
+    .select({
+      id: deliveryOffers.id,
+      status: deliveryOffers.status,
+      expiresAt: deliveryOffers.expiresAt,
+    })
+    .from(deliveryOffers)
+    .where(
+      and(
+        eq(deliveryOffers.orderId, input.orderId),
+        eq(deliveryOffers.courierUserId, input.courierUserId),
+      ),
+    );
+  const blocking = others.filter(
+    (row) =>
+      row.id !== existing?.id &&
+      offerStillBlocksCourier(row.status, row.expiresAt, input.now),
+  );
+  if (blocking.some((row) => row.status === "accepted")) return "accepted";
+  if (existing?.status === "accepted") return "accepted";
+  if (blocking.length > 0) return "live";
+  if (
+    existing &&
+    offerStillBlocksCourier(existing.status, existing.expiresAt, input.now)
+  ) {
+    return "live";
+  }
+  if (existing) {
+    await tx
+      .update(deliveryOffers)
+      .set({
+        status: "pending",
+        expiresAt: input.expiresAt,
+        respondedAt: null,
+        payoutAmount: input.payoutAmount ?? existing.payoutAmount,
+        pickupDistanceKm: input.pickupDistanceKm ?? existing.pickupDistanceKm,
+        dropoffDistanceKm: input.dropoffDistanceKm ?? existing.dropoffDistanceKm,
+        message: input.message,
+      })
+      .where(eq(deliveryOffers.id, existing.id));
+    return "revived";
+  }
+  await tx.insert(deliveryOffers).values({
+    orderId: input.orderId,
+    storeId: input.storeId,
+    courierUserId: input.courierUserId,
+    payoutAmount: input.payoutAmount,
+    pickupDistanceKm: input.pickupDistanceKm,
+    dropoffDistanceKm: input.dropoffDistanceKm,
+    message: input.message,
+    idempotencyKey: input.idempotencyKey,
+    expiresAt: input.expiresAt,
+    status: "pending",
+  });
+  return "created";
+}
+
 async function reofferDeliveryWithinTransaction(
   tx: DatabaseTransaction,
   input: {
@@ -3307,6 +3415,7 @@ async function reofferDeliveryWithinTransaction(
     storeId: number;
     now: Date;
     ttlMs: number;
+    excludeCourierUserId?: number;
   },
 ): Promise<DeliveryOffer | undefined> {
   const order = (
@@ -3339,6 +3448,7 @@ async function reofferDeliveryWithinTransaction(
         and(
           eq(deliveryOffers.orderId, input.orderId),
           eq(deliveryOffers.status, "pending"),
+          gt(deliveryOffers.expiresAt, input.now),
         ),
       )
       .limit(1)
@@ -3364,6 +3474,9 @@ async function reofferDeliveryWithinTransaction(
           eq(storeCouriers.status, "active"),
           eq(courierProfiles.status, "approved"),
           eq(courierProfiles.availability, "available"),
+          input.excludeCourierUserId
+            ? sql`${storeCouriers.courierUserId} <> ${input.excludeCourierUserId}`
+            : sql`1 = 1`,
           notExists(
             tx
               .select({ id: deliveryOffers.id })
@@ -3372,6 +3485,13 @@ async function reofferDeliveryWithinTransaction(
                 and(
                   eq(deliveryOffers.orderId, input.orderId),
                   eq(deliveryOffers.courierUserId, storeCouriers.courierUserId),
+                  or(
+                    eq(deliveryOffers.status, "accepted"),
+                    and(
+                      eq(deliveryOffers.status, "pending"),
+                      gt(deliveryOffers.expiresAt, input.now),
+                    ),
+                  ),
                 ),
               ),
           ),
@@ -3381,37 +3501,38 @@ async function reofferDeliveryWithinTransaction(
       .for("update")
       .limit(1)
   )[0];
-  const nearby = candidate
-    ? undefined
-    : await nearestOnlineCourier(tx, input.orderId, input.storeId);
-  const courierUserId = candidate?.courierUserId ?? nearby?.courierUserId;
-  if (!courierUserId) return undefined;
-
-  const idempotencyKey = dispatchReofferKey(
-    input.orderId,
-    courierUserId,
+  const nearbyMatches = candidate
+    ? []
+    : await listNearbyCouriers(tx, input.orderId, input.storeId);
+  const nearby = nearbyMatches.find(
+    (match) => match.courierUserId !== input.excludeCourierUserId,
   );
-  const result = await tx.insert(deliveryOffers).values({
+  const courierUserId = candidate?.courierUserId ?? nearby?.courierUserId;
+  if (!courierUserId || courierUserId === input.excludeCourierUserId) return undefined;
+
+  const idempotencyKey = dispatchReofferKey(input.orderId, courierUserId);
+  const expiresAt = dispatchOfferExpiresAt(input.now, input.ttlMs);
+  const outcome = await upsertCourierOffer(tx, {
     orderId: input.orderId,
     storeId: input.storeId,
     courierUserId,
+    idempotencyKey,
+    expiresAt,
+    now: input.now,
     payoutAmount: nearby?.payoutAmount,
     pickupDistanceKm: nearby?.pickupDistanceKm,
     dropoffDistanceKm: nearby?.dropoffDistanceKm,
-    etaMinutes: undefined,
     message: "Nova oferta de entrega disponível",
-    idempotencyKey,
-    expiresAt: dispatchOfferExpiresAt(input.now, input.ttlMs),
-    status: "pending",
-  }).returning({ id: deliveryOffers.id });
-  const id = getInsertId(result);
-  const created = await tx
-    .select()
-    .from(deliveryOffers)
-    .where(eq(deliveryOffers.id, id))
-    .limit(1);
-  if (!created[0]) throw new Error("Reoferta não encontrada após criação");
-  return created[0];
+  });
+  if (outcome === "accepted") return undefined;
+  const created = (
+    await tx
+      .select()
+      .from(deliveryOffers)
+      .where(eq(deliveryOffers.idempotencyKey, idempotencyKey))
+      .limit(1)
+  )[0];
+  return created;
 }
 
 export async function createDeliveryOffer(input: {
@@ -3565,32 +3686,22 @@ export async function dispatchNearbyOffers(ownerId: number, orderId: number) {
     if (assignment) throw new Error("Este pedido já tem um motoboy.");
     const nearby = await listNearbyCouriers(tx, orderId, store.id);
     const created: number[] = [];
-    const expiresAt = new Date(Date.now() + CITY_OFFER_TTL_MS);
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + CITY_OFFER_TTL_MS);
     for (const courier of nearby) {
-      const idempotencyKey = `nearby-${orderId}-${courier.courierUserId}`;
-      const existing = (
-        await tx
-          .select({ id: deliveryOffers.id, status: deliveryOffers.status })
-          .from(deliveryOffers)
-          .where(eq(deliveryOffers.idempotencyKey, idempotencyKey))
-          .limit(1)
-      )[0];
-      if (existing) {
-        if (existing.status === "pending") created.push(courier.courierUserId);
-        continue;
-      }
-      await tx.insert(deliveryOffers).values({
+      const outcome = await upsertCourierOffer(tx, {
         orderId,
         storeId: store.id,
         courierUserId: courier.courierUserId,
+        idempotencyKey: `nearby-${orderId}-${courier.courierUserId}`,
+        expiresAt,
+        now,
         payoutAmount: courier.payoutAmount,
         pickupDistanceKm: courier.pickupDistanceKm,
         dropoffDistanceKm: courier.dropoffDistanceKm,
         message: "Corrida perto de você",
-        idempotencyKey,
-        expiresAt,
-        status: "pending",
       });
+      if (outcome === "accepted") continue;
       created.push(courier.courierUserId);
     }
     return { courierUserIds: created };
@@ -3724,6 +3835,117 @@ export async function listProductOptions(productId: number) {
     ...group,
     choices: choices.filter((choice) => choice.groupId === group.id),
   }));
+}
+
+function isMissingRelation(error: unknown) {
+  const queue: unknown[] = [error];
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current || typeof current !== "object") continue;
+    const record = current as { code?: string; cause?: unknown };
+    if (record.code === "42P01") return true;
+    if (record.cause) queue.push(record.cause);
+  }
+  return false;
+}
+
+export async function getStoreTourDone(userId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    const row = (
+      await db
+        .select({ storeTourDone: accountPrefs.storeTourDone })
+        .from(accountPrefs)
+        .where(eq(accountPrefs.userId, userId))
+        .limit(1)
+    )[0];
+    return row?.storeTourDone === 1;
+  } catch (error) {
+    if (isMissingRelation(error)) return false;
+    throw error;
+  }
+}
+
+export async function setStoreTourDone(userId: number) {
+  const db = await getDb();
+  if (!db) return;
+  try {
+    await db
+      .insert(accountPrefs)
+      .values({ userId, storeTourDone: 1, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: accountPrefs.userId,
+        set: { storeTourDone: 1, updatedAt: new Date() },
+      });
+  } catch (error) {
+    if (isMissingRelation(error)) return;
+    throw error;
+  }
+}
+
+export type StoreOrderLine = {
+  productId: number;
+  name: string;
+  quantity: number;
+  unitPrice: string;
+  note: string | null;
+};
+
+export async function enrichOrdersForStore<
+  T extends { id: number; customerId: number },
+>(rows: T[]) {
+  const empty = rows.map((order) => ({
+    ...order,
+    lines: [] as StoreOrderLine[],
+    customerName: null as string | null,
+    paymentMethod: null as string | null,
+    paymentLabel: paymentMethodLabel(null),
+  }));
+  const db = await getDb();
+  if (!db || rows.length === 0) return empty;
+  const orderIds = rows.map((order) => order.id);
+  const customerIds = [...new Set(rows.map((order) => order.customerId))];
+  const lines = await db
+    .select({
+      orderId: orderItems.orderId,
+      productId: orderItems.productId,
+      quantity: orderItems.quantity,
+      unitPrice: orderItems.unitPrice,
+      note: orderItems.note,
+      name: products.name,
+    })
+    .from(orderItems)
+    .innerJoin(products, eq(products.id, orderItems.productId))
+    .where(inArray(orderItems.orderId, orderIds));
+  const names = await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(inArray(users.id, customerIds));
+  const pays = await db
+    .select({ orderId: payments.orderId, method: payments.method })
+    .from(payments)
+    .where(inArray(payments.orderId, orderIds));
+  const nameById = new Map(names.map((row) => [row.id, row.name]));
+  const payByOrder = new Map(pays.map((row) => [row.orderId, row.method]));
+  return rows.map((order) => {
+    const method = payByOrder.get(order.id) ?? null;
+    return {
+      ...order,
+      lines: lines
+        .filter((line) => line.orderId === order.id)
+        .map((line) => ({
+          productId: line.productId,
+          name: line.name,
+          quantity: line.quantity,
+          unitPrice: line.unitPrice,
+          note: line.note,
+        })),
+      customerName: nameById.get(order.customerId) ?? null,
+      paymentMethod: method,
+      paymentLabel: paymentMethodLabel(method),
+    };
+  });
 }
 
 export async function expireAndReofferDeliveryOffers(
@@ -3886,6 +4108,7 @@ export async function respondToDeliveryOffer(input: {
         storeId: offer.storeId,
         now: new Date(),
         ttlMs: DEFAULT_DISPATCH_OFFER_TTL_MS,
+        excludeCourierUserId: input.courierUserId,
       });
       return { offer: rejected, ...(reoffer ? { reoffer } : {}) };
     }

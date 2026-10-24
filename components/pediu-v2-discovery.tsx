@@ -203,17 +203,19 @@ export function PediuV2Discovery({
             ))}
       </ScrollView>
 
-      <PromoReel
-        theme={theme}
-        products={flashProducts}
-        index={promoIndex}
-        onIndexChange={setPromoIndex}
-        onAssistant={onAssistant}
-        onBenefits={onBenefits}
-        onOrders={onOrders}
-        onMarket={onMarket}
-        onSearch={onSearch}
-      />
+      {flashProducts.length ? (
+        <PromoReel
+          theme={theme}
+          products={flashProducts}
+          index={promoIndex}
+          onIndexChange={setPromoIndex}
+          onAssistant={onAssistant}
+          onBenefits={onBenefits}
+          onOrders={onOrders}
+          onMarket={onMarket}
+          onSearch={onSearch}
+        />
+      ) : null}
 
       <DealsStrip
         theme={theme}
@@ -222,17 +224,22 @@ export function PediuV2Discovery({
         onProductPress={onProductPress}
       />
 
-      <FeatureTiles theme={theme} onTaste={onAssistant} onMarket={onMarket} />
+      {products.length ? (
+        <FeatureTiles
+          theme={theme}
+          onTaste={onAssistant}
+          onMarket={onMarket}
+          showMarket={flashProducts.length > 0}
+        />
+      ) : null}
 
-      <FlashRadar
-        theme={theme}
-        count={flashProducts.length}
-        onPress={
-          flashProducts.length
-            ? onProductPress.bind(null, flashProducts[0])
-            : onSearch
-        }
-      />
+      {flashProducts.length ? (
+        <FlashRadar
+          theme={theme}
+          count={flashProducts.length}
+          onPress={() => onProductPress(flashProducts[0])}
+        />
+      ) : null}
 
       <PediuPressable
         onPress={onSearch}
@@ -770,10 +777,12 @@ function FeatureTiles({
   theme,
   onTaste,
   onMarket,
+  showMarket,
 }: {
   theme: AppTheme;
   onTaste: () => void;
   onMarket: () => void;
+  showMarket: boolean;
 }) {
   return (
     <View style={styles.featureTiles}>
@@ -785,14 +794,16 @@ function FeatureTiles({
         <Text style={styles.featureTileTitle}>O que pedir?</Text>
         <Text style={styles.featureTileSubtitle}>Sabor do momento</Text>
       </PediuPressable>
-      <PediuPressable
-        onPress={onMarket}
-        style={[styles.featureTile, { backgroundColor: theme.ink }]}
-      >
-        <MaterialIcons name="storefront" size={22} color={theme.highlight} />
-        <Text style={styles.featureTileTitle}>Mercado Flash</Text>
-        <Text style={styles.featureTileSubtitle}>Até 25 min</Text>
-      </PediuPressable>
+      {showMarket ? (
+        <PediuPressable
+          onPress={onMarket}
+          style={[styles.featureTile, { backgroundColor: theme.ink }]}
+        >
+          <MaterialIcons name="storefront" size={22} color={theme.highlight} />
+          <Text style={styles.featureTileTitle}>Mercado Flash</Text>
+          <Text style={styles.featureTileSubtitle}>Mercado perto de você</Text>
+        </PediuPressable>
+      ) : null}
     </View>
   );
 }

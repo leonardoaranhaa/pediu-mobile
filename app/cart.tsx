@@ -10,6 +10,7 @@ import {
 } from "@/components/pediu-page";
 import { askToJoin } from "@/components/auth-prompt";
 import { useAuth } from "@/hooks/use-auth";
+import { cartLineKey } from "@/lib/cart";
 import { useCart } from "@/providers/cart-provider";
 
 function money(value: number) {
@@ -105,7 +106,7 @@ export default function CartPage() {
           </View>
           {items.map((item) => (
             <View
-              key={item.id}
+              key={cartLineKey(item)}
               style={{
                 gap: 8,
                 paddingVertical: 13,
@@ -123,6 +124,11 @@ export default function CartPage() {
                 <Text style={{ fontSize: 28 }}>{item.emoji ?? "🍽️"}</Text>
                 <View style={{ flex: 1, gap: 3 }}>
                   <Text style={s.sectionTitle}>{item.name}</Text>
+                  {item.options?.length ? (
+                    <Text style={s.muted}>
+                      {item.options.map((option) => `${option.groupName}: ${option.name}`).join(" · ")}
+                    </Text>
+                  ) : null}
                   <Text style={s.muted}>{money(Number(item.price))} cada</Text>
                 </View>
                 <Text style={{ color: PEDIU.ink, fontWeight: "900" }}>
@@ -133,7 +139,7 @@ export default function CartPage() {
                 style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
               >
                 <Pressable
-                  onPress={() => updateQuantity(item.id, item.quantity - 1)}
+                  onPress={() => updateQuantity(cartLineKey(item), item.quantity - 1)}
                   style={{
                     width: 34,
                     height: 34,
@@ -158,7 +164,7 @@ export default function CartPage() {
                   {item.quantity}
                 </Text>
                 <Pressable
-                  onPress={() => updateQuantity(item.id, item.quantity + 1)}
+                  onPress={() => updateQuantity(cartLineKey(item), item.quantity + 1)}
                   style={{
                     width: 34,
                     height: 34,
@@ -180,7 +186,7 @@ export default function CartPage() {
                   </Text>
                 </Pressable>
                 <Pressable
-                  onPress={() => removeItem(item.id)}
+                  onPress={() => removeItem(cartLineKey(item))}
                   style={{ marginLeft: "auto" }}
                 >
                   <Text style={{ color: PEDIU.coral, fontWeight: "800" }}>
@@ -190,7 +196,7 @@ export default function CartPage() {
               </View>
               <TextInput
                 value={item.note ?? ""}
-                onChangeText={(note) => updateNote(item.id, note)}
+                onChangeText={(note) => updateNote(cartLineKey(item), note)}
                 placeholder="Observação para este item (opcional)"
                 placeholderTextColor={PEDIU.muted}
                 style={{

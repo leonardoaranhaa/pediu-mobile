@@ -1,7 +1,7 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import type { ComponentProps, ReactNode } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
+import { Keyboard, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppPreferences } from "@/lib/app-preferences";
 import { PEDIU_TOKENS } from "@/lib/pediu-tokens";
@@ -21,12 +21,27 @@ type IconName = ComponentProps<typeof MaterialIcons>["name"];
 export function OpsShell({
   children,
   dock,
+  overlay,
 }: {
   children: ReactNode;
   dock: ReactNode;
+  overlay?: ReactNode;
 }) {
   const { theme } = useAppPreferences();
   const insets = useSafeAreaInsets();
+  const [keyboard, setKeyboard] = useState(0);
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const show = Keyboard.addListener(showEvent, (event) => {
+      setKeyboard(event.endCoordinates.height);
+    });
+    const hide = Keyboard.addListener(hideEvent, () => setKeyboard(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
   return (
     <View style={[styles.root, { backgroundColor: theme.canvas }]}>
       <View
@@ -46,14 +61,19 @@ export function OpsShell({
         ]}
       />
       <ScrollView
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: 126 + Math.max(insets.bottom, 8) },
+          {
+            paddingTop: insets.top + 16,
+            paddingBottom: 126 + Math.max(insets.bottom, 8) + keyboard,
+          },
         ]}
       >
         {children}
       </ScrollView>
+      {overlay}
       {dock}
     </View>
   );

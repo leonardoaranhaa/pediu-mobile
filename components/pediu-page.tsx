@@ -9,6 +9,7 @@ import {
   View,
   type TextInputProps,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PediuPressable } from "@/components/pediu-motion";
 import { useAppPreferences } from "@/lib/app-preferences";
 import { PEDIU_TOKENS } from "@/lib/pediu-tokens";
@@ -34,16 +35,21 @@ export function Page({
   eyebrow,
   back = true,
   action,
+  onBack,
+  dock,
 }: {
   children: ReactNode;
   title: string;
   eyebrow?: string;
   back?: boolean;
   action?: ReactNode;
+  onBack?: () => void;
+  dock?: ReactNode;
 }) {
   const { theme } = useAppPreferences();
+  const insets = useSafeAreaInsets();
   return (
-    <View style={[s.root, { backgroundColor: theme.canvas }]}>
+    <View style={[s.root, { backgroundColor: theme.canvas, paddingTop: insets.top }]}>
       <View
         pointerEvents="none"
         style={[s.backgroundOrb, s.backgroundOrbOne]}
@@ -53,13 +59,17 @@ export function Page({
         style={[s.backgroundOrb, s.backgroundOrbTwo]}
       />
       <ScrollView
-        contentContainerStyle={s.content}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={[
+          s.content,
+          dock ? { paddingBottom: 150 + insets.bottom } : null,
+        ]}
         showsVerticalScrollIndicator={false}
       >
         <View style={s.header}>
           {back ? (
             <PediuPressable
-              onPress={() => router.back()}
+              onPress={() => (onBack ? onBack() : router.back())}
               style={[s.back, { backgroundColor: theme.card, borderColor: theme.line }]}
             >
               <MaterialIcons name="arrow-back" size={21} color={theme.ink} />
@@ -79,6 +89,7 @@ export function Page({
         </View>
         {children}
       </ScrollView>
+      {dock}
     </View>
   );
 }
@@ -171,20 +182,27 @@ export function OutlineButton({
   onPress,
   disabled,
   style,
+  selected,
 }: {
   title: string;
   onPress?: () => void;
   disabled?: boolean;
   style?: object;
+  selected?: boolean;
 }) {
   const { theme } = useAppPreferences();
   return (
     <PediuPressable
       disabled={disabled}
       onPress={onPress}
-      style={[s.outline, { borderColor: theme.primary }, style]}
+      style={[
+        s.outline,
+        { borderColor: theme.primary },
+        selected ? { backgroundColor: theme.primary, borderColor: theme.primary } : null,
+        style,
+      ]}
     >
-      <Text style={[s.outlineText, { color: theme.primary }]}>{title}</Text>
+      <Text style={[s.outlineText, { color: selected ? PEDIU.white : theme.primary }]}>{title}</Text>
     </PediuPressable>
   );
 }

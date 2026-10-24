@@ -280,8 +280,8 @@ export function PediuMascot({
           : "0deg";
   const bubblePosition =
     speechSide === "right"
-      ? { left: compact ? 34 : 76, bottom: compact ? 50 : 72 }
-      : { right: compact ? 34 : 8, bottom: compact ? 50 : 72 };
+      ? { left: Math.round(size * 0.55), bottom: 0, width: 150 }
+      : { right: Math.round(size * 0.55), bottom: 0, width: 150 };
   const bubbleTailStyle =
     speechSide === "right" ? styles.speechTailLeft : styles.speechTail;
   const eyeWidth = compact ? (eyesClosed ? 8 : 5) : eyesClosed ? 11 : 6;

@@ -5,11 +5,11 @@ import { EmptyState } from "@/components/pediu/empty-state";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
 import { s } from "@/components/pediu-page";
+import { SellerDock } from "@/components/seller-dock";
 import {
   OpsBadge,
   OpsButton,
   OpsCard,
-  OpsDock,
   OpsHeader,
   OpsOrderLines,
   OpsSectionTitle,
@@ -91,24 +91,7 @@ export default function SellerDeliveryPage() {
 
   return (
     <OpsShell
-      dock={
-        <OpsDock
-          items={[
-            {
-              label: "Cozinha",
-              icon: "restaurant",
-              to: "/seller",
-              active: true,
-            },
-            {
-              label: "Cardápio",
-              icon: "restaurant-menu",
-              to: "/seller/catalog",
-            },
-            { label: "Cliente", icon: "home", to: "/" },
-          ]}
-        />
-      }
+      dock={<SellerDock active="orders" />}
     >
       <OpsHeader
         eyebrow="LOGÍSTICA"

@@ -1,7 +1,9 @@
 import { MaterialIcons } from "@expo/vector-icons";
-import { useEffect, useMemo, useState } from "react";
+import { router } from "expo-router";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ProductExtrasFields, type ProductExtras } from "@/components/product-extras-fields";
-import { Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { SellerDock } from "@/components/seller-dock";
 import { EmptyState } from "@/components/pediu/empty-state";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
@@ -26,26 +28,78 @@ export default function SellerCatalogPage() {
   const [saleUnit, setSaleUnit] = useState<SaleUnit>("unit");
   const [packSize, setPackSize] = useState("");
   const [extras, setExtras] = useState<ProductExtras>({});
+  const [seed, setSeed] = useState(0);
+  const [initialExtras, setInitialExtras] = useState<ProductExtras | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [inventoryTracked, setInventoryTracked] = useState(false);
+  const [stockQuantity, setStockQuantity] = useState(0);
+  const [formError, setFormError] = useState("");
+  const [savedNotice, setSavedNotice] = useState("");
+  const loadedId = useRef<number | null>(null);
+  const detail = trpc.pediu.products.detail.useQuery(
+    { productId: editingId ?? 0 },
+    { enabled: Boolean(editingId) },
+  );
 
   const unitOptions = useMemo(() => SALE_UNITS, []);
   const categorySuggestions = isMarket ? MARKET_CATEGORY_SUGGESTIONS : MERCHANT_CATEGORY_SUGGESTIONS;
   const defaultCategory = categorySuggestions[0];
 
   useEffect(() => {
-    if (store.data?.id && !category.trim()) setCategory(defaultCategory);
-  }, [category, defaultCategory, store.data?.id]);
+    if (store.data?.id && !category.trim() && !editingId) setCategory(defaultCategory);
+  }, [category, defaultCategory, editingId, store.data?.id]);
 
-  const create = trpc.pediu.products.create.useMutation({
-    onSuccess: () => {
-      setName("");
-      setCategory(defaultCategory);
-      setDescription("");
-      setPrice("");
-      setSaleUnit(suggestedSaleUnitForCategory(isMarket ? "Hortifruti" : "Geral", store.data?.kind));
-      setPackSize("");
-      void products.refetch();
-    },
-  });
+  useEffect(() => {
+    if (!editingId || !detail.data || detail.data.id !== editingId) return;
+    if (loadedId.current === editingId) return;
+    loadedId.current = editingId;
+    const group = detail.data.options[0];
+    setName(detail.data.name);
+    setCategory(detail.data.category);
+    setDescription(detail.data.description ?? "");
+    setPrice(String(detail.data.price).replace(".", ","));
+    setSaleUnit(detail.data.saleUnit);
+    setPackSize(detail.data.packSize ? String(detail.data.packSize) : "");
+    setInventoryTracked(detail.data.inventoryTracked === 1);
+    setStockQuantity(detail.data.stockQuantity);
+    setInitialExtras({
+      imageData: detail.data.imageData ?? undefined,
+      optionGroups: group
+        ? [{
+            name: group.name,
+            required: group.required === 1,
+            choices: group.choices.map((choice) => ({
+              name: choice.name,
+              priceDelta: String(choice.priceDelta),
+            })),
+          }]
+        : undefined,
+    });
+    setSeed((value) => value + 1);
+    setSavedNotice("");
+    setFormError("");
+  }, [detail.data, editingId]);
+
+  const resetForm = () => {
+    setName("");
+    setCategory(defaultCategory);
+    setDescription("");
+    setPrice("");
+    setSaleUnit(suggestedSaleUnitForCategory(isMarket ? "Hortifruti" : "Geral", store.data?.kind));
+    setPackSize("");
+    setExtras({});
+    setInitialExtras(null);
+    setEditingId(null);
+    setInventoryTracked(false);
+    setStockQuantity(0);
+    loadedId.current = null;
+    setSeed((value) => value + 1);
+    setFormError("");
+    setSavedNotice("Produto salvo.");
+    void products.refetch();
+  };
+  const create = trpc.pediu.products.create.useMutation({ onSuccess: resetForm });
+  const update = trpc.pediu.products.update.useMutation({ onSuccess: resetForm });
   const availability = trpc.pediu.products.availability.useMutation({ onSuccess: () => void products.refetch() });
 
   const publish = async () => {
@@ -57,8 +111,60 @@ export default function SellerCatalogPage() {
     await Share.share({ title: `Catálogo ${store.data.name}`, message: `${store.data.name}\n\nPeça pelo Pediu:\n${lines}` });
   };
 
+  const dirty = Boolean(
+    name.trim() || description.trim() || price.trim() || extras.imageData || extras.optionGroups?.length,
+  );
+  const leave = () => {
+    if (!dirty) {
+      router.back();
+      return;
+    }
+    Alert.alert("Sair sem salvar?", "O que você preencheu neste produto será perdido.", [
+      { text: "Continuar editando", style: "cancel" },
+      { text: "Sair", style: "destructive", onPress: () => router.back() },
+    ]);
+  };
+  const saveProduct = () => {
+    const normalized = price.replace(",", ".").trim();
+    const pack = packSize.replace(",", ".").trim();
+    if (name.trim().length < 2) {
+      setFormError("Diga o nome do produto.");
+      return;
+    }
+    if (category.trim().length < 2) {
+      setFormError("Escolha uma categoria.");
+      return;
+    }
+    if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
+      setFormError("Informe o preço, como 25,00.");
+      return;
+    }
+    if (!store.data?.id) return;
+    setFormError("");
+    const payload = {
+      name: name.trim(),
+      category: category.trim(),
+      description: description.trim() || undefined,
+      price: normalized,
+      saleUnit: isMarket ? saleUnit : "unit" as const,
+      packSize: pack && /^\d+(\.\d{1,3})?$/.test(pack) ? pack : null,
+      imageData: extras.imageData ?? (editingId ? initialExtras?.imageData ?? null : undefined),
+      optionGroups: extras.optionGroups ?? [],
+      inventoryTracked,
+      stockQuantity,
+    };
+    if (editingId) update.mutate({ productId: editingId, ...payload });
+    else create.mutate({ storeId: store.data.id, ...payload, imageData: extras.imageData });
+  };
+
   return (
-    <Page title="Catálogo" eyebrow="VITRINE" action={<MaterialIcons name="inventory-2" size={22} color="#E20D2A" />}>
+    <Page
+      title="Catálogo"
+      eyebrow="VITRINE"
+      onBack={leave}
+      dock={<SellerDock active="catalog" />}
+      action={<MaterialIcons name="inventory-2" size={22} color="#E20D2A" />}
+    >
       <View style={styles.hero}>
         <Text style={styles.heroEyebrow}>{isMarket ? "MERCADO · UNIDADES" : "VITRINE DA LOJA"}</Text>
         <Text style={styles.heroTitle}>{store.data?.name ?? "Catálogo"}</Text>
@@ -69,7 +175,7 @@ export default function SellerCatalogPage() {
         </Text>
       </View>
       <Card>
-        <Text style={s.sectionTitle}>Novo produto</Text>
+        <Text style={s.sectionTitle}>{editingId ? "Editar produto" : "Novo produto"}</Text>
         <Field label="NOME DO PRODUTO" value={name} onChangeText={setName} placeholder={isMarket ? catalogPlaceholder.marketName : catalogPlaceholder.productName} />
         <Field
           label="CATEGORIA"
@@ -112,7 +218,7 @@ export default function SellerCatalogPage() {
         </View>
         <Field label="DESCRIÇÃO" value={description} onChangeText={setDescription} placeholder={catalogPlaceholder.description} multiline />
         <Field label="PREÇO (R$)" value={price} onChangeText={setPrice} placeholder={catalogPlaceholder.price} keyboardType="decimal-pad" />
-        <ProductExtrasFields onChange={setExtras} />
+        <ProductExtrasFields key={seed} seed={seed} initial={initialExtras} onChange={setExtras} />
         {isMarket ? (
           <>
             <Text style={s.label}>UNIDADE DE VENDA</Text>
@@ -151,27 +257,14 @@ export default function SellerCatalogPage() {
           </>
         ) : null}
         <PrimaryButton
-          title={create.isPending ? "Salvando..." : "Adicionar produto"}
-          disabled={create.isPending || !store.data?.id}
-          onPress={() => {
-            const normalized = price.replace(",", ".").trim();
-            const pack = packSize.replace(",", ".").trim();
-            if (store.data?.id && name.trim().length >= 2 && category.trim().length >= 2 && /^\d+(\.\d{1,2})?$/.test(normalized)) {
-              create.mutate({
-                storeId: store.data.id,
-                name: name.trim(),
-                category: category.trim(),
-                description: description.trim() || undefined,
-                price: normalized,
-                saleUnit: isMarket ? saleUnit : "unit",
-                packSize: pack && /^\d+(\.\d{1,3})?$/.test(pack) ? pack : null,
-                imageData: extras.imageData,
-                optionGroups: extras.optionGroups,
-              });
-            }
-          }}
+          title={create.isPending || update.isPending ? "Salvando..." : editingId ? "Salvar alterações" : "Adicionar produto"}
+          disabled={create.isPending || update.isPending || !store.data?.id}
+          onPress={saveProduct}
         />
+        {formError ? <Text style={{ color: "#E20D2A", fontSize: 12 }}>{formError}</Text> : null}
+        {savedNotice ? <Text style={{ color: "#0B8A5C", fontSize: 12, fontWeight: "800" }}>{savedNotice}</Text> : null}
         {create.error ? <Text style={{ color: "#E20D2A", fontSize: 12 }}>{create.error.message}</Text> : null}
+        {update.error ? <Text style={{ color: "#E20D2A", fontSize: 12 }}>{update.error.message}</Text> : null}
       </Card>
       <Card>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
@@ -192,7 +285,11 @@ export default function SellerCatalogPage() {
             key={product.id}
             icon="inventory-2"
             title={product.name}
-            subtitle={`${product.category} · ${formatCatalogPrice(product.price, product.saleUnit, product.packSize)}${product.description ? ` · ${product.description}` : ""}`}
+            subtitle={`${product.category} · ${formatCatalogPrice(product.price, product.saleUnit, product.packSize)}${product.description ? ` · ${product.description}` : ""} · toque para editar`}
+            onPress={() => {
+              loadedId.current = null;
+              setEditingId(product.id);
+            }}
             right={
               <Pressable onPress={() => availability.mutate({ productId: product.id, available: !product.available })} style={{ padding: 4 }}>
                 <Text style={{ color: product.available ? "#0B8A5C" : "#7C8A8F", fontWeight: "900", fontSize: 11 }}>

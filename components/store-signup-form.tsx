@@ -55,7 +55,8 @@ export function StoreSignupForm({
   const [responsiblePhone, setResponsiblePhone] = useState("");
   const [radius, setRadius] = useState("5");
   const [courierMode, setCourierMode] = useState<"own" | "pediu">("pediu");
-  const [minOrder, setMinOrder] = useState("0.00");
+  const [minOrder, setMinOrder] = useState("0,00");
+  const [deliveryFee, setDeliveryFee] = useState("");
   const [prepMinutes, setPrepMinutes] = useState("30");
   const [pickup, setPickup] = useState(false);
   const [pixKey, setPixKey] = useState("");
@@ -107,8 +108,9 @@ export function StoreSignupForm({
       setMessage("Informe o responsável, o CPF e o celular.");
       return;
     }
-    if (step === "delivery" && (Number(radius) <= 0 || Number(prepMinutes) <= 0)) {
-      setMessage("Informe o raio e o tempo de preparo.");
+    const feeOk = /^\d+([.,]\d{1,2})?$/.test(deliveryFee.trim());
+    if (step === "delivery" && (!feeOk || Number(radius) <= 0 || Number(prepMinutes) <= 0)) {
+      setMessage("Informe a taxa de entrega, o raio e o tempo de preparo. Zero é permitido.");
       return;
     }
     if (step === "pix" && pixKey.trim().length < 3) {
@@ -136,7 +138,8 @@ export function StoreSignupForm({
       responsiblePhone: responsiblePhone.trim(),
       courierMode,
       deliveryRadiusKm: Number(radius.replace(",", ".")).toFixed(2),
-      minOrder: minOrder.replace(",", "."),
+      minOrder: Number(minOrder.replace(",", ".") || "0").toFixed(2),
+      deliveryFee: Number(deliveryFee.replace(",", ".")).toFixed(2),
       prepMinutes: Number(prepMinutes),
       pickupEnabled: pickup,
       pixKey: pixKey.trim(),
@@ -163,8 +166,8 @@ export function StoreSignupForm({
         <>
           <Text style={s.sectionTitle}>Documento da loja</Text>
           <View style={{ flexDirection: "row", gap: 8 }}>
-            <OutlineButton title="CNPJ" onPress={() => setTaxKind("cnpj")} />
-            <OutlineButton title="CPF (MEI)" onPress={() => setTaxKind("cpf")} />
+            <OutlineButton title="CNPJ" selected={taxKind === "cnpj"} onPress={() => setTaxKind("cnpj")} />
+            <OutlineButton title="CPF (MEI)" selected={taxKind === "cpf"} onPress={() => setTaxKind("cpf")} />
           </View>
           <Field label={taxKind === "cnpj" ? "CNPJ" : "CPF"} value={taxId} onChangeText={setTaxId} keyboardType="number-pad" />
         </>
@@ -190,7 +193,8 @@ export function StoreSignupForm({
         <>
           <Text style={s.sectionTitle}>Como a entrega funciona</Text>
           <Field label="Raio em km" value={radius} onChangeText={setRadius} keyboardType="decimal-pad" />
-          <Field label="Pedido mínimo (R$)" value={minOrder} onChangeText={setMinOrder} keyboardType="decimal-pad" />
+          <Field label="Pedido mínimo (R$)" value={minOrder} onChangeText={setMinOrder} keyboardType="decimal-pad" placeholder="0,00" />
+          <Field label="Taxa de entrega (R$)" value={deliveryFee} onChangeText={setDeliveryFee} keyboardType="decimal-pad" placeholder="5,00" />
           <Field label="Tempo de preparo (minutos)" value={prepMinutes} onChangeText={setPrepMinutes} keyboardType="number-pad" />
           <OutlineButton title={courierMode === "pediu" ? "Motoboy do Pediu" : "Motoboy da própria loja"} onPress={() => setCourierMode((value) => (value === "pediu" ? "own" : "pediu"))} />
           <OutlineButton title={pickup ? "Retirada no balcão: sim" : "Retirada no balcão: não"} onPress={() => setPickup((value) => !value)} />

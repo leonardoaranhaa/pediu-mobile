@@ -15,6 +15,7 @@ import {
 } from "@/components/pediu-page";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
+import { SellerDock } from "@/components/seller-dock";
 import { useAppPreferences } from "@/lib/app-preferences";
 
 async function shareAdImage(imageUrl: string, headline: string) {
@@ -119,7 +120,7 @@ export default function SellerAdsPage() {
 
   if (!isAuthenticated) {
     return (
-      <Page title="Estúdio de anúncios" eyebrow="ANÚNCIOS">
+      <Page title="Estúdio de anúncios" eyebrow="ANÚNCIOS" dock={<SellerDock active="ads" />}>
         <Card>
           <MaterialIcons name="lock" size={26} color={theme.primary} />
           <Text style={s.sectionTitle}>
@@ -139,7 +140,7 @@ export default function SellerAdsPage() {
 
   if (!store.data) {
     return (
-      <Page title="Estúdio de anúncios" eyebrow="ANÚNCIOS">
+      <Page title="Estúdio de anúncios" eyebrow="ANÚNCIOS" dock={<SellerDock active="ads" />}>
         <Card>
           <Text style={s.sectionTitle}>Crie sua loja primeiro</Text>
           <Text style={s.muted}>
@@ -391,15 +392,22 @@ export default function SellerAdsPage() {
           onPress={submit}
         />
         <Text style={s.muted}>Cada imagem usa 1 crédito. Publicar no Explorar não gasta outro.</Text>
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          {[10, 30, 100].map((pack) => (
-            <OutlineButton
-              key={pack}
-              title={buy.isPending ? "..." : `${pack} créditos`}
-              onPress={() => buy.mutate({ credits: pack as 10 | 30 | 100 })}
-            />
-          ))}
-        </View>
+        {credits.data?.purchaseAvailable ? (
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            {[10, 30, 100].map((pack) => {
+              const price = (Number(credits.data?.unitPrice ?? 0) * pack).toFixed(2).replace(".", ",");
+              return (
+                <OutlineButton
+                  key={pack}
+                  title={buy.isPending ? "..." : `${pack} créditos · R$ ${price}`}
+                  onPress={() => buy.mutate({ credits: pack as 10 | 30 | 100 })}
+                />
+              );
+            })}
+          </View>
+        ) : (
+          <Text style={s.muted}>A compra de créditos por PIX ainda não está disponível.</Text>
+        )}
         {buy.data?.qrCode ? (
           <Text style={s.muted}>PIX de R$ {buy.data.amount.replace(".", ",")} para {buy.data.credits} créditos. O saldo entra quando o pagamento for confirmado.</Text>
         ) : null}
@@ -594,7 +602,7 @@ function CreativePreview({
         ) : null}
         {ad.status === "draft" ? (
           <PrimaryButton
-            title={busy ? "Salvando..." : "Publicar no marketplace"}
+            title={busy ? "Salvando..." : "Publicar no Explorar"}
             disabled={busy}
             onPress={onPublish}
           />

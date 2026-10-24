@@ -1459,6 +1459,17 @@ export const productOptions = pgTable(
   }),
 ).enableRLS();
 
+export const accountPrefs = pgTable(
+  "pediu_account_prefs",
+  {
+    userId: integer("userId")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    storeTourDone: integer("storeTourDone").default(0).notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+).enableRLS();
+
 export const courierEarnings = pgTable(
   "pediu_courier_earnings",
   {

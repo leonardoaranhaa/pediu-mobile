@@ -1,7 +1,7 @@
 import * as Location from "expo-location";
 import { router } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Image, Linking, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Linking, Text, TextInput, View } from "react-native";
 import { askToJoin } from "@/components/auth-prompt";
 import { useAuth } from "@/hooks/use-auth";
 import { pickPhotoDataUrl } from "@/lib/pick-photo";
@@ -38,6 +38,15 @@ import {
 } from "@/shared/pilot-ops";
 
 type VehicleType = "bike" | "moto" | "car";
+function OfferCountdown({ expiresAt }: { expiresAt: Date | string }) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  return <OpsBadge tone="muted">{countdownLabel(expiresAt, now)}</OpsBadge>;
+}
+
 const vehicleLabels: Record<VehicleType, string> = {
   bike: "Bicicleta",
   moto: "Moto",
@@ -89,7 +98,7 @@ function PhotoButton({
 }
 
 export default function CourierHomePage() {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const [vehicleType, setVehicleType] = useState<VehicleType>("bike");
   const [vehiclePlate, setVehiclePlate] = useState("");
   const [phone, setPhone] = useState("");
@@ -105,7 +114,7 @@ export default function CourierHomePage() {
   const [deliveryCode, setDeliveryCode] = useState("");
   const [cashReceived, setCashReceived] = useState(false);
   const [deliveryPhoto, setDeliveryPhoto] = useState<string>();
-  const [now, setNow] = useState(() => new Date());
+  const [deliveryNotice, setDeliveryNotice] = useState("");
   const [tab, setTab] = useState<"offers" | "ride" | "earnings" | "account">("offers");
   const watcher = useRef<Location.LocationSubscription | null>(null);
   const lastLocationAt = useRef(0);
@@ -113,7 +122,7 @@ export default function CourierHomePage() {
 
   const profile = trpc.pediu.courier.profile.mine.useQuery(undefined, {
     enabled: isAuthenticated,
-    refetchInterval: 15_000,
+    refetchInterval: (query) => (query.state.data?.status === "approved" ? 15_000 : false),
   });
   const offers = trpc.pediu.courier.offers.useQuery(undefined, {
     enabled: profile.data?.status === "approved",
@@ -133,7 +142,10 @@ export default function CourierHomePage() {
     onSuccess: () => void profile.refetch(),
   });
   const availability = trpc.pediu.courier.profile.availability.useMutation({
-    onSuccess: () => void profile.refetch(),
+    onSuccess: () => {
+      setLocationError("");
+      void profile.refetch();
+    },
   });
   const accept = trpc.pediu.courier.acceptOffer.useMutation({
     onSuccess: async () => {
@@ -177,6 +189,7 @@ export default function CourierHomePage() {
       setDeliveryCode("");
       setCashReceived(false);
       setDeliveryPhoto(undefined);
+      setDeliveryNotice("Entrega confirmada. O valor entrou nos seus ganhos.");
       await active.refetch();
       await profile.refetch();
       await earnings.refetch();
@@ -185,9 +198,8 @@ export default function CourierHomePage() {
 
   useEffect(() => () => stopTracking(), [stopTracking]);
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+    if (profile.data?.availability === "available") setLocationError("");
+  }, [profile.data?.availability]);
 
   const startTracking = async (orderId: number, etaMinutes?: number | null) => {
     setLocationError("");
@@ -531,7 +543,7 @@ export default function CourierHomePage() {
               <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
                 {offer.storeKind === "market" ? <OpsBadge tone="success">MERCADO</OpsBadge> : null}
                 {offer.isFlash === 1 ? <OpsBadge tone="accent">FLASH</OpsBadge> : null}
-                <OpsBadge tone="muted">{countdownLabel(offer.expiresAt, now)}</OpsBadge>
+                <OfferCountdown expiresAt={offer.expiresAt} />
               </View>
             </View>
             <Text style={{ fontFamily: "Fredoka", fontSize: 22, fontWeight: "900", color: "#111111" }}>
@@ -705,6 +717,9 @@ export default function CourierHomePage() {
           {sendLocation.error ? (
             <Text style={{ color: PEDIU.coral, fontFamily: "Nunito" }}>{sendLocation.error.message}</Text>
           ) : null}
+          {deliveryNotice ? (
+            <Text style={{ color: "#0B8A5C", fontFamily: "Nunito", fontWeight: "800" }}>{deliveryNotice}</Text>
+          ) : null}
           {complete.error ? (
             <Text style={{ color: PEDIU.coral, fontFamily: "Nunito" }}>{complete.error.message}</Text>
           ) : null}
@@ -757,6 +772,17 @@ export default function CourierHomePage() {
           {user?.usesCustomerApp === 1 ? (
             <OpsButton title="Pedir como cliente" variant="outline" onPress={() => router.replace("/(tabs)")} />
           ) : null}
+          <OpsButton title="Ver perfil" variant="outline" onPress={() => router.push("/account/profile")} />
+          <OpsButton
+            title="Sair da conta"
+            variant="ghost"
+            onPress={() =>
+              Alert.alert("Sair da conta?", "Você volta para a tela de entrada.", [
+                { text: "Continuar conectado", style: "cancel" },
+                { text: "Sair", style: "destructive", onPress: () => void logout() },
+              ])
+            }
+          />
         </OpsCard>
       ) : null}
     </OpsShell>

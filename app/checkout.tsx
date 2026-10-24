@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { MaterialIcons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   Card,
   Field,
@@ -40,6 +40,11 @@ export default function CheckoutScreen() {
   const addresses = trpc.pediu.addresses.list.useQuery(undefined, {
     enabled: isAuthenticated,
   });
+  useFocusEffect(
+    useCallback(() => {
+      if (isAuthenticated) void addresses.refetch();
+    }, [addresses.refetch, isAuthenticated]),
+  );
   const [fulfillmentMode, setFulfillmentMode] = useState<"delivery" | "pickup">(
     "delivery",
   );
@@ -71,6 +76,7 @@ export default function CheckoutScreen() {
         productId: item.id,
         quantity: item.quantity,
         note: item.note,
+        optionIds: item.options?.map((option) => option.id),
       })),
       couponCode: appliedCouponCode || undefined,
     }),
@@ -205,11 +211,12 @@ export default function CheckoutScreen() {
         ? { addressId, deliveryAddress: address.trim() }
         : {}),
       couponCode: quote.data.couponCode,
-      items: quote.data.items.map((item) => ({
+      items: quote.data.items.map((item, index) => ({
         productId: item.productId,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
-        note: item.note,
+        note: items[index]?.note,
+        optionIds: items[index]?.options?.map((option) => option.id) ?? item.optionIds,
       })),
     });
   };
@@ -623,10 +630,17 @@ export default function CheckoutScreen() {
             multiline
             editable={false}
           />
+          <PrimaryButton
+            title={
+              addresses.data?.length
+                ? "Cadastrar ou corrigir endereço"
+                : "Cadastrar endereço"
+            }
+            onPress={() => router.push("/account/addresses")}
+          />
           <Text style={s.muted}>
-            A entrega usa o endereço salvo, com um ponto no mapa. Para incluir
-            outro, abra Meus endereços e salve de novo. Digitar aqui não muda o
-            destino.
+            A entrega usa um endereço salvo, com um ponto no mapa. Se o ponto
+            faltar, abra o endereço e marque a porta no mapa.
           </Text>
           {addresses.data?.some(
             (saved) =>

@@ -1,5 +1,13 @@
 export type StoreKind = "restaurant" | "market" | "service";
 
+export type CartOption = {
+  id: number;
+  groupId: number;
+  groupName: string;
+  name: string;
+  priceDelta: string;
+};
+
 export type CartProduct = {
   id: number;
   storeId: number;
@@ -14,12 +22,23 @@ export type CartProduct = {
   flashEnabled?: boolean;
   saleUnit?: string | null;
   packSize?: string | number | null;
+  options?: CartOption[];
 };
 
 export type CartItem = CartProduct & {
   quantity: number;
   note?: string;
 };
+
+export function cartLineKey(item: { id: number; options?: CartOption[] }) {
+  const ids = (item.options ?? []).map((option) => option.id).sort((a, b) => a - b);
+  return ids.length ? `${item.id}:${ids.join(",")}` : String(item.id);
+}
+
+function matchesLine(item: CartItem, key: number | string) {
+  if (typeof key === "number") return item.id === key;
+  return cartLineKey(item) === key;
+}
 
 export type CartResult = {
   items: CartItem[];
@@ -60,24 +79,29 @@ export function addProductToCart(items: CartItem[], product: CartProduct, quanti
     }
   }
 
-  const existing = items.find((item) => item.id === nextProduct.id);
+  const lineKey = cartLineKey(nextProduct);
+  const existing = items.find((item) => cartLineKey(item) === lineKey);
   if (existing) {
-    return { items: items.map((item) => item.id === nextProduct.id ? { ...item, quantity: item.quantity + quantity } : item) };
+    return {
+      items: items.map((item) =>
+        cartLineKey(item) === lineKey ? { ...item, quantity: item.quantity + quantity } : item,
+      ),
+    };
   }
   return { items: [...items, { ...nextProduct, quantity }] };
 }
 
-export function updateCartQuantity(items: CartItem[], productId: number, quantity: number): CartItem[] {
-  if (!Number.isInteger(quantity) || quantity <= 0) return items.filter((item) => item.id !== productId);
-  return items.map((item) => item.id === productId ? { ...item, quantity } : item);
+export function updateCartQuantity(items: CartItem[], productId: number | string, quantity: number): CartItem[] {
+  if (!Number.isInteger(quantity) || quantity <= 0) return items.filter((item) => !matchesLine(item, productId));
+  return items.map((item) => matchesLine(item, productId) ? { ...item, quantity } : item);
 }
 
-export function updateCartNote(items: CartItem[], productId: number, note: string): CartItem[] {
-  return items.map((item) => item.id === productId ? { ...item, note: note.trim().slice(0, 500) || undefined } : item);
+export function updateCartNote(items: CartItem[], productId: number | string, note: string): CartItem[] {
+  return items.map((item) => matchesLine(item, productId) ? { ...item, note: note.trim().slice(0, 500) || undefined } : item);
 }
 
-export function removeCartItem(items: CartItem[], productId: number): CartItem[] {
-  return items.filter((item) => item.id !== productId);
+export function removeCartItem(items: CartItem[], productId: number | string): CartItem[] {
+  return items.filter((item) => !matchesLine(item, productId));
 }
 
 export function cartSubtotal(items: CartItem[]): number {

@@ -17,7 +17,7 @@ export default function ProductDetailPage() {
     { enabled: Number.isInteger(productId) && productId > 0 },
   );
   const { isAuthenticated } = useAuth();
-  const { addItem, updateNote, itemCount } = useCart();
+  const { addItem, itemCount } = useCart();
   const [quantity, setQuantity] = useState(1);
   const [notice, setNotice] = useState("");
   const [selected, setSelected] = useState<Record<number, number>>({});
@@ -63,9 +63,17 @@ export default function ProductDetailPage() {
 
   const unitPrice = Number(product.price) + extra;
   const storeClosed = detail.storeOpen === false;
-  const chosenNames = detail.options
-    .map((group) => group.choices.find((choice) => choice.id === selected[group.id])?.name)
-    .filter((name): name is string => Boolean(name));
+  const chosen = detail.options.flatMap((group) => {
+    const choice = group.choices.find((item) => item.id === selected[group.id]);
+    if (!choice) return [];
+    return [{
+      id: choice.id,
+      groupId: group.id,
+      groupName: group.name,
+      name: choice.name,
+      priceDelta: String(choice.priceDelta),
+    }];
+  });
 
   const addToCart = () => {
     if (storeClosed) {
@@ -95,6 +103,7 @@ export default function ProductDetailPage() {
         flashEnabled: Boolean(detail.flashEnabled),
         saleUnit: product.saleUnit,
         packSize: product.packSize,
+        options: chosen,
         emoji: product.category === "Lanches" ? "🍔" : product.category === "Doces" ? "🍰" : detail.storeKind === "market" ? "🛒" : "🍽️",
       },
       quantity,
@@ -103,7 +112,6 @@ export default function ProductDetailPage() {
       setNotice(result.error ?? "Não foi possível adicionar o produto.");
       return;
     }
-    if (chosenNames.length) updateNote(product.id, chosenNames.join(", "));
     setNotice(`${quantity} item(ns) adicionado(s) ao carrinho.`);
   };
 

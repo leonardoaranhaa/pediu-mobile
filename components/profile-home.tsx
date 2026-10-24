@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import type { ReactNode } from "react";
-import { Text, View } from "react-native";
+import { Alert, Text, View } from "react-native";
 import { Card, OutlineButton, PEDIU, PrimaryButton, Row, s } from "@/components/pediu-page";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
@@ -77,7 +77,17 @@ export function ProfileHome() {
           <Row icon="two-wheeler" title="Central do entregador" subtitle={courierStatus || "Seu cadastro"} onPress={() => router.push("/courier")} />
           <Row icon="local-shipping" title="Ofertas e ganhos" subtitle="Entregas disponíveis e o que você já fez" onPress={() => router.push("/courier")} />
         </Section>
-      ) : null}
+      ) : (
+        <Section title="ENTREGADOR">
+          <Row icon="two-wheeler" title="Quero entregar" subtitle="Continue ou comece o cadastro de motoboy" onPress={() => router.push("/courier")} />
+        </Section>
+      )}
+
+      {isMerchant ? null : (
+        <Section title="MINHA LOJA">
+          <Row icon="storefront" title="Quero vender" subtitle="Cadastre a loja nesta conta" onPress={() => router.push("/seller")} />
+        </Section>
+      )}
 
       {(isMerchant || isCourier) && !showCustomer ? (
         <Card>
@@ -103,7 +113,15 @@ export function ProfileHome() {
         <Row icon="palette" title="Aparência" subtitle="Cores e jeito do aplicativo" onPress={() => router.push("/account/settings")} />
       </Section>
 
-      <OutlineButton title="Sair da conta" onPress={() => void logout()} />
+      <OutlineButton
+        title="Sair da conta"
+        onPress={() =>
+          Alert.alert("Sair da conta?", "Você volta para a tela de entrada.", [
+            { text: "Continuar conectado", style: "cancel" },
+            { text: "Sair", style: "destructive", onPress: () => void logout() },
+          ])
+        }
+      />
     </View>
   );
 }

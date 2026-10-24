@@ -39,9 +39,9 @@ type CartContextValue = {
     product: CartProduct,
     quantity?: number,
   ) => { ok: boolean; error?: string };
-  updateQuantity: (productId: number, quantity: number) => void;
-  updateNote: (productId: number, note: string) => void;
-  removeItem: (productId: number) => void;
+  updateQuantity: (productId: number | string, quantity: number) => void;
+  updateNote: (productId: number | string, note: string) => void;
+  removeItem: (productId: number | string) => void;
   clear: () => void;
 };
 

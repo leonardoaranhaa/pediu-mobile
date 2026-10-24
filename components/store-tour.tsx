@@ -2,13 +2,14 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { trpc } from "@/lib/trpc";
 
 const STEPS = [
-  { title: "Sua loja já está no mapa.", body: "O nome fantasia é o que o cliente vê." },
-  { title: "O cardápio mora aqui.", body: "Cadastre o primeiro produto na aba Cardápio." },
-  { title: "Pedido novo cai aqui e o celular avisa.", body: "A fila de pedidos avisa enquanto o aplicativo estiver aberto." },
-  { title: "Anúncio fica aqui e gasta créditos da loja.", body: "Cada imagem usa um crédito. Publicar no Explorar não gasta outro." },
-  { title: "Horário, raio, motoboy e PIX ficam em Ajustes.", body: "É lá que a entrega e o repasse se acertam." },
+  { title: "Sua loja já está no mapa.", body: "O nome fantasia é o que o cliente vê.", tab: "Início" },
+  { title: "O cardápio mora aqui.", body: "Cadastre o primeiro produto na aba Cardápio.", tab: "Cardápio" },
+  { title: "Pedido novo cai aqui e o celular avisa.", body: "A fila de pedidos avisa enquanto o aplicativo estiver aberto.", tab: "Pedidos" },
+  { title: "Anúncio fica aqui e gasta créditos da loja.", body: "Cada imagem usa um crédito. Publicar no Explorar não gasta outro.", tab: "Anúncios" },
+  { title: "Horário, raio, motoboy e PIX ficam em Ajustes.", body: "É lá que a entrega e o repasse se acertam.", tab: "Ajustes" },
 ];
 
 export function StoreTour({
@@ -21,20 +22,29 @@ export function StoreTour({
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState<number | null>(null);
   const key = `pediu:store-tour:${userId}`;
+  const tour = trpc.pediu.account.profile.tour.mine.useQuery();
+  const complete = trpc.pediu.account.profile.tour.complete.useMutation();
 
   useEffect(() => {
     let active = true;
     void AsyncStorage.getItem(key).then((value) => {
-      if (active && value !== "done") setStep(0);
+      if (!active) return;
+      if (value === "done" || tour.data?.storeTourDone) {
+        setStep(null);
+        if (tour.data?.storeTourDone) void AsyncStorage.setItem(key, "done");
+        return;
+      }
+      if (tour.isSuccess || tour.isError) setStep(0);
     });
     return () => {
       active = false;
     };
-  }, [key]);
+  }, [key, tour.data?.storeTourDone, tour.isError, tour.isSuccess]);
 
   const finish = () => {
     setStep(null);
     void AsyncStorage.setItem(key, "done");
+    complete.mutate();
   };
 
   if (step === null) return null;
@@ -58,6 +68,9 @@ export function StoreTour({
       </Text>
       <Text style={{ color: "#FFF8F2", fontSize: 18, fontWeight: "900" }}>{current.title}</Text>
       <Text style={{ color: "#F3E6D8", fontSize: 14 }}>{current.body}</Text>
+      <Text style={{ color: "#F6C445", fontSize: 13, fontWeight: "800" }}>
+        Aponte para a aba {current.tab}, aqui embaixo.
+      </Text>
       <View style={{ flexDirection: "row", gap: 16, marginTop: 4 }}>
         <Pressable onPress={finish}>
           <Text style={{ color: "#F3E6D8", fontWeight: "700" }}>Pular</Text>
