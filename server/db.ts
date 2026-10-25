@@ -3520,6 +3520,8 @@ async function reofferDeliveryWithinTransaction(
           input.excludeCourierUserId
             ? sql`${storeCouriers.courierUserId} <> ${input.excludeCourierUserId}`
             : sql`1 = 1`,
+          // Any earlier offer moves the chain to the next courier. A new
+          // nearby broadcast can still revive an expired offer afterwards.
           notExists(
             tx
               .select({ id: deliveryOffers.id })
@@ -3527,13 +3529,9 @@ async function reofferDeliveryWithinTransaction(
               .where(
                 and(
                   eq(deliveryOffers.orderId, input.orderId),
-                  eq(deliveryOffers.courierUserId, storeCouriers.courierUserId),
-                  or(
-                    eq(deliveryOffers.status, "accepted"),
-                    and(
-                      eq(deliveryOffers.status, "pending"),
-                      gt(deliveryOffers.expiresAt, input.now),
-                    ),
+                  eq(
+                    deliveryOffers.courierUserId,
+                    storeCouriers.courierUserId,
                   ),
                 ),
               ),
