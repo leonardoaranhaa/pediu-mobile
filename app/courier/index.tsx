@@ -392,9 +392,28 @@ export default function CourierHomePage() {
     </Card>
   );
 
+  const roles = new Set(user?.roles ?? []);
+  const canDeliver =
+    user?.role === "courier" ||
+    user?.role === "admin" ||
+    roles.has("courier") ||
+    roles.has("admin");
+  if (!canDeliver) {
+    return (
+      <Page title="Entregas" eyebrow="SUA CONTA">
+        <Card>
+          <Text style={s.sectionTitle}>Esta conta não é de motoboy</Text>
+          <Text style={s.muted}>
+            Para fazer entregas, crie uma conta de motoboy. Cada conta tem um papel só.
+          </Text>
+        </Card>
+      </Page>
+    );
+  }
+
   if (!profile.data) {
     return (
-      <Page title="Quero entregar" eyebrow="PRIMEIRO PASSO">
+      <Page title="Cadastro de motoboy" eyebrow="PRIMEIRO PASSO">
         {applicationForm}
         <Card>
           <Text style={s.sectionTitle}>O que acontece depois?</Text>
@@ -765,7 +784,7 @@ export default function CourierHomePage() {
             <Text style={{ fontFamily: "Fredoka", fontSize: 28, fontWeight: "900", color: "#111111" }}>
               {formatMoney(earned)}
             </Text>
-            <Text style={s.muted}>Soma do que já ficou registrado nas entregas concluídas. O PIX automático ainda não sai sozinho.</Text>
+            <Text style={s.muted}>Soma do que já ficou registrado nas entregas concluídas.</Text>
           </OpsCard>
           {(earnings.data ?? []).map((row) => (
             <OpsCard key={row.id}>
@@ -795,10 +814,7 @@ export default function CourierHomePage() {
               `Horário: ${approvedProfile.workHours || "Ainda não informado"}`,
             ]}
           />
-          {user?.usesCustomerApp === 1 ? (
-            <OpsButton title="Pedir como cliente" variant="outline" onPress={() => router.replace("/(tabs)")} />
-          ) : null}
-          <OpsButton title="Ver perfil" variant="outline" onPress={() => router.push("/account/profile")} />
+          <OpsButton title="Minha conta" variant="outline" onPress={() => router.push("/account/profile")} />
           <OpsButton
             title="Sair da conta"
             variant="ghost"

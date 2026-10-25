@@ -205,7 +205,7 @@ export default function SellerSettingsPage() {
       {update.error ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{update.error.message}</Text> : null}
       <PrimaryButton title={update.isPending ? "Salvando..." : "Salvar configurações"} disabled={update.isPending} onPress={save} />
     </Card>
-    <Card><ThemePicker title="Personalize o painel da loja" description="A mesma identidade visual do Pediu fica disponível para cliente e lojista." /></Card>
+    <Card><ThemePicker title="Personalize o painel da loja" description="Escolha as cores do aplicativo." /></Card>
     <Card>
       <Row icon="auto-awesome" title="Assistente do Pediu" subtitle="Atalhos para vendas, fiado, catálogo e divulgação" onPress={() => router.replace({ pathname: "/(tabs)", params: { assistant: "seller" } } as never)} />
       <Row icon="inventory-2" title="Catálogo" subtitle="Produtos, preços e disponibilidade" onPress={() => router.push("/seller/catalog")} />

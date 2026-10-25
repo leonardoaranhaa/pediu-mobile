@@ -308,6 +308,25 @@ export default function SellerHomePage() {
     );
   }
 
+  const roles = new Set(user?.roles ?? []);
+  const canSell =
+    user?.role === "merchant" ||
+    user?.role === "admin" ||
+    roles.has("merchant") ||
+    roles.has("admin");
+  if (!canSell) {
+    return (
+      <Page title="Minha loja" eyebrow="SUA CONTA">
+        <Card>
+          <Text style={s.sectionTitle}>Esta conta não é de loja</Text>
+          <Text style={s.muted}>
+            Para vender, crie uma conta de lojista. Cada conta tem um papel só.
+          </Text>
+        </Card>
+      </Page>
+    );
+  }
+
   if (store.isLoading) {
     return (
       <Page title="Minha loja" eyebrow="PAINEL DA LOJA">
@@ -322,8 +341,7 @@ export default function SellerHomePage() {
         <Card>
           <Text style={s.sectionTitle}>Cadastre seu negócio local</Text>
           <Text style={s.muted}>
-            Depois de salvar, sua conta será habilitada como prestador e você
-            poderá publicar produtos e receber pedidos.
+            Depois de salvar, sua loja fica pronta para receber pedidos.
           </Text>
           <StoreSignupForm onCreated={() => void store.refetch()} />
         </Card>

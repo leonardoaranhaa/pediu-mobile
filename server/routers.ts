@@ -31,6 +31,10 @@ import {
   storePauseView,
 } from "./domain/store-ops";
 import { sweepUnacceptedOrders } from "./order-sweep";
+import { sweepAccountRoles } from "./account-role-sweep";
+import { closeAccount } from "./account-closure";
+import { roleProfileRefusal } from "../shared/account-roles";
+import { isAdminEmail } from "./_core/env";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import { storageGetSignedUrl, storagePut } from "./storage";
 import { sendPushToUser } from "./push";
@@ -131,6 +135,7 @@ export const appRouter = router({
   auth: router({
     me: publicProcedure.query(async (opts) => {
       if (!opts.ctx.user) return null;
+      await sweepAccountRoles();
       const { passwordHash: _passwordHash, sessionId: _sessionId, ...safe } =
         opts.ctx.user;
       const roles = await db.listAccountRoles(safe.id, safe.role);
@@ -304,11 +309,31 @@ export const appRouter = router({
     }),
     account: router({
       profile: router({
-        useAsCustomer: protectedProcedure.mutation(async ({ ctx }) => {
-          await db.setUsesCustomerApp(ctx.user.id, true);
-          await db.grantAccountRole(ctx.user.id, "customer");
-          return { success: true as const };
+        useAsCustomer: protectedProcedure.mutation(async () => {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "Cada conta tem um papel só. Para pedir, crie uma conta de cliente.",
+          });
         }),
+        close: protectedProcedure
+          .input(z.object({ password: z.string().min(1).max(72) }))
+          .mutation(async ({ ctx, input }) => {
+            try {
+              return await closeAccount({
+                userId: ctx.user.id,
+                password: input.password,
+              });
+            } catch (error) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message:
+                  error instanceof Error
+                    ? error.message
+                    : "Não foi possível excluir a conta agora.",
+              });
+            }
+          }),
         mine: protectedProcedure.query(({ ctx }) =>
           db.getUserProfile(ctx.user.id),
         ),
@@ -410,7 +435,7 @@ export const appRouter = router({
           const product = await db.getProductById(input.productId);
           if (!product) return null;
           const store = await db.getStoreById(product.storeId);
-          if (!store) return null;
+          if (!store || !(await db.storeListedForCustomers(store))) return null;
           const ops = await db.getStoreOps(store.id);
           if (ops.approvalStatus !== "approved") return null;
           const pause = storePauseView(ops);
@@ -447,6 +472,7 @@ export const appRouter = router({
           }),
         )
         .query(async ({ input }) => {
+          await sweepAccountRoles();
           let result: Awaited<ReturnType<typeof db.searchAvailableProducts>>;
           try {
             result = await db.searchAvailableProducts(input);
@@ -748,8 +774,18 @@ export const appRouter = router({
           }),
         )
         .mutation(async ({ ctx, input }) => {
+          const roles = await db.listAccountRoles(ctx.user.id, ctx.user.role);
+          const refusal = roleProfileRefusal(
+            roles,
+            "merchant",
+            isAdminEmail(ctx.user.email ?? ""),
+          );
+          if (refusal) throw new TRPCError({ code: "BAD_REQUEST", message: refusal });
           if (await db.getStoreForOwner(ctx.user.id))
-            throw new Error("Este usuário já possui uma loja");
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Você já tem uma loja.",
+            });
           const {
             deliveryEnabled,
             pickupEnabled,
@@ -938,9 +974,18 @@ export const appRouter = router({
               workHours: z.string().trim().min(2).max(160).optional(),
             }),
           )
-          .mutation(({ ctx, input }) =>
-            db.upsertCourierProfile({ ...input, userId: ctx.user.id }),
-          ),
+          .mutation(async ({ ctx, input }) => {
+            const roles = await db.listAccountRoles(ctx.user.id, ctx.user.role);
+            const refusal = roleProfileRefusal(
+              roles,
+              "courier",
+              isAdminEmail(ctx.user.email ?? ""),
+            );
+            if (refusal) {
+              throw new TRPCError({ code: "BAD_REQUEST", message: refusal });
+            }
+            return db.upsertCourierProfile({ ...input, userId: ctx.user.id });
+          }),
         locationConsent: protectedProcedure
           .input(z.object({ accepted: z.boolean() }))
           .mutation(({ ctx, input }) =>
@@ -1159,13 +1204,13 @@ export const appRouter = router({
           if (!store) throw new Error("Cadastre sua loja antes de comprar créditos");
           if (!mercadoPagoConfigured()) {
             throw new Error(
-              "A compra de créditos por PIX ainda não está disponível.",
+              "Não foi possível concluir a compra.",
             );
           }
           const settings = await db.getPlatformSettings();
           const unit = Number(settings.creditPrice);
           if (!Number.isFinite(unit) || unit <= 0) {
-            throw new Error("A compra de créditos por PIX ainda não está disponível.");
+            throw new Error("Não foi possível concluir a compra.");
           }
           const amount = (unit * input.credits).toFixed(2);
           const purchase = await db.createCreditPurchase({

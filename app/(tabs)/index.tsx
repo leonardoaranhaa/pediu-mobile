@@ -1,4 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
@@ -42,6 +41,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenContainer } from "@/components/screen-container";
 import type { AccountAction, SignupRole } from "@/lib/guest-access";
 import { geocodeTypedAddress } from "@/lib/location";
+import {
+  bottomSafeInset,
+  scrollPaddingForFloatingBar,
+  scrollPaddingForScreenEnd,
+} from "@/lib/screen-space";
 import type { MascotReaction } from "@/components/pediu-mascot";
 import { CartPeek } from "@/components/pediu/cart-peek";
 import { PediuMascot } from "@/components/pediu-mascot";
@@ -176,10 +180,6 @@ export default function HomeScreen() {
     clear: clearGlobalCart,
   } = useCart();
   const [role, setRole] = useState<"customer" | "seller">("customer");
-  const chooseMode = (next: "customer" | "seller") => {
-    setRole(next);
-    void AsyncStorage.setItem("pediu:ui-mode", next);
-  };
   const [customerTab, setCustomerTab] = useState<
     "discover" | "orders" | "profile"
   >("discover");
@@ -196,38 +196,15 @@ export default function HomeScreen() {
       setRole("customer");
       return;
     }
-    let active = true;
     const roles = user?.roles ?? [];
     const merchant = user?.role === "merchant" || roles.includes("merchant");
     const courier = user?.role === "courier" || roles.includes("courier");
-    if (user.usesCustomerApp !== 1 && merchant) {
-      setRole("seller");
-      void AsyncStorage.setItem("pediu:ui-mode", "seller");
-      return () => {
-        active = false;
-      };
-    }
-    if (user.usesCustomerApp !== 1 && courier && !merchant) {
+    if (courier && !merchant) {
       router.replace("/courier");
-      return () => {
-        active = false;
-      };
+      return;
     }
-    void AsyncStorage.getItem("pediu:ui-mode").then((stored) => {
-      if (!active) return;
-      if (stored === "seller" || stored === "customer") {
-        setRole(stored);
-        return;
-      }
-      if (merchant) {
-        setRole("seller");
-        void AsyncStorage.setItem("pediu:ui-mode", "seller");
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, [user?.id, user?.role, user?.roles, user?.usesCustomerApp]);
+    setRole(merchant ? "seller" : "customer");
+  }, [user?.id, user?.role, user?.roles]);
 
   const [category, setCategory] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -438,7 +415,7 @@ export default function HomeScreen() {
   const createStoreMutation = trpc.pediu.stores.create.useMutation({
     onSuccess: async () => {
       setShowSellerOnboarding(false);
-      chooseMode("seller");
+      setRole("seller");
       changeSellerTab("home");
       await refreshAuth();
       void storeQuery.refetch();
@@ -555,16 +532,6 @@ export default function HomeScreen() {
     setShowVoice(true);
     router.setParams({ assistant: undefined } as never);
   }, [params.assistant, role, showVoice]);
-
-  const enterSellerMode = () => {
-    if (!isAuthenticated) {
-      requestLogin("seller", "merchant");
-      return;
-    }
-    chooseMode("seller");
-    changeSellerTab("home");
-    if (storeQuery.isFetched && !storeQuery.data) setShowSellerOnboarding(true);
-  };
 
   useEffect(() => {
     Animated.sequence([
@@ -908,14 +875,14 @@ export default function HomeScreen() {
   const handleVoiceAction = (action: string) => {
     setShowVoice(false);
     if (action === "doces") {
-      chooseMode("customer");
+      if (role !== "customer") return;
       changeCustomerTab("discover");
       setCategory("Doces");
       void notifyWithHaptic("Encontrei doces perto de você");
       return;
     }
     if (action === "pedidos") {
-      chooseMode("customer");
+      if (role !== "customer") return;
       changeCustomerTab("orders");
       return;
     }
@@ -923,28 +890,24 @@ export default function HomeScreen() {
       router.push("/support");
       return;
     }
+    if (role !== "seller") return;
     if (action === "venda") {
-      chooseMode("seller");
       changeSellerTab("home");
       setShowSaleModal(true);
       return;
     }
     if (action === "fiado") {
-      chooseMode("seller");
       changeSellerTab("clients");
       void notifyWithHaptic("Abrindo clientes e vendas fiadas");
       return;
     }
     if (action === "catalogo") {
-      chooseMode("seller");
       changeSellerTab("catalog");
       return;
     }
     if (action === "divulgar") {
-      chooseMode("seller");
       changeSellerTab("home");
       void shareStoreCatalog();
-      return;
     }
     void notifyWithHaptic("Ação não reconhecida", false);
   };
@@ -1089,7 +1052,10 @@ export default function HomeScreen() {
         {role === "customer" ? (
           <>
             <ScrollView
-              contentContainerStyle={styles.scrollContent}
+              contentContainerStyle={[
+                styles.scrollContent,
+                { paddingBottom: scrollPaddingForFloatingBar(insets.bottom, Platform.OS) },
+              ]}
               showsVerticalScrollIndicator={false}
             >
               {customerTab === "discover" && (
@@ -1178,7 +1144,10 @@ export default function HomeScreen() {
         ) : (
           <>
             <ScrollView
-              contentContainerStyle={styles.scrollContent}
+              contentContainerStyle={[
+                styles.scrollContent,
+                { paddingBottom: scrollPaddingForFloatingBar(insets.bottom, Platform.OS) },
+              ]}
               showsVerticalScrollIndicator={false}
             >
               {sellerTab === "home" && (
@@ -1253,10 +1222,6 @@ export default function HomeScreen() {
                   onSave={updateStore}
                   saving={updateStoreMutation.isPending}
                   onAssistant={() => openVoiceAssistant("seller")}
-                  onCustomerMode={() => {
-                    chooseMode("customer");
-                    changeCustomerTab("discover");
-                  }}
                 />
               )}
             </ScrollView>
@@ -1561,7 +1526,7 @@ export default function HomeScreen() {
           onRequestClose={() => setShowSellerOnboarding(false)}
         >
           <View style={styles.modalBackdrop}>
-            <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}>
+            <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: scrollPaddingForScreenEnd(insets.bottom, Platform.OS) }}>
               {isAuthenticated ? (
                 <StoreSignupForm
                   onCreated={() => {
@@ -2461,7 +2426,7 @@ function SellerHome({
         >
           <MaterialIcons name="campaign" size={24} color={theme.ink} />
           <Text style={styles.shortcutTitle}>Divulgar</Text>
-          <Text style={styles.shortcutSub}>Compartilhe dados reais</Text>
+          <Text style={styles.shortcutSub}>Envie o cardápio</Text>
         </Pressable>
         <Pressable
           style={({ pressed }) => [
@@ -2473,7 +2438,7 @@ function SellerHome({
         >
           <MaterialIcons name="people" size={24} color={COLORS.green} />
           <Text style={styles.shortcutTitle}>Clientes</Text>
-          <Text style={styles.shortcutSub}>Fiado e relacionamento</Text>
+          <Text style={styles.shortcutSub}>Quem compra fiado</Text>
         </Pressable>
       </View>
       <View
@@ -2745,7 +2710,6 @@ function SellerSettings({
   onSave,
   saving,
   onAssistant,
-  onCustomerMode,
 }: {
   store?: {
     id: number;
@@ -2779,7 +2743,6 @@ function SellerSettings({
   }) => void;
   saving: boolean;
   onAssistant: () => void;
-  onCustomerMode: () => void;
 }) {
   const [name, setName] = useState(store?.name ?? "");
   const [phone, setPhone] = useState(store?.phone ?? "");
@@ -3059,7 +3022,7 @@ function SellerSettings({
       <View style={styles.fieldCard}>
         <ThemePicker
           title="Personalize o painel da loja"
-          description="A mesma identidade visual do Pediu fica disponível para cliente e lojista."
+          description="Escolha as cores do aplicativo."
         />
       </View>
       <Pressable style={styles.settingsRow} onPress={onAssistant}>
@@ -3074,8 +3037,8 @@ function SellerSettings({
         </View>
         <MaterialIcons name="chevron-right" size={20} color={COLORS.muted} />
       </Pressable>
-      <Pressable style={styles.outlineButton} onPress={onCustomerMode}>
-        <Text style={styles.outlineButtonText}>Voltar para modo cliente</Text>
+      <Pressable style={styles.outlineButton} onPress={() => router.push("/account/profile")}>
+        <Text style={styles.outlineButtonText}>Minha conta</Text>
       </Pressable>
     </>
   );
@@ -3129,7 +3092,7 @@ function CustomerNav({
         {
           borderColor: theme.ink,
           backgroundColor: theme.ink,
-          bottom: Math.max(bottomInset, 8),
+          bottom: bottomSafeInset(bottomInset, Platform.OS),
         },
       ]}
     >
@@ -3233,7 +3196,7 @@ function SellerNav({
         {
           borderColor: theme.ink,
           backgroundColor: theme.ink,
-          bottom: Math.max(bottomInset, 8),
+          bottom: bottomSafeInset(bottomInset, Platform.OS),
         },
       ]}
     >
@@ -3711,7 +3674,8 @@ const styles = StyleSheet.create({
     bottom: 14,
     left: 16,
     right: 16,
-    height: 64,
+    height: 78,
+    overflow: "hidden",
     backgroundColor: COLORS.ink,
     borderWidth: 1,
     borderColor: "rgba(240,233,227,0.95)",

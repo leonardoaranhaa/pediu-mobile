@@ -122,10 +122,11 @@ import {
   refunds,
 } from "../drizzle/schema";
 import {
-  mergeAccountRoles,
+  resolveOriginalRole,
   rolesFromLegacy,
   type AccountRole,
 } from "../shared/account-roles";
+import { isAdminEmail } from "./_core/env";
 import {
   CITY_OFFER_TTL_MS,
   NEARBY_COURIER_RADIUS_KM,
@@ -726,15 +727,55 @@ export async function listAccountRoles(
   try {
     const db = await getDb();
     if (!db) return fallback;
+    const person = (
+      await db
+        .select({
+          role: users.role,
+          email: users.email,
+          usesCustomerApp: users.usesCustomerApp,
+          createdAt: users.createdAt,
+          loginMethod: users.loginMethod,
+        })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1)
+    )[0];
+    if (!person || person.loginMethod === "closed") return fallback;
     const rows = await db
       .select({ role: accountRoles.role })
       .from(accountRoles)
       .where(eq(accountRoles.userId, userId));
-    if (!rows.length) return fallback;
-    return mergeAccountRoles(
-      rows.map((row) => row.role),
-      legacyRole,
-    );
+    if (person.role === "admin" || isAdminEmail(person.email ?? "")) {
+      const roles = new Set<AccountRole>(["admin"]);
+      for (const row of rows) roles.add(row.role);
+      return (["customer", "merchant", "courier", "admin"] as const).filter((role) =>
+        roles.has(role),
+      );
+    }
+    const store = (
+      await db
+        .select({ createdAt: stores.createdAt })
+        .from(stores)
+        .where(eq(stores.ownerId, userId))
+        .orderBy(stores.createdAt)
+        .limit(1)
+    )[0];
+    const courier = (
+      await db
+        .select({ createdAt: courierProfiles.createdAt })
+        .from(courierProfiles)
+        .where(eq(courierProfiles.userId, userId))
+        .limit(1)
+    )[0];
+    return [
+      resolveOriginalRole({
+        legacyRole: person.role,
+        usesCustomerApp: person.usesCustomerApp,
+        userCreatedAt: person.createdAt,
+        storeCreatedAt: store?.createdAt ?? null,
+        courierCreatedAt: courier?.createdAt ?? null,
+      }),
+    ];
   } catch (error) {
     console.warn("[AccountRoles] Falling back to legacy role", error);
     return fallback;
@@ -753,14 +794,6 @@ export async function grantAccountRole(
     .onConflictDoNothing({
       target: [accountRoles.userId, accountRoles.role],
     });
-  if (role !== "customer") {
-    await db
-      .insert(accountRoles)
-      .values({ userId, role: "customer" })
-      .onConflictDoNothing({
-        target: [accountRoles.userId, accountRoles.role],
-      });
-  }
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {
@@ -1183,12 +1216,6 @@ export async function upsertCourierProfile(
       .onConflictDoNothing({
         target: [accountRoles.userId, accountRoles.role],
       });
-    await tx
-      .insert(accountRoles)
-      .values({ userId: input.userId, role: "customer" })
-      .onConflictDoNothing({
-        target: [accountRoles.userId, accountRoles.role],
-      });
     const profileId = getInsertId(result);
     const created = await tx
       .select()
@@ -1304,12 +1331,6 @@ export async function reviewCourierProfile(
     await tx
       .insert(accountRoles)
       .values({ userId: current[0].userId, role: "courier" })
-      .onConflictDoNothing({
-        target: [accountRoles.userId, accountRoles.role],
-      });
-    await tx
-      .insert(accountRoles)
-      .values({ userId: current[0].userId, role: "customer" })
       .onConflictDoNothing({
         target: [accountRoles.userId, accountRoles.role],
       });
@@ -1516,6 +1537,36 @@ export async function getStoreById(
   return result[0];
 }
 
+export async function storeListedForCustomers(store: {
+  ownerId: number;
+  isOpen: number;
+}): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const owner = (
+    await db
+      .select({ loginMethod: users.loginMethod })
+      .from(users)
+      .where(eq(users.id, store.ownerId))
+      .limit(1)
+  )[0];
+  if (!owner || owner.loginMethod === "closed") return false;
+  if (store.isOpen !== 0) return true;
+  const merchant = (
+    await db
+      .select({ role: accountRoles.role })
+      .from(accountRoles)
+      .where(
+        and(
+          eq(accountRoles.userId, store.ownerId),
+          eq(accountRoles.role, "merchant"),
+        ),
+      )
+      .limit(1)
+  )[0];
+  return Boolean(merchant);
+}
+
 export async function createStore(input: InsertStore): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -1525,12 +1576,6 @@ export async function createStore(input: InsertStore): Promise<number> {
     await tx
       .insert(accountRoles)
       .values({ userId: input.ownerId, role: "merchant" })
-      .onConflictDoNothing({
-        target: [accountRoles.userId, accountRoles.role],
-      });
-    await tx
-      .insert(accountRoles)
-      .values({ userId: input.ownerId, role: "customer" })
       .onConflictDoNothing({
         target: [accountRoles.userId, accountRoles.role],
       });
@@ -2160,6 +2205,16 @@ export async function searchAvailableProducts(
   if (prices.maxPrice !== undefined)
     filters.push(sql`${products.price} <= ${prices.maxPrice.toFixed(2)}`);
   if (input.flash) filters.push(eq(stores.flashEnabled, 1));
+  filters.push(
+    sql`${stores.ownerId} not in (select ${users.id} from ${users} where ${users.loginMethod} = 'closed')`,
+  );
+  filters.push(
+    sql`not (${stores.isOpen} = 0 and not exists (
+      select 1 from ${accountRoles}
+      where ${accountRoles.userId} = ${stores.ownerId}
+        and ${accountRoles.role} = 'merchant'
+    ))`,
+  );
   if (input.vertical) filters.push(eq(stores.kind, input.vertical));
   const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
   const filterKey = marketplaceFilterKey(input);

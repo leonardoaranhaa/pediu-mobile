@@ -15,9 +15,12 @@ const customer = {
 describe("Pediu seller onboarding", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("allows an authenticated regular account to create its first store", async () => {
+  it("allows a lojista account to create its first store", async () => {
+    vi.spyOn(db, "listAccountRoles").mockResolvedValue(["merchant"]);
     const createStore = vi.spyOn(db, "createStore").mockResolvedValue(77);
-    const caller = appRouter.createCaller({ user: customer } as any);
+    const caller = appRouter.createCaller({
+      user: { ...customer, role: "merchant" },
+    } as any);
 
     const storeId = await caller.pediu.stores.create({
       name: "Mercado do Bairro",
@@ -45,6 +48,17 @@ describe("Pediu seller onboarding", () => {
       flashEtaMaxMinutes: 30,
       flashFeeOverride: undefined,
     });
+  });
+
+  it("refuses a customer account that tries to open a store", async () => {
+    vi.spyOn(db, "listAccountRoles").mockResolvedValue(["customer"]);
+    const caller = appRouter.createCaller({ user: customer } as any);
+    await expect(
+      caller.pediu.stores.create({
+        name: "Mercado do Bairro",
+        deliveryFee: "0.00",
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
   it("updates only the authenticated owner's store settings", async () => {

@@ -25,6 +25,7 @@ import { startNotificationOutboxWorker } from "../notification-outbox-worker";
 import { startRateLimitBucketSweeper } from "../rate-limit-bucket-sweeper";
 import { runWorkerCatchUp } from "../worker-tick";
 import { sweepUnacceptedOrders } from "../order-sweep";
+import { sweepAccountRoles } from "../account-role-sweep";
 import crypto from "node:crypto";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -89,6 +90,7 @@ async function startServer() {
 
   app.get("/api/health", async (_req, res) => {
     await sweepUnacceptedOrders();
+    await sweepAccountRoles();
     res.json({ ok: true, timestamp: Date.now() });
   });
   const workerTick = async (

@@ -85,7 +85,7 @@ export default function RegisterScreen() {
       {step === "role" ? (
         <Card>
           <Text style={s.sectionTitle}>O que você quer fazer no Pediu?</Text>
-          <Text style={s.muted}>Dá para ter mais de um papel depois, na aba Perfil.</Text>
+          <Text style={s.muted}>Este papel fica nesta conta. Para usar outro, crie uma conta nova.</Text>
           {(Object.keys(roleCopy) as SignupRole[]).map((option) => (
             <OutlineButton
               key={option}
@@ -184,9 +184,9 @@ export default function RegisterScreen() {
         <Card>
           <Text style={s.sectionTitle}>Cadastro em análise</Text>
           <Text style={s.muted}>
-            Recebemos seus dados. Quando a equipe liberar, as ofertas aparecem na central do entregador. Enquanto isso, você já pode olhar as lojas como cliente.
+            Recebemos seus dados. Quando a equipe liberar, as ofertas aparecem aqui na central do entregador.
           </Text>
-          <PrimaryButton title="Começar a olhar" onPress={() => router.replace(takeAuthReturn() as never)} />
+          <PrimaryButton title="Ir para a central" onPress={() => router.replace("/courier" as never)} />
         </Card>
       ) : null}
     </Page>

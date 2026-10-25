@@ -2,6 +2,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import type { ComponentProps, ReactNode } from "react";
 import {
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,6 +14,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PediuPressable } from "@/components/pediu-motion";
 import { useAppPreferences } from "@/lib/app-preferences";
 import { PEDIU_TOKENS } from "@/lib/pediu-tokens";
+import {
+  bottomSafeInset,
+  scrollPaddingForFloatingBar,
+  scrollPaddingForScreenEnd,
+} from "@/lib/screen-space";
 
 export const PEDIU = {
   coral: "#E20D2A",
@@ -62,7 +68,11 @@ export function Page({
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[
           s.content,
-          dock ? { paddingBottom: 150 + insets.bottom } : null,
+          {
+            paddingBottom: dock
+              ? scrollPaddingForFloatingBar(insets.bottom, Platform.OS)
+              : scrollPaddingForScreenEnd(insets.bottom, Platform.OS),
+          },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -168,6 +178,13 @@ export function PrimaryButton({
       style={[
         s.primary,
         { backgroundColor: theme.primary, shadowColor: theme.primary },
+        disabled
+          ? {
+              backgroundColor: "#C96B78",
+              shadowOpacity: 0,
+              elevation: 0,
+            }
+          : null,
         style,
       ]}
     >

@@ -29,7 +29,7 @@ export default function PersonalDataPage() {
   return <Page title="Dados pessoais" eyebrow="SUA CONTA">
     <Card>
       <Text style={s.sectionTitle}>Identidade persistida</Text>
-      <Text style={s.muted}>O identificador de login e o papel da conta não podem ser alterados nesta tela.</Text>
+      <Text style={s.muted}>O papel desta conta não muda. Para usar outro, crie uma conta nova.</Text>
       <Field label="NOME" value={name} onChangeText={setName} placeholder="Seu nome" />
       <PrimaryButton title={update.isPending ? "Salvando..." : "Salvar nome"} onPress={() => update.mutate({ name: name.trim() })} disabled={update.isPending || name.trim().length < 2} />
     </Card>

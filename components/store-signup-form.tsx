@@ -217,7 +217,7 @@ export function StoreSignupForm({
       {step === "fiscal" ? (
         <>
           <Text style={s.sectionTitle}>Dados fiscais</Text>
-          <Text style={s.muted}>Opcional agora. A nota fiscal ainda não é emitida. Guarde o que você já tiver.</Text>
+          <Text style={s.muted}>Opcional. Guarde o que você já tiver.</Text>
           <Field label="Inscrição estadual" value={stateRegistration} onChangeText={setStateRegistration} />
           <Field label="Inscrição municipal" value={cityRegistration} onChangeText={setCityRegistration} />
           <Field label="Regime tributário" value={taxRegime} onChangeText={setTaxRegime} placeholder="Simples, MEI ou outro" />

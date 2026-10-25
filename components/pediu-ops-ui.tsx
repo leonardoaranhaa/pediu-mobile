@@ -2,6 +2,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import { Keyboard, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { scrollPaddingForFloatingBar, bottomSafeInset } from "@/lib/screen-space";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppPreferences } from "@/lib/app-preferences";
 import { PEDIU_TOKENS } from "@/lib/pediu-tokens";
@@ -67,7 +68,8 @@ export function OpsShell({
           styles.content,
           {
             paddingTop: insets.top + 16,
-            paddingBottom: 126 + Math.max(insets.bottom, 8) + keyboard,
+            paddingBottom:
+              scrollPaddingForFloatingBar(insets.bottom, Platform.OS) + keyboard,
           },
         ]}
       >
@@ -295,7 +297,10 @@ export function OpsDock({ items }: { items: OpsDockItem[] }) {
   return (
     <View
       pointerEvents="box-none"
-      style={[styles.dockWrap, { bottom: Math.max(insets.bottom, 8) }]}
+      style={[
+        styles.dockWrap,
+        { bottom: bottomSafeInset(insets.bottom, Platform.OS) },
+      ]}
     >
       <View style={styles.dock}>
         {items.map((item) => (
@@ -502,6 +507,7 @@ const styles = StyleSheet.create({
   dockWrap: { position: "absolute", left: 20, right: 20, bottom: 18 },
   dock: {
     minHeight: 84,
+    overflow: "hidden",
     borderRadius: 38,
     backgroundColor: INK,
     paddingHorizontal: 8,

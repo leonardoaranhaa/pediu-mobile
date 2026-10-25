@@ -92,7 +92,6 @@ export function PediuPressable({
   const scale = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
-    opacity: disabled ? 0.5 : 1,
   }));
 
   return (
@@ -110,7 +109,10 @@ export function PediuPressable({
           if (!reducedMotion) scale.value = withTiming(1, { duration: 180 });
           onPressOut?.(event);
         }}
-        style={style}
+        style={[
+          style,
+          disabled ? { elevation: 0, shadowOpacity: 0 } : null,
+        ]}
       >
         {children}
       </AnimatedPressable>

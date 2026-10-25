@@ -32,7 +32,9 @@ export default function LoginScreen() {
           <Text style={{ color: PEDIU.white, fontSize: 48, fontWeight: "900", fontStyle: "italic", lineHeight: 52 }}>p</Text>
         </View>
         <Text style={{ color: PEDIU.ink, fontSize: 25, fontWeight: "800", letterSpacing: -0.7 }}>Pediu</Text>
-        <Text style={[s.muted, { textAlign: "center", maxWidth: 300 }]}>Uma conta para pedir, vender e entregar.</Text>
+        <Text style={[s.muted, { textAlign: "center", maxWidth: 300 }]}>
+          Entre com a conta que você criou. Cliente, loja e entregas são contas separadas.
+        </Text>
       </View>
       <Card>
         <Text style={s.sectionTitle}>Entrar</Text>

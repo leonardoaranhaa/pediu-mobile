@@ -384,6 +384,11 @@ export default function SellerAdsPage() {
             {generate.error.message}
           </Text>
         ) : null}
+        {!productId ? (
+          <Text style={s.muted}>Escolha um produto do catálogo para gerar o anúncio.</Text>
+        ) : !credits.data?.balance ? (
+          <Text style={s.muted}>Você precisa de créditos para gerar a imagem.</Text>
+        ) : null}
         <PrimaryButton
           title={
             generate.isPending ? "Criando criativo..." : "Gerar anúncio com IA"
@@ -405,9 +410,7 @@ export default function SellerAdsPage() {
               );
             })}
           </View>
-        ) : (
-          <Text style={s.muted}>A compra de créditos por PIX ainda não está disponível.</Text>
-        )}
+        ) : null}
         {buy.data?.qrCode ? (
           <Text style={s.muted}>PIX de R$ {buy.data.amount.replace(".", ",")} para {buy.data.credits} créditos. O saldo entra quando o pagamento for confirmado.</Text>
         ) : null}
@@ -415,11 +418,6 @@ export default function SellerAdsPage() {
           <Image source={{ uri: `data:image/png;base64,${buy.data.qrCodeBase64}` }} style={{ width: 180, height: 180 }} />
         ) : null}
         {buy.error ? <Text style={{ color: PEDIU.coral }}>{buy.error.message}</Text> : null}
-        {!credits.data?.balance ? (
-          <Text style={{ color: theme.primary, fontSize: 12, fontWeight: "800" }}>
-            Sem créditos no momento. Compre um pacote para criar outra imagem.
-          </Text>
-        ) : null}
       </Card>
 
       {selectedAd ? (

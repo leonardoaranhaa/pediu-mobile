@@ -102,6 +102,21 @@ export async function signupAccount(input: {
   const passwordHash = await hashPassword(input.password);
   const openId = `p${randomBytes(16).toString("hex")}`;
   const admin = isAdminEmail(email);
+  const intent = input.intent ?? "customer";
+  const role = admin
+    ? "admin"
+    : intent === "merchant"
+      ? "merchant"
+      : intent === "courier"
+        ? "courier"
+        : "user";
+  const accountRole = admin
+    ? "admin"
+    : intent === "merchant"
+      ? "merchant"
+      : intent === "courier"
+        ? "courier"
+        : "customer";
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   try {
@@ -112,9 +127,8 @@ export async function signupAccount(input: {
       phone,
       passwordHash,
       loginMethod: "password",
-      role: admin ? "admin" : "user",
-      usesCustomerApp:
-        input.intent === "merchant" || input.intent === "courier" ? 0 : 1,
+      role,
+      usesCustomerApp: accountRole === "customer" ? 1 : 0,
     });
   } catch (error) {
     if (isUniqueConstraintError(error)) throw new Error(SIGNUP_ERROR);
@@ -122,7 +136,7 @@ export async function signupAccount(input: {
   }
   const created = await getUserByOpenId(openId);
   if (!created) throw new Error(SIGNUP_ERROR);
-  await grantAccountRole(created.id, admin ? "admin" : "customer");
+  await grantAccountRole(created.id, accountRole);
   return issueSession(created);
 }
 
