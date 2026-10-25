@@ -1,6 +1,7 @@
 -- One account keeps the role from signup. Admin accounts stay as they are.
 -- A store or courier profile opened within a day of the account is that signup.
 -- A profile added later, on a customer account, is turned off.
+-- A lojista or motoboy stamp is kept even before that profile exists.
 WITH store_at AS (
   SELECT "ownerId" AS user_id, MIN("createdAt") AS created_at
   FROM "pediu_stores"
@@ -40,8 +41,8 @@ decision AS (
         AND s.created_at IS NOT NULL
         AND (c.created_at IS NULL OR s.created_at <= c.created_at) THEN 'merchant'
       WHEN u."usesCustomerApp" = 0 AND c.created_at IS NOT NULL THEN 'courier'
-      WHEN u.role = 'merchant' AND s.created_at IS NOT NULL THEN 'merchant'
-      WHEN u.role = 'courier' AND c.created_at IS NOT NULL THEN 'courier'
+      WHEN u.role = 'merchant' THEN 'merchant'
+      WHEN u.role = 'courier' THEN 'courier'
       ELSE 'customer'
     END AS kept
   FROM "users" u
@@ -94,8 +95,8 @@ decision AS (
         AND s.created_at IS NOT NULL
         AND (c.created_at IS NULL OR s.created_at <= c.created_at) THEN 'merchant'
       WHEN u."usesCustomerApp" = 0 AND c.created_at IS NOT NULL THEN 'courier'
-      WHEN u.role = 'merchant' AND s.created_at IS NOT NULL THEN 'merchant'
-      WHEN u.role = 'courier' AND c.created_at IS NOT NULL THEN 'courier'
+      WHEN u.role = 'merchant' THEN 'merchant'
+      WHEN u.role = 'courier' THEN 'courier'
       ELSE 'customer'
     END AS kept
   FROM "users" u
@@ -148,8 +149,8 @@ decision AS (
         AND s.created_at IS NOT NULL
         AND (c.created_at IS NULL OR s.created_at <= c.created_at) THEN 'merchant'
       WHEN u."usesCustomerApp" = 0 AND c.created_at IS NOT NULL THEN 'courier'
-      WHEN u.role = 'merchant' AND s.created_at IS NOT NULL THEN 'merchant'
-      WHEN u.role = 'courier' AND c.created_at IS NOT NULL THEN 'courier'
+      WHEN u.role = 'merchant' THEN 'merchant'
+      WHEN u.role = 'courier' THEN 'courier'
       ELSE 'customer'
     END AS kept
   FROM "users" u
@@ -209,8 +210,8 @@ decision AS (
         AND s.created_at IS NOT NULL
         AND (c.created_at IS NULL OR s.created_at <= c.created_at) THEN 'merchant'
       WHEN u."usesCustomerApp" = 0 AND c.created_at IS NOT NULL THEN 'courier'
-      WHEN u.role = 'merchant' AND s.created_at IS NOT NULL THEN 'merchant'
-      WHEN u.role = 'courier' AND c.created_at IS NOT NULL THEN 'courier'
+      WHEN u.role = 'merchant' THEN 'merchant'
+      WHEN u.role = 'courier' THEN 'courier'
       ELSE 'customer'
     END AS kept
   FROM "users" u
@@ -263,8 +264,8 @@ decision AS (
         AND s.created_at IS NOT NULL
         AND (c.created_at IS NULL OR s.created_at <= c.created_at) THEN 'merchant'
       WHEN u."usesCustomerApp" = 0 AND c.created_at IS NOT NULL THEN 'courier'
-      WHEN u.role = 'merchant' AND s.created_at IS NOT NULL THEN 'merchant'
-      WHEN u.role = 'courier' AND c.created_at IS NOT NULL THEN 'courier'
+      WHEN u.role = 'merchant' THEN 'merchant'
+      WHEN u.role = 'courier' THEN 'courier'
       ELSE 'customer'
     END AS kept
   FROM "users" u

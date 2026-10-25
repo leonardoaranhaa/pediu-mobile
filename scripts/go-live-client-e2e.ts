@@ -78,6 +78,7 @@ async function signupAndLogin(input: {
   email: string;
   password: string;
   phone?: string;
+  intent: "customer" | "merchant" | "courier";
 }) {
   const created = await callPublic<{
     token: string;
@@ -89,13 +90,21 @@ async function signupAndLogin(input: {
   }>("auth.login", { email: input.email, password: input.password });
   assert.equal(loggedIn.user.id, created.user.id);
   assert.equal(loggedIn.user.email, input.email);
+  const expectedRole =
+    input.intent === "merchant"
+      ? "merchant"
+      : input.intent === "courier"
+        ? "courier"
+        : "user";
+  assert.equal(created.user.role, expectedRole);
+  assert.equal(loggedIn.user.role, expectedRole);
   const me = await callTrpc<{ id: number; email: string; roles: string[] }>(
     "auth.me",
     undefined,
     loggedIn.token,
   );
   assert.equal(me.id, created.user.id);
-  assert.ok(me.roles.includes("customer"));
+  assert.deepEqual(me.roles, [input.intent]);
   return loggedIn;
 }
 
@@ -128,23 +137,25 @@ async function main() {
       email: `cliente-${runId}@example.test`,
       password,
       phone: "11988887777",
+      intent: "customer",
     });
     const merchant = await signupAndLogin({
       name: "Lojista E2E Go-Live",
       email: `loja-${runId}@example.test`,
       password,
+      intent: "merchant",
     });
     const courier = await signupAndLogin({
       name: "Motoboy E2E Go-Live",
       email: `moto-${runId}@example.test`,
       password,
+      intent: "courier",
     });
     customerId = customer.user.id;
     merchantId = merchant.user.id;
     courierId = courier.user.id;
     const customerToken = customer.token;
     const merchantToken = merchant.token;
-    assert.equal(courier.user.role, "user");
     const courierProfile = await callTrpc<{ id: number; status: string }>(
       "pediu.courier.profile.register",
       { vehicleType: "moto", vehiclePlate: "E2E1A23", phone: "11977776666" },

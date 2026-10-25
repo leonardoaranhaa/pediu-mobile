@@ -56,8 +56,10 @@ export function resolveOriginalRole(input: {
     return "merchant";
   }
   if (input.usesCustomerApp !== 1 && courierAt) return "courier";
-  if (input.legacyRole === "merchant" && storeAt) return "merchant";
-  if (input.legacyRole === "courier" && courierAt) return "courier";
+  // The signup stamp is the chosen role, even before the store or the
+  // courier profile exists. Profiles opened later do not replace it.
+  if (input.legacyRole === "merchant") return "merchant";
+  if (input.legacyRole === "courier") return "courier";
   return "customer";
 }
 

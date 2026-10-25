@@ -71,6 +71,37 @@ describe("one role per account", () => {
     ).toBe("merchant");
   });
 
+  it("keeps the signup stamp before the store or the courier profile exists", () => {
+    const created = new Date("2026-10-01T12:00:00.000Z");
+    expect(
+      resolveOriginalRole({
+        legacyRole: "merchant",
+        usesCustomerApp: 0,
+        userCreatedAt: created,
+        storeCreatedAt: null,
+        courierCreatedAt: null,
+      }),
+    ).toBe("merchant");
+    expect(
+      resolveOriginalRole({
+        legacyRole: "courier",
+        usesCustomerApp: 0,
+        userCreatedAt: created,
+        storeCreatedAt: null,
+        courierCreatedAt: null,
+      }),
+    ).toBe("courier");
+    expect(
+      resolveOriginalRole({
+        legacyRole: "user",
+        usesCustomerApp: 1,
+        userCreatedAt: created,
+        storeCreatedAt: null,
+        courierCreatedAt: null,
+      }),
+    ).toBe("customer");
+  });
+
   it("refuses a second role and lets the admin through", () => {
     expect(roleProfileRefusal(["customer"], "merchant")).toMatch(/lojista/);
     expect(roleProfileRefusal(["merchant"], "courier")).toMatch(/motoboy/);

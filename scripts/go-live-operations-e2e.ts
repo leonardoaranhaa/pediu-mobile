@@ -102,7 +102,7 @@ async function main() {
         "Courier Operações E2E",
         `${courierOpenId}@example.test`,
         "e2e",
-        "user",
+        "courier",
       ],
     );
     courierId = insertId(courierResult);
