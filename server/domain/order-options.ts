@@ -86,10 +86,24 @@ export function composeItemNote(label: string, customerNote?: string | null) {
   return `${cleanLabel}. ${note}`.slice(0, 500);
 }
 
+export type OrderPaymentMethod =
+  | "pix"
+  | "card"
+  | "cash"
+  | "fiado"
+  | "card_credit"
+  | "card_debit";
+
 export function paymentMethodLabel(method: string | null | undefined) {
   if (method === "cash") return "Dinheiro";
   if (method === "pix") return "PIX";
+  if (method === "card_credit") return "Crédito na entrega";
+  if (method === "card_debit") return "Débito na entrega";
   if (method === "card") return "Cartão";
   if (method === "fiado") return "Fiado";
   return "Pagamento a confirmar";
+}
+
+export function collectsPaymentOnDelivery(method: string | null | undefined) {
+  return method === "cash" || method === "card_credit" || method === "card_debit";
 }

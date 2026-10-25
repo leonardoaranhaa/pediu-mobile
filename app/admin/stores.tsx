@@ -18,6 +18,11 @@ export default function AdminStoresPage() {
   const allowed = user?.role === "admin";
   const utils = trpc.useUtils();
   const query = trpc.admin.stores.useQuery({ limit: 50, offset: 0 }, { enabled: allowed });
+  const review = trpc.admin.storeReview.useMutation({
+    onSuccess: async () => {
+      await utils.admin.stores.invalidate();
+    },
+  });
   const update = trpc.admin.storeUpdate.useMutation({
     onSuccess: async () => {
       await utils.admin.stores.invalidate();
@@ -54,8 +59,29 @@ export default function AdminStoresPage() {
             <Text style={s.muted}>
               #{store.id} · {kindLabel[store.kind] ?? store.kind} · taxa R$ {Number(store.deliveryFee).toFixed(2).replace(".", ",")}
               {flash ? ` · Flash ${store.flashEtaMaxMinutes} min` : ""}
+              {store.approvalStatus === "pending"
+                ? " · Em análise"
+                : store.approvalStatus === "rejected"
+                  ? " · Não aprovada"
+                  : " · Aprovada"}
             </Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+              {store.approvalStatus !== "approved" ? (
+                <Pressable
+                  onPress={() => review.mutate({ storeId: store.id, decision: "approved" })}
+                  style={{ borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: PEDIU.green }}
+                >
+                  <Text style={{ color: PEDIU.white, fontWeight: "900", fontSize: 11 }}>Aprovar</Text>
+                </Pressable>
+              ) : null}
+              {store.approvalStatus !== "rejected" ? (
+                <Pressable
+                  onPress={() => review.mutate({ storeId: store.id, decision: "rejected" })}
+                  style={{ borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: PEDIU.canvas }}
+                >
+                  <Text style={{ color: PEDIU.ink, fontWeight: "900", fontSize: 11 }}>Recusar</Text>
+                </Pressable>
+              ) : null}
               <Pressable
                 onPress={() => update.mutate({ storeId: store.id, isOpen: !open })}
                 style={{ borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: open ? PEDIU.green : PEDIU.canvas }}

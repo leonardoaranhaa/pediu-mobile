@@ -25,6 +25,12 @@ import {
   composeItemNote,
   priceSelectedOptions,
 } from "./domain/order-options";
+import {
+  cardOnDeliveryRejection,
+  sellingBlockReason,
+  storePauseView,
+} from "./domain/store-ops";
+import { sweepUnacceptedOrders } from "./order-sweep";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import { storageGetSignedUrl, storagePut } from "./storage";
 import { sendPushToUser } from "./push";
@@ -402,9 +408,12 @@ export const appRouter = router({
         .input(z.object({ productId: z.number().int().positive() }))
         .query(async ({ input }) => {
           const product = await db.getProductById(input.productId);
-          if (!product || !product.available) return null;
+          if (!product) return null;
           const store = await db.getStoreById(product.storeId);
           if (!store) return null;
+          const ops = await db.getStoreOps(store.id);
+          if (ops.approvalStatus !== "approved") return null;
+          const pause = storePauseView(ops);
           const availability = resolveStoreAvailability({
             isOpen: store.isOpen,
             openingHours: store.openingHours,
@@ -416,8 +425,10 @@ export const appRouter = router({
             deliveryFee: store.deliveryFee,
             storeKind: store.kind,
             flashEnabled: store.flashEnabled,
-            storeOpen: availability.open,
-            nextOpenLabel: availability.nextOpenLabel,
+            storeOpen: availability.open && !pause.paused,
+            nextOpenLabel: pause.paused
+              ? pause.message
+              : availability.nextOpenLabel,
             options,
           };
         }),
@@ -560,6 +571,14 @@ export const appRouter = router({
         .query(async ({ ctx, input }) => {
           const store = await db.getStoreById(input.storeId);
           if (!store) throw new Error("Estabelecimento não encontrado");
+          const ops = await db.getStoreOps(store.id);
+          const pause = storePauseView(ops);
+          const blocked = sellingBlockReason({
+            approvalStatus: ops.approvalStatus,
+            paused: pause.paused,
+            pauseMessage: pause.message,
+          });
+          if (blocked) throw new Error(blocked);
           const availability = resolveStoreAvailability({
             isOpen: store.isOpen,
             openingHours: store.openingHours,
@@ -578,9 +597,13 @@ export const appRouter = router({
             (input.fulfillmentMode !== "delivery" || !flash.isFlash)
           )
             throw new Error(flash.reason ?? "Flash indisponível");
-          const pricingStore = flash.isFlash
-            ? { ...store, deliveryFee: flash.deliveryFee }
-            : store;
+          const pricingStore = {
+            ...(flash.isFlash
+              ? { ...store, deliveryFee: flash.deliveryFee }
+              : store),
+            feeMode: flash.isFlash ? ("fixed" as const) : ops.feeMode,
+            feePerKm: ops.feePerKm,
+          };
           const address = input.addressId
             ? await db.getCustomerAddress(ctx.user.id, input.addressId)
             : undefined;
@@ -653,6 +676,9 @@ export const appRouter = router({
             tipDestination: DEFAULT_TIP_DESTINATION,
             distanceKm: serviceability.distanceKm,
             serviceabilityReason: serviceability.reason,
+            feeMode: flash.isFlash ? "fixed" : ops.feeMode,
+            cardCredit: ops.cardCreditEnabled,
+            cardDebit: ops.cardDebitEnabled,
             couponCode,
             discount,
             total: (
@@ -668,9 +694,11 @@ export const appRouter = router({
       available: publicProcedure.query(() => db.listActiveCoupons()),
     }),
     stores: router({
-      mine: protectedProcedure.query(({ ctx }) =>
-        db.getStoreForOwner(ctx.user.id),
-      ),
+      mine: protectedProcedure.query(async ({ ctx }) => {
+        const store = await db.getStoreForOwner(ctx.user.id);
+        if (!store) return undefined;
+        return db.withStoreOps(store);
+      }),
       create: protectedProcedure
         .input(
           z.object({
@@ -832,6 +860,55 @@ export const appRouter = router({
             ...(isOpen === undefined ? {} : { isOpen: isOpen ? 1 : 0 }),
           });
         }),
+      deliverySettings: protectedProcedure
+        .input(
+          z.object({
+            cardCreditEnabled: z.boolean().optional(),
+            cardDebitEnabled: z.boolean().optional(),
+            feeMode: z.enum(["fixed", "distance"]).optional(),
+            feePerKm: z
+              .string()
+              .regex(/^\d+(\.\d{1,2})?$/)
+              .optional(),
+          }),
+        )
+        .mutation(async ({ ctx, input }) => {
+          const store = await db.getStoreForOwner(ctx.user.id);
+          if (!store) throw new Error("Cadastre sua loja antes de ajustar a entrega.");
+          if (input.feeMode === "distance" && input.feePerKm == null) {
+            const current = await db.getStoreOps(store.id);
+            if (current.feeMode !== "distance" && !input.feePerKm)
+              throw new Error("Informe o valor por quilômetro.");
+          }
+          return db.saveStoreOps(store.id, input);
+        }),
+      pause: protectedProcedure
+        .input(
+          z.object({
+            minutes: z.union([z.literal(15), z.literal(30), z.literal(60)]).optional(),
+            manual: z.boolean().optional(),
+          }),
+        )
+        .mutation(async ({ ctx, input }) => {
+          const store = await db.getStoreForOwner(ctx.user.id);
+          if (!store) throw new Error("Cadastre sua loja antes de pausar.");
+          if (input.manual) {
+            await db.saveStoreOps(store.id, { pauseManual: true, pausedUntil: null });
+            return { paused: true as const };
+          }
+          if (!input.minutes) throw new Error("Escolha por quanto tempo a loja fica pausada.");
+          await db.saveStoreOps(store.id, {
+            pauseManual: false,
+            pausedUntil: new Date(Date.now() + input.minutes * 60_000),
+          });
+          return { paused: true as const };
+        }),
+      resume: protectedProcedure.mutation(async ({ ctx }) => {
+        const store = await db.getStoreForOwner(ctx.user.id);
+        if (!store) throw new Error("Cadastre sua loja antes de reabrir.");
+        await db.saveStoreOps(store.id, { pauseManual: false, pausedUntil: null });
+        return { paused: false as const };
+      }),
       couriers: protectedProcedure.query(({ ctx }) =>
         db.listCouriersForStore(ctx.user.id),
       ),
@@ -1321,16 +1398,18 @@ export const appRouter = router({
             })
             .optional(),
         )
-        .query(({ ctx, input }) =>
-          db.listOrdersForCustomer(
+        .query(async ({ ctx, input }) => {
+          await sweepUnacceptedOrders();
+          return db.listOrdersForCustomer(
             ctx.user.id,
             input?.limit ?? 50,
             input?.offset ?? 0,
-          ),
-        ),
+          );
+        }),
       get: protectedProcedure
         .input(z.object({ orderId: z.number().int().positive() }))
         .query(async ({ ctx, input }) => {
+          await sweepUnacceptedOrders();
           const order = await db.getOrderForUser(input.orderId, ctx.user.id);
           if (!order)
             throw new Error("Pedido não encontrado ou não autorizado");
@@ -1347,6 +1426,7 @@ export const appRouter = router({
             .optional(),
         )
         .query(async ({ ctx, input }) => {
+          await sweepUnacceptedOrders();
           const store = await db.getStoreForOwner(ctx.user.id);
           const rows = store
             ? await db.listOrdersForStore(
@@ -1363,7 +1443,9 @@ export const appRouter = router({
             idempotencyKey: z.string().trim().min(8).max(160),
             storeId: z.number().int().positive(),
             total: z.string().regex(/^\d+(\.\d{1,2})?$/),
-            paymentMethod: z.enum(["pix", "cash", "fiado"]).default("pix"),
+            paymentMethod: z
+              .enum(["pix", "cash", "fiado", "card_credit", "card_debit"])
+              .default("pix"),
             fulfillmentMode: z.enum(["delivery", "pickup"]).default("delivery"),
             fulfillment: z.enum(["standard", "flash"]).default("standard"),
             tipAmount: z.number().nonnegative().max(500).optional(),
@@ -1436,6 +1518,16 @@ export const appRouter = router({
           });
           const store = await db.getStoreById(input.storeId);
           if (!store) throw new Error("Estabelecimento não encontrado");
+          const ops = await db.getStoreOps(store.id);
+          const pause = storePauseView(ops);
+          const blocked = sellingBlockReason({
+            approvalStatus: ops.approvalStatus,
+            paused: pause.paused,
+            pauseMessage: pause.message,
+          });
+          if (blocked) throw new Error(blocked);
+          const cardRejection = cardOnDeliveryRejection(input.paymentMethod, ops);
+          if (cardRejection) throw new Error(cardRejection);
           const availability = resolveStoreAvailability({
             isOpen: store.isOpen,
             openingHours: store.openingHours,
@@ -1454,9 +1546,13 @@ export const appRouter = router({
             (input.fulfillmentMode !== "delivery" || !flash.isFlash)
           )
             throw new Error(flash.reason ?? "Flash indisponível");
-          const pricingStore = flash.isFlash
-            ? { ...store, deliveryFee: flash.deliveryFee }
-            : store;
+          const pricingStore = {
+            ...(flash.isFlash
+              ? { ...store, deliveryFee: flash.deliveryFee }
+              : store),
+            feeMode: flash.isFlash ? ("fixed" as const) : ops.feeMode,
+            feePerKm: ops.feePerKm,
+          };
 
           const savedAddress = input.addressId
             ? await db.getCustomerAddress(ctx.user.id, input.addressId)

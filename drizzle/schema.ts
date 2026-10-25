@@ -312,7 +312,7 @@ export const payments = pgTable(
     orderId: integer("orderId")
       .notNull()
       .references(() => orders.id, { onDelete: "cascade" }),
-    method: varchar("method", { length: 32 }).$type<"pix" | "card" | "cash" | "fiado">()
+    method: varchar("method", { length: 32 }).$type<"pix" | "card" | "cash" | "fiado" | "card_credit" | "card_debit">()
       .default("pix")
       .notNull(),
     status: varchar("status", { length: 32 }).$type<"pending" | "paid" | "failed" | "cancelled">()
@@ -760,7 +760,7 @@ export const sales = pgTable(
     customerId: integer("customerId"),
     orderId: integer("orderId"),
     total: numeric("total", { precision: 10, scale: 2 }).notNull(),
-    paymentMethod: varchar("paymentMethod", { length: 32 }).$type<"pix" | "card" | "cash" | "fiado">().notNull(),
+    paymentMethod: varchar("paymentMethod", { length: 32 }).$type<"pix" | "card" | "cash" | "fiado" | "card_credit" | "card_debit">().notNull(),
     note: varchar("note", { length: 255 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
@@ -1457,6 +1457,31 @@ export const productOptions = pgTable(
   (table) => ({
     groupIdx: index("pediu_product_options_group_idx").on(table.groupId),
   }),
+).enableRLS();
+
+export const storeOps = pgTable(
+  "pediu_store_ops",
+  {
+    storeId: integer("storeId")
+      .primaryKey()
+      .references(() => stores.id, { onDelete: "cascade" }),
+    approvalStatus: varchar("approvalStatus", { length: 16 })
+      .$type<"pending" | "approved" | "rejected">()
+      .default("approved")
+      .notNull(),
+    cardCreditEnabled: integer("cardCreditEnabled").default(0).notNull(),
+    cardDebitEnabled: integer("cardDebitEnabled").default(0).notNull(),
+    pausedUntil: timestamp("pausedUntil"),
+    pauseManual: integer("pauseManual").default(0).notNull(),
+    feeMode: varchar("feeMode", { length: 16 })
+      .$type<"fixed" | "distance">()
+      .default("fixed")
+      .notNull(),
+    feePerKm: numeric("feePerKm", { precision: 10, scale: 2 })
+      .default("0.00")
+      .notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
 ).enableRLS();
 
 export const accountPrefs = pgTable(

@@ -71,6 +71,7 @@ import {
   User,
   accountRoles,
   accountPrefs,
+  storeOps,
   adCredits,
   adCreditPurchases,
   platformSettings,
@@ -142,7 +143,14 @@ import {
   dispatchReofferKey,
   offerStillBlocksCourier,
 } from "./domain/dispatch";
-import { paymentMethodLabel } from "./domain/order-options";
+import { paymentMethodLabel, type OrderPaymentMethod } from "./domain/order-options";
+import {
+  DEFAULT_STORE_OPS,
+  storePauseView,
+  type DeliveryFeeMode,
+  type StoreApprovalStatus,
+  type StoreOps,
+} from "./domain/store-ops";
 import { isTrackingCapturedAtAcceptable } from "./domain/tracking";
 import { isUniqueConstraintError } from "./domain/idempotency";
 import {
@@ -1511,9 +1519,9 @@ export async function getStoreById(
 export async function createStore(input: InsertStore): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  return db.transaction(async (tx) => {
+  const storeId = await db.transaction(async (tx) => {
     const result = await tx.insert(stores).values(input).returning({ id: stores.id });
-    const storeId = getInsertId(result);
+    const createdId = getInsertId(result);
     await tx
       .insert(accountRoles)
       .values({ userId: input.ownerId, role: "merchant" })
@@ -1526,8 +1534,10 @@ export async function createStore(input: InsertStore): Promise<number> {
       .onConflictDoNothing({
         target: [accountRoles.userId, accountRoles.role],
       });
-    return storeId;
+    return createdId;
   });
+  await ensurePendingStoreOps(storeId);
+  return storeId;
 }
 
 export type UpdateStoreInput = Partial<
@@ -2104,6 +2114,26 @@ export type MarketplaceSearchInput = {
   offset?: number;
 };
 
+async function decorateMarketplace<
+  T extends { storeId: number; storeOpen: boolean; nextOpenLabel: string | null },
+>(items: T[]): Promise<T[]> {
+  const loaded = await loadStoreOps(items.map((item) => item.storeId));
+  if (!loaded) return items;
+  return items.flatMap((item) => {
+    const ops = loaded.get(item.storeId) ?? DEFAULT_STORE_OPS;
+    if (ops.approvalStatus !== "approved") return [];
+    const pause = storePauseView(ops);
+    if (!pause.paused) return [item];
+    return [
+      {
+        ...item,
+        storeOpen: false,
+        nextOpenLabel: pause.message ?? "Fechada no momento",
+      },
+    ];
+  });
+}
+
 export async function searchAvailableProducts(
   input: MarketplaceSearchInput = {},
 ): Promise<{
@@ -2115,8 +2145,7 @@ export async function searchAvailableProducts(
   if (!db) return { items: [], hasMore: false, nextCursor: null };
   const prices = ignoreEmptyPriceBand(input.minPrice, input.maxPrice);
   const filters = [
-    eq(products.available, 1),
-    sql`(${products.inventoryTracked} = 0 OR ${products.stockQuantity} > ${products.reservedQuantity})`,
+    sql`(${products.inventoryTracked} = 0 OR ${products.stockQuantity} > ${products.reservedQuantity} OR ${products.available} = 0)`,
   ];
   if (input.category && input.category !== "Tudo")
     filters.push(eq(products.category, input.category));
@@ -2225,8 +2254,9 @@ export async function searchAvailableProducts(
   });
   const hasMore = result.length > limit;
   const lastItem = items.at(-1);
+  const visible = await decorateMarketplace(items);
   return {
-    items,
+    items: visible,
     hasMore,
     nextCursor:
       hasMore && lastItem
@@ -2666,7 +2696,7 @@ export async function createOrderWithPayment(
     unitPrice: string;
     note?: string;
   }>,
-  paymentMethod: "pix" | "card" | "cash",
+  paymentMethod: OrderPaymentMethod,
 ): Promise<{ orderId: number; paymentId: number }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -3177,7 +3207,12 @@ export async function completeDelivery(
           .where(eq(payments.orderId, orderId))
           .limit(1)
       )[0];
-      if (payment?.method === "cash" && extra.cashReceived) {
+      if (
+        (payment?.method === "cash" ||
+          payment?.method === "card_credit" ||
+          payment?.method === "card_debit") &&
+        extra.cashReceived
+      ) {
         await tx
           .update(payments)
           .set({ status: "paid" })
@@ -3197,7 +3232,15 @@ export async function completeDelivery(
             customerId: delivered.customerId,
             orderId,
             total: delivered.total,
-            paymentMethod: payment?.method === "cash" ? "cash" : payment?.method === "fiado" ? "fiado" : "pix",
+            paymentMethod:
+              payment?.method === "cash" ||
+              payment?.method === "fiado" ||
+              payment?.method === "card" ||
+              payment?.method === "card_credit" ||
+              payment?.method === "card_debit" ||
+              payment?.method === "pix"
+                ? payment.method
+                : "pix",
             note: "Pedido entregue pelo aplicativo",
           });
         }
@@ -3867,6 +3910,170 @@ export async function getStoreTourDone(userId: number) {
   }
 }
 
+function mapStoreOps(row: {
+  approvalStatus: StoreApprovalStatus;
+  cardCreditEnabled: number;
+  cardDebitEnabled: number;
+  pausedUntil: Date | null;
+  pauseManual: number;
+  feeMode: DeliveryFeeMode;
+  feePerKm: string;
+}): StoreOps {
+  return {
+    approvalStatus: row.approvalStatus,
+    cardCreditEnabled: row.cardCreditEnabled === 1,
+    cardDebitEnabled: row.cardDebitEnabled === 1,
+    pausedUntil: row.pausedUntil,
+    pauseManual: row.pauseManual === 1,
+    feeMode: row.feeMode,
+    feePerKm: row.feePerKm,
+  };
+}
+
+async function loadStoreOps(
+  storeIds: number[],
+): Promise<Map<number, StoreOps> | null> {
+  const unique = [...new Set(storeIds)];
+  if (!unique.length) return new Map();
+  const db = await getDb();
+  if (!db) return null;
+  try {
+    const rows = await db
+      .select()
+      .from(storeOps)
+      .where(inArray(storeOps.storeId, unique));
+    const now = new Date();
+    const expired = rows
+      .filter(
+        (row) =>
+          row.pauseManual !== 1 &&
+          row.pausedUntil != null &&
+          row.pausedUntil.getTime() <= now.getTime(),
+      )
+      .map((row) => row.storeId);
+    if (expired.length) {
+      await db
+        .update(storeOps)
+        .set({ pausedUntil: null, updatedAt: now })
+        .where(
+          and(inArray(storeOps.storeId, expired), eq(storeOps.pauseManual, 0)),
+        );
+    }
+    return new Map(
+      rows.map((row) => [
+        row.storeId,
+        mapStoreOps(
+          expired.includes(row.storeId) ? { ...row, pausedUntil: null } : row,
+        ),
+      ]),
+    );
+  } catch (error) {
+    if (isMissingRelation(error)) return null;
+    throw error;
+  }
+}
+
+export async function getStoreOps(storeId: number): Promise<StoreOps> {
+  const loaded = await loadStoreOps([storeId]);
+  if (!loaded) return { ...DEFAULT_STORE_OPS };
+  return loaded.get(storeId) ?? { ...DEFAULT_STORE_OPS };
+}
+
+export async function withStoreOps<T extends { id: number }>(store: T) {
+  const ops = await getStoreOps(store.id);
+  const pause = storePauseView(ops);
+  return {
+    ...store,
+    approvalStatus: ops.approvalStatus,
+    cardCreditEnabled: ops.cardCreditEnabled,
+    cardDebitEnabled: ops.cardDebitEnabled,
+    feeMode: ops.feeMode,
+    feePerKm: ops.feePerKm,
+    paused: pause.paused,
+    pauseMessage: pause.message,
+    pauseManual: ops.pauseManual,
+  };
+}
+
+export async function attachStoreOps<T extends { id: number }>(rows: T[]) {
+  const loaded = await loadStoreOps(rows.map((row) => row.id));
+  return rows.map((row) => ({
+    ...row,
+    approvalStatus: loaded?.get(row.id)?.approvalStatus ?? "approved",
+  }));
+}
+
+async function ensurePendingStoreOps(storeId: number) {
+  const db = await getDb();
+  if (!db) return;
+  try {
+    await db
+      .insert(storeOps)
+      .values({ storeId, approvalStatus: "pending", updatedAt: new Date() })
+      .onConflictDoNothing({ target: storeOps.storeId });
+  } catch (error) {
+    if (isMissingRelation(error)) return;
+    try {
+      await db.delete(stores).where(eq(stores.id, storeId));
+    } catch {
+      // The friendly message below is what the store owner should see.
+    }
+    throw new Error("Não foi possível concluir o cadastro da loja. Tente de novo.");
+  }
+}
+
+export async function saveStoreOps(
+  storeId: number,
+  input: Partial<{
+    approvalStatus: StoreApprovalStatus;
+    cardCreditEnabled: boolean;
+    cardDebitEnabled: boolean;
+    pausedUntil: Date | null;
+    pauseManual: boolean;
+    feeMode: DeliveryFeeMode;
+    feePerKm: string;
+  }>,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Não foi possível salvar agora. Tente de novo.");
+  const current = await getStoreOps(storeId);
+  const next = {
+    approvalStatus: input.approvalStatus ?? current.approvalStatus,
+    cardCreditEnabled: (input.cardCreditEnabled ?? current.cardCreditEnabled) ? 1 : 0,
+    cardDebitEnabled: (input.cardDebitEnabled ?? current.cardDebitEnabled) ? 1 : 0,
+    pausedUntil:
+      input.pausedUntil === undefined ? current.pausedUntil : input.pausedUntil,
+    pauseManual: (input.pauseManual ?? current.pauseManual) ? 1 : 0,
+    feeMode: input.feeMode ?? current.feeMode,
+    feePerKm: input.feePerKm ?? current.feePerKm,
+    updatedAt: new Date(),
+  };
+  try {
+    await db
+      .insert(storeOps)
+      .values({ storeId, ...next })
+      .onConflictDoUpdate({
+        target: storeOps.storeId,
+        set: next,
+      });
+  } catch (error) {
+    if (isMissingRelation(error)) {
+      const matchesToday =
+        next.approvalStatus === "approved" &&
+        next.cardCreditEnabled === 0 &&
+        next.cardDebitEnabled === 0 &&
+        next.pauseManual === 0 &&
+        next.pausedUntil == null &&
+        next.feeMode === "fixed" &&
+        Number(next.feePerKm) === 0;
+      if (matchesToday) return { ...DEFAULT_STORE_OPS };
+      throw new Error("Não foi possível salvar agora. Tente de novo em instantes.");
+    }
+    throw error;
+  }
+  return getStoreOps(storeId);
+}
+
 export async function setStoreTourDone(userId: number) {
   const db = await getDb();
   if (!db) return;
@@ -3890,6 +4097,7 @@ export type StoreOrderLine = {
   quantity: number;
   unitPrice: string;
   note: string | null;
+  available: boolean;
 };
 
 export async function enrichOrdersForStore<
@@ -3914,6 +4122,7 @@ export async function enrichOrdersForStore<
       unitPrice: orderItems.unitPrice,
       note: orderItems.note,
       name: products.name,
+      available: products.available,
     })
     .from(orderItems)
     .innerJoin(products, eq(products.id, orderItems.productId))
@@ -3940,6 +4149,7 @@ export async function enrichOrdersForStore<
           quantity: line.quantity,
           unitPrice: line.unitPrice,
           note: line.note,
+          available: line.available === 1,
         })),
       customerName: nameById.get(order.customerId) ?? null,
       paymentMethod: method,
@@ -4042,6 +4252,12 @@ export async function listPendingDeliveryOffers(courierUserId: number) {
       isFlash: orders.isFlash,
       deliveryFee: orders.deliveryFeeSnapshot,
       tipAmount: orders.tipAmount,
+      paymentMethod: sql<string | null>`(
+        SELECT ${payments.method} FROM ${payments}
+        WHERE ${payments.orderId} = ${orders.id}
+        ORDER BY ${payments.id} DESC
+        LIMIT 1
+      )`,
     })
     .from(deliveryOffers)
     .innerJoin(stores, eq(stores.id, deliveryOffers.storeId))

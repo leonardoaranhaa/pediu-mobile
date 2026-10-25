@@ -612,8 +612,17 @@ export const experienceRouter = router({
           order.id,
           order.customerId,
         );
-        if (payment?.method === "cash" && !input.cashReceived)
-          throw new Error("Confirme que recebeu o dinheiro antes de concluir.");
+        if (
+          (payment?.method === "cash" ||
+            payment?.method === "card_credit" ||
+            payment?.method === "card_debit") &&
+          !input.cashReceived
+        )
+          throw new Error(
+            payment.method === "cash"
+              ? "Confirme que recebeu o dinheiro antes de concluir."
+              : "Confirme que recebeu o pagamento no cartão antes de concluir.",
+          );
         const completed = await data.completeDelivery(input.orderId, {
           photo: input.photo,
           cashReceived: input.cashReceived,

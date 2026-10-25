@@ -156,11 +156,11 @@ export default function ProductDetailPage() {
         ) : null}
         {storeClosed ? (
           <Text style={{ color: PEDIU.coral, fontWeight: "900" }}>
-            Fechado{detail.nextOpenLabel ? ` · ${detail.nextOpenLabel}` : ""}
+            {detail.nextOpenLabel ?? "Fechada no momento"}
           </Text>
         ) : (
           <Text style={s.muted}>
-            {product.available ? "Disponível agora" : "Indisponível"} · {product.category}
+            {product.available ? "Disponível agora" : "Esgotado"} · {product.category}
           </Text>
         )}
       </Card>
@@ -206,7 +206,7 @@ export default function ProductDetailPage() {
         </View>
         {notice ? <Text style={s.muted}>{notice}</Text> : null}
         <PrimaryButton
-          title={storeClosed ? "Loja fechada" : "Adicionar ao carrinho"}
+          title={storeClosed ? "Loja fechada" : product.available ? "Adicionar ao carrinho" : "Esgotado"}
           onPress={addToCart}
           disabled={storeClosed || !product.available}
         />

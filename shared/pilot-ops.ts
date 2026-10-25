@@ -1,7 +1,7 @@
 export const STORE_NEVER_ACCEPTED_REASON =
   "A loja não aceitou o pedido a tempo. Por isso ele foi cancelado.";
 
-export const STORE_ACCEPT_TIMEOUT_MS = 15 * 60_000;
+export const STORE_ACCEPT_TIMEOUT_MS = 5 * 60_000;
 
 export const CITY_OFFER_TTL_MS = 90_000;
 

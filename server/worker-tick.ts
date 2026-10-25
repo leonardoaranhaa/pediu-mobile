@@ -1,4 +1,5 @@
 import { expireAndReofferDeliveryOffers, expireStaleInventoryReservations } from "./db";
+import { orderAcceptTimeoutMs } from "./domain/order-accept";
 import {
   boundedDispatchOfferTtl,
   DEFAULT_DISPATCH_OFFER_TTL_MS,
@@ -24,7 +25,7 @@ export async function runWorkerCatchUp() {
     limit: 100,
   });
   const inventory = await expireStaleInventoryReservations({
-    ttlMs: minutesToMs("INVENTORY_RESERVATION_TTL_MINUTES", 15),
+    ttlMs: orderAcceptTimeoutMs(),
   });
   const buckets = await cleanExpiredRateLimitBuckets();
   let notifications = 0;

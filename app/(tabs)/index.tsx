@@ -746,6 +746,14 @@ export default function HomeScreen() {
   };
 
   const addToCart = (product: Product, options: CartOption[] = [], unitPrice?: string) => {
+    if (!product.available) {
+      void notifyWithHaptic("Este produto está esgotado", false);
+      return;
+    }
+    if (product.storeOpen === false) {
+      void notifyWithHaptic(product.nextOpenLabel || "Fechada no momento", false);
+      return;
+    }
     if (!isAuthenticated) {
       requestLogin("cart");
       return;
@@ -1919,10 +1927,12 @@ function CustomerDiscover({
                     ]}
                   >
                     {product.storeOpen === false
-                      ? "FECHADO"
-                      : product.adId
-                        ? "OFERTA PEDIU"
-                        : "DISPONÍVEL"}
+                      ? "FECHADA"
+                      : !product.available
+                        ? "ESGOTADO"
+                        : product.adId
+                          ? "OFERTA PEDIU"
+                          : "DISPONÍVEL"}
                   </Text>
                 </View>
               </View>
@@ -1930,7 +1940,11 @@ function CustomerDiscover({
                 <View style={{ flex: 1 }}>
                   <View style={styles.ratingRow}>
                     <Text style={styles.rating}>
-                      {product.adOfferLabel || "Disponível agora"}
+                      {product.storeOpen === false
+                        ? product.nextOpenLabel || "Fechada no momento"
+                        : !product.available
+                          ? "Esgotado"
+                          : product.adOfferLabel || "Disponível agora"}
                     </Text>
                     <Text style={styles.distance}>{product.distance}</Text>
                   </View>
@@ -2005,6 +2019,7 @@ function ProductModal({
   }, 0);
   const unitPrice = (Number.isFinite(base) ? base + extra : 0).toFixed(2);
   const confirm = () => {
+    if (!product.available || detail.data?.storeOpen === false) return;
     if (detail.isLoading || !detail.data) return;
     const missing = groups.find((group) => group.required && !selected[group.id]);
     if (missing) {
@@ -2054,7 +2069,11 @@ function ProductModal({
           ) : null}
           <Text style={styles.muted}>
             {product.distance} ·{" "}
-            {product.available ? "disponível agora" : "indisponível"}
+            {detail.data?.storeOpen === false
+              ? (detail.data.nextOpenLabel ?? "Fechada no momento")
+              : product.available
+                ? "disponível agora"
+                : "Esgotado"}
           </Text>
           <Text style={styles.modalDescription}>
             {product.adDescription ||
@@ -2113,17 +2132,19 @@ function ProductModal({
             </Text>
           </View>
           <PediuPressable
-            disabled={!product.available || detail.isLoading || !detail.data}
+            disabled={!product.available || detail.data?.storeOpen === false || detail.isLoading || !detail.data}
             style={[
               styles.primaryButton,
-              (!product.available || detail.isLoading) && styles.disabledButton,
+              (!product.available || detail.data?.storeOpen === false || detail.isLoading) && styles.disabledButton,
             ]}
             onPress={confirm}
           >
             <Text style={styles.primaryButtonText}>
-              {product.available
-                ? "Adicionar ao pedido"
-                : "Produto indisponível"}
+              {!product.available
+                ? "Esgotado"
+                : detail.data?.storeOpen === false
+                  ? "Loja fechada"
+                  : "Adicionar ao pedido"}
             </Text>
             <MaterialIcons name="add" size={19} color={COLORS.white} />
           </PediuPressable>

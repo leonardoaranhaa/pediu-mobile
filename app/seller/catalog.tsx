@@ -292,8 +292,8 @@ export default function SellerCatalogPage() {
             }}
             right={
               <Pressable onPress={() => availability.mutate({ productId: product.id, available: !product.available })} style={{ padding: 4 }}>
-                <Text style={{ color: product.available ? "#0B8A5C" : "#7C8A8F", fontWeight: "900", fontSize: 11 }}>
-                  {product.available ? "ATIVO" : "PAUSADO"}
+                <Text style={{ color: product.available ? "#0B8A5C" : "#E20D2A", fontWeight: "900", fontSize: 11 }}>
+                  {product.available ? "DISPONÍVEL" : "ESGOTADO"}
                 </Text>
               </Pressable>
             }

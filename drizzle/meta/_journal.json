@@ -50,6 +50,13 @@
       "when": 1792862324177,
       "tag": "0006_pediu_account_prefs",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792954142191,
+      "tag": "0007_pediu_store_ops",
+      "breakpoints": true
     }
   ]
 }

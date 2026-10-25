@@ -1,6 +1,6 @@
 import { expireStaleInventoryReservations } from "./db";
+import { orderAcceptTimeoutMs } from "./domain/order-accept";
 
-const DEFAULT_TTL_MINUTES = 15;
 const DEFAULT_INTERVAL_SECONDS = 60;
 
 function positiveNumberFromEnv(
@@ -17,13 +17,7 @@ function positiveNumberFromEnv(
 export function startInventoryReservationSweeper(): () => void {
   if (!process.env.DATABASE_URL?.trim()) return () => undefined;
 
-  const ttlMs =
-    positiveNumberFromEnv(
-      "INVENTORY_RESERVATION_TTL_MINUTES",
-      DEFAULT_TTL_MINUTES,
-      1,
-      24 * 60,
-    ) * 60_000;
+  const ttlMs = orderAcceptTimeoutMs();
   const intervalMs =
     positiveNumberFromEnv(
       "INVENTORY_RESERVATION_SWEEP_INTERVAL_SECONDS",

@@ -344,13 +344,45 @@ export default function SellerHomePage() {
         eyebrow="LOJISTA"
         title={store.data.name}
         subtitle={`Cozinha · ${store.data.address ?? "operação local"}`}
-        status={store.data.isOpen ? "Aberta" : "Fechada"}
+        status={
+          store.data.paused
+            ? "Pausada"
+            : store.data.isOpen
+              ? "Aberta"
+              : "Fechada"
+        }
         statusIcon="storefront"
-        statusTone={store.data.isOpen ? "success" : "neutral"}
+        statusTone={store.data.paused || !store.data.isOpen ? "neutral" : "success"}
         onStatusPress={() =>
           updateStore.mutate({ isOpen: !Boolean(store.data?.isOpen) })
         }
       />
+      {store.data.approvalStatus === "pending" ? (
+        <OpsCard>
+          <Text style={{ color: theme.ink, fontFamily: "Fredoka", fontSize: 20, fontWeight: "900" }}>
+            Sua loja está em análise
+          </Text>
+          <Text style={s.muted}>
+            Ela aparece para os clientes depois da aprovação. Enquanto isso, você já pode montar o cardápio.
+          </Text>
+        </OpsCard>
+      ) : null}
+      {store.data.approvalStatus === "rejected" ? (
+        <OpsCard>
+          <Text style={{ color: theme.ink, fontFamily: "Fredoka", fontSize: 20, fontWeight: "900" }}>
+            Não foi possível aprovar a loja nesta análise
+          </Text>
+          <Text style={s.muted}>Fale com o Pediu se precisar de ajuda.</Text>
+        </OpsCard>
+      ) : null}
+      {store.data.paused ? (
+        <OpsCard>
+          <Text style={{ color: theme.ink, fontFamily: "Fredoka", fontSize: 20, fontWeight: "900" }}>
+            {store.data.pauseMessage ?? "Fechada no momento"}
+          </Text>
+          <Text style={s.muted}>Os clientes veem a loja, mas não conseguem pedir até ela voltar.</Text>
+        </OpsCard>
+      ) : null}
       <View style={{ flexDirection: "row", gap: 12 }}>
         <OpsMetric value={pending.length} label="na fila" />
         <OpsMetric value={cooking.length} label="no fogo" />

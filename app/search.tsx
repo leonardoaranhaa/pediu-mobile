@@ -295,10 +295,15 @@ export default function SearchScreen() {
             <Text style={styles.resultName} numberOfLines={2}>
               {item.name}
             </Text>
-            <Text style={styles.resultMeta} numberOfLines={1}>
+            <Text style={styles.resultMeta} numberOfLines={2}>
               {item.storeName} ·{" "}
-              {item.storeOpen === false ? "Fechado" : item.storeKind === "market" ? "Mercado" : item.category}
-              {item.storeOpen === false && item.nextOpenLabel ? ` · ${item.nextOpenLabel}` : ""}
+              {item.available === 0
+                ? "Esgotado"
+                : item.storeOpen === false
+                  ? item.nextOpenLabel || "Fechada no momento"
+                  : item.storeKind === "market"
+                    ? "Mercado"
+                    : item.category}
               {item.flashEnabled ? " · Flash" : ""}
             </Text>
             <Text style={styles.resultPrice}>

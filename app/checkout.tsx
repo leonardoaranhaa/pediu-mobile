@@ -17,7 +17,7 @@ import { cancellationPolicyCopy, deliverySummaryCopy } from "@/lib/checkout-copy
 import { useCart } from "@/providers/cart-provider";
 import { trpc } from "@/lib/trpc";
 
-type PaymentMethod = "pix" | "cash";
+type PaymentMethod = "pix" | "cash" | "card_credit" | "card_debit";
 type Fulfillment = "standard" | "flash";
 
 const TIP_OPTIONS = [0, 2, 5, 8] as const;
@@ -157,6 +157,13 @@ export default function CheckoutScreen() {
       setFulfillmentMode("delivery");
     }
   }, [fulfillmentMode, marketCart]);
+
+  useEffect(() => {
+    if (paymentMethod === "card_credit" && quote.data && !quote.data.cardCredit)
+      setPaymentMethod("pix");
+    if (paymentMethod === "card_debit" && quote.data && !quote.data.cardDebit)
+      setPaymentMethod("pix");
+  }, [paymentMethod, quote.data]);
 
   useEffect(() => {
     if (
@@ -660,13 +667,25 @@ export default function CheckoutScreen() {
       ) : null}
       <Card>
         <Text style={s.sectionTitle}>Pagamento</Text>
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          {(["pix", "cash"] as const).map((method) => (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          {(
+            [
+              ["pix", "PIX"],
+              ["cash", "Dinheiro"],
+              ...(quote.data?.cardCredit
+                ? ([["card_credit", "Crédito na entrega"]] as const)
+                : []),
+              ...(quote.data?.cardDebit
+                ? ([["card_debit", "Débito na entrega"]] as const)
+                : []),
+            ] as const
+          ).map(([method, label]) => (
             <Pressable
               key={method}
               onPress={() => setPaymentMethod(method)}
               style={{
-                flex: 1,
+                minWidth: "46%",
+                flexGrow: 1,
                 minHeight: 58,
                 alignItems: "center",
                 justifyContent: "center",
@@ -676,19 +695,30 @@ export default function CheckoutScreen() {
                 backgroundColor:
                   paymentMethod === method ? PEDIU.coralSoft : PEDIU.white,
                 borderRadius: 14,
+                paddingHorizontal: 8,
               }}
             >
               <Text
                 style={{
                   color: paymentMethod === method ? PEDIU.coral : PEDIU.muted,
                   fontWeight: "900",
+                  textAlign: "center",
                 }}
               >
-                {method === "pix" ? "PIX" : "Dinheiro"}
+                {label}
               </Text>
             </Pressable>
           ))}
         </View>
+        {paymentMethod === "card_credit" || paymentMethod === "card_debit" ? (
+          <Text style={s.muted}>O motoboy leva a maquininha. Você paga na entrega.</Text>
+        ) : null}
+        {quote.data?.feeMode === "distance" ? (
+          <Text style={s.muted}>
+            A taxa usa o valor fixo da loja mais a distância até o endereço
+            {quote.data.distanceKm ? ` (${quote.data.distanceKm.replace(".", ",")} km)` : ""}.
+          </Text>
+        ) : null}
         {paymentMethod === "cash" ? (
           <Field
             label="TROCO PARA QUANTO?"

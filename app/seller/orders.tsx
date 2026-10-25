@@ -49,6 +49,9 @@ export default function SellerOrdersPage() {
   const updateStatus = trpc.pediu.orders.status.useMutation({
     onSuccess: () => void q.refetch(),
   });
+  const availability = trpc.pediu.products.availability.useMutation({
+    onSuccess: () => void q.refetch(),
+  });
   const orders = q.data ?? [];
   const groups = [
     { title: "Na fila", statuses: ["Pendente", "Aceito"] },
@@ -198,7 +201,7 @@ export default function SellerOrdersPage() {
                           lines={[
                             ...(order.lines ?? []).map(
                               (line) =>
-                                `${line.quantity}× ${line.name}${line.note ? ` · ${line.note}` : ""} · ${money(line.unitPrice)}`,
+                                `${line.quantity}× ${line.name}${line.note ? ` · ${line.note}` : ""} · ${money(line.unitPrice)}${line.available ? "" : " · esgotado"}`,
                             ),
                             order.paymentLabel || "Pagamento a confirmar",
                             order.tipAmount && Number(order.tipAmount) > 0
@@ -208,6 +211,25 @@ export default function SellerOrdersPage() {
                                 : `Situação: ${order.status}`,
                           ]}
                         />
+                        {(order.lines ?? [])
+                          .filter(
+                            (line, index, lines) =>
+                              lines.findIndex((item) => item.productId === line.productId) === index,
+                          )
+                          .map((line) => (
+                            <OpsButton
+                              key={line.productId}
+                              title={line.available ? `Marcar ${line.name} esgotado` : `Voltar a vender ${line.name}`}
+                              variant="outline"
+                              disabled={availability.isPending}
+                              onPress={() =>
+                                availability.mutate({
+                                  productId: line.productId,
+                                  available: !line.available,
+                                })
+                              }
+                            />
+                          ))}
                         {next ? (
                           <OpsButton
                             title={

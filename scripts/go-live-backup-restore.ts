@@ -64,8 +64,14 @@ function run(
         : [inputFd, "pipe", "pipe"],
     encoding: "utf8",
   });
-  if (result.error || result.status !== 0)
-    throw new Error(`${command} failed during backup/restore`);
+  if (result.error || result.status !== 0) {
+    const detail = (result.stderr || result.error?.message || "").trim().slice(0, 500);
+    throw new Error(
+      detail
+        ? `${command} failed during backup/restore: ${detail}`
+        : `${command} failed during backup/restore`,
+    );
+  }
   return result.stdout.trim();
 }
 
@@ -84,8 +90,14 @@ function runDumpToFile(
     },
   );
   closeSync(fd);
-  if (result.error || result.status !== 0)
-    throw new Error("pg_dump failed during backup/restore");
+  if (result.error || result.status !== 0) {
+    const detail = (result.stderr || result.error?.message || "").trim().slice(0, 500);
+    throw new Error(
+      detail
+        ? `pg_dump failed during backup/restore: ${detail}`
+        : "pg_dump failed during backup/restore",
+    );
+  }
 }
 
 function query(

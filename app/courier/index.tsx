@@ -456,6 +456,18 @@ export default function CourierHomePage() {
     current?.assignment.status === "in_transit" || current?.order.status === "A caminho";
   const navigationPoint = headingToCustomer ? destinationPoint ?? storePoint : storePoint;
   const cashOrder = current?.paymentMethod === "cash";
+  const cardOnDelivery =
+    current?.paymentMethod === "card_credit" || current?.paymentMethod === "card_debit";
+  const collectOnDelivery = cashOrder || cardOnDelivery;
+  const paymentLine = cashOrder
+    ? `Dinheiro${current?.order.changeFor ? ` · troco para ${formatMoney(current.order.changeFor)}` : ""}`
+    : current?.paymentMethod === "card_credit"
+      ? "Crédito na entrega · maquininha"
+      : current?.paymentMethod === "card_debit"
+        ? "Débito na entrega · maquininha"
+        : current?.paymentMethod === "pix"
+          ? "PIX"
+          : "Pagamento já combinado com a loja";
 
   return (
     <OpsShell
@@ -553,9 +565,17 @@ export default function CourierHomePage() {
               lines={[
                 `Até a loja: ${formatKm(Number(offer.pickupDistanceKm))}`,
                 `Até o cliente: ${formatKm(Number(offer.dropoffDistanceKm))}`,
-                offer.storeKind === "market"
-                  ? "Sacola separada · retire no mercado e entregue no endereço"
-                  : (offer.message ?? "Nova corrida perto de você"),
+                offer.paymentMethod === "card_credit"
+                  ? "Crédito na entrega · maquininha"
+                  : offer.paymentMethod === "card_debit"
+                    ? "Débito na entrega · maquininha"
+                    : offer.paymentMethod === "cash"
+                      ? "Dinheiro na entrega"
+                      : offer.paymentMethod === "pix"
+                        ? "PIX"
+                        : offer.storeKind === "market"
+                          ? "Sacola separada · retire no mercado e entregue no endereço"
+                          : (offer.message ?? "Nova corrida perto de você"),
               ]}
             />
             <View style={{ flexDirection: "row", gap: 10 }}>
@@ -614,9 +634,7 @@ export default function CourierHomePage() {
             lines={[
               `Retirada: ${current.store.address ?? "Endereço da loja"}`,
               `Destino: ${current.order.deliveryAddress ?? "Endereço do cliente"}`,
-              cashOrder
-                ? `Dinheiro${current.order.changeFor ? ` · troco para ${formatMoney(current.order.changeFor)}` : ""}`
-                : "Pagamento já combinado com a loja",
+              paymentLine,
             ]}
           />
           {navigationPoint ? (
@@ -676,9 +694,17 @@ export default function CourierHomePage() {
                 }}
               />
               <PhotoButton title="Foto da entrega (opcional)" value={deliveryPhoto} onPick={setDeliveryPhoto} />
-              {cashOrder ? (
+              {collectOnDelivery ? (
                 <OpsButton
-                  title={cashReceived ? "Dinheiro recebido" : "Recebi o dinheiro"}
+                  title={
+                    cashReceived
+                      ? cardOnDelivery
+                        ? "Cartão recebido"
+                        : "Dinheiro recebido"
+                      : cardOnDelivery
+                        ? "Recebi no cartão"
+                        : "Recebi o dinheiro"
+                  }
                   variant={cashReceived ? "accent" : "outline"}
                   onPress={() => setCashReceived((value) => !value)}
                 />
@@ -690,13 +716,13 @@ export default function CourierHomePage() {
                     orderId: current.order.id,
                     code: deliveryCode,
                     photo: deliveryPhoto,
-                    cashReceived: cashOrder ? cashReceived : undefined,
+                    cashReceived: collectOnDelivery ? cashReceived : undefined,
                   })
                 }
                 disabled={
                   complete.isPending ||
                   deliveryCode.length !== 4 ||
-                  (cashOrder && !cashReceived)
+                  (collectOnDelivery && !cashReceived)
                 }
               />
             </View>

@@ -48,7 +48,30 @@ export const adminRouter = router({
 
   stores: adminProcedure
     .input(pagination)
-    .query(({ input }) => db.listAdminStores(input.limit, input.offset)),
+    .query(async ({ input }) =>
+      db.attachStoreOps(await db.listAdminStores(input.limit, input.offset)),
+    ),
+
+  storeReview: adminProcedure
+    .input(
+      z.object({
+        storeId: z.number().int().positive(),
+        decision: z.enum(["approved", "rejected"]),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const store = await db.getStoreById(input.storeId);
+      if (!store) throw new Error("Estabelecimento não encontrado");
+      await db.saveStoreOps(input.storeId, { approvalStatus: input.decision });
+      await db.createAdminAuditLog({
+        actorId: ctx.user.id,
+        action: "store_reviewed",
+        entityType: "store",
+        entityId: input.storeId,
+        metadata: JSON.stringify({ decision: input.decision }),
+      });
+      return { success: true as const, decision: input.decision };
+    }),
 
   storeUpdate: adminProcedure
     .input(
