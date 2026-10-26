@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addProductToCart, cartDeliveryFee, cartItemCount, cartSubtotal, cartTotal, updateCartNote, updateCartQuantity, type CartProduct } from "../lib/cart";
+import { addProductToCart, cartDeliveryFee, cartFlashEligible, cartItemCount, cartStoreKind, cartSubtotal, cartTotal, updateCartNote, updateCartQuantity, type CartProduct } from "../lib/cart";
 
 const burger: CartProduct = {
   id: 1,
@@ -9,9 +9,22 @@ const burger: CartProduct = {
   category: "Lanches",
   price: "18.00",
   deliveryFee: "5.00",
+  storeKind: "restaurant",
+  flashEnabled: true,
 };
 const dessert: CartProduct = { ...burger, id: 2, name: "Bolo", category: "Doces", price: "12.50" };
 const otherStore: CartProduct = { ...burger, id: 3, storeId: 8, storeName: "Loja 8" };
+const banana: CartProduct = {
+  id: 4,
+  storeId: 9,
+  name: "Banana",
+  storeName: "Mercado",
+  category: "Hortifruti",
+  price: "3.00",
+  deliveryFee: "2.00",
+  storeKind: "market",
+  flashEnabled: false,
+};
 
 describe("cart domain", () => {
   it("merges repeated products and calculates subtotal, delivery and total", () => {
@@ -24,6 +37,8 @@ describe("cart domain", () => {
     expect(cartSubtotal(withDessert.items)).toBe(66.5);
     expect(cartDeliveryFee(withDessert.items)).toBe(5);
     expect(cartTotal(withDessert.items)).toBe(71.5);
+    expect(cartStoreKind(withDessert.items)).toBe("restaurant");
+    expect(cartFlashEligible(withDessert.items)).toBe(true);
   });
 
   it("rejects a product from another store without changing the cart", () => {
@@ -31,6 +46,15 @@ describe("cart domain", () => {
     const result = addProductToCart(current, otherStore);
 
     expect(result.error).toContain("mesma loja");
+    expect(result.items).toEqual(current);
+  });
+
+  it("blocks multi-vertical bags (market + restaurant)", () => {
+    const current = addProductToCart([], burger).items;
+    const result = addProductToCart(current, banana);
+
+    expect(result.error).toMatch(/Mercado|Restaurante/);
+    expect(result.error).toContain("Não misture");
     expect(result.items).toEqual(current);
   });
 
@@ -44,5 +68,23 @@ describe("cart domain", () => {
     const current = addProductToCart([], burger).items;
     expect(updateCartNote(current, burger.id, "  sem cebola  ")[0]?.note).toBe("sem cebola");
     expect(updateCartNote(current, burger.id, "   ")[0]?.note).toBeUndefined();
+  });
+
+  it("keeps two sizes of the same product on separate lines", () => {
+    const grande = {
+      ...burger,
+      price: "28.00",
+      options: [{ id: 12, groupId: 1, groupName: "Tamanho", name: "Grande", priceDelta: "10.00" }],
+    };
+    const broto = {
+      ...burger,
+      options: [{ id: 11, groupId: 1, groupName: "Tamanho", name: "Broto", priceDelta: "0.00" }],
+    };
+    const bag = addProductToCart(addProductToCart([], grande).items, broto).items;
+    expect(bag).toHaveLength(2);
+    expect(cartSubtotal(bag)).toBe(46);
+    const again = addProductToCart(bag, grande).items;
+    expect(again).toHaveLength(2);
+    expect(again.find((item) => item.options?.[0]?.id === 12)?.quantity).toBe(2);
   });
 });

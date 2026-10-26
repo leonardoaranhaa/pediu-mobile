@@ -47,6 +47,9 @@ function rowsFromResult(result: unknown): Array<Record<string, unknown>> {
       const rows = (first as { rows?: unknown }).rows;
       if (Array.isArray(rows)) return rows as Array<Record<string, unknown>>;
     }
+    if (first && typeof first === "object") {
+      return result as Array<Record<string, unknown>>;
+    }
   }
   if (result && typeof result === "object" && "rows" in result) {
     const rows = (result as { rows?: unknown }).rows;
@@ -100,7 +103,9 @@ export async function probeReadiness(
 
   try {
     const migrationResult = await withTimeout(
-      database.execute(sql`SELECT COUNT(*) AS count FROM __drizzle_migrations`),
+      database.execute(
+        sql`SELECT COUNT(*) AS count FROM drizzle.__drizzle_migrations`,
+      ),
       timeoutMs,
       "readiness migrations probe timeout",
     );
@@ -119,7 +124,7 @@ export async function probeReadiness(
     const tableResult = await withTimeout(
       database.execute(
         sql.raw(
-          `SELECT COUNT(*) AS count FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN (${tableList})`,
+          `SELECT COUNT(*) AS count FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN (${tableList})`,
         ),
       ),
       timeoutMs,

@@ -1,4 +1,4 @@
-import { invokeLLM } from "./_core/llm";
+import { AI_UNAVAILABLE, openAiChat, openAiConfigured } from "./_core/openai";
 
 export type VoiceMode = "customer" | "seller";
 export type VoiceAction = "doces" | "pedidos" | "loja" | "venda" | "fiado" | "catalogo" | "divulgar" | "fallback";
@@ -8,19 +8,29 @@ const ACTIONS_BY_MODE: Record<VoiceMode, VoiceAction[]> = {
   seller: ["venda", "fiado", "catalogo", "divulgar"],
 };
 
-export async function interpretVoiceCommand(mode: VoiceMode, command: string) {
+export async function interpretVoiceCommand(
+  mode: VoiceMode,
+  command: string,
+  textModel = "gpt-5-mini",
+) {
   const allowedActions = ACTIONS_BY_MODE[mode];
-  const response = await invokeLLM({
-    model: "gpt-5-mini",
+  if (!openAiConfigured()) {
+    return {
+      action: "fallback" as const,
+      reply: AI_UNAVAILABLE,
+    };
+  }
+  let content: string;
+  try {
+    content = await openAiChat({
+    model: textModel,
+    maxTokens: 300,
     messages: [
       { role: "system", content: `Você é o assistente do Pediu. Interprete o comando em português e escolha somente uma ação permitida. Modo: ${mode}. Ações permitidas: ${allowedActions.join(", ")}. Nunca invente ações, não confirme pagamentos e não execute operações financeiras. Se não houver correspondência, use fallback.` },
       { role: "user", content: command.slice(0, 500) },
     ],
-    response_format: {
-      type: "json_schema",
-      json_schema: {
+    jsonSchema: {
         name: "pediu_voice_action",
-        strict: true,
         schema: {
           type: "object",
           properties: {
@@ -30,16 +40,18 @@ export async function interpretVoiceCommand(mode: VoiceMode, command: string) {
           required: ["action", "reply"],
           additionalProperties: false,
         },
-      },
     },
-    reasoning: { effort: "minimal" },
   });
-
-  const content = response.choices[0]?.message?.content;
-  if (typeof content !== "string") return { action: "fallback" as const, reply: "Não consegui entender. Escolha uma ação para continuar." };
+  } catch {
+    return {
+      action: "fallback" as const,
+      reply: "Não consegui entender agora. Escolha uma ação para continuar.",
+    };
+  }
+  if (!content) return { action: "fallback" as const, reply: "Não consegui entender. Escolha uma ação para continuar." };
   try {
     const parsed = JSON.parse(content) as { action: VoiceAction; reply: string };
-    if (!allowedActions.includes(parsed.action) && parsed.action !== "fallback") return { action: "fallback" as const, reply: "Essa ação ainda não está disponível no MVP." };
+    if (!allowedActions.includes(parsed.action) && parsed.action !== "fallback") return { action: "fallback" as const, reply: "Essa ação ainda não está disponível." };
     return parsed;
   } catch {
     return { action: "fallback" as const, reply: "Não consegui interpretar o comando. Tente novamente." };

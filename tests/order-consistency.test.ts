@@ -76,7 +76,7 @@ describe("Pediu order/payment consistency", () => {
     });
 
     expect(atomicCreate).toHaveBeenCalledWith(
-      {
+      expect.objectContaining({
         customerId: 20,
         storeId: 7,
         total: "35.00",
@@ -86,7 +86,15 @@ describe("Pediu order/payment consistency", () => {
         fulfillmentMode: "delivery",
         deliveryFeeSnapshot: "5.00",
         idempotencyKey: "test-atomic-order",
-      },
+        isFlash: 0,
+        tipAmount: "0.00",
+        tipDestination: "courier",
+        fulfillment: "standard",
+        deliveryCode: expect.stringMatching(/^\d{4}$/),
+        changeFor: undefined,
+        destinationLatitude: "-23.550520",
+        destinationLongitude: "-46.633308",
+      }),
       [{ productId: 101, quantity: 1, unitPrice: "30.00" }],
       "pix",
     );

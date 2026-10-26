@@ -46,11 +46,6 @@ const baseInput = {
   },
   env: {
     EXPO_PUBLIC_API_BASE_URL: "https://api.example.com",
-    EXPO_PUBLIC_APP_ID: "pediu-app",
-    VITE_APP_ID: "pediu-app",
-    EXPO_PUBLIC_OAUTH_PORTAL_URL: "https://oauth.example.com",
-    EXPO_PUBLIC_OAUTH_SERVER_URL: "https://oauth.example.com",
-    OAUTH_SERVER_URL: "https://oauth.example.com",
     BUILT_IN_FORGE_API_URL: "https://forge.example.com",
     BUILT_IN_FORGE_API_KEY: "forge-key",
     PIX_PROVIDER: "mercado_pago",
@@ -136,15 +131,17 @@ describe("go-live device preflight", () => {
     expect(summarizeDevicePreflight(checks).BLOCKED).toBeGreaterThan(0);
   });
 
-  it("blocks an app ID mismatch instead of silently shipping an unusable session", () => {
+  it("does not require a Manus app id for the device bundle", () => {
     const checks = buildDevicePreflightReport({
       ...baseInput,
-      env: { ...baseInput.env, EXPO_PUBLIC_APP_ID: "different-app" },
+      env: { EXPO_PUBLIC_API_BASE_URL: "https://api.example.com" },
     });
 
-    expect(
-      checks.find((check) => check.id === "app-id-alignment")?.status,
-    ).toBe("BLOCKED");
+    expect(checks.find((check) => check.id === "app-id-alignment")).toBeUndefined();
+    expect(checks.find((check) => check.id === "oauth")).toBeUndefined();
+    expect(checks.find((check) => check.id === "device-api-url")?.status).toBe(
+      "PASS",
+    );
   });
 
   it("blocks a native bundle without expo-asset required by expo-audio", () => {

@@ -1,4 +1,6 @@
+import { parse as parseCookieHeader } from "cookie";
 import type { Request } from "express";
+import { COOKIE_NAME } from "../../shared/const";
 
 const DEFAULT_ORIGINS = [
   "http://localhost:8081",
@@ -32,6 +34,84 @@ export function requestHasAllowedOrigin(req: Request): boolean {
 
 export function isUnsafeMethod(method: string): boolean {
   return ["POST", "PUT", "PATCH", "DELETE"].includes(method.toUpperCase());
+}
+
+const PUBLIC_PASSWORD_AUTH = new Set([
+  "/api/trpc/auth.signup",
+  "/api/trpc/auth.login",
+  "/api/trpc/auth.resetPassword",
+  "/api/trpc/auth.refresh",
+]);
+
+/** Mobile login has no browser Origin and no session cookie yet. */
+export function isPublicPasswordAuth(req: {
+  originalUrl?: string;
+  url?: string;
+  baseUrl?: string;
+  path: string;
+}): boolean {
+  return procedureNames(req).some((path) => PUBLIC_PASSWORD_AUTH.has(`/api/trpc/${path}`));
+}
+
+function headerValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value.join("; ") : value;
+}
+
+function procedureNames(req: {
+  originalUrl?: string;
+  url?: string;
+  baseUrl?: string;
+  path: string;
+}) {
+  const candidates = [req.originalUrl, req.url, `${req.baseUrl ?? ""}${req.path}`, req.path]
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.split("?")[0]);
+  const names = new Set<string>();
+  for (const candidate of candidates) {
+    const marker = "/api/trpc/";
+    const index = candidate.indexOf(marker);
+    const raw = index >= 0 ? candidate.slice(index + marker.length) : candidate.replace(/^\//, "");
+    for (const name of raw.split(",")) {
+      if (name) names.add(name);
+    }
+  }
+  return [...names];
+}
+
+export function requestHasSessionCookie(req: { headers?: { cookie?: string | string[] } }): boolean {
+  const cookies = parseCookieHeader(headerValue(req.headers?.cookie) ?? "");
+  return Boolean(cookies[COOKIE_NAME]?.trim());
+}
+
+/** Native guest chat has no Origin and no session cookie. A cookie still needs CSRF checks. */
+export function isGuestAssistantChat(req: {
+  originalUrl?: string;
+  url?: string;
+  baseUrl?: string;
+  path: string;
+}): boolean {
+  const names = procedureNames(req);
+  return names.length > 0 && names.every((name) => name === "pediu.assistant.chat");
+}
+
+export function isTrpcMutationAllowed(req: {
+  method: string;
+  headers?: {
+    cookie?: string | string[] | undefined;
+    authorization?: string | string[] | undefined;
+    Authorization?: string | string[] | undefined;
+    origin?: string | string[] | undefined;
+  };
+  originalUrl?: string;
+  url?: string;
+  baseUrl?: string;
+  path: string;
+}): boolean {
+  if (!isUnsafeMethod(req.method)) return true;
+  if (requestUsesBearer(req as Request)) return true;
+  if (requestHasAllowedOrigin(req as Request)) return true;
+  if (isPublicPasswordAuth(req)) return true;
+  return isGuestAssistantChat(req) && !requestHasSessionCookie(req);
 }
 
 type RateLimitState = { count: number; resetAt: number };

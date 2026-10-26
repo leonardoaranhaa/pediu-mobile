@@ -21,6 +21,10 @@ export interface ScreenContainerProps extends ViewProps {
    * Additional className for the SafeAreaView (content layer).
    */
   safeAreaClassName?: string;
+  /**
+   * Paints the full window, including the status-bar strip.
+   */
+  backgroundColor?: string;
 }
 
 /**
@@ -44,6 +48,7 @@ export function ScreenContainer({
   className,
   containerClassName,
   safeAreaClassName,
+  backgroundColor,
   style,
   ...props
 }: ScreenContainerProps) {
@@ -54,6 +59,7 @@ export function ScreenContainer({
         "bg-background",
         containerClassName
       )}
+      style={backgroundColor ? { backgroundColor } : undefined}
       {...props}
     >
       <SafeAreaView

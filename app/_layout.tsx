@@ -1,11 +1,14 @@
 import "@/global.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack, usePathname } from "expo-router";
+import { Stack, router, usePathname } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFonts } from "expo-font";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
-import { Platform } from "react-native";
+import { Platform, View } from "react-native";
+import * as SystemUI from "expo-system-ui";
 import "@/lib/_core/nativewind-pressable";
 import { ThemeProvider } from "@/lib/theme-provider";
 import {
@@ -21,12 +24,20 @@ import {
   initManusRuntime,
   subscribeSafeAreaInsets,
 } from "@/lib/_core/manus-runtime";
+import { AuthPromptHost } from "@/components/auth-prompt";
+import { StoreOrderAlarm } from "@/components/store-order-alarm";
 import { CartProvider } from "@/providers/cart-provider";
 import {
   AppPreferencesProvider,
   mascotReactionForPath,
   useAppPreferences,
 } from "@/lib/app-preferences";
+import {
+  ONBOARDING_STORAGE_KEY,
+  hasCompletedOnboarding,
+  onboardingRememberedComplete,
+  shouldRedirectToOnboarding,
+} from "@/lib/onboarding-gate";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
@@ -34,6 +45,15 @@ const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
 export const unstable_settings = {
   anchor: "(tabs)",
 };
+
+function SystemChrome() {
+  const { theme } = useAppPreferences();
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    void SystemUI.setBackgroundColorAsync(theme.canvas);
+  }, [theme.canvas]);
+  return <StatusBar style="dark" translucent backgroundColor="transparent" />;
+}
 
 function MascotNavigationBridge() {
   const pathname = usePathname();
@@ -46,9 +66,77 @@ function MascotNavigationBridge() {
   return null;
 }
 
+function OnboardingGate() {
+  const pathname = usePathname();
+  const [hydrated, setHydrated] = useState(false);
+  const [completed, setCompleted] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem(ONBOARDING_STORAGE_KEY)
+      .then((value) => {
+        if (!active) return;
+        setCompleted(
+          hasCompletedOnboarding(value) || onboardingRememberedComplete(),
+        );
+        setHydrated(true);
+      })
+      .catch(() => {
+        if (active) setHydrated(true);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [pathname]);
+
+  useEffect(() => {
+    if (onboardingRememberedComplete()) {
+      if (!completed) setCompleted(true);
+      return;
+    }
+    if (
+      shouldRedirectToOnboarding({
+        hydrated,
+        completed,
+        pathname,
+      })
+    ) {
+      router.replace("/onboarding");
+    }
+  }, [completed, hydrated, pathname]);
+
+  const cover =
+    !hydrated ||
+    shouldRedirectToOnboarding({
+      hydrated,
+      completed,
+      pathname,
+    });
+  if (!cover) return null;
+  return (
+    <View
+      pointerEvents="auto"
+      style={{
+        position: "absolute",
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        backgroundColor: "#FFF4E8",
+        zIndex: 80,
+      }}
+    />
+  );
+}
+
 export default function RootLayout() {
   const initialInsets = initialWindowMetrics?.insets ?? DEFAULT_WEB_INSETS;
   const initialFrame = initialWindowMetrics?.frame ?? DEFAULT_WEB_FRAME;
+  const [fontsLoaded] = useFonts({
+    Fredoka: require("../assets/fonts/Fredoka.ttf"),
+    Nunito: require("../assets/fonts/Nunito.ttf"),
+  });
 
   const [insets, setInsets] = useState<EdgeInsets>(initialInsets);
   const [frame, setFrame] = useState<Rect>(initialFrame);
@@ -102,13 +190,16 @@ export default function RootLayout() {
   }, [initialInsets, initialFrame]);
 
   const content = (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#FFF4E8" }}>
       <trpc.Provider client={trpcClient} queryClient={queryClient}>
         <QueryClientProvider client={queryClient}>
           {/* Default to hiding native headers so raw route segments don't appear (e.g. "(tabs)", "products/[id]"). */}
           {/* If a screen needs the native header, explicitly enable it and set a human title via Stack.Screen options. */}
           {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}
           <AppPreferencesProvider>
+            <SystemChrome />
+            <AuthPromptHost />
+            <StoreOrderAlarm />
             <MascotNavigationBridge />
             <CartProvider>
               <Stack screenOptions={{ headerShown: false }}>
@@ -116,12 +207,14 @@ export default function RootLayout() {
                 <Stack.Screen name="oauth/callback" />
               </Stack>
             </CartProvider>
+            <OnboardingGate />
           </AppPreferencesProvider>
-          <StatusBar style="auto" />
         </QueryClientProvider>
       </trpc.Provider>
     </GestureHandlerRootView>
   );
+
+  if (!fontsLoaded) return null;
 
   const shouldOverrideSafeArea = Platform.OS === "web";
 

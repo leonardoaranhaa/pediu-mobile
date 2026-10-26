@@ -7,18 +7,18 @@ if (!databaseUrl)
   throw new Error("DATABASE_URL is required for notification outbox smoke.");
 
 async function main() {
-  const mysql = await import("mysql2/promise");
+  const { createConnection } = await import("./pg-client");
   const db = await import("../server/db");
   const worker = await import("../server/notification-outbox-worker");
-  const connection = await mysql.createConnection(databaseUrl);
+  const connection = await createConnection(databaseUrl);
   const runId = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
   const openId = `ci-notification-outbox-${runId}`;
   let userId: number | undefined;
   let notificationIds: number[] = [];
-  let requestCount = 0;
+  const pushRequests = { count: 0 };
   const pushMock = http.createServer((request, response) => {
-    requestCount += 1;
-    response.statusCode = requestCount === 1 ? 503 : 200;
+    pushRequests.count += 1;
+    response.statusCode = pushRequests.count === 1 ? 503 : 200;
     response.setHeader("content-type", "application/json");
     response.end(JSON.stringify({ data: [{ status: "ok" }] }));
   });
@@ -30,6 +30,7 @@ async function main() {
     throw new Error("push mock did not bind");
   process.env.PUSH_SERVICE_URL = `http://127.0.0.1:${address.port}/push`;
 
+  const parkedIds = await parkOtherOutboxRows(connection);
   try {
     const [userResult] = await connection.execute(
       "INSERT INTO users (openId, name, email, loginMethod, role) VALUES (?, ?, ?, ?, ?)",
@@ -60,7 +61,12 @@ async function main() {
       }),
     });
     notificationIds.push(first.notificationId);
-    const firstAttempt = await worker.processOneNotificationOutboxItem();
+    const firstAttempt = await processThisOutboxItem(
+      connection,
+      worker,
+      first.outboxId,
+      pushRequests,
+    );
     assert.equal(firstAttempt, true);
     const [failedRows] = await connection.execute(
       "SELECT status, attemptCount, lastError FROM pediu_notification_outbox WHERE id = ?",
@@ -75,7 +81,12 @@ async function main() {
       "UPDATE pediu_notification_outbox SET availableAt = NOW() WHERE id = ?",
       [first.outboxId],
     );
-    const secondAttempt = await worker.processOneNotificationOutboxItem();
+    const secondAttempt = await processThisOutboxItem(
+      connection,
+      worker,
+      first.outboxId,
+      pushRequests,
+    );
     assert.equal(secondAttempt, true);
     const [sentRows] = await connection.execute(
       "SELECT status, attemptCount, sentAt FROM pediu_notification_outbox WHERE id = ?",
@@ -84,7 +95,7 @@ async function main() {
     assert.equal((sentRows as any[])[0]?.status, "sent");
     assert.equal(Number((sentRows as any[])[0]?.attemptCount), 2);
     assert.ok((sentRows as any[])[0]?.sentAt);
-    assert.equal(requestCount, 2);
+    assert.equal(pushRequests.count, 2);
 
     await connection.execute(
       "UPDATE pediu_notification_preferences SET pushEnabled = 0 WHERE userId = ?",
@@ -104,7 +115,12 @@ async function main() {
       }),
     });
     notificationIds.push(skipped.notificationId);
-    await worker.processOneNotificationOutboxItem();
+    await processThisOutboxItem(
+      connection,
+      worker,
+      skipped.outboxId,
+      pushRequests,
+    );
     const [skippedRows] = await connection.execute(
       "SELECT status, attemptCount, lastError FROM pediu_notification_outbox WHERE id = ?",
       [skipped.outboxId],
@@ -127,10 +143,16 @@ async function main() {
         retryAfterFailure: true,
         deliveredByMock: true,
         preferenceSkip: true,
-        requests: requestCount,
+        requests: pushRequests.count,
       }),
     );
   } finally {
+    if (parkedIds.length) {
+      await connection.query(
+        `UPDATE pediu_notification_outbox SET availableAt = NOW() WHERE id IN (${parkedIds.map(() => "?").join(",")})`,
+        parkedIds,
+      );
+    }
     if (notificationIds.length > 0) {
       await connection.execute(
         `DELETE FROM pediu_notification_outbox WHERE notificationId IN (${notificationIds.map(() => "?").join(",")})`,
@@ -155,6 +177,96 @@ async function main() {
     await connection.end();
     await new Promise<void>((resolve) => pushMock.close(() => resolve()));
   }
+}
+
+type OutboxRow = {
+  status?: string;
+  attemptCount?: number | string;
+  lastError?: string | null;
+  availableAt?: Date | string | null;
+};
+
+async function parkOtherOutboxRows(connection: {
+  execute: (statement: string, params?: unknown[]) => Promise<any>;
+  query: (statement: string, params?: unknown[]) => Promise<any>;
+}) {
+  const [rows] = await connection.execute(
+    "SELECT id FROM pediu_notification_outbox WHERE status = 'pending'",
+  );
+  const ids = (rows as Array<{ id?: number }>)
+    .map((row) => Number(row.id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  if (!ids.length) return [] as number[];
+  await connection.query(
+    `UPDATE pediu_notification_outbox SET availableAt = NOW() + INTERVAL '1 day' WHERE id IN (${ids.map(() => "?").join(",")})`,
+    ids,
+  );
+  return ids;
+}
+
+async function readOutbox(
+  connection: {
+    execute: (statement: string, params?: unknown[]) => Promise<any>;
+  },
+  outboxId: number,
+) {
+  const [rows] = await connection.execute(
+    "SELECT status, attemptCount, lastError, availableAt FROM pediu_notification_outbox WHERE id = ?",
+    [outboxId],
+  );
+  return (rows as OutboxRow[])[0];
+}
+
+async function waitForOutbox(
+  connection: {
+    execute: (statement: string, params?: unknown[]) => Promise<any>;
+  },
+  outboxId: number,
+) {
+  let row = await readOutbox(connection, outboxId);
+  for (let attempt = 0; attempt < 20 && row?.status === "processing"; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    row = await readOutbox(connection, outboxId);
+  }
+  return row;
+}
+
+async function processThisOutboxItem(
+  connection: {
+    execute: (statement: string, params?: unknown[]) => Promise<any>;
+    query: (statement: string, params?: unknown[]) => Promise<any>;
+  },
+  worker: {
+    processOneNotificationOutboxItem: () => Promise<boolean>;
+  },
+  outboxId: number,
+  pushRequests: { count: number },
+) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const before = await readOutbox(connection, outboxId);
+    const seen = pushRequests.count;
+    await worker.processOneNotificationOutboxItem();
+    const after = await waitForOutbox(connection, outboxId);
+    if (!after || !before) return false;
+    const changed =
+      after.status !== before.status ||
+      Number(after.attemptCount) !== Number(before.attemptCount) ||
+      (after.lastError ?? null) !== (before.lastError ?? null);
+    if (
+      changed &&
+      (pushRequests.count > seen || after.status === "skipped")
+    ) {
+      return true;
+    }
+    if (changed) {
+      await connection.execute(
+        "UPDATE pediu_notification_outbox SET status = 'pending', attemptCount = ?, lastError = ?, lockedAt = NULL, sentAt = NULL, availableAt = NOW() WHERE id = ?",
+        [Number(before.attemptCount) || 0, before.lastError ?? null, outboxId],
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return false;
 }
 
 main()

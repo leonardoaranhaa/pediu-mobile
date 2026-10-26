@@ -2,6 +2,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { Image, Linking, Pressable, Text, View } from "react-native";
 import { Page, Card, OutlineButton, PEDIU, s } from "@/components/pediu-page";
+import { orderStatusCopy, paymentStatusLabel } from "@/lib/order-copy";
 import { trpc } from "@/lib/trpc";
 
 const states = [
@@ -79,6 +80,7 @@ export default function TrackOrderPage() {
       ? -1
       : states.indexOf(query.data.status as (typeof states)[number]);
   const paymentLink = paymentQuery.data?.pixTicketUrl || pixUrl;
+  const currentCopy = orderStatusCopy(query.data.status);
   return (
     <Page title="Acompanhar pedido" eyebrow={`PEDIDO #${query.data.id}`}>
       <Card>
@@ -109,12 +111,23 @@ export default function TrackOrderPage() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={s.sectionTitle}>Pedido #{query.data.id}</Text>
-            <Text style={s.muted}>Status atual: {query.data.status}</Text>
+            <Text style={s.muted}>{currentCopy.label}</Text>
           </View>
         </View>
         <Text style={[s.muted, { marginTop: 2 }]}>
           Total: R$ {Number(query.data.total).toFixed(2).replace(".", ",")}
         </Text>
+        {query.data.lines?.map((line) => (
+          <Text key={`${line.productId}-${line.note ?? ""}`} style={s.muted}>
+            {line.quantity}× {line.name}
+            {line.note ? ` · ${line.note}` : ""} · R${" "}
+            {Number(line.unitPrice).toFixed(2).replace(".", ",")}
+          </Text>
+        ))}
+        {query.data.paymentLabel ? (
+          <Text style={s.muted}>Pagamento: {query.data.paymentLabel}</Text>
+        ) : null}
+        <Text style={[s.muted, { marginTop: 2 }]}>{currentCopy.detail}</Text>
         {query.data.deliveryAddress ? (
           <Text style={s.muted}>Entrega: {query.data.deliveryAddress}</Text>
         ) : null}
@@ -129,14 +142,7 @@ export default function TrackOrderPage() {
             }}
           >
             <Text style={s.sectionTitle}>
-              Pagamento:{" "}
-              {paymentQuery.data.status === "paid"
-                ? "confirmado"
-                : paymentQuery.data.status === "failed"
-                  ? "falhou"
-                  : paymentQuery.data.status === "cancelled"
-                    ? "cancelado"
-                    : "aguardando confirmação"}
+              Pagamento: {paymentStatusLabel(paymentQuery.data.status)}
             </Text>
             <Text style={s.muted}>
               Método:{" "}
@@ -162,7 +168,7 @@ export default function TrackOrderPage() {
             paymentQuery.data.status === "pending" &&
             paymentQuery.data.pixQrCode ? (
               <Text selectable style={s.muted}>
-                Pix copia e cola: {paymentQuery.data.pixQrCode}
+                PIX copia e cola: {paymentQuery.data.pixQrCode}
               </Text>
             ) : null}
             {paymentQuery.data.method === "pix" &&
@@ -218,22 +224,29 @@ export default function TrackOrderPage() {
                   color: i <= active ? PEDIU.ink : PEDIU.muted,
                 }}
               >
-                {state}
+                {orderStatusCopy(state).label}
               </Text>
               {i === active ? (
                 <Text style={s.muted}>
-                  Acompanhe a atualização em tempo real.
+                  {orderStatusCopy(state).detail}
                 </Text>
               ) : null}
             </View>
           </View>
         ))}
         {query.data.status === "Cancelado" ? (
-          <Text style={s.muted}>Este pedido foi cancelado.</Text>
+          <Text style={s.muted}>
+            {query.data.cancelReason || "Este pedido foi cancelado."}
+          </Text>
+        ) : null}
+        {query.data.deliveryCode && query.data.status !== "Cancelado" ? (
+          <Text style={{ color: PEDIU.ink, fontSize: 22, fontWeight: "900" }}>
+            Código para o motoboy: {query.data.deliveryCode}
+          </Text>
         ) : null}
         {query.data.status !== "Cancelado" ? (
           <OutlineButton
-            title="Ver entregador e posição"
+            title="Acompanhar entrega"
             onPress={() =>
               router.push({
                 pathname: "/order/[orderId]/tracking-map",

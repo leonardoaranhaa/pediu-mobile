@@ -1,15 +1,48 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { COOKIE_NAME } from "../shared/const.js";
+import { COOKIE_NAME, SESSION_TTL_MS } from "../shared/const.js";
 import { getSessionCookieOptions } from "./_core/cookies";
+import { revokeAuthSession } from "./auth-sessions";
+import { sdk } from "./_core/sdk";
+import {
+  changeAccountPassword,
+  LOGIN_ERROR,
+  loginAccount,
+  PASSWORD_ERROR,
+  RESET_ERROR,
+  resetAccountPassword,
+  SIGNUP_ERROR,
+  signupAccount,
+} from "./password-auth";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { systemRouter } from "./_core/systemRouter";
 import { interpretVoiceCommand } from "./voice";
+import {
+  cancelAssistantTurn,
+  confirmAssistantTurn,
+  runAssistantChat,
+} from "./assistant";
+import { localModerationNote } from "../shared/ad-moderation";
+import { openAiFlagged } from "./_core/openai";
+import { createPixCharge, mercadoPagoConfigured } from "./payments";
+import {
+  composeItemNote,
+  priceSelectedOptions,
+} from "./domain/order-options";
+import {
+  cardOnDeliveryRejection,
+  sellingBlockReason,
+  storePauseView,
+} from "./domain/store-ops";
+import { sweepUnacceptedOrders } from "./order-sweep";
+import { sweepAccountRoles } from "./account-role-sweep";
+import { closeAccount } from "./account-closure";
+import { roleProfileRefusal } from "../shared/account-roles";
+import { isAdminEmail } from "./_core/env";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import { storageGetSignedUrl, storagePut } from "./storage";
 import { sendPushToUser } from "./push";
-import { createPixCharge } from "./payments";
 import { canCustomerCancelOrder, canTransitionOrder } from "./order-state";
 import {
   isUniqueConstraintError,
@@ -19,6 +52,15 @@ import { adminRouter } from "./admin-router";
 import { experienceRouter } from "./experience-router";
 import { enforceDistributedRateLimit } from "./_core/distributed-rate-limit";
 import { calculateCouponDiscount } from "./domain/coupons";
+import {
+  createDeliveryCode,
+  deliveryCodesMatch,
+  resolveStoreAvailability,
+} from "../shared/pilot-ops";
+import { clampTipAmount, resolveFlashFulfillment } from "./domain/flash";
+import { DEFAULT_TIP_DESTINATION } from "./domain/tips";
+import { normalizeSaleUnit, SALE_UNITS } from "./domain/market-units";
+import { getTasteMood, TASTE_MOODS } from "./domain/taste";
 import {
   calculateServiceability,
   serviceabilityMessage,
@@ -54,16 +96,8 @@ const addressInputSchema = z.object({
     .string()
     .trim()
     .regex(/^\d{8}$/),
-  latitude: z
-    .string()
-    .regex(/^-?\d+(\.\d+)?$/)
-    .optional()
-    .nullable(),
-  longitude: z
-    .string()
-    .regex(/^-?\d+(\.\d+)?$/)
-    .optional()
-    .nullable(),
+  latitude: z.string().regex(/^-?\d+(\.\d+)?$/),
+  longitude: z.string().regex(/^-?\d+(\.\d+)?$/),
   isDefault: z.boolean().optional(),
 });
 
@@ -85,11 +119,153 @@ function hasAudioSignature(audio: Buffer, mimeType: string): boolean {
   return false;
 }
 
+async function publicAdImage(ad: { imageData?: string | null; imageKey?: string | null }) {
+  if (ad.imageData) return ad.imageData;
+  if (!ad.imageKey) return null;
+  return storageGetSignedUrl(ad.imageKey).catch(() => null);
+}
+
+function setSessionCookie(
+  ctx: { req: Parameters<typeof getSessionCookieOptions>[0]; res: { cookie?: Function } },
+  token: string,
+) {
+  if (typeof ctx.res.cookie !== "function") return;
+  const cookieOptions = getSessionCookieOptions(ctx.req);
+  ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: SESSION_TTL_MS });
+}
+
 export const appRouter = router({
   system: systemRouter,
   admin: adminRouter,
   auth: router({
-    me: publicProcedure.query((opts) => opts.ctx.user),
+    me: publicProcedure.query(async (opts) => {
+      if (!opts.ctx.user) return null;
+      await sweepAccountRoles();
+      const { passwordHash: _passwordHash, sessionId: _sessionId, ...safe } =
+        opts.ctx.user;
+      const roles = await db.listAccountRoles(safe.id, safe.role);
+      return { ...safe, roles };
+    }),
+    signup: publicProcedure
+      .input(
+        z.object({
+          name: z.string().trim().min(2).max(160),
+          email: z.string().trim().email().max(320),
+          phone: z.string().trim().max(32).optional(),
+          password: z.string().min(8).max(72),
+          intent: z.enum(["customer", "merchant", "courier"]).optional(),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        await enforceDistributedRateLimit(ctx, {
+          scope: "auth-signup",
+          identity: input.email,
+          limit: 5,
+          windowMs: 15 * 60_000,
+          message: "Muitas tentativas de cadastro. Espere um pouco e tente de novo.",
+        });
+        try {
+          const result = await signupAccount(input);
+          setSessionCookie(ctx, result.token);
+          return result;
+        } catch (error) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: error instanceof Error ? error.message : SIGNUP_ERROR,
+          });
+        }
+      }),
+    login: publicProcedure
+      .input(
+        z.object({
+          email: z.string().trim().email().max(320),
+          password: z.string().min(1).max(72),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        await enforceDistributedRateLimit(ctx, {
+          scope: "auth-login",
+          identity: input.email,
+          limit: 10,
+          windowMs: 15 * 60_000,
+          message: "Muitas tentativas de entrada. Espere um pouco e tente de novo.",
+        });
+        try {
+          const result = await loginAccount(input);
+          setSessionCookie(ctx, result.token);
+          return result;
+        } catch (error) {
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message: error instanceof Error ? error.message : LOGIN_ERROR,
+          });
+        }
+      }),
+    refresh: publicProcedure.mutation(async ({ ctx }) => {
+      const header = ctx.req.headers?.authorization;
+      const bearer =
+        typeof header === "string" && header.startsWith("Bearer ")
+          ? header.slice("Bearer ".length).trim()
+          : undefined;
+      const refreshed = await sdk.refreshSession(bearer);
+      if (!refreshed) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Sessão inválida. Entre de novo.",
+        });
+      }
+      setSessionCookie(ctx, refreshed.token);
+      const { passwordHash: _passwordHash, ...safe } = refreshed.user;
+      return { token: refreshed.token, expiresAt: refreshed.expiresAt, user: safe };
+    }),
+    changePassword: protectedProcedure
+      .input(
+        z.object({
+          currentPassword: z.string().min(1).max(72),
+          nextPassword: z.string().min(8).max(72),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        try {
+          const result = await changeAccountPassword({
+            userId: ctx.user.id,
+            currentPassword: input.currentPassword,
+            nextPassword: input.nextPassword,
+          });
+          setSessionCookie(ctx, result.token);
+          return result;
+        } catch (error) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: error instanceof Error ? error.message : PASSWORD_ERROR,
+          });
+        }
+      }),
+    resetPassword: publicProcedure
+      .input(
+        z.object({
+          email: z.string().trim().email().max(320),
+          code: z.string().trim().regex(/^\d{8}$/),
+          nextPassword: z.string().min(8).max(72),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        await enforceDistributedRateLimit(ctx, {
+          scope: "auth-reset",
+          identity: input.email,
+          limit: 5,
+          windowMs: 15 * 60_000,
+          message: "Muitas tentativas. Espere um pouco e tente de novo.",
+        });
+        try {
+          return await resetAccountPassword(input);
+        } catch (error) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: error instanceof Error ? error.message : RESET_ERROR,
+          });
+        }
+      }),
     confirmEmail: publicProcedure
       .input(z.object({ token: z.string().regex(/^[a-f0-9]{32,128}$/i) }))
       .mutation(async ({ input }) => ({
@@ -97,7 +273,8 @@ export const appRouter = router({
           hashEmailToken(input.token),
         ),
       })),
-    logout: publicProcedure.mutation(({ ctx }) => {
+    logout: publicProcedure.mutation(async ({ ctx }) => {
+      if (ctx.user?.sessionId) await revokeAuthSession(ctx.user.sessionId);
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
@@ -137,6 +314,31 @@ export const appRouter = router({
     }),
     account: router({
       profile: router({
+        useAsCustomer: protectedProcedure.mutation(async () => {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "Cada conta tem um papel só. Para pedir, crie uma conta de cliente.",
+          });
+        }),
+        close: protectedProcedure
+          .input(z.object({ password: z.string().min(1).max(72) }))
+          .mutation(async ({ ctx, input }) => {
+            try {
+              return await closeAccount({
+                userId: ctx.user.id,
+                password: input.password,
+              });
+            } catch (error) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message:
+                  error instanceof Error
+                    ? error.message
+                    : "Não foi possível excluir a conta agora.",
+              });
+            }
+          }),
         mine: protectedProcedure.query(({ ctx }) =>
           db.getUserProfile(ctx.user.id),
         ),
@@ -172,6 +374,15 @@ export const appRouter = router({
             }
             return { verificationSent, unchanged: false as const };
           }),
+        tour: router({
+          mine: protectedProcedure.query(async ({ ctx }) => ({
+            storeTourDone: await db.getStoreTourDone(ctx.user.id),
+          })),
+          complete: protectedProcedure.mutation(async ({ ctx }) => {
+            await db.setStoreTourDone(ctx.user.id);
+            return { success: true as const };
+          }),
+        }),
         theme: router({
           update: protectedProcedure
             .input(
@@ -215,11 +426,41 @@ export const appRouter = router({
           return Promise.all(
             products.map(async (item) => ({
               ...item,
-              adImageUrl: item.adImageKey
-                ? await storageGetSignedUrl(item.adImageKey).catch(() => null)
-                : null,
+              adImageUrl: item.adImageData
+                ? item.adImageData
+                : item.adImageKey
+                  ? await storageGetSignedUrl(item.adImageKey).catch(() => null)
+                  : null,
             })),
           );
+        }),
+      detail: publicProcedure
+        .input(z.object({ productId: z.number().int().positive() }))
+        .query(async ({ input }) => {
+          const product = await db.getProductById(input.productId);
+          if (!product) return null;
+          const store = await db.getStoreById(product.storeId);
+          if (!store || !(await db.storeListedForCustomers(store))) return null;
+          const ops = await db.getStoreOps(store.id);
+          if (ops.approvalStatus !== "approved") return null;
+          const pause = storePauseView(ops);
+          const availability = resolveStoreAvailability({
+            isOpen: store.isOpen,
+            openingHours: store.openingHours,
+          });
+          const options = await db.listProductOptions(product.id);
+          return {
+            product,
+            storeName: store.name,
+            deliveryFee: store.deliveryFee,
+            storeKind: store.kind,
+            flashEnabled: store.flashEnabled,
+            storeOpen: availability.open && !pause.paused,
+            nextOpenLabel: pause.paused
+              ? pause.message
+              : availability.nextOpenLabel,
+            options,
+          };
         }),
       search: publicProcedure
         .input(
@@ -228,12 +469,15 @@ export const appRouter = router({
             category: z.string().optional(),
             minPrice: z.number().nonnegative().optional(),
             maxPrice: z.number().nonnegative().optional(),
+            flash: z.boolean().optional(),
+            vertical: z.enum(["restaurant", "market", "service"]).optional(),
             limit: z.number().int().min(1).max(50).default(20),
             cursor: z.string().trim().min(1).max(2_000).optional(),
             offset: z.number().int().min(0).default(0),
           }),
         )
         .query(async ({ input }) => {
+          await sweepAccountRoles();
           let result: Awaited<ReturnType<typeof db.searchAvailableProducts>>;
           try {
             result = await db.searchAvailableProducts(input);
@@ -252,13 +496,83 @@ export const appRouter = router({
           const items = await Promise.all(
             result.items.map(async (item) => ({
               ...item,
-              adImageUrl: item.adImageKey
-                ? await storageGetSignedUrl(item.adImageKey).catch(() => null)
-                : null,
+              adImageUrl: item.adImageData
+                ? item.adImageData
+                : item.adImageKey
+                  ? await storageGetSignedUrl(item.adImageKey).catch(() => null)
+                  : null,
             })),
           );
           return { ...result, items };
         }),
+      taste: publicProcedure
+        .input(
+          z.object({
+            moodId: z.string().trim().min(1).max(40),
+            limit: z.number().int().min(1).max(50).default(20),
+            offset: z.number().int().min(0).default(0),
+          }),
+        )
+        .query(async ({ input }) => {
+          const mood = getTasteMood(input.moodId);
+          if (!mood)
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Humor de Sabor não encontrado",
+            });
+          const result = await db.searchAvailableProducts({
+            query: mood.query,
+            limit: input.limit,
+            offset: input.offset,
+          });
+          const items = await Promise.all(
+            result.items.map(async (item) => ({
+              ...item,
+              adImageUrl: item.adImageData
+                ? item.adImageData
+                : item.adImageKey
+                  ? await storageGetSignedUrl(item.adImageKey).catch(() => null)
+                  : null,
+            })),
+          );
+          return { mood, moods: TASTE_MOODS, ...result, items };
+        }),
+      moods: publicProcedure.query(() => TASTE_MOODS),
+    }),
+    loyalty: router({
+      me: protectedProcedure.query(({ ctx }) =>
+        db.getLoyaltySummary(ctx.user.id),
+      ),
+      history: protectedProcedure
+        .input(
+          z
+            .object({
+              limit: z.number().int().min(1).max(100).default(50),
+              offset: z.number().int().min(0).default(0),
+            })
+            .optional(),
+        )
+        .query(({ ctx, input }) =>
+          db.listLoyaltyHistory(
+            ctx.user.id,
+            input?.limit ?? 50,
+            input?.offset ?? 0,
+          ),
+        ),
+      redeem: protectedProcedure
+        .input(
+          z.object({
+            blocks: z.number().int().min(1).max(20).default(1),
+            idempotencyKey: z.string().trim().min(8).max(160),
+          }),
+        )
+        .mutation(({ ctx, input }) =>
+          db.redeemLoyaltyPoints(
+            ctx.user.id,
+            input.blocks,
+            input.idempotencyKey,
+          ),
+        ),
     }),
     checkout: router({
       quote: protectedProcedure
@@ -273,17 +587,54 @@ export const appRouter = router({
                   productId: z.number().int().positive(),
                   quantity: z.number().int().positive().max(50),
                   note: z.string().trim().max(500).optional(),
+                  optionIds: z
+                    .array(z.number().int().positive())
+                    .max(12)
+                    .optional(),
                 }),
               )
               .min(1),
             couponCode: z.string().trim().min(1).max(40).optional(),
+            fulfillment: z.enum(["standard", "flash"]).default("standard"),
+            tipAmount: z.number().nonnegative().max(500).optional(),
           }),
         )
         .query(async ({ ctx, input }) => {
           const store = await db.getStoreById(input.storeId);
           if (!store) throw new Error("Estabelecimento não encontrado");
-          if (!store.isOpen)
-            throw new Error("Estabelecimento fechado no momento");
+          const ops = await db.getStoreOps(store.id);
+          const pause = storePauseView(ops);
+          const blocked = sellingBlockReason({
+            approvalStatus: ops.approvalStatus,
+            paused: pause.paused,
+            pauseMessage: pause.message,
+          });
+          if (blocked) throw new Error(blocked);
+          const availability = resolveStoreAvailability({
+            isOpen: store.isOpen,
+            openingHours: store.openingHours,
+          });
+          if (!availability.open)
+            throw new Error(
+              availability.nextOpenLabel ?? "Estabelecimento fechado no momento",
+            );
+          if (store.kind === "market" && input.fulfillmentMode === "pickup")
+            throw new Error(
+              "Compras de mercado são entregues pelo Pediu Entregas; selecione um endereço.",
+            );
+          const flash = resolveFlashFulfillment(store, input.fulfillment);
+          if (
+            input.fulfillment === "flash" &&
+            (input.fulfillmentMode !== "delivery" || !flash.isFlash)
+          )
+            throw new Error(flash.reason ?? "Flash indisponível");
+          const pricingStore = {
+            ...(flash.isFlash
+              ? { ...store, deliveryFee: flash.deliveryFee }
+              : store),
+            feeMode: flash.isFlash ? ("fixed" as const) : ops.feeMode,
+            feePerKm: ops.feePerKm,
+          };
           const address = input.addressId
             ? await db.getCustomerAddress(ctx.user.id, input.addressId)
             : undefined;
@@ -291,7 +642,7 @@ export const appRouter = router({
             throw new Error("Endereço não encontrado ou não autorizado");
           const serviceability = calculateServiceability(
             input.fulfillmentMode,
-            store,
+            pricingStore,
             address,
           );
           if (!serviceability.serviceable)
@@ -306,14 +657,20 @@ export const appRouter = router({
                 throw new Error(
                   "Há produto inválido ou indisponível no carrinho",
                 );
-              const unitPrice = Number(product.price);
+              const selected = priceSelectedOptions(
+                product.price,
+                await db.listProductOptions(product.id),
+                item.optionIds,
+              );
+              if (!selected.ok) throw new Error(selected.message);
               return {
                 productId: product.id,
                 name: product.name,
                 quantity: item.quantity,
-                unitPrice: unitPrice.toFixed(2),
-                lineTotal: (unitPrice * item.quantity).toFixed(2),
-                note: item.note,
+                unitPrice: selected.unitPrice,
+                lineTotal: (Number(selected.unitPrice) * item.quantity).toFixed(2),
+                note: composeItemNote(selected.label, item.note),
+                optionIds: selected.optionIds,
               };
             }),
           );
@@ -321,6 +678,7 @@ export const appRouter = router({
             (sum, item) => sum + Number(item.lineTotal),
             0,
           );
+          const tipAmount = clampTipAmount(input.tipAmount, subtotal);
           const deliveryFee = Number(serviceability.deliveryFee);
           let couponCode: string | undefined;
           let discount = "0.00";
@@ -340,11 +698,26 @@ export const appRouter = router({
             subtotal: subtotal.toFixed(2),
             deliveryFee: deliveryFee.toFixed(2),
             fulfillmentMode: serviceability.mode,
+            fulfillment: input.fulfillment,
+            isFlash: flash.isFlash,
+            flashEligible: resolveFlashFulfillment(store, "flash").isFlash,
+            flashEtaMaxMinutes: flash.etaMaxMinutes,
+            storeKind: store.kind,
+            tipAmount,
+            tipDestination: DEFAULT_TIP_DESTINATION,
             distanceKm: serviceability.distanceKm,
             serviceabilityReason: serviceability.reason,
+            feeMode: flash.isFlash ? "fixed" : ops.feeMode,
+            cardCredit: ops.cardCreditEnabled,
+            cardDebit: ops.cardDebitEnabled,
             couponCode,
             discount,
-            total: (subtotal + deliveryFee - Number(discount)).toFixed(2),
+            total: (
+              subtotal +
+              deliveryFee -
+              Number(discount) +
+              Number(tipAmount)
+            ).toFixed(2),
           };
         }),
     }),
@@ -352,9 +725,11 @@ export const appRouter = router({
       available: publicProcedure.query(() => db.listActiveCoupons()),
     }),
     stores: router({
-      mine: protectedProcedure.query(({ ctx }) =>
-        db.getStoreForOwner(ctx.user.id),
-      ),
+      mine: protectedProcedure.query(async ({ ctx }) => {
+        const store = await db.getStoreForOwner(ctx.user.id);
+        if (!store) return undefined;
+        return db.withStoreOps(store);
+      }),
       create: protectedProcedure
         .input(
           z.object({
@@ -375,16 +750,58 @@ export const appRouter = router({
               .default("10.00"),
             latitude: z.number().min(-90).max(90).optional().nullable(),
             longitude: z.number().min(-180).max(180).optional().nullable(),
+            kind: z
+              .enum(["restaurant", "market", "service"])
+              .default("restaurant"),
+            flashEnabled: z.boolean().default(false),
+            flashEtaMaxMinutes: z.number().int().min(5).max(120).default(30),
+            flashFeeOverride: z
+              .string()
+              .regex(/^\d+(\.\d{1,2})?$/)
+              .optional()
+              .nullable(),
+            legalName: z.string().trim().min(2).max(160).optional(),
+            taxId: z.string().trim().max(18).optional(),
+            taxIdKind: z.enum(["cnpj", "cpf"]).optional(),
+            fiscalAddress: z.string().trim().max(255).optional(),
+            storefrontAddress: z.string().trim().max(255).optional(),
+            responsibleName: z.string().trim().min(2).max(160).optional(),
+            responsibleTaxId: z.string().trim().max(14).optional(),
+            responsiblePhone: z.string().trim().max(32).optional(),
+            courierMode: z.enum(["own", "pediu"]).optional(),
+            minOrder: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
+            prepMinutes: z.number().int().min(1).max(240).optional(),
+            logoData: z.string().max(350_000).optional(),
+            stateRegistration: z.string().trim().max(32).optional(),
+            cityRegistration: z.string().trim().max(32).optional(),
+            taxRegime: z.string().trim().max(40).optional(),
+            cnae: z.string().trim().max(16).optional(),
           }),
         )
         .mutation(async ({ ctx, input }) => {
+          const roles = await db.listAccountRoles(ctx.user.id, ctx.user.role);
+          const refusal = roleProfileRefusal(
+            roles,
+            "merchant",
+            isAdminEmail(ctx.user.email ?? ""),
+          );
+          if (refusal) throw new TRPCError({ code: "BAD_REQUEST", message: refusal });
           if (await db.getStoreForOwner(ctx.user.id))
-            throw new Error("Este usuário já possui uma loja");
-          const { deliveryEnabled, pickupEnabled, ...storeInput } = input;
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Você já tem uma loja.",
+            });
+          const {
+            deliveryEnabled,
+            pickupEnabled,
+            flashEnabled,
+            ...storeInput
+          } = input;
           return db.createStore({
             ...storeInput,
             deliveryEnabled: deliveryEnabled ? 1 : 0,
             pickupEnabled: pickupEnabled ? 1 : 0,
+            flashEnabled: flashEnabled ? 1 : 0,
             latitude:
               storeInput.latitude === null || storeInput.latitude === undefined
                 ? storeInput.latitude
@@ -421,7 +838,32 @@ export const appRouter = router({
                 .optional(),
               latitude: z.number().min(-90).max(90).optional().nullable(),
               longitude: z.number().min(-180).max(180).optional().nullable(),
+              kind: z.enum(["restaurant", "market", "service"]).optional(),
+              flashEnabled: z.boolean().optional(),
+              flashEtaMaxMinutes: z.number().int().min(5).max(120).optional(),
+              flashFeeOverride: z
+                .string()
+                .regex(/^\d+(\.\d{1,2})?$/)
+                .optional()
+                .nullable(),
               isOpen: z.boolean().optional(),
+              openingHours: z.string().max(4000).optional(),
+              legalName: z.string().trim().min(2).max(160).optional(),
+              taxId: z.string().trim().max(18).optional(),
+              taxIdKind: z.enum(["cnpj", "cpf"]).optional(),
+              fiscalAddress: z.string().trim().max(255).optional(),
+              storefrontAddress: z.string().trim().max(255).optional(),
+              responsibleName: z.string().trim().min(2).max(160).optional(),
+              responsibleTaxId: z.string().trim().max(14).optional(),
+              responsiblePhone: z.string().trim().max(32).optional(),
+              courierMode: z.enum(["own", "pediu"]).optional(),
+              minOrder: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
+              prepMinutes: z.number().int().min(1).max(240).optional(),
+              logoData: z.string().max(350_000).optional(),
+              stateRegistration: z.string().trim().max(32).optional(),
+              cityRegistration: z.string().trim().max(32).optional(),
+              taxRegime: z.string().trim().max(40).optional(),
+              cnae: z.string().trim().max(16).optional(),
             })
             .refine(
               (input) =>
@@ -430,7 +872,13 @@ export const appRouter = router({
             ),
         )
         .mutation(({ ctx, input }) => {
-          const { isOpen, deliveryEnabled, pickupEnabled, ...changes } = input;
+          const {
+            isOpen,
+            deliveryEnabled,
+            pickupEnabled,
+            flashEnabled,
+            ...changes
+          } = input;
           return db.updateStoreForOwner(ctx.user.id, {
             ...changes,
             latitude:
@@ -447,9 +895,61 @@ export const appRouter = router({
             ...(pickupEnabled === undefined
               ? {}
               : { pickupEnabled: pickupEnabled ? 1 : 0 }),
+            ...(flashEnabled === undefined
+              ? {}
+              : { flashEnabled: flashEnabled ? 1 : 0 }),
             ...(isOpen === undefined ? {} : { isOpen: isOpen ? 1 : 0 }),
           });
         }),
+      deliverySettings: protectedProcedure
+        .input(
+          z.object({
+            cardCreditEnabled: z.boolean().optional(),
+            cardDebitEnabled: z.boolean().optional(),
+            feeMode: z.enum(["fixed", "distance"]).optional(),
+            feePerKm: z
+              .string()
+              .regex(/^\d+(\.\d{1,2})?$/)
+              .optional(),
+          }),
+        )
+        .mutation(async ({ ctx, input }) => {
+          const store = await db.getStoreForOwner(ctx.user.id);
+          if (!store) throw new Error("Cadastre sua loja antes de ajustar a entrega.");
+          if (input.feeMode === "distance" && input.feePerKm == null) {
+            const current = await db.getStoreOps(store.id);
+            if (current.feeMode !== "distance" && !input.feePerKm)
+              throw new Error("Informe o valor por quilômetro.");
+          }
+          return db.saveStoreOps(store.id, input);
+        }),
+      pause: protectedProcedure
+        .input(
+          z.object({
+            minutes: z.union([z.literal(15), z.literal(30), z.literal(60)]).optional(),
+            manual: z.boolean().optional(),
+          }),
+        )
+        .mutation(async ({ ctx, input }) => {
+          const store = await db.getStoreForOwner(ctx.user.id);
+          if (!store) throw new Error("Cadastre sua loja antes de pausar.");
+          if (input.manual) {
+            await db.saveStoreOps(store.id, { pauseManual: true, pausedUntil: null });
+            return { paused: true as const };
+          }
+          if (!input.minutes) throw new Error("Escolha por quanto tempo a loja fica pausada.");
+          await db.saveStoreOps(store.id, {
+            pauseManual: false,
+            pausedUntil: new Date(Date.now() + input.minutes * 60_000),
+          });
+          return { paused: true as const };
+        }),
+      resume: protectedProcedure.mutation(async ({ ctx }) => {
+        const store = await db.getStoreForOwner(ctx.user.id);
+        if (!store) throw new Error("Cadastre sua loja antes de reabrir.");
+        await db.saveStoreOps(store.id, { pauseManual: false, pausedUntil: null });
+        return { paused: false as const };
+      }),
       couriers: protectedProcedure.query(({ ctx }) =>
         db.listCouriersForStore(ctx.user.id),
       ),
@@ -470,20 +970,48 @@ export const appRouter = router({
               vehicleType: z.enum(["bike", "moto", "car"]),
               vehiclePlate: z.string().trim().max(16).optional(),
               phone: z.string().trim().max(32).optional(),
+              documentNumber: z.string().trim().max(40).optional(),
+              documentPhoto: z.string().max(350_000).optional(),
+              vehiclePhoto: z.string().max(350_000).optional(),
+              selfiePhoto: z.string().max(350_000).optional(),
+              pixKey: z.string().trim().min(3).max(255).optional(),
+              workArea: z.string().trim().min(2).max(160).optional(),
+              workHours: z.string().trim().min(2).max(160).optional(),
             }),
           )
-          .mutation(({ ctx, input }) =>
-            db.upsertCourierProfile({ ...input, userId: ctx.user.id }),
-          ),
+          .mutation(async ({ ctx, input }) => {
+            const roles = await db.listAccountRoles(ctx.user.id, ctx.user.role);
+            const refusal = roleProfileRefusal(
+              roles,
+              "courier",
+              isAdminEmail(ctx.user.email ?? ""),
+            );
+            if (refusal) {
+              throw new TRPCError({ code: "BAD_REQUEST", message: refusal });
+            }
+            return db.upsertCourierProfile({ ...input, userId: ctx.user.id });
+          }),
         locationConsent: protectedProcedure
           .input(z.object({ accepted: z.boolean() }))
           .mutation(({ ctx, input }) =>
             db.setCourierLocationConsent(ctx.user.id, input.accepted),
           ),
         availability: protectedProcedure
-          .input(z.object({ value: z.enum(["offline", "available", "busy"]) }))
+          .input(
+            z.object({
+              value: z.enum(["offline", "available", "busy"]),
+              latitude: z.number().min(-90).max(90).optional(),
+              longitude: z.number().min(-180).max(180).optional(),
+            }),
+          )
           .mutation(({ ctx, input }) =>
-            db.setCourierAvailability(ctx.user.id, input.value),
+            db.setCourierAvailability(
+              ctx.user.id,
+              input.value,
+              input.latitude != null && input.longitude != null
+                ? { latitude: input.latitude, longitude: input.longitude }
+                : undefined,
+            ),
           ),
       }),
       offers: protectedProcedure.query(({ ctx }) =>
@@ -507,8 +1035,26 @@ export const appRouter = router({
             accept: false,
           }),
         ),
-      active: protectedProcedure.query(({ ctx }) =>
-        db.listActiveDeliveriesForCourier(ctx.user.id),
+      active: protectedProcedure.query(async ({ ctx }) => {
+        const rows = await db.listActiveDeliveriesForCourier(ctx.user.id);
+        return Promise.all(
+          rows.map(async (row) => {
+            const { deliveryCode: _hidden, deliveryPhoto: _photo, ...order } =
+              row.order;
+            const payment = await db.getPaymentForOrder(
+              row.order.id,
+              row.order.customerId,
+            );
+            return {
+              ...row,
+              order,
+              paymentMethod: payment?.method ?? null,
+            };
+          }),
+        );
+      }),
+      earnings: protectedProcedure.query(({ ctx }) =>
+        db.listCourierEarnings(ctx.user.id),
       ),
     }),
     ads: router({
@@ -516,7 +1062,14 @@ export const appRouter = router({
         const store = await db.getStoreForOwner(ctx.user.id);
         if (!store)
           throw new Error("Cadastre sua loja antes de criar anúncios");
-        return db.getAdCreditsForStore(store.id);
+        const credits = await db.getAdCreditsForStore(store.id);
+        const settings = await db.getPlatformSettings();
+        const unit = Number(settings.creditPrice);
+        return {
+          ...credits,
+          unitPrice: settings.creditPrice,
+          purchaseAvailable: mercadoPagoConfigured() && Number.isFinite(unit) && unit > 0,
+        };
       }),
       mine: protectedProcedure.query(async ({ ctx }) => {
         const store = await db.getStoreForOwner(ctx.user.id);
@@ -525,9 +1078,7 @@ export const appRouter = router({
         return Promise.all(
           ads.map(async (ad) => ({
             ...ad,
-            imageUrl: ad.imageKey
-              ? await storageGetSignedUrl(ad.imageKey).catch(() => null)
-              : null,
+            imageUrl: await publicAdImage(ad),
           })),
         );
       }),
@@ -558,23 +1109,49 @@ export const appRouter = router({
             store.id,
           );
           if (!product) throw new Error("Produto não pertence à sua loja");
-          const creative = await withConcurrencyLimit("ads:generate", 2, () =>
-            withTimeout(
-              generateAdCreative({
-                storeName: store.name,
-                productName: product.name,
-                category: product.category,
-                productDescription: product.description,
-                price: product.price,
-                offerLabel: input.offerLabel,
-                audience: input.audience,
-                tone: input.tone,
-              }),
-              90_000,
-              "A criação do anúncio demorou para responder. Tente novamente.",
-            ),
-          );
-          const ad = await db.createGeneratedAdWithCredit({
+          const settings = await db.getPlatformSettings();
+          const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          const recent = await db.countRecentGeneratedAds(store.id, since);
+          if (recent >= settings.dailyCap) {
+            throw new Error(
+              "A loja atingiu o limite de anúncios de hoje. Tente amanhã.",
+            );
+          }
+          await db.debitAdCredit(store.id, 1);
+          let creative;
+          try {
+            creative = await withConcurrencyLimit("ads:generate", 2, () =>
+              withTimeout(
+                generateAdCreative(
+                  {
+                    storeName: store.name,
+                    productName: product.name,
+                    category: product.category,
+                    productDescription: product.description,
+                    price: product.price,
+                    offerLabel: input.offerLabel,
+                    audience: input.audience,
+                    tone: input.tone,
+                  },
+                  {
+                    textModel: settings.textModel,
+                    imageModel: settings.imageModel,
+                    imageQuality: settings.imageQuality,
+                  },
+                ),
+                90_000,
+                "A criação do anúncio demorou para responder. Tente novamente.",
+              ),
+            );
+          } catch (error) {
+            await db.refundAdCredit(store.id, 1);
+            throw new Error(
+              error instanceof Error
+                ? error.message
+                : "Não consegui criar a imagem. O crédito voltou para a sua loja.",
+            );
+          }
+          const ad = await db.saveGeneratedAd({
             storeId: store.id,
             productId: product.id,
             status: "draft",
@@ -584,14 +1161,13 @@ export const appRouter = router({
             offerLabel: creative.offerLabel,
             visualPrompt: creative.visualPrompt,
             imageKey: creative.imageKey,
+            imageData: creative.imageData,
             model: creative.model,
             generationCost: 1,
           });
           return {
             ...ad,
-            imageUrl: ad.imageKey
-              ? await storageGetSignedUrl(ad.imageKey).catch(() => null)
-              : null,
+            imageUrl: await publicAdImage(ad),
           };
         }),
       publish: protectedProcedure
@@ -599,12 +1175,76 @@ export const appRouter = router({
         .mutation(async ({ ctx, input }) => {
           const store = await db.getStoreForOwner(ctx.user.id);
           if (!store) throw new Error("Loja não encontrada");
+          const current = await db.getGeneratedAdForStore(store.id, input.adId);
+          if (!current) throw new Error("Anúncio não encontrado");
+          const localNote = localModerationNote(
+            `${current.headline} ${current.description} ${current.visualPrompt}`,
+          );
+          const flagged = await openAiFlagged(
+            `${current.headline}\n${current.description}`,
+          );
+          if (localNote || flagged) {
+            const held = await db.holdGeneratedAdForReview(
+              store.id,
+              input.adId,
+              localNote ??
+                "Este anúncio precisa de uma revisão da equipe antes de aparecer no Explorar.",
+            );
+            return { ...held, imageUrl: await publicAdImage(held) };
+          }
           const ad = await db.publishGeneratedAd(store.id, input.adId);
           return {
             ...ad,
-            imageUrl: ad.imageKey
-              ? await storageGetSignedUrl(ad.imageKey).catch(() => null)
-              : null,
+            imageUrl: await publicAdImage(ad),
+          };
+        }),
+      buy: protectedProcedure
+        .input(
+          z.object({
+            credits: z.union([z.literal(10), z.literal(30), z.literal(100)]),
+          }),
+        )
+        .mutation(async ({ ctx, input }) => {
+          const store = await db.getStoreForOwner(ctx.user.id);
+          if (!store) throw new Error("Cadastre sua loja antes de comprar créditos");
+          if (!mercadoPagoConfigured()) {
+            throw new Error(
+              "Não foi possível concluir a compra.",
+            );
+          }
+          const settings = await db.getPlatformSettings();
+          const unit = Number(settings.creditPrice);
+          if (!Number.isFinite(unit) || unit <= 0) {
+            throw new Error("Não foi possível concluir a compra.");
+          }
+          const amount = (unit * input.credits).toFixed(2);
+          const purchase = await db.createCreditPurchase({
+            storeId: store.id,
+            credits: input.credits,
+            amount,
+            idempotencyKey: `credits-${store.id}-${input.credits}-${Date.now()}`,
+          });
+          const charge = await createPixCharge({
+            orderId: purchase.id,
+            amount,
+            payerEmail: ctx.user.email || "loja@pediu.app",
+            idempotencyKey: purchase.idempotencyKey,
+            externalReference: purchase.externalReference,
+          });
+          if (!charge.providerChargeId || !charge.qrCode) {
+            throw new Error("Não consegui gerar o PIX agora. Tente de novo.");
+          }
+          await db.attachCreditPurchaseCharge(purchase.id, {
+            providerTransactionId: charge.providerChargeId,
+            qrCode: charge.qrCode,
+            qrCodeBase64: charge.qrCodeBase64,
+          });
+          return {
+            purchaseId: purchase.id,
+            credits: input.credits,
+            amount,
+            qrCode: charge.qrCode,
+            qrCodeBase64: charge.qrCodeBase64 ?? null,
           };
         }),
       archive: protectedProcedure
@@ -633,19 +1273,121 @@ export const appRouter = router({
             category: z.string().min(2).max(80),
             description: z.string().max(1000).optional(),
             price: z.string().regex(/^\d+(\.\d{1,2})?$/),
+            saleUnit: z.enum(SALE_UNITS).optional(),
+            packSize: z
+              .string()
+              .regex(/^\d+(\.\d{1,3})?$/)
+              .nullable()
+              .optional(),
             inventoryTracked: z.boolean().default(false),
             stockQuantity: z.number().int().min(0).max(1_000_000).default(0),
+            imageData: z.string().max(350_000).optional(),
+            optionGroups: z
+              .array(
+                z.object({
+                  name: z.string().trim().min(1).max(80),
+                  required: z.boolean().default(false),
+                  choices: z
+                    .array(
+                      z.object({
+                        name: z.string().trim().min(1).max(80),
+                        priceDelta: z.string().regex(/^\d+(\.\d{1,2})?$/),
+                      }),
+                    )
+                    .min(1)
+                    .max(12),
+                }),
+              )
+              .max(6)
+              .optional(),
           }),
         )
         .mutation(async ({ ctx, input }) => {
           const store = await db.getStoreForOwner(ctx.user.id);
           if (store?.id !== input.storeId)
             throw new Error("Loja não autorizada");
-          return db.createProduct({
-            ...input,
+          const { optionGroups, imageData, ...productInput } = input;
+          const productId = await db.createProduct({
+            ...productInput,
+            imageData: imageData || null,
+            saleUnit: normalizeSaleUnit(
+              input.saleUnit ?? (store.kind === "market" ? "unit" : "unit"),
+            ),
+            packSize: input.packSize ?? null,
             available: 1,
             inventoryTracked: input.inventoryTracked ? 1 : 0,
           });
+          if (optionGroups?.length)
+            await db.replaceProductOptions(productId, optionGroups);
+          return productId;
+        }),
+      detail: protectedProcedure
+        .input(z.object({ productId: z.number().int().positive() }))
+        .query(async ({ ctx, input }) => {
+          const store = await db.getStoreForOwner(ctx.user.id);
+          if (!store) throw new Error("Loja não encontrada");
+          const product = await db.getProductForStore(input.productId, store.id);
+          if (!product) throw new Error("Produto não encontrado");
+          return {
+            ...product,
+            options: await db.listProductOptions(product.id),
+          };
+        }),
+      update: protectedProcedure
+        .input(
+          z.object({
+            productId: z.number().int().positive(),
+            name: z.string().min(2).max(180),
+            category: z.string().min(2).max(80),
+            description: z.string().max(1000).optional(),
+            price: z.string().regex(/^\d+(\.\d{1,2})?$/),
+            saleUnit: z.enum(SALE_UNITS).optional(),
+            packSize: z
+              .string()
+              .regex(/^\d+(\.\d{1,3})?$/)
+              .nullable()
+              .optional(),
+            inventoryTracked: z.boolean().default(false),
+            stockQuantity: z.number().int().min(0).max(1_000_000).default(0),
+            imageData: z.string().max(350_000).nullable().optional(),
+            optionGroups: z
+              .array(
+                z.object({
+                  name: z.string().trim().min(1).max(80),
+                  required: z.boolean().default(false),
+                  choices: z
+                    .array(
+                      z.object({
+                        name: z.string().trim().min(1).max(80),
+                        priceDelta: z.string().regex(/^\d+(\.\d{1,2})?$/),
+                      }),
+                    )
+                    .min(1)
+                    .max(12),
+                }),
+              )
+              .max(6)
+              .optional(),
+          }),
+        )
+        .mutation(async ({ ctx, input }) => {
+          const store = await db.getStoreForOwner(ctx.user.id);
+          if (!store) throw new Error("Loja não encontrada");
+          const { optionGroups, productId, imageData, ...productInput } = input;
+          await db.updateStoreProduct(store.id, productId, {
+            name: productInput.name,
+            category: productInput.category,
+            description: productInput.description ?? null,
+            price: productInput.price,
+            saleUnit: normalizeSaleUnit(productInput.saleUnit ?? "unit"),
+            packSize: productInput.packSize ?? null,
+            inventoryTracked: productInput.inventoryTracked ? 1 : 0,
+            stockQuantity: productInput.stockQuantity,
+            ...(imageData !== undefined ? { imageData: imageData || null } : {}),
+          });
+          if (optionGroups)
+            await db.replaceProductOptions(productId, optionGroups);
+          return { success: true as const };
         }),
       availability: protectedProcedure
         .input(
@@ -706,20 +1448,23 @@ export const appRouter = router({
             })
             .optional(),
         )
-        .query(({ ctx, input }) =>
-          db.listOrdersForCustomer(
+        .query(async ({ ctx, input }) => {
+          await sweepUnacceptedOrders();
+          return db.listOrdersForCustomer(
             ctx.user.id,
             input?.limit ?? 50,
             input?.offset ?? 0,
-          ),
-        ),
+          );
+        }),
       get: protectedProcedure
         .input(z.object({ orderId: z.number().int().positive() }))
         .query(async ({ ctx, input }) => {
+          await sweepUnacceptedOrders();
           const order = await db.getOrderForUser(input.orderId, ctx.user.id);
           if (!order)
             throw new Error("Pedido não encontrado ou não autorizado");
-          return order;
+          const [enriched] = await db.enrichOrdersForStore([order]);
+          return enriched;
         }),
       storeMine: protectedProcedure
         .input(
@@ -731,14 +1476,16 @@ export const appRouter = router({
             .optional(),
         )
         .query(async ({ ctx, input }) => {
+          await sweepUnacceptedOrders();
           const store = await db.getStoreForOwner(ctx.user.id);
-          return store
-            ? db.listOrdersForStore(
+          const rows = store
+            ? await db.listOrdersForStore(
                 store.id,
                 input?.limit ?? 50,
                 input?.offset ?? 0,
               )
             : [];
+          return db.enrichOrdersForStore(rows);
         }),
       create: protectedProcedure
         .input(
@@ -746,11 +1493,19 @@ export const appRouter = router({
             idempotencyKey: z.string().trim().min(8).max(160),
             storeId: z.number().int().positive(),
             total: z.string().regex(/^\d+(\.\d{1,2})?$/),
-            paymentMethod: z.enum(["pix", "cash", "fiado"]).default("pix"),
+            paymentMethod: z
+              .enum(["pix", "cash", "fiado", "card_credit", "card_debit"])
+              .default("pix"),
             fulfillmentMode: z.enum(["delivery", "pickup"]).default("delivery"),
+            fulfillment: z.enum(["standard", "flash"]).default("standard"),
+            tipAmount: z.number().nonnegative().max(500).optional(),
             addressId: z.number().int().positive().optional(),
             deliveryAddress: z.string().trim().max(255).optional(),
             couponCode: z.string().trim().min(1).max(40).optional(),
+            changeFor: z
+              .string()
+              .regex(/^\d+(\.\d{1,2})?$/)
+              .optional(),
             items: z
               .array(
                 z.object({
@@ -758,6 +1513,10 @@ export const appRouter = router({
                   quantity: z.number().int().positive().max(50),
                   unitPrice: z.string().regex(/^\d+(\.\d{1,2})?$/),
                   note: z.string().trim().max(500).optional(),
+                  optionIds: z
+                    .array(z.number().int().positive())
+                    .max(12)
+                    .optional(),
                 }),
               )
               .min(1),
@@ -776,7 +1535,9 @@ export const appRouter = router({
               (existing.total !== undefined &&
                 Number(existing.total) !== Number(input.total)) ||
               (existing.fulfillmentMode !== undefined &&
-                existing.fulfillmentMode !== input.fulfillmentMode)
+                existing.fulfillmentMode !== input.fulfillmentMode) ||
+              (existing.fulfillment !== undefined &&
+                existing.fulfillment !== input.fulfillment)
             )
               throw new Error(
                 "A chave de idempotência já foi usada para outro pedido",
@@ -807,8 +1568,41 @@ export const appRouter = router({
           });
           const store = await db.getStoreById(input.storeId);
           if (!store) throw new Error("Estabelecimento não encontrado");
-          if (!store.isOpen)
-            throw new Error("Estabelecimento fechado no momento");
+          const ops = await db.getStoreOps(store.id);
+          const pause = storePauseView(ops);
+          const blocked = sellingBlockReason({
+            approvalStatus: ops.approvalStatus,
+            paused: pause.paused,
+            pauseMessage: pause.message,
+          });
+          if (blocked) throw new Error(blocked);
+          const cardRejection = cardOnDeliveryRejection(input.paymentMethod, ops);
+          if (cardRejection) throw new Error(cardRejection);
+          const availability = resolveStoreAvailability({
+            isOpen: store.isOpen,
+            openingHours: store.openingHours,
+          });
+          if (!availability.open)
+            throw new Error(
+              availability.nextOpenLabel ?? "Estabelecimento fechado no momento",
+            );
+          if (store.kind === "market" && input.fulfillmentMode === "pickup")
+            throw new Error(
+              "Compras de mercado são entregues pelo Pediu Entregas; selecione um endereço.",
+            );
+          const flash = resolveFlashFulfillment(store, input.fulfillment);
+          if (
+            input.fulfillment === "flash" &&
+            (input.fulfillmentMode !== "delivery" || !flash.isFlash)
+          )
+            throw new Error(flash.reason ?? "Flash indisponível");
+          const pricingStore = {
+            ...(flash.isFlash
+              ? { ...store, deliveryFee: flash.deliveryFee }
+              : store),
+            feeMode: flash.isFlash ? ("fixed" as const) : ops.feeMode,
+            feePerKm: ops.feePerKm,
+          };
 
           const savedAddress = input.addressId
             ? await db.getCustomerAddress(ctx.user.id, input.addressId)
@@ -822,7 +1616,7 @@ export const appRouter = router({
 
           const serviceability = calculateServiceability(
             input.fulfillmentMode,
-            store,
+            pricingStore,
             savedAddress,
           );
           if (!serviceability.serviceable)
@@ -844,19 +1638,36 @@ export const appRouter = router({
               .filter(Boolean)
               .join(", ");
           }
-          const products = await Promise.all(
-            input.items.map((item) =>
-              db.getAvailableProductForStore(item.productId, input.storeId, {
-                allowOutOfStock: true,
-              }),
-            ),
+          const pricedItems = await Promise.all(
+            input.items.map(async (item) => {
+              const product = await db.getAvailableProductForStore(
+                item.productId,
+                input.storeId,
+                { allowOutOfStock: true },
+              );
+              if (!product)
+                throw new Error("Há produto inválido ou de outro estabelecimento");
+              const selected = priceSelectedOptions(
+                product.price,
+                await db.listProductOptions(product.id),
+                item.optionIds,
+              );
+              if (!selected.ok) throw new Error(selected.message);
+              return {
+                productId: product.id,
+                name: product.name,
+                quantity: item.quantity,
+                unitPrice: selected.unitPrice,
+                note: composeItemNote(selected.label, item.note),
+                optionIds: selected.optionIds,
+              };
+            }),
           );
-          if (products.some((p) => !p))
-            throw new Error("Há produto inválido ou de outro estabelecimento");
-          const subtotal = input.items.reduce(
-            (sum, item, i) => sum + Number(products[i]!.price) * item.quantity,
+          const subtotal = pricedItems.reduce(
+            (sum, item) => sum + Number(item.unitPrice) * item.quantity,
             0,
           );
+          const tipAmount = clampTipAmount(input.tipAmount, subtotal);
           let couponCode: string | undefined;
           let discount = "0.00";
           if (input.couponCode) {
@@ -870,9 +1681,20 @@ export const appRouter = router({
             discount = calculation.discount;
           }
           const calculated =
-            subtotal + Number(serviceability.deliveryFee) - Number(discount);
+            subtotal +
+            Number(serviceability.deliveryFee) -
+            Number(discount) +
+            Number(tipAmount);
           if (Math.abs(calculated - Number(input.total)) > 0.01)
             throw new Error("Total do pedido inválido");
+          if (
+            input.paymentMethod === "cash" &&
+            input.changeFor &&
+            Number(input.changeFor) + 0.001 < calculated
+          )
+            throw new Error(
+              "O valor para troco precisa cobrir o total do pedido.",
+            );
           const serverTotal = calculated.toFixed(2);
           const recoverConcurrentOrder = async () => {
             const racedOrder = await db.getOrderByIdempotencyKey(
@@ -921,12 +1743,19 @@ export const appRouter = router({
                   deliveryAddress,
                   fulfillmentMode: input.fulfillmentMode,
                   deliveryFeeSnapshot: serviceability.deliveryFee,
+                  isFlash: flash.isFlash ? 1 : 0,
+                  tipAmount,
+                  tipDestination: DEFAULT_TIP_DESTINATION,
+                  fulfillment: input.fulfillment,
                   idempotencyKey,
+                  deliveryCode: createDeliveryCode(),
+                  destinationLatitude: savedAddress?.latitude,
+                  destinationLongitude: savedAddress?.longitude,
                 },
-                input.items.map((item, i) => ({
+                pricedItems.map((item) => ({
                   productId: item.productId,
                   quantity: item.quantity,
-                  unitPrice: String(products[i]!.price),
+                  unitPrice: item.unitPrice,
                   ...(item.note ? { note: item.note } : {}),
                 })),
                 customer.id,
@@ -969,12 +1798,21 @@ export const appRouter = router({
                 deliveryAddress,
                 fulfillmentMode: input.fulfillmentMode,
                 deliveryFeeSnapshot: serviceability.deliveryFee,
+                isFlash: flash.isFlash ? 1 : 0,
+                tipAmount,
+                tipDestination: DEFAULT_TIP_DESTINATION,
+                fulfillment: input.fulfillment,
                 idempotencyKey,
+                deliveryCode: createDeliveryCode(),
+                changeFor:
+                  input.paymentMethod === "cash" ? input.changeFor : undefined,
+                destinationLatitude: savedAddress?.latitude,
+                destinationLongitude: savedAddress?.longitude,
               },
-              input.items.map((item, i) => ({
+              pricedItems.map((item) => ({
                 productId: item.productId,
                 quantity: item.quantity,
-                unitPrice: String(products[i]!.price),
+                unitPrice: item.unitPrice,
                 ...(item.note ? { note: item.note } : {}),
               })),
               input.paymentMethod,
@@ -1016,6 +1854,19 @@ export const appRouter = router({
             (await db.getStoreForOwner(ctx.user.id))?.id === order.storeId;
           if (!isOwner && order.customerId !== ctx.user.id)
             throw new Error("Pedido não autorizado");
+          if (input.status === "A caminho") {
+            throw new Error(
+              "A caminho só começa quando o motoboy aceita a corrida e envia a posição.",
+            );
+          }
+          if (
+            input.status === "Entregue" &&
+            order.fulfillmentMode !== "pickup"
+          ) {
+            throw new Error(
+              "Quem conclui a entrega é o motoboy, depois de sair para a rota.",
+            );
+          }
           if (order.status === input.status) return { success: true as const };
           if (!isOwner) {
             if (
@@ -1070,6 +1921,16 @@ export const appRouter = router({
             if (updated.status !== input.status)
               throw new Error("O pedido mudou durante a atualização");
             return { success: true as const };
+          }
+          if (input.status === "Entregue") {
+            try {
+              await db.creditLoyaltyForDeliveredOrder(input.orderId);
+            } catch (error) {
+              console.warn(
+                "[Loyalty] Failed to credit points for pickup order:",
+                error,
+              );
+            }
           }
           try {
             await sendPushToUser(
@@ -1315,6 +2176,105 @@ export const appRouter = router({
           return db.createSale({ ...input, storeId: store.id });
         }),
     }),
+    assistant: router({
+      chat: publicProcedure
+        .input(
+          z.object({
+            messages: z
+              .array(
+                z.object({
+                  role: z.enum(["user", "assistant"]),
+                  content: z.string().trim().min(1).max(1000),
+                }),
+              )
+              .min(1)
+              .max(20),
+            cart: z
+              .array(
+                z.object({
+                  productId: z.number().int().positive(),
+                  quantity: z.number().int().positive().max(50),
+                  optionIds: z.array(z.number().int().positive()).max(12).optional(),
+                  note: z.string().trim().max(500).optional(),
+                  name: z.string().trim().max(80).optional(),
+                  storeName: z.string().trim().max(80).optional(),
+                }),
+              )
+              .max(30)
+              .optional(),
+          }),
+        )
+        .mutation(async ({ ctx, input }) => {
+          await enforceDistributedRateLimit(ctx, {
+            scope: "assistant:chat",
+            identity: ctx.user?.id,
+            limit: 20,
+            windowMs: 5 * 60_000,
+            message: "Muitas mensagens em pouco tempo. Espere um instante.",
+          });
+          return withConcurrencyLimit("assistant:chat", 4, () =>
+            withTimeout(
+              runAssistantChat({
+                user: ctx.user,
+                messages: input.messages,
+                cart: input.cart ?? [],
+                req: ctx.req,
+                res: ctx.res,
+              }),
+              30_000,
+              "Demorou demais. Tente de novo com um pedido mais curto.",
+            ),
+          );
+        }),
+      confirm: protectedProcedure
+        .input(
+          z.object({
+            token: z.string().trim().min(8).max(180),
+            cart: z
+              .array(
+                z.object({
+                  productId: z.number().int().positive(),
+                  quantity: z.number().int().positive().max(50),
+                  optionIds: z.array(z.number().int().positive()).max(12).optional(),
+                }),
+              )
+              .max(30)
+              .optional(),
+          }),
+        )
+        .mutation(async ({ ctx, input }) => {
+          await enforceDistributedRateLimit(ctx, {
+            scope: "assistant:confirm",
+            identity: ctx.user.id,
+            limit: 20,
+            windowMs: 5 * 60_000,
+            message: "Muitas confirmações em pouco tempo. Espere um instante.",
+          });
+          return withTimeout(
+            confirmAssistantTurn({
+              user: ctx.user,
+              token: input.token,
+              cart: input.cart ?? [],
+              req: ctx.req,
+              res: ctx.res,
+            }),
+            90_000,
+            "Demorou demais. Tente de novo.",
+          );
+        }),
+      cancel: protectedProcedure
+        .input(z.object({ token: z.string().trim().min(8).max(180) }))
+        .mutation(async ({ ctx, input }) => {
+          await enforceDistributedRateLimit(ctx, {
+            scope: "assistant:cancel",
+            identity: ctx.user.id,
+            limit: 20,
+            windowMs: 5 * 60_000,
+            message: "Muitas tentativas. Espere um instante.",
+          });
+          return cancelAssistantTurn({ user: ctx.user, token: input.token });
+        }),
+    }),
     voice: router({
       interpret: publicProcedure
         .input(
@@ -1331,9 +2291,14 @@ export const appRouter = router({
             message:
               "Limite de comandos de voz atingido. Tente novamente em alguns minutos.",
           });
+          const settings = await db.getPlatformSettings().catch(() => null);
           return withConcurrencyLimit("voice:interpret", 4, () =>
             withTimeout(
-              interpretVoiceCommand(input.mode, input.command),
+              interpretVoiceCommand(
+                input.mode,
+                input.command,
+                settings?.textModel,
+              ),
               15_000,
               "O assistente demorou para responder. Tente novamente.",
             ),
@@ -1386,14 +2351,25 @@ export const appRouter = router({
             input.mimeType,
           );
           const signedUrl = await storageGetSignedUrl(upload.key);
+          const settings = await db.getPlatformSettings().catch(() => null);
           const result = await withConcurrencyLimit("voice:transcribe", 2, () =>
             withTimeout(
-              transcribeAudio({ audioUrl: signedUrl, language: "pt" }),
+              transcribeAudio({
+                audioUrl: signedUrl,
+                language: "pt",
+                model: settings?.speechModel,
+              }),
               45_000,
               "A transcrição demorou para responder. Tente novamente.",
             ),
           );
-          if ("error" in result) throw new Error(result.error);
+          if ("error" in result) {
+            throw new Error(
+              result.error.includes("ainda não está disponível")
+                ? result.error
+                : "Não consegui ouvir o áudio. Digite o pedido ou use um atalho.",
+            );
+          }
           return { text: result.text, language: result.language };
         }),
     }),

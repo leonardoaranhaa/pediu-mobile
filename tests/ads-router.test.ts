@@ -31,6 +31,27 @@ const store = {
   latitude: null,
   longitude: null,
   isOpen: 1,
+  kind: "restaurant" as const,
+  flashEnabled: 0,
+  flashEtaMaxMinutes: 30,
+  flashFeeOverride: null,
+  openingHours: null,
+  legalName: null,
+  taxId: null,
+  taxIdKind: null,
+  fiscalAddress: null,
+  storefrontAddress: null,
+  responsibleName: null,
+  responsibleTaxId: null,
+  responsiblePhone: null,
+  courierMode: "pediu" as const,
+  minOrder: "0.00",
+  prepMinutes: 20,
+  logoData: null,
+  stateRegistration: null,
+  cityRegistration: null,
+  taxRegime: null,
+  cnae: null,
   createdAt: new Date(),
 };
 
@@ -41,10 +62,13 @@ const product = {
   category: "Doces",
   description: "Bolo caseiro com cobertura de chocolate",
   price: "18.00",
+  saleUnit: "unit" as const,
+  packSize: null,
   available: 1,
   inventoryTracked: 0,
   stockQuantity: 0,
   reservedQuantity: 0,
+  imageData: null,
   createdAt: new Date(),
 };
 
@@ -59,6 +83,8 @@ const ad = {
   offerLabel: "10% off no primeiro pedido",
   visualPrompt: "Fotografia comercial de bolo de cenoura caseiro",
   imageKey: null,
+  imageData: null,
+  moderationNote: null,
   model: "test",
   generationCost: 1,
   createdAt: new Date(),
@@ -78,13 +104,26 @@ describe("Pediu ad studio", () => {
   it("generates a creative only for the authenticated store owner", async () => {
     vi.spyOn(db, "getStoreForOwner").mockResolvedValue(store);
     vi.spyOn(db, "getProductForStore").mockResolvedValue(product);
-    vi.spyOn(db, "createGeneratedAdWithCredit").mockResolvedValue(ad);
+    vi.spyOn(db, "getPlatformSettings").mockResolvedValue({
+      id: 1,
+      textModel: "gpt-5-mini",
+      imageModel: "gpt-image-2",
+      imageQuality: "medium",
+      speechModel: "whisper-1",
+      creditPrice: "1.00",
+      dailyCap: 40,
+      updatedAt: new Date(),
+    });
+    vi.spyOn(db, "countRecentGeneratedAds").mockResolvedValue(0);
+    vi.spyOn(db, "debitAdCredit").mockResolvedValue();
+    vi.spyOn(db, "saveGeneratedAd").mockResolvedValue(ad);
     vi.mocked(generateAdCreative).mockResolvedValue({
       headline: ad.headline,
       description: ad.description,
       cta: ad.cta,
       visualPrompt: ad.visualPrompt,
       imageKey: null,
+      imageData: null,
       model: ad.model ?? "test",
       offerLabel: ad.offerLabel,
     });
@@ -104,8 +143,14 @@ describe("Pediu ad studio", () => {
         productDescription: product.description,
         tone: "caseiro",
       }),
+      expect.objectContaining({
+        textModel: "gpt-5-mini",
+        imageModel: "gpt-image-2",
+        imageQuality: "medium",
+      }),
     );
-    expect(db.createGeneratedAdWithCredit).toHaveBeenCalledWith(
+    expect(db.debitAdCredit).toHaveBeenCalledWith(store.id, 1);
+    expect(db.saveGeneratedAd).toHaveBeenCalledWith(
       expect.objectContaining({
         storeId: store.id,
         productId: product.id,
@@ -128,6 +173,7 @@ describe("Pediu ad studio", () => {
   it("publishes and archives only the authenticated owner's ad", async () => {
     const published = { ...ad, status: "published" as const };
     vi.spyOn(db, "getStoreForOwner").mockResolvedValue(store);
+    vi.spyOn(db, "getGeneratedAdForStore").mockResolvedValue(ad);
     const publish = vi
       .spyOn(db, "publishGeneratedAd")
       .mockResolvedValue(published);

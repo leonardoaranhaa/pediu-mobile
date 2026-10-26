@@ -1,4 +1,4 @@
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, Image, Text, View } from "react-native";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
 import {
@@ -51,8 +51,7 @@ export default function AdminCouriersPage() {
       <Card>
         <Text style={s.sectionTitle}>Cadastros para revisão</Text>
         <Text style={s.muted}>
-          A aprovação libera o perfil para ficar disponível e receber ofertas.
-          Nenhum documento sensível é exibido neste painel.
+          A aprovação libera o motoboy para receber corridas perto das lojas. Confira a CNH, o veículo e a foto antes de aprovar.
         </Text>
         {couriers.isLoading ? <ActivityIndicator color={PEDIU.coral} /> : null}
         {!couriers.isLoading && !couriers.data?.length ? (
@@ -70,8 +69,8 @@ export default function AdminCouriersPage() {
           >
             <Row
               icon="two-wheeler"
-              title={item.user.name ?? `Conta #${item.profile.userId}`}
-              subtitle={`#${item.profile.userId} · ${vehicleLabels[item.profile.vehicleType]} · ${statusLabels[item.profile.status]}`}
+              title={item.user.name ?? "Entregador"}
+              subtitle={`${vehicleLabels[item.profile.vehicleType]}${item.profile.vehiclePlate ? ` · ${item.profile.vehiclePlate}` : ""} · CNH ${item.profile.documentNumber ?? "não enviada"} · ${statusLabels[item.profile.status]}`}
               right={
                 <Text
                   style={{
@@ -87,6 +86,14 @@ export default function AdminCouriersPage() {
                 </Text>
               }
             />
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              {[item.profile.documentPhoto, item.profile.vehiclePhoto, item.profile.selfiePhoto]
+                .filter((photo): photo is string => Boolean(photo))
+                .map((photo, index) => (
+                  <Image key={`${item.profile.id}-${index}`} source={{ uri: photo }} style={{ width: 72, height: 72, borderRadius: 12 }} />
+                ))}
+            </View>
+            {!item.profile.documentPhoto ? <Text style={s.muted}>Documentos ainda não enviados.</Text> : null}
             {item.profile.status === "pending" ? (
               <View style={{ flexDirection: "row", gap: 8 }}>
                 <OutlineButton
@@ -142,8 +149,7 @@ export default function AdminCouriersPage() {
         ) : null}
       </Card>
       <Text style={s.muted}>
-        A aprovação é uma decisão operacional da plataforma. A configuração de
-        PSP, cobrança e repasse permanece pendente até a abertura do CNPJ.
+        A aprovação é uma decisão da equipe do Pediu. Cobrança automática e repasse ainda dependem da abertura do CNPJ.
       </Text>
     </Page>
   );

@@ -6,16 +6,14 @@ import {
 
 const baseEnv = {
   NODE_ENV: "test",
-  VITE_APP_ID: "pediu-test",
   JWT_SECRET: "secret-value",
-  DATABASE_URL: "mysql://user:password@localhost:3306/pediu_test",
+  DATABASE_URL: "postgresql://user:password@localhost:5432/pediu_test",
   ALLOWED_ORIGINS: "http://localhost:8081",
   PIX_PROVIDER: "mercado_pago",
   MERCADO_PAGO_ACCESS_TOKEN: "mp-access-secret",
   MERCADO_PAGO_NOTIFICATION_URL:
     "https://pediu.example.test/api/webhooks/payments",
   MERCADO_PAGO_WEBHOOK_SECRET: "payment-secret",
-  OAUTH_SERVER_URL: "https://oauth.example.test",
   EMAIL_WEBHOOK_URL: "https://email.example.test/webhook",
   EMAIL_VERIFICATION_BASE_URL: "https://pediu.example.test/verify-email",
   EMAIL_WEBHOOK_SECRET: "email-secret",
@@ -32,7 +30,7 @@ describe("go-live readiness", () => {
     const runtime = checks.find((check) => check.id === "runtime-config");
 
     expect(runtime?.status).toBe("BLOCKED");
-    expect(runtime?.detail).toContain("VITE_APP_ID");
+    expect(runtime?.detail).toContain("DATABASE_URL");
     expect(runtime?.detail).not.toContain("do-not-print");
   });
 
@@ -55,7 +53,7 @@ describe("go-live readiness", () => {
         "api-health",
         "pix",
         "payment-webhook",
-        "oauth",
+        "password-auth",
         "email",
         "storage",
       ]),

@@ -7,6 +7,8 @@ export type ServiceabilityStore = {
   latitude?: string | number | null;
   longitude?: string | number | null;
   deliveryFee?: string | number | null;
+  feeMode?: "fixed" | "distance" | null;
+  feePerKm?: string | number | null;
 };
 
 export type ServiceabilityAddress = {
@@ -131,9 +133,15 @@ export function calculateServiceability(
   );
   const radiusKm = numeric(store.deliveryRadiusKm) ?? 10;
   const serviceable = distanceKm <= radiusKm;
+  const fixedFee = numeric(store.deliveryFee) ?? 0;
+  const perKm = numeric(store.feePerKm) ?? 0;
+  const pricedFee =
+    store.feeMode === "distance"
+      ? (Math.round((fixedFee + Math.max(0, perKm) * distanceKm + Number.EPSILON) * 100) / 100).toFixed(2)
+      : deliveryFee;
   return {
     mode,
-    deliveryFee,
+    deliveryFee: pricedFee,
     distanceKm: distanceKm.toFixed(2),
     serviceable,
     reason: serviceable ? "ok" : "outside_delivery_radius",
@@ -149,7 +157,7 @@ export function serviceabilityMessage(result: ServiceabilityResult): string {
     case "store_location_missing":
       return "A loja ainda não configurou sua área de entrega.";
     case "address_location_missing":
-      return "Este endereço precisa de localização para calcular a cobertura.";
+      return "Este endereço ainda não tem um ponto no mapa. Abra Meus endereços, salve de novo ou use o GPS.";
     case "outside_delivery_radius":
       return `O endereço está fora da área de entrega (${result.distanceKm} km).`;
     default:

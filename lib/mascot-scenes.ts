@@ -43,7 +43,7 @@ export const AMBIENT_SCENES: MascotScene[] = [
   {
     id: "hungry",
     reaction: "hungry",
-    gesture: "lie",
+    gesture: "stand",
     line: "Aí que fomeee… pede alguma coisinha pra gente comer. Snif, snif!",
     duration: 10_000,
   },
@@ -112,7 +112,7 @@ export function sceneForReaction(reaction: MascotReaction): MascotScene {
       id: "full",
       reaction,
       gesture: "belly",
-      line: "Agora sim… vou tirar um cochilo de barriga cheia.",
+      line: "Pedido confirmado. Vou acompanhar daqui até a entrega chegar.",
       duration: 10_000,
     };
   if (reaction === "avoid")

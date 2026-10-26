@@ -15,9 +15,12 @@ const customer = {
 describe("Pediu seller onboarding", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("allows an authenticated regular account to create its first store", async () => {
+  it("allows a lojista account to create its first store", async () => {
+    vi.spyOn(db, "listAccountRoles").mockResolvedValue(["merchant"]);
     const createStore = vi.spyOn(db, "createStore").mockResolvedValue(77);
-    const caller = appRouter.createCaller({ user: customer } as any);
+    const caller = appRouter.createCaller({
+      user: { ...customer, role: "merchant" },
+    } as any);
 
     const storeId = await caller.pediu.stores.create({
       name: "Mercado do Bairro",
@@ -40,7 +43,22 @@ describe("Pediu seller onboarding", () => {
       deliveryRadiusKm: "10.00",
       latitude: undefined,
       longitude: undefined,
+      kind: "restaurant",
+      flashEnabled: 0,
+      flashEtaMaxMinutes: 30,
+      flashFeeOverride: undefined,
     });
+  });
+
+  it("refuses a customer account that tries to open a store", async () => {
+    vi.spyOn(db, "listAccountRoles").mockResolvedValue(["customer"]);
+    const caller = appRouter.createCaller({ user: customer } as any);
+    await expect(
+      caller.pediu.stores.create({
+        name: "Mercado do Bairro",
+        deliveryFee: "0.00",
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
   it("updates only the authenticated owner's store settings", async () => {
@@ -58,6 +76,27 @@ describe("Pediu seller onboarding", () => {
       latitude: null,
       longitude: null,
       isOpen: 0,
+      kind: "restaurant",
+      flashEnabled: 0,
+      flashEtaMaxMinutes: 30,
+      flashFeeOverride: null,
+      openingHours: null,
+      legalName: null,
+      taxId: null,
+      taxIdKind: null,
+      fiscalAddress: null,
+      storefrontAddress: null,
+      responsibleName: null,
+      responsibleTaxId: null,
+      responsiblePhone: null,
+      courierMode: "pediu",
+      minOrder: "0.00",
+      prepMinutes: 20,
+      logoData: null,
+      stateRegistration: null,
+      cityRegistration: null,
+      taxRegime: null,
+      cnae: null,
       createdAt: new Date(),
     });
     const caller = appRouter.createCaller({
