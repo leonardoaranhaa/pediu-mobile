@@ -222,6 +222,98 @@ describe("assistant tools by role", () => {
     expect(toolText).toContain("Pizza");
     expect(toolText).toContain("Forno");
     expect(toolText).not.toMatch(/storeId|productId|\brefs\b/);
+    const system = String(followUp?.messages.find((message) => message.role === "system")?.content);
+    expect(system).toContain("Coloquei 1 pizza na sacola");
+  });
+
+  it("retries once when the model returns no text and then uses that answer", async () => {
+    vi.spyOn(db, "listAccountRoles").mockResolvedValue(["customer"]);
+    vi.spyOn(db, "getPlatformSettings").mockResolvedValue({ textModel: "gpt-5-mini" } as never);
+    vi.spyOn(db, "searchAvailableProducts").mockResolvedValue({
+      items: [
+        {
+          id: 4,
+          name: "Pizza",
+          storeName: "Forno",
+          category: "Salgados",
+          price: "30.00",
+          available: 1,
+          storeOpen: true,
+          storeId: 2,
+        },
+      ],
+      hasMore: false,
+      nextCursor: null,
+    } as never);
+    vi.mocked(openAiToolStep)
+      .mockResolvedValueOnce({
+        content: null,
+        toolCalls: [{ id: "call-1", name: "search_catalog", arguments: JSON.stringify({ query: "pizza" }) }],
+      })
+      .mockResolvedValueOnce({ content: "   ", toolCalls: [] })
+      .mockResolvedValueOnce({ content: "Achei pizza no Forno.", toolCalls: [] });
+
+    const turn = await runAssistantChat({
+      user: customer,
+      messages: [{ role: "user", content: "quero pizza" }],
+      cart: [],
+    });
+    expect(openAiToolStep).toHaveBeenCalledTimes(3);
+    expect(turn.reply).toBe("Achei pizza no Forno.");
+    expect(turn.cards[0]?.title).toBe("Pizza");
+  });
+
+  it("uses the tool sentence when the model stays silent", async () => {
+    vi.spyOn(db, "listAccountRoles").mockResolvedValue(["customer"]);
+    vi.spyOn(db, "getPlatformSettings").mockResolvedValue({ textModel: "gpt-5-mini" } as never);
+    vi.spyOn(db, "searchAvailableProducts").mockResolvedValue({
+      items: [
+        {
+          id: 4,
+          name: "Pizza",
+          storeName: "Forno",
+          category: "Salgados",
+          price: "30.00",
+          available: 1,
+          storeOpen: true,
+          storeId: 2,
+        },
+      ],
+      hasMore: false,
+      nextCursor: null,
+    } as never);
+    vi.mocked(openAiToolStep)
+      .mockResolvedValueOnce({
+        content: null,
+        toolCalls: [{ id: "call-1", name: "search_catalog", arguments: JSON.stringify({ query: "pizza" }) }],
+      })
+      .mockResolvedValueOnce({ content: "", toolCalls: [] })
+      .mockResolvedValueOnce({ content: null, toolCalls: [] });
+
+    const turn = await runAssistantChat({
+      user: customer,
+      messages: [{ role: "user", content: "quero pizza" }],
+      cart: [],
+    });
+    expect(openAiToolStep).toHaveBeenCalledTimes(3);
+    expect(turn.reply).toBe("Encontrei Pizza em Forno.");
+    expect(turn.reply).not.toMatch(/Pode repetir/);
+    expect(turn.cards[0]?.title).toBe("Pizza");
+  });
+
+  it("asks the person to repeat only when there is no tool result", async () => {
+    vi.spyOn(db, "listAccountRoles").mockResolvedValue(["customer"]);
+    vi.spyOn(db, "getPlatformSettings").mockResolvedValue({ textModel: "gpt-5-mini" } as never);
+    vi.mocked(openAiToolStep)
+      .mockResolvedValueOnce({ content: "", toolCalls: [] })
+      .mockResolvedValueOnce({ content: "  ", toolCalls: [] });
+    const turn = await runAssistantChat({
+      user: customer,
+      messages: [{ role: "user", content: "oi" }],
+      cart: [],
+    });
+    expect(openAiToolStep).toHaveBeenCalledTimes(2);
+    expect(turn.reply).toBe("Pode repetir de outro jeito?");
   });
 
   it("hides technical ids from the reply the person sees", async () => {

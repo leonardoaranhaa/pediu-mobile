@@ -40,6 +40,7 @@ function systemPrompt(audience: AssistantAudience, cart: AssistantCartLine[]) {
     "Se pedirem lojas ou lojas abertas, use search_stores. O resultado são lojas, não produtos.",
     "Se pedirem para colocar algo na sacola sem dizer o item, chame view_menu ou add_to_cart com o nome da loja e pergunte o nome do item.",
     "Se faltar um detalhe, faça uma pergunta curta.",
+    "Quando a ferramenta já fez a ação, fale no passado, como fato. Exemplo: Coloquei 1 pizza na sacola. Não pergunte Confirmo? para algo que já foi feito.",
     "Nunca peça número de cartão, validade ou código de segurança.",
     "Quando uma ferramenta disser que está aguardando confirmação, avise a pessoa para tocar em Confirmar. Não diga que a ação já foi feita e não confirme no lugar dela.",
     "Se a pessoa escrever que confirma, peça para tocar no botão. Não chame a ferramenta de novo.",
@@ -156,11 +157,18 @@ export async function runAssistantChat(input: {
     res: input.res,
   };
   const turn = blankTurn("");
+  let spoken = "";
   for (let step = 0; step < 6; step += 1) {
-    const response = await openAiToolStep({ model, messages, tools });
-    const calls = response.toolCalls ?? [];
+    let response = await openAiToolStep({ model, messages, tools });
+    let calls = response.toolCalls ?? [];
+    let content = response.content?.trim() ?? "";
+    if (!calls.length && !content) {
+      response = await openAiToolStep({ model, messages, tools });
+      calls = response.toolCalls ?? [];
+      content = response.content?.trim() ?? "";
+    }
     if (!calls.length) {
-      turn.reply = response.content?.trim() || "Pode repetir de outro jeito?";
+      turn.reply = content || spoken || "Pode repetir de outro jeito?";
       return presentTurn(turn);
     }
     messages.push({
@@ -183,6 +191,7 @@ export async function runAssistantChat(input: {
       if (effect.cards.length) turn.cards = effect.cards;
       if (effect.clientActions.length) turn.clientActions.push(...effect.clientActions);
       if (effect.navigation) turn.navigation = effect.navigation;
+      if (effect.text.trim()) spoken = effect.text.trim();
       let toolText = effect.text;
       if (effect.pending && input.user) {
         const saved = await saveAssistantConfirmation({
@@ -205,7 +214,7 @@ export async function runAssistantChat(input: {
       }
     }
   }
-  turn.reply = turn.reply || "Pode repetir em uma frase mais curta?";
+  turn.reply = spoken || "Pode repetir em uma frase mais curta?";
   return presentTurn(turn);
 }
 

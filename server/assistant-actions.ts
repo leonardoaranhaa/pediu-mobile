@@ -450,7 +450,7 @@ async function addToCart(args: Record<string, unknown>, ctx: AssistantContext): 
     })),
   };
   const label = chosen.length ? ` (${chosen.map((choice) => choice.name).join(", ")})` : "";
-  return empty(`Vou colocar ${quantity} ${product.name}${label} na sacola.`, {
+  return empty(`Coloquei ${quantity} ${product.name}${label} na sacola.`, {
     clientActions: [{ type: "add", product: cartProduct, quantity }],
     navigation: { screen: "cart", label: "Ver sacola" },
   });

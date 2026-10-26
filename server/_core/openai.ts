@@ -74,6 +74,21 @@ export type OpenAiToolCall = {
   arguments: string;
 };
 
+export const ASSISTANT_MAX_COMPLETION_TOKENS = 2000;
+export const ASSISTANT_REASONING_EFFORT = "low";
+
+async function postToolStep(body: Record<string, unknown>) {
+  return fetch(`${OPENAI_API}/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${openAiKey()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(12_000),
+  });
+}
+
 export async function openAiToolStep(input: {
   model: string;
   messages: Array<Record<string, unknown>>;
@@ -83,21 +98,24 @@ export async function openAiToolStep(input: {
   }>;
 }) {
   if (!openAiConfigured()) throw new Error(AI_UNAVAILABLE);
-  const response = await fetch(`${OPENAI_API}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${openAiKey()}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: input.model,
-      messages: input.messages,
-      tools: input.tools,
-      tool_choice: "auto",
-      max_completion_tokens: 700,
-    }),
-    signal: AbortSignal.timeout(12_000),
-  });
+  const body: Record<string, unknown> = {
+    model: input.model,
+    messages: input.messages,
+    tools: input.tools,
+    tool_choice: "auto",
+    max_completion_tokens: ASSISTANT_MAX_COMPLETION_TOKENS,
+    reasoning_effort: ASSISTANT_REASONING_EFFORT,
+  };
+  let response = await postToolStep(body);
+  if (!response.ok && response.status === 400) {
+    const detail = await response.text();
+    if (/reasoning/i.test(detail)) {
+      delete body.reasoning_effort;
+      response = await postToolStep(body);
+    } else {
+      throw new Error("Não consegui falar com a inteligência artificial agora. Tente de novo.");
+    }
+  }
   if (!response.ok) {
     throw new Error("Não consegui falar com a inteligência artificial agora. Tente de novo.");
   }
