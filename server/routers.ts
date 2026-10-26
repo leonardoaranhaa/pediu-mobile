@@ -2196,6 +2196,8 @@ export const appRouter = router({
                   quantity: z.number().int().positive().max(50),
                   optionIds: z.array(z.number().int().positive()).max(12).optional(),
                   note: z.string().trim().max(500).optional(),
+                  name: z.string().trim().max(80).optional(),
+                  storeName: z.string().trim().max(80).optional(),
                 }),
               )
               .max(30)

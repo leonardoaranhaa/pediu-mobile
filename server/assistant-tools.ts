@@ -20,10 +20,22 @@ const positive = { type: "integer", minimum: 1 };
 
 export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
   {
+    name: "search_stores",
+    audiences: ["guest", "customer"],
+    confirm: false,
+    description:
+      "Lista lojas pelo nome. Use quando a pessoa pedir lojas ou lojas abertas. Cada resultado é uma loja, não um produto. openNow true mostra só as abertas.",
+    parameters: object({
+      query: text,
+      openNow: { type: "boolean" },
+    }),
+  },
+  {
     name: "search_catalog",
     audiences: ["guest", "customer"],
     confirm: false,
-    description: "Busca lojas e produtos pelo nome ou categoria. Use openNow quando a pessoa quiser só o que está aberto.",
+    description:
+      "Busca produtos pelo nome ou categoria. Não use para listar lojas. openNow deixa só o que está aberto.",
     parameters: object({
       query: text,
       category: text,
@@ -34,26 +46,38 @@ export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
     name: "view_menu",
     audiences: ["guest", "customer"],
     confirm: false,
-    description: "Mostra o cardápio de uma loja já encontrada na busca. Use o storeId devolvido pela busca.",
-    parameters: object({ storeId: positive }, ["storeId"]),
+    description:
+      "Mostra o cardápio de uma loja pelo nome. Se a pessoa não disser o item, use esta ferramenta e pergunte o nome do produto. Não peça código.",
+    parameters: object({
+      storeName: text,
+      storeId: positive,
+    }),
   },
   {
     name: "add_to_cart",
     audiences: ["customer"],
     confirm: false,
-    description: "Coloca um produto na sacola, com tamanho ou opção quando existir. A quantidade é um número inteiro.",
+    description:
+      "Coloca um produto na sacola pelo nome. Se a pessoa não disser qual item, chame com o nome da loja para mostrar o cardápio e pergunte o nome. Não peça código.",
     parameters: object({
-      productId: positive,
+      productName: text,
+      storeName: text,
       quantity: positive,
       optionNames: { type: "array", items: text },
-    }, ["productId", "quantity"]),
+      productId: positive,
+      storeId: positive,
+    }),
   },
   {
     name: "remove_from_cart",
     audiences: ["customer"],
     confirm: false,
-    description: "Tira um item da sacola atual.",
-    parameters: object({ productId: positive, optionIds: { type: "array", items: positive } }, ["productId"]),
+    description: "Tira um item da sacola pelo nome do produto.",
+    parameters: object({
+      productName: text,
+      productId: positive,
+      optionIds: { type: "array", items: positive },
+    }),
   },
   {
     name: "view_cart",

@@ -161,8 +161,10 @@ async function runTool(
   switch (name) {
     case "search_catalog":
       return searchCatalog(args);
+    case "search_stores":
+      return searchStores(args);
     case "view_menu":
-      return viewMenu(positive(args.storeId));
+      return viewMenu(args);
     case "add_to_cart":
       return addToCart(args, ctx);
     case "remove_from_cart":
@@ -237,10 +239,10 @@ async function searchCatalog(args: Record<string, unknown>): Promise<ToolEffect>
       subtitle: `${item.storeName} · ${item.category}`,
       amount: money(item.price),
       badge: item.storeOpen ? "Aberta" : "Fechada",
-    });
-    refs.push({
       productId: item.id,
       storeId: item.storeId,
+    });
+    refs.push({
       name: item.name,
       storeName: item.storeName,
       open: item.storeOpen,
@@ -256,7 +258,82 @@ async function searchCatalog(args: Record<string, unknown>): Promise<ToolEffect>
   );
 }
 
-async function viewMenu(storeId: number | undefined): Promise<ToolEffect> {
+const STORE_KIND: Record<string, string> = {
+  restaurant: "Restaurante",
+  market: "Mercado",
+  service: "Serviço",
+};
+
+async function findStores(query: string | undefined, openNow: boolean) {
+  const found = await db.searchAvailableProducts({
+    query: query || undefined,
+    limit: 40,
+  });
+  const stores = new Map<number, { storeId: number; storeName: string; open: boolean; kind?: string }>();
+  for (const item of found.items) {
+    if (item.available === 0) continue;
+    if (openNow && !item.storeOpen) continue;
+    const current = stores.get(item.storeId);
+    if (!current) {
+      stores.set(item.storeId, {
+        storeId: item.storeId,
+        storeName: item.storeName,
+        open: item.storeOpen,
+        kind: item.storeKind,
+      });
+    } else if (item.storeOpen) {
+      current.open = true;
+    }
+    if (stores.size >= 8) break;
+  }
+  return [...stores.values()];
+}
+
+function storeCards(stores: Array<{ storeId: number; storeName: string; open: boolean; kind?: string }>) {
+  return {
+    cards: stores.map((store) => ({
+      title: store.storeName,
+      subtitle: STORE_KIND[store.kind ?? ""] ?? "Loja",
+      badge: store.open ? "Aberta" : "Fechada",
+      storeId: store.storeId,
+    })),
+    refs: stores.map((store) => ({
+      name: store.storeName,
+      storeName: store.storeName,
+      open: store.open,
+    })),
+  };
+}
+
+async function searchStores(args: Record<string, unknown>): Promise<ToolEffect> {
+  const query = typeof args.query === "string" ? args.query.trim() : "";
+  const openNow = args.openNow === true;
+  const stores = await findStores(query, openNow);
+  if (!stores.length) {
+    return empty(openNow ? "Não há lojas abertas agora." : "Não encontrei essa loja.");
+  }
+  const shown = storeCards(stores);
+  return empty(
+    stores.length === 1
+      ? `${stores[0].storeName} está ${stores[0].open ? "aberta" : "fechada"}.`
+      : `Encontrei ${stores.length} lojas.`,
+    shown,
+  );
+}
+
+async function viewMenu(args: Record<string, unknown>): Promise<ToolEffect> {
+  const named = typeof args.storeName === "string" ? args.storeName.trim() : "";
+  let storeId = positive(args.storeId);
+  if (!storeId && /^\d+$/.test(named)) storeId = Number(named);
+  if (!storeId && named) {
+    const matches = (await findStores(named, false)).filter((store) =>
+      store.storeName.toLowerCase().includes(named.toLowerCase()),
+    );
+    if (matches.length > 1) {
+      return empty("Encontrei mais de uma loja. Qual delas?", storeCards(matches));
+    }
+    storeId = matches[0]?.storeId;
+  }
   if (!storeId) return empty("Qual loja você quer ver?");
   const store = await db.getStoreById(storeId);
   if (!store || !(await db.storeListedForCustomers(store))) {
@@ -271,25 +348,61 @@ async function viewMenu(storeId: number | undefined): Promise<ToolEffect> {
     subtitle: product.category,
     amount: money(product.price),
     badge: product.available === 0 ? "Esgotado" : undefined,
+    productId: product.id,
+    storeId: store.id,
   }));
   if (!cards.length) return empty(`${store.name} ainda não tem produtos.`);
-  return empty(`Cardápio de ${store.name}.`, {
+  return empty(`Cardápio de ${store.name}. Qual item você quer? Diga o nome.`, {
     cards,
     refs: products.map((product, index) => ({
-      productId: product.id,
-      storeId: store.id,
       name: product.name,
+      storeName: store.name,
       available: product.available !== 0,
       options: optionSets[index].flatMap((group) => group.choices.map((choice) => choice.name)),
     })),
   });
 }
 
+function genericItem(name: string) {
+  return /^(item|itens|produto|produtos|coisa|alguma coisa|um item|uma coisa)$/i.test(name);
+}
+
 async function addToCart(args: Record<string, unknown>, ctx: AssistantContext): Promise<ToolEffect> {
   if (!ctx.user) return empty("Entre na sua conta para montar a sacola.");
-  const productId = positive(args.productId);
   const quantity = positive(args.quantity);
-  if (!productId || !quantity || quantity > 50) return empty("Diga qual produto e a quantidade.");
+  const productName = typeof args.productName === "string" ? args.productName.trim() : "";
+  let productId = positive(args.productId);
+  if (!productId && (!productName || genericItem(productName))) {
+    return viewMenu(args);
+  }
+  if (!quantity || quantity > 50) return empty("Quantos você quer?");
+  if (!productId && productName) {
+    const found = await db.searchAvailableProducts({ query: productName, limit: 20 });
+    const needle = productName.toLowerCase();
+    let matches = found.items.filter(
+      (item) => item.available !== 0 && item.name.toLowerCase().includes(needle),
+    );
+    const storeName = typeof args.storeName === "string" ? args.storeName.trim() : "";
+    if (storeName && !/^\d+$/.test(storeName)) {
+      matches = matches.filter((item) => item.storeName.toLowerCase().includes(storeName.toLowerCase()));
+    }
+    const storeId = positive(args.storeId) ?? (/^\d+$/.test(storeName) ? Number(storeName) : undefined);
+    if (storeId) matches = matches.filter((item) => item.storeId === storeId);
+    if (matches.length > 1) {
+      return empty("Encontrei mais de um. Qual deles?", {
+        cards: matches.slice(0, 8).map((item) => ({
+          title: item.name,
+          subtitle: item.storeName,
+          amount: money(item.price),
+          productId: item.id,
+          storeId: item.storeId,
+        })),
+        refs: matches.slice(0, 8).map((item) => ({ name: item.name, storeName: item.storeName })),
+      });
+    }
+    productId = matches[0]?.id;
+  }
+  if (!productId) return empty("Não encontrei esse produto. Quer ver o cardápio?");
   const product = await db.getProductById(productId);
   if (!product || product.available === 0) return empty("Esse produto não está disponível.");
   const store = await db.getStoreById(product.storeId);
@@ -344,7 +457,10 @@ async function addToCart(args: Record<string, unknown>, ctx: AssistantContext): 
 }
 
 function removeFromCart(args: Record<string, unknown>, ctx: AssistantContext): ToolEffect {
-  const productId = positive(args.productId);
+  const named = typeof args.productName === "string" ? args.productName.trim().toLowerCase() : "";
+  const productId =
+    positive(args.productId) ??
+    ctx.cart.find((item) => named && item.name?.toLowerCase().includes(named))?.productId;
   if (!productId) return empty("Qual item você quer tirar?");
   const optionIds = Array.isArray(args.optionIds)
     ? args.optionIds.map(positive).filter((item): item is number => Boolean(item))

@@ -5,6 +5,8 @@ export type AssistantCartLine = {
   quantity: number;
   optionIds?: number[];
   note?: string;
+  name?: string;
+  storeName?: string;
 };
 
 export type AssistantCartOption = {
@@ -41,6 +43,8 @@ export type AssistantCard = {
   subtitle?: string;
   amount?: string;
   badge?: string;
+  storeId?: number;
+  productId?: number;
 };
 
 export type AssistantNavigation = {
@@ -64,3 +68,26 @@ export type AssistantTurn = {
 
 export const ASSISTANT_UNAVAILABLE =
   "O assistente não está disponível agora. Você pode continuar pelo aplicativo.";
+
+const TECHNICAL_TOKEN = /\b(?:storeId|productId|offerId|orderId|refs)\b/i;
+
+export function stripAssistantTokens(text: string): string {
+  return text
+    .replace(/\s*\([^)]*\b(?:storeId|productId|offerId|orderId|refs)\b[^)]*\)/gi, "")
+    .replace(/\brefs(?:\.[A-Za-z0-9_]+)+\s*[:=]\s*["']?\d+["']?/gi, "")
+    .replace(/\b(?:storeId|productId|offerId|orderId)\s*[:=]\s*["']?\d+["']?/gi, "")
+    .replace(/\b(?:storeId|productId|offerId|orderId|refs)\b/gi, "")
+    .replace(/\(\s*\)/g, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,.;:!?])/g, "$1")
+    .trim();
+}
+
+export function assistantTextForUser(text: string): string {
+  const clean = stripAssistantTokens(text);
+  if (!clean || TECHNICAL_TOKEN.test(clean)) return "Pode dizer o nome da loja ou do produto?";
+  if (TECHNICAL_TOKEN.test(text) && /\b(?:diga|qual|informe|número|numero)\b/i.test(text)) {
+    return "Qual o nome do item?";
+  }
+  return clean;
+}

@@ -98,6 +98,8 @@ export function AssistantChat({
         quantity: item.quantity,
         optionIds: item.options?.map((option) => option.id),
         note: item.note,
+        name: item.name,
+        storeName: item.storeName,
       })),
     [cart.items],
   );
@@ -284,8 +286,8 @@ export function AssistantChat({
               <Text style={{ color: bubble.role === "user" ? "#FFFFFF" : theme.ink, fontSize: 16, lineHeight: 22 }}>
                 {bubble.text}
               </Text>
-              {bubble.cards?.map((card) => (
-                <View key={`${bubble.id}-${card.title}-${card.amount ?? ""}`} style={[styles.card, { borderColor: theme.line }]}>
+              {bubble.cards?.map((card, index) => (
+                <View key={`${bubble.id}-${card.productId ?? card.storeId ?? index}`} style={[styles.card, { borderColor: theme.line }]}>
                   <Text style={[styles.cardTitle, { color: theme.ink }]}>{card.title}</Text>
                   {card.subtitle ? <Text style={{ color: theme.muted }}>{card.subtitle}</Text> : null}
                   <View style={styles.cardMeta}>

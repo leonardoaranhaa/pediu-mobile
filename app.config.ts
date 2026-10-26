@@ -42,7 +42,7 @@ const config: ExpoConfig = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: bundleId,
-    versionCode: 10,
+    versionCode: 11,
     permissions: ["POST_NOTIFICATIONS"],
     intentFilters: [
       {

@@ -105,14 +105,14 @@ describe("guest browsing and role signup", () => {
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
-  it("ships Android version code 10 from the app config", () => {
+  it("ships Android version code 11 and lets EAS own the remote counter", () => {
     const config = readFileSync("app.config.ts", "utf8");
     const eas = JSON.parse(readFileSync("eas.json", "utf8")) as {
       cli: { appVersionSource: string };
       build: { preview: { autoIncrement: boolean } };
     };
-    expect(config).toContain("versionCode: 10");
-    expect(eas.cli.appVersionSource).toBe("local");
+    expect(config).toContain("versionCode: 11");
+    expect(eas.cli.appVersionSource).toBe("remote");
     expect(eas.build.preview.autoIncrement).toBe(true);
   });
 });

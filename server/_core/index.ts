@@ -7,13 +7,7 @@ import { registerAuthRoutes } from "./auth-routes";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
-import {
-  isAllowedOrigin,
-  isUnsafeMethod,
-  isPublicPasswordAuth,
-  requestHasAllowedOrigin,
-  requestUsesBearer,
-} from "./security";
+import { isAllowedOrigin, isTrpcMutationAllowed } from "./security";
 import { registerPaymentWebhookRoutes } from "../payment-webhook";
 import { registerEmailVerificationRoutes } from "../email-verification";
 import { assertRuntimeConfig } from "./env";
@@ -142,12 +136,7 @@ async function startServer() {
   app.use(
     "/api/trpc",
     (req, res, next) => {
-      if (
-        isUnsafeMethod(req.method) &&
-        !requestUsesBearer(req) &&
-        !requestHasAllowedOrigin(req) &&
-        !isPublicPasswordAuth(req)
-      ) {
+      if (!isTrpcMutationAllowed(req)) {
         res.status(403).json({
           error: "Origin not allowed for cookie-authenticated mutation",
         });
