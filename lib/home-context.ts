@@ -52,9 +52,9 @@ export function homeContextForHour(hour: number): HomeContext {
         hour: normalized,
         period,
         greeting: "Boa madrugada",
-        subtitle: "Flash e lanches para quando a cidade desacelera.",
-        focusLabel: "Flash na madrugada",
-        focusDescription: "O que estiver aberto e elegível aparece primeiro.",
+        subtitle: "Lanches para quando a cidade desacelera.",
+        focusLabel: "Ainda aberto",
+        focusDescription: "Mostramos primeiro o que ainda está aberto.",
         priorityKinds: ["restaurant", "market", "service"],
         priorityCategories: ["Lanches", "Padaria"],
       };
@@ -65,7 +65,7 @@ export function homeContextForHour(hour: number): HomeContext {
         greeting: "Bom dia",
         subtitle: "Café, padaria e compras da casa sem sair da rotina.",
         focusLabel: "Café e mercado",
-        focusDescription: "Padarias e mercados ganham destaque nesta janela.",
+        focusDescription: "Café, padaria e mercado em destaque agora.",
         priorityKinds: ["market", "restaurant", "service"],
         priorityCategories: ["Padaria", "Cafés", "Salgados"],
       };
@@ -76,7 +76,7 @@ export function homeContextForHour(hour: number): HomeContext {
         greeting: "Bom almoço",
         subtitle: "Almoço na hora, com o mercado por perto quando precisar.",
         focusLabel: "Almoço e compras",
-        focusDescription: "Restaurantes lideram; Mercado Pediu continua à mão.",
+        focusDescription: "Restaurantes primeiro. O mercado continua fácil de achar.",
         priorityKinds: ["restaurant", "market", "service"],
         priorityCategories: ["Brasileira", "Lanches", "Saudável", "Padaria"],
       };
@@ -87,8 +87,7 @@ export function homeContextForHour(hour: number): HomeContext {
         greeting: "Boa tarde",
         subtitle: "Um lanche agora ou a compra da casa resolvem o dia.",
         focusLabel: "Lanche da tarde",
-        focusDescription:
-          "Padarias, açaí e Mercado Pediu disputam o próximo toque.",
+        focusDescription: "Lanche, padaria e mercado, no ritmo da tarde.",
         priorityKinds: ["restaurant", "market", "service"],
         priorityCategories: ["Padaria", "Salgados", "Saudável", "Cafés"],
       };
@@ -97,10 +96,9 @@ export function homeContextForHour(hour: number): HomeContext {
         hour: normalized,
         period,
         greeting: "Boa noite",
-        subtitle:
-          "Jantar sem fila, sem dúvida — e compras até onde houver oferta.",
-        focusLabel: "Jantar e Flash",
-        focusDescription: "Fast-food, restaurantes e Flash ganham ritmo agora.",
+        subtitle: "Jantar sem fila e compras enquanto a loja estiver aberta.",
+        focusLabel: "Jantar",
+        focusDescription: "Restaurantes e ofertas rápidas em destaque.",
         priorityKinds: ["restaurant", "market", "service"],
         priorityCategories: ["Lanches", "Pizza", "Japonesa", "Churrasco"],
       };
@@ -109,10 +107,9 @@ export function homeContextForHour(hour: number): HomeContext {
         hour: normalized,
         period,
         greeting: "Boa noite",
-        subtitle: "Madrugada pede Flash. A gente corre.",
-        focusLabel: "Flash da madrugada",
-        focusDescription:
-          "Veja primeiro o que ainda está aberto para entregar.",
+        subtitle: "Se ainda está aberto, aparece aqui.",
+        focusLabel: "Ainda entrega",
+        focusDescription: "Mostramos primeiro o que ainda entrega agora.",
         priorityKinds: ["restaurant", "market", "service"],
         priorityCategories: ["Lanches", "Pizza", "Padaria"],
       };

@@ -1,7 +1,10 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { Modal, Text, View } from "react-native";
+import { Modal, Platform, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { edgeModalProps } from "@/components/edge-modal";
 import { OutlineButton, PEDIU, PrimaryButton, s } from "@/components/pediu-page";
+import { bottomSafeInset } from "@/lib/screen-space";
 import {
   clearAuthIntent,
   peekAuthIntent,
@@ -23,6 +26,7 @@ export function askToJoin(input?: { action?: AccountAction; role?: SignupRole; r
 
 export function AuthPromptHost() {
   const [visible, setVisible] = useState(false);
+  const insets = useSafeAreaInsets();
   useEffect(() => {
     openPrompt = setVisible;
     return () => {
@@ -44,9 +48,25 @@ export function AuthPromptHost() {
         : "Olhar as lojas é livre. Pedir, favoritar e acompanhar pedidos pede uma conta.";
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={() => setVisible(false)}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setVisible(false)}
+      {...edgeModalProps}
+    >
       <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(17,17,17,0.45)" }}>
-        <View style={{ backgroundColor: PEDIU.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 22, gap: 12 }}>
+        <View
+          style={{
+            backgroundColor: PEDIU.white,
+            borderTopLeftRadius: 28,
+            borderTopRightRadius: 28,
+            paddingHorizontal: 22,
+            paddingTop: 22,
+            paddingBottom: bottomSafeInset(insets.bottom, Platform.OS),
+            gap: 12,
+          }}
+        >
           <Text style={{ color: PEDIU.ink, fontSize: 22, fontWeight: "900" }}>{title}</Text>
           <Text style={s.muted}>{body}</Text>
           <PrimaryButton

@@ -334,7 +334,7 @@ const styles = StyleSheet.create({
   mascotWrap: {
     alignItems: "center",
     justifyContent: "center",
-    height: 180,
+    minHeight: 168,
     marginBottom: 4,
   },
   pager: {

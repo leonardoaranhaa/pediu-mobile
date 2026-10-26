@@ -43,7 +43,7 @@ export const AMBIENT_SCENES: MascotScene[] = [
   {
     id: "hungry",
     reaction: "hungry",
-    gesture: "lie",
+    gesture: "stand",
     line: "Aí que fomeee… pede alguma coisinha pra gente comer. Snif, snif!",
     duration: 10_000,
   },

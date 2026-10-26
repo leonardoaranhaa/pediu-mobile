@@ -3,6 +3,7 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import { recordOperation } from "./observability";
 import type { TrpcContext } from "./context";
+import { publicError } from "./public-error";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
@@ -25,7 +26,7 @@ const observabilityMiddleware = t.middleware(async ({ path, next }) => {
       outcome: "error",
       code: error instanceof TRPCError ? error.code : "INTERNAL_SERVER_ERROR",
     });
-    throw error;
+    throw publicError(error);
   }
 });
 

@@ -10,11 +10,13 @@ import {
   useAudioRecorderState,
 } from "expo-audio";
 import * as FileSystem from "expo-file-system/legacy";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/hooks/use-auth";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  Alert,
   Animated,
+  BackHandler,
   Easing,
   Image,
   KeyboardAvoidingView,
@@ -40,6 +42,7 @@ import { StoreSignupForm } from "@/components/store-signup-form";
 import { StoreTour } from "@/components/store-tour";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenContainer } from "@/components/screen-container";
+import { edgeModalProps } from "@/components/edge-modal";
 import type { AccountAction, SignupRole } from "@/lib/guest-access";
 import { geocodeTypedAddress } from "@/lib/location";
 import {
@@ -47,6 +50,15 @@ import {
   scrollPaddingForFloatingBar,
   scrollPaddingForScreenEnd,
 } from "@/lib/screen-space";
+import {
+  brlInputToDecimal,
+  decimalToBrlInput,
+  decimalToKmInput,
+  kmInputToDecimal,
+  maskBrazilPhone,
+  maskBrlTyping,
+} from "@/lib/br-fields";
+import { friendlyUserMessage } from "@/lib/user-message";
 import type { MascotReaction } from "@/components/pediu-mascot";
 import { CartPeek } from "@/components/pediu/cart-peek";
 import { PediuMascot } from "@/components/pediu-mascot";
@@ -299,7 +311,7 @@ export default function HomeScreen() {
       void storeOrdersQuery.refetch();
       void customerOrdersQuery.refetch();
     },
-    onError: (error) => notify(error.message),
+    onError: (error) => notify(friendlyUserMessage(error.message)),
   });
   const clientsQuery = trpc.pediu.clients.mine.useQuery(undefined, {
     enabled: isAuthenticated && role === "seller",
@@ -311,7 +323,7 @@ export default function HomeScreen() {
     enabled: isAuthenticated,
   });
   const createPixMutation = trpc.pediu.payments.createPix.useMutation({
-    onError: (error) => notifyWithHaptic(error.message, false),
+    onError: (error) => notifyWithHaptic(friendlyUserMessage(error.message), false),
   });
   const createOrderMutation = trpc.pediu.orders.create.useMutation({
     onSuccess: (result) => {
@@ -371,7 +383,7 @@ export default function HomeScreen() {
         params: { orderId: String(result.orderId) },
       });
     },
-    onError: (error) => notifyWithHaptic(error.message, false),
+    onError: (error) => notifyWithHaptic(friendlyUserMessage(error.message), false),
   });
   const voiceMutation = trpc.pediu.voice.interpret.useMutation();
   const transcribeMutation = trpc.pediu.voice.transcribe.useMutation();
@@ -390,21 +402,21 @@ export default function HomeScreen() {
       void clientsQuery.refetch();
       notify("Cliente salvo no relacionamento");
     },
-    onError: (error) => notify(error.message),
+    onError: (error) => notify(friendlyUserMessage(error.message)),
   });
   const setClientLimitMutation = trpc.pediu.credit.setLimit.useMutation({
     onSuccess: () => {
       void clientsQuery.refetch();
       notify("Limite de fiado atualizado");
     },
-    onError: (error) => notify(error.message),
+    onError: (error) => notify(friendlyUserMessage(error.message)),
   });
   const blockClientMutation = trpc.pediu.credit.block.useMutation({
     onSuccess: () => {
       void clientsQuery.refetch();
       notify("Status do cliente atualizado");
     },
-    onError: (error) => notify(error.message),
+    onError: (error) => notify(friendlyUserMessage(error.message)),
   });
   const registerPushMutation = trpc.pediu.notifications.register.useMutation();
   const markNotificationMutation =
@@ -433,21 +445,21 @@ export default function HomeScreen() {
       void storeProductsQuery.refetch();
       notify("Produto salvo no catálogo");
     },
-    onError: (error) => notify(error.message),
+    onError: (error) => notify(friendlyUserMessage(error.message)),
   });
   const updateProductAvailabilityMutation =
     trpc.pediu.products.availability.useMutation({
       onSuccess: () => {
         void storeProductsQuery.refetch();
       },
-      onError: (error) => notify(error.message),
+      onError: (error) => notify(friendlyUserMessage(error.message)),
     });
   const updateStoreMutation = trpc.pediu.stores.update.useMutation({
     onSuccess: () => {
       void storeQuery.refetch();
       notify("Configurações da loja atualizadas");
     },
-    onError: (error) => notify(error.message),
+    onError: (error) => notify(friendlyUserMessage(error.message)),
   });
   const cart = useMemo<Product[]>(
     () =>
@@ -534,6 +546,73 @@ export default function HomeScreen() {
     router.setParams({ assistant: undefined } as never);
   }, [params.assistant, role, showVoice]);
 
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (selectedProduct) {
+        setSelectedProduct(null);
+        return true;
+      }
+      if (showCheckout) {
+        Alert.alert(
+          "Sair do pedido?",
+          "Seu carrinho continua salvo. O pedido ainda não foi enviado.",
+          [
+            { text: "Continuar pedido", style: "cancel" },
+            { text: "Sair", onPress: () => setShowCheckout(false) },
+          ],
+        );
+        return true;
+      }
+      if (showCart) {
+        setShowCart(false);
+        return true;
+      }
+      if (showAddProduct) {
+        setShowAddProduct(false);
+        return true;
+      }
+      if (showVoice) {
+        setShowVoice(false);
+        return true;
+      }
+      if (showSaleModal) {
+        setShowSaleModal(false);
+        return true;
+      }
+      if (showSellerOnboarding) {
+        setShowSellerOnboarding(false);
+        return true;
+      }
+      if (role === "customer" && customerTab !== "discover") {
+        changeCustomerTab("discover");
+        return true;
+      }
+      if (role === "seller" && sellerTab !== "home") {
+        changeSellerTab("home");
+        return true;
+      }
+      Alert.alert("Sair do Pediu?", "Você pode voltar quando quiser.", [
+        { text: "Ficar", style: "cancel" },
+        { text: "Sair", style: "destructive", onPress: () => BackHandler.exitApp() },
+      ]);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [
+    customerTab,
+    role,
+    selectedProduct,
+    sellerTab,
+    showAddProduct,
+    showCart,
+    showCheckout,
+    showSaleModal,
+    showSellerOnboarding,
+    showVoice,
+  ]),
+  );
+
   useEffect(() => {
     Animated.sequence([
       Animated.timing(screenOpacity, {
@@ -614,7 +693,7 @@ export default function HomeScreen() {
     } catch (error) {
       notifyWithHaptic(
         error instanceof Error
-          ? error.message
+          ? friendlyUserMessage(error.message)
           : "Não foi possível localizar você",
         false,
       );
@@ -970,23 +1049,31 @@ export default function HomeScreen() {
     if (!canRegisterSale(normalizedTotal, salePaymentMethod, customerId)) {
       void notifyWithHaptic(
         salePaymentMethod === "fiado"
-          ? "Informe o número da conta do cliente para lançar no fiado"
+          ? "Escolha o cliente para lançar no fiado"
           : "Informe um valor válido",
       );
       return;
     }
-    createSaleMutation.mutate({
-      total: normalizedTotal,
-      customerId,
-      paymentMethod: salePaymentMethod,
-    });
-    if (salePaymentMethod === "fiado" && customerId)
-      addLedgerMutation.mutate({
+    createSaleMutation.mutate(
+      {
+        total: normalizedTotal,
         customerId,
-        type: "credit",
-        amount: normalizedTotal,
-        note: "Venda registrada pelo assistente",
-      });
+        paymentMethod: salePaymentMethod,
+      },
+      {
+        onSuccess: () => {
+          if (salePaymentMethod === "fiado" && customerId) {
+            addLedgerMutation.mutate({
+              customerId,
+              type: "credit",
+              amount: normalizedTotal,
+              note: "Venda fiada",
+            });
+          }
+        },
+        onError: (error) => notify(friendlyUserMessage(error.message)),
+      },
+    );
   };
 
   const createStore = () => {
@@ -1040,7 +1127,7 @@ export default function HomeScreen() {
 
   return (
     <ScreenContainer
-      containerClassName="bg-[#111111]"
+      backgroundColor={theme.canvas}
       edges={["top", "left", "right"]}
     >
       <Animated.View
@@ -1053,6 +1140,8 @@ export default function HomeScreen() {
         {role === "customer" ? (
           <>
             <ScrollView
+              keyboardShouldPersistTaps="handled"
+              automaticallyAdjustKeyboardInsets
               contentContainerStyle={[
                 styles.scrollContent,
                 { paddingBottom: scrollPaddingForFloatingBar(insets.bottom, Platform.OS) },
@@ -1145,6 +1234,8 @@ export default function HomeScreen() {
         ) : (
           <>
             <ScrollView
+              keyboardShouldPersistTaps="handled"
+              automaticallyAdjustKeyboardInsets
               contentContainerStyle={[
                 styles.scrollContent,
                 { paddingBottom: scrollPaddingForFloatingBar(insets.bottom, Platform.OS) },
@@ -1251,6 +1342,7 @@ export default function HomeScreen() {
           transparent
           animationType="slide"
           onRequestClose={() => setSelectedProduct(null)}
+          {...edgeModalProps}
         >
           {selectedProduct ? (
             <ProductModal
@@ -1266,9 +1358,10 @@ export default function HomeScreen() {
           transparent
           animationType="slide"
           onRequestClose={() => setShowCart(false)}
+          {...edgeModalProps}
         >
           <View style={styles.modalBackdrop}>
-            <View style={[styles.sheet, styles.sheetTall]}>
+            <View style={[styles.sheet, styles.sheetTall, { paddingBottom: bottomSafeInset(insets.bottom, Platform.OS) }]}>
               <ScrollView
                 style={styles.sheetScroll}
                 contentContainerStyle={styles.sheetContent}
@@ -1379,6 +1472,7 @@ export default function HomeScreen() {
           transparent
           animationType="slide"
           onRequestClose={() => setShowCheckout(false)}
+          {...edgeModalProps}
         >
           <CheckoutModal
             addresses={customerAddressesQuery.data ?? []}
@@ -1408,9 +1502,10 @@ export default function HomeScreen() {
           transparent
           animationType="slide"
           onRequestClose={() => setShowAddProduct(false)}
+          {...edgeModalProps}
         >
           <View style={styles.modalBackdrop}>
-            <View style={[styles.sheet, styles.sheetTall]}>
+            <View style={[styles.sheet, styles.sheetTall, { paddingBottom: bottomSafeInset(insets.bottom, Platform.OS) }]}>
               <ScrollView
                 style={styles.sheetScroll}
                 contentContainerStyle={styles.sheetContent}
@@ -1484,6 +1579,7 @@ export default function HomeScreen() {
           transparent
           animationType="fade"
           onRequestClose={() => setShowVoice(false)}
+          {...edgeModalProps}
         >
           <AssistantChat
             audience={role === "seller" ? "merchant" : isAuthenticated ? "customer" : "guest"}
@@ -1506,8 +1602,10 @@ export default function HomeScreen() {
           transparent
           animationType="slide"
           onRequestClose={() => setShowSaleModal(false)}
+          {...edgeModalProps}
         >
           <SaleModal
+            customers={clientsQuery.data ?? []}
             total={saleTotal}
             customerId={saleCustomerId}
             paymentMethod={salePaymentMethod}
@@ -1525,6 +1623,7 @@ export default function HomeScreen() {
           transparent
           animationType="slide"
           onRequestClose={() => setShowSellerOnboarding(false)}
+          {...edgeModalProps}
         >
           <View style={styles.modalBackdrop}>
             <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: scrollPaddingForScreenEnd(insets.bottom, Platform.OS) }}>
@@ -1713,28 +1812,33 @@ function CustomerDiscover({
   const firstName = userName?.trim().split(/\s+/)[0];
   return (
     <>
-      <PediuPressable style={styles.p3LocationRow} onPress={onLocationPress}>
-        <MaterialIcons name="location-on" size={21} color={theme.primary} />
-        <Text style={[styles.p3LocationText, { color: theme.text }]}>
-          {locationLoading
-            ? "Buscando endereço..."
-            : locationLabel === "Usar minha localização"
-              ? "Casa"
-              : locationLabel}
-        </Text>
-        <MaterialIcons
-          name="keyboard-arrow-down"
-          size={19}
-          color={theme.muted}
-        />
-        {locationAddress ? (
-          <Text
-            numberOfLines={1}
-            style={[styles.p3LocationAddress, { color: theme.muted }]}
-          >
-            {locationAddress}
+      <PediuPressable
+        accessibilityRole="button"
+        accessibilityLabel="Escolher onde entregar"
+        style={styles.p3LocationRow}
+        onPress={onLocationPress}
+      >
+        <View style={styles.p3LocationTitle}>
+          <MaterialIcons name="location-on" size={21} color={theme.primary} />
+          <Text style={[styles.p3LocationText, { color: theme.text }]}>
+            {locationLoading
+              ? "Buscando endereço..."
+              : locationLabel === "Usar minha localização"
+                ? "Meu endereço"
+                : locationLabel}
           </Text>
-        ) : null}
+          <MaterialIcons
+            name="keyboard-arrow-down"
+            size={19}
+            color={theme.muted}
+          />
+        </View>
+        <Text
+          numberOfLines={2}
+          style={[styles.p3LocationAddress, { color: theme.muted }]}
+        >
+          {locationAddress || "Toque para informar onde entregar"}
+        </Text>
       </PediuPressable>
       <View style={styles.p3GreetingRow}>
         <View style={{ flex: 1 }}>
@@ -1746,8 +1850,10 @@ function CustomerDiscover({
             {homeContext.subtitle}
           </Text>
         </View>
-        {mascot}
+        <View style={styles.p3MascotSlot}>{mascot}</View>
         <PediuPressable
+          accessibilityRole="button"
+          accessibilityLabel="Notificações"
           style={[
             styles.p3Bell,
             { backgroundColor: theme.card, borderColor: theme.line },
@@ -1974,6 +2080,7 @@ function ProductModal({
   onClose: () => void;
   onAdd: (options: CartOption[], unitPrice: string) => void;
 }) {
+  const insets = useSafeAreaInsets();
   const detail = trpc.pediu.marketplace.detail.useQuery({ productId: product.id });
   const [selected, setSelected] = useState<Record<number, number>>({});
   const [choiceNotice, setChoiceNotice] = useState("");
@@ -2007,7 +2114,7 @@ function ProductModal({
   };
   return (
     <View style={styles.modalBackdrop}>
-      <View style={[styles.sheet, styles.sheetTall]}>
+      <View style={[styles.sheet, styles.sheetTall, { paddingBottom: bottomSafeInset(insets.bottom, Platform.OS) }]}>
         <ScrollView
           style={styles.sheetScroll}
           contentContainerStyle={styles.sheetContent}
@@ -2746,10 +2853,12 @@ function SellerSettings({
   onAssistant: () => void;
 }) {
   const [name, setName] = useState(store?.name ?? "");
-  const [phone, setPhone] = useState(store?.phone ?? "");
+  const [phone, setPhone] = useState(maskBrazilPhone(store?.phone ?? ""));
   const [address, setAddress] = useState(store?.address ?? "");
   const [pixKey, setPixKey] = useState(store?.pixKey ?? "");
-  const [deliveryFee, setDeliveryFee] = useState(store?.deliveryFee ?? "0.00");
+  const [deliveryFee, setDeliveryFee] = useState(
+    decimalToBrlInput(store?.deliveryFee ?? "0"),
+  );
   const [deliveryEnabled, setDeliveryEnabled] = useState(
     Boolean(store?.deliveryEnabled ?? 1),
   );
@@ -2757,7 +2866,7 @@ function SellerSettings({
     Boolean(store?.pickupEnabled),
   );
   const [deliveryRadiusKm, setDeliveryRadiusKm] = useState(
-    store?.deliveryRadiusKm ?? "10.00",
+    decimalToKmInput(store?.deliveryRadiusKm ?? "10"),
   );
   const [pin, setPin] = useState<{ latitude: number; longitude: number } | null>(
     store?.latitude != null && store?.longitude != null
@@ -2771,13 +2880,13 @@ function SellerSettings({
   const [isOpen, setIsOpen] = useState(Boolean(store?.isOpen));
   useEffect(() => {
     setName(store?.name ?? "");
-    setPhone(store?.phone ?? "");
+    setPhone(maskBrazilPhone(store?.phone ?? ""));
     setAddress(store?.address ?? "");
     setPixKey(store?.pixKey ?? "");
-    setDeliveryFee(store?.deliveryFee ?? "0.00");
+    setDeliveryFee(decimalToBrlInput(store?.deliveryFee ?? "0"));
     setDeliveryEnabled(Boolean(store?.deliveryEnabled ?? 1));
     setPickupEnabled(Boolean(store?.pickupEnabled));
-    setDeliveryRadiusKm(store?.deliveryRadiusKm ?? "10.00");
+    setDeliveryRadiusKm(decimalToKmInput(store?.deliveryRadiusKm ?? "10"));
     setPin(
       store?.latitude != null && store?.longitude != null
         ? { latitude: Number(store.latitude), longitude: Number(store.longitude) }
@@ -2816,19 +2925,20 @@ function SellerSettings({
     }
   };
   const save = () => {
-    const normalizedRadius = deliveryRadiusKm.replace(",", ".").trim();
+    const normalizedFee = brlInputToDecimal(deliveryFee);
+    const normalizedRadius = kmInputToDecimal(deliveryRadiusKm);
     const parsedLatitude = pin?.latitude ?? null;
     const parsedLongitude = pin?.longitude ?? null;
-    if (
-      name.trim().length < 2 ||
-      !/^\d+(\.\d{1,2})?$/.test(deliveryFee.replace(",", ".").trim())
-    )
+    if (name.trim().length < 2) {
+      setValidationMessage("Informe o nome da loja.");
       return;
-    if (
-      !/^\d+(\.\d{1,2})?$/.test(normalizedRadius) ||
-      Number(normalizedRadius) <= 0
-    ) {
-      setValidationMessage("Informe um raio de entrega positivo.");
+    }
+    if (!normalizedFee) {
+      setValidationMessage("Informe a taxa de entrega. Ex.: 5,00");
+      return;
+    }
+    if (!normalizedRadius) {
+      setValidationMessage("Informe o raio de entrega em quilômetros. Ex.: 10");
       return;
     }
     if (
@@ -2850,10 +2960,10 @@ function SellerSettings({
     setValidationMessage("");
     onSave({
       name: name.trim(),
-      phone: phone.trim() || undefined,
+      phone: maskBrazilPhone(phone) || undefined,
       address: address.trim() || undefined,
       pixKey: pixKey.trim() || undefined,
-      deliveryFee: deliveryFee.replace(",", ".").trim(),
+      deliveryFee: normalizedFee,
       deliveryEnabled,
       pickupEnabled,
       deliveryRadiusKm: normalizedRadius,
@@ -2874,43 +2984,75 @@ function SellerSettings({
       </View>
       <View style={styles.fieldCard}>
         <Text style={styles.sectionTitle}>Dados publicados</Text>
+        <Text style={styles.fieldLabel}>NOME DA LOJA</Text>
+        <Text style={styles.fieldHelp}>Como a loja aparece para quem pede.</Text>
         <TextInput
           value={name}
           onChangeText={setName}
-          placeholder="Nome da loja"
+          placeholder="Ex.: Delícia de Avaí"
           placeholderTextColor={COLORS.muted}
           style={styles.input}
+          accessibilityLabel="Nome da loja"
         />
+        <Text style={styles.fieldLabel}>WHATSAPP</Text>
+        <Text style={styles.fieldHelp}>Telefone com DDD para o cliente falar com a loja.</Text>
         <TextInput
           value={phone}
-          onChangeText={setPhone}
-          placeholder="WhatsApp / telefone"
+          onChangeText={(value) => setPhone(maskBrazilPhone(value))}
+          placeholder="(14) 98110-4964"
           placeholderTextColor={COLORS.muted}
           style={styles.input}
           keyboardType="phone-pad"
+          accessibilityLabel="WhatsApp da loja"
         />
+        <Text style={styles.fieldLabel}>ENDEREÇO DA LOJA</Text>
+        <Text style={styles.fieldHelp}>Rua, número, bairro e cidade. Depois busque no mapa.</Text>
         <TextInput
           value={address}
           onChangeText={setAddress}
-          placeholder="Endereço da loja"
+          placeholder="Rua, número, bairro e cidade"
           placeholderTextColor={COLORS.muted}
-          style={styles.input}
+          style={[styles.input, { minHeight: 72, height: undefined, textAlignVertical: "top", paddingTop: 12 }]}
+          multiline
+          accessibilityLabel="Endereço da loja"
         />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Buscar este endereço no mapa"
+          onPress={() => void locateStore()}
+          style={styles.mapButton}
+        >
+          <MaterialIcons name="map" size={18} color={COLORS.coral} />
+          <Text style={styles.mapButtonText}>
+            {locating ? "Procurando no mapa..." : "Buscar este endereço no mapa"}
+          </Text>
+        </Pressable>
+        <Text style={styles.fieldLabel}>CHAVE PIX DA LOJA</Text>
+        <Text style={styles.fieldHelp}>
+          CPF, celular, e-mail ou chave aleatória. O cliente usa essa chave para pagar você.
+        </Text>
         <TextInput
           value={pixKey}
           onChangeText={setPixKey}
-          placeholder="Chave PIX"
+          placeholder="CPF, celular, e-mail ou chave aleatória"
           placeholderTextColor={COLORS.muted}
           style={styles.input}
+          accessibilityLabel="Chave PIX da loja"
         />
-        <TextInput
-          value={deliveryFee}
-          onChangeText={setDeliveryFee}
-          placeholder="Taxa de entrega"
-          placeholderTextColor={COLORS.muted}
-          style={styles.input}
-          keyboardType="decimal-pad"
-        />
+        <Text style={styles.fieldLabel}>TAXA DE ENTREGA</Text>
+        <Text style={styles.fieldHelp}>Valor cobrado em cada entrega. Ex.: R$ 5,00</Text>
+        <View style={styles.moneyRow}>
+          <Text style={styles.moneyPrefix}>R$</Text>
+          <TextInput
+            value={deliveryFee}
+            onChangeText={(value) => setDeliveryFee(maskBrlTyping(value))}
+            placeholder="0,00"
+            placeholderTextColor={COLORS.muted}
+            style={[styles.input, styles.moneyInput]}
+            keyboardType="decimal-pad"
+            accessibilityLabel="Taxa de entrega em reais"
+          />
+        </View>
         <View style={{ gap: 8, marginTop: 6 }}>
           <View style={styles.settingsRow}>
             <View style={styles.settingsIcon}>
@@ -2949,19 +3091,22 @@ function SellerSettings({
             />
           </View>
         </View>
-        <TextInput
-          value={deliveryRadiusKm}
-          onChangeText={setDeliveryRadiusKm}
-          placeholder="Raio de entrega em km"
-          placeholderTextColor={COLORS.muted}
-          style={styles.input}
-          keyboardType="decimal-pad"
-        />
-        <Pressable onPress={() => void locateStore()}>
-          <Text style={{ color: COLORS.coral, fontWeight: "900" }}>
-            {locating ? "Procurando no mapa..." : "Ver endereço no mapa"}
-          </Text>
-        </Pressable>
+        <Text style={styles.fieldLabel}>RAIO DO DELIVERY</Text>
+        <Text style={styles.fieldHelp}>Distância máxima, em quilômetros. Ex.: 10</Text>
+        <View style={styles.moneyRow}>
+          <TextInput
+            value={deliveryRadiusKm}
+            onChangeText={(value) =>
+              setDeliveryRadiusKm(value.replace(/[^\d,]/g, "").replace(/(,.*),/g, "$1"))
+            }
+            placeholder="10"
+            placeholderTextColor={COLORS.muted}
+            style={[styles.input, styles.moneyInput]}
+            keyboardType="decimal-pad"
+            accessibilityLabel="Raio de entrega em quilômetros"
+          />
+          <Text style={styles.moneyPrefix}>km</Text>
+        </View>
         {pin ? (
           <PinMap
             latitude={pin.latitude}
@@ -3285,17 +3430,34 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   p3LocationRow: {
-    minHeight: 28,
+    alignItems: "flex-start",
+    gap: 2,
+    maxWidth: "100%",
+    minHeight: 44,
+    justifyContent: "center",
+  },
+  p3LocationTitle: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
+    maxWidth: "100%",
   },
-  p3LocationText: { fontFamily: "Nunito", fontSize: 14, fontWeight: "700" },
-  p3LocationAddress: {
-    flex: 1,
+  p3LocationText: {
     fontFamily: "Nunito",
-    fontSize: 10,
-    marginLeft: 5,
+    fontSize: 15,
+    fontWeight: "800",
+    flexShrink: 1,
+  },
+  p3LocationAddress: {
+    fontFamily: "Nunito",
+    fontSize: 13,
+    lineHeight: 18,
+    marginLeft: 25,
+  },
+  p3MascotSlot: {
+    flexShrink: 0,
+    alignItems: "center",
+    justifyContent: "center",
   },
   p3GreetingRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   p3Greeting: {
@@ -4360,6 +4522,27 @@ const styles = StyleSheet.create({
     letterSpacing: 1.1,
     marginTop: 2,
   },
+  fieldHelp: {
+    color: COLORS.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: -2,
+  },
+  moneyRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  moneyPrefix: { color: COLORS.ink, fontSize: 16, fontWeight: "900", minWidth: 28 },
+  moneyInput: { flex: 1 },
+  mapButton: {
+    minHeight: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.coral,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+  },
+  mapButtonText: { color: COLORS.coral, fontWeight: "900", flexShrink: 1 },
   fieldValue: {
     color: COLORS.ink,
     fontSize: 15,
@@ -4889,7 +5072,7 @@ function SellerClients({
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
-  const [creditLimit, setCreditLimit] = useState("0.00");
+  const [creditLimit, setCreditLimit] = useState("0,00");
   const [selectedId, setSelectedId] = useState<number>();
   const [selectedLimit, setSelectedLimit] = useState("");
   const totalOwed = customers.reduce(
@@ -4897,9 +5080,8 @@ function SellerClients({
     0,
   );
   const submit = () => {
-    const normalizedLimit = creditLimit.replace(",", ".").trim();
-    if (name.trim().length < 2 || !/^\d+(\.\d{1,2})?$/.test(normalizedLimit))
-      return;
+    const normalizedLimit = brlInputToDecimal(creditLimit);
+    if (name.trim().length < 2 || !normalizedLimit) return;
     onCreate({
       name: name.trim(),
       phone: phone.trim() || undefined,
@@ -4909,7 +5091,7 @@ function SellerClients({
     setName("");
     setPhone("");
     setNotes("");
-    setCreditLimit("0.00");
+    setCreditLimit("0,00");
     setShowForm(false);
   };
   return (
@@ -4946,36 +5128,48 @@ function SellerClients({
       {showForm ? (
         <View style={clientStyles.form}>
           <Text style={styles.sectionTitle}>Novo cliente</Text>
+          <Text style={styles.fieldLabel}>NOME</Text>
           <TextInput
             value={name}
             onChangeText={setName}
             placeholder="Nome completo"
             placeholderTextColor={COLORS.muted}
             style={styles.input}
+            accessibilityLabel="Nome do cliente"
           />
+          <Text style={styles.fieldLabel}>TELEFONE</Text>
+          <Text style={styles.fieldHelp}>Opcional. Com DDD.</Text>
           <TextInput
             value={phone}
-            onChangeText={setPhone}
-            placeholder="Telefone (opcional)"
+            onChangeText={(value) => setPhone(maskBrazilPhone(value))}
+            placeholder="(14) 99999-9999"
             placeholderTextColor={COLORS.muted}
             style={styles.input}
             keyboardType="phone-pad"
+            accessibilityLabel="Telefone do cliente"
           />
-          <TextInput
-            value={creditLimit}
-            onChangeText={setCreditLimit}
-            placeholder="Limite de fiado"
-            placeholderTextColor={COLORS.muted}
-            style={styles.input}
-            keyboardType="decimal-pad"
-          />
+          <Text style={styles.fieldLabel}>LIMITE DE FIADO</Text>
+          <Text style={styles.fieldHelp}>Quanto essa pessoa pode ficar devendo. Ex.: R$ 200,00</Text>
+          <View style={styles.moneyRow}>
+            <Text style={styles.moneyPrefix}>R$</Text>
+            <TextInput
+              value={creditLimit}
+              onChangeText={(value) => setCreditLimit(maskBrlTyping(value))}
+              placeholder="0,00"
+              placeholderTextColor={COLORS.muted}
+              style={[styles.input, styles.moneyInput]}
+              keyboardType="decimal-pad"
+              accessibilityLabel="Limite de fiado"
+            />
+          </View>
+          <Text style={styles.fieldLabel}>OBSERVAÇÕES</Text>
           <TextInput
             value={notes}
             onChangeText={setNotes}
-            placeholder="Observações (opcional)"
+            placeholder="Opcional"
             placeholderTextColor={COLORS.muted}
             style={styles.input}
-            multiline
+            accessibilityLabel="Observações do cliente"
           />
           <Pressable
             style={[styles.primaryButton, creating && styles.disabledButton]}
@@ -5403,9 +5597,10 @@ function SellerOnboardingModal({
   onClose: () => void;
   busy: boolean;
 }) {
+  const insets = useSafeAreaInsets();
   return (
     <View style={styles.modalBackdrop}>
-      <View style={[styles.sheet, styles.sheetTall]}>
+      <View style={[styles.sheet, styles.sheetTall, { paddingBottom: bottomSafeInset(insets.bottom, Platform.OS) }]}>
         <ScrollView
           style={styles.sheetScroll}
           contentContainerStyle={styles.sheetContent}
@@ -5511,6 +5706,7 @@ const onboardingStyles = StyleSheet.create({
 });
 
 function SaleModal({
+  customers,
   total,
   customerId,
   paymentMethod,
@@ -5521,6 +5717,7 @@ function SaleModal({
   onSubmit,
   onClose,
 }: {
+  customers: { id: number; name: string }[];
   total: string;
   customerId: string;
   paymentMethod: "pix" | "cash" | "fiado";
@@ -5531,9 +5728,10 @@ function SaleModal({
   onSubmit: () => void;
   onClose: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   return (
     <View style={styles.modalBackdrop}>
-      <View style={[styles.sheet, styles.sheetTall]}>
+      <View style={[styles.sheet, styles.sheetTall, { paddingBottom: bottomSafeInset(insets.bottom, Platform.OS) }]}>
         <ScrollView
           style={styles.sheetScroll}
           contentContainerStyle={styles.sheetContent}
@@ -5547,23 +5745,57 @@ function SaleModal({
             O lançamento fica salvo no histórico da sua loja.
           </Text>
           <Text style={styles.fieldLabel}>VALOR DA VENDA</Text>
-          <TextInput
-            value={total}
-            onChangeText={onChangeTotal}
-            placeholder="Ex.: 42,00"
-            placeholderTextColor={COLORS.muted}
-            style={styles.input}
-            keyboardType="decimal-pad"
-          />
-          <Text style={styles.fieldLabel}>NÚMERO DA CONTA (OPCIONAL)</Text>
-          <TextInput
-            value={customerId}
-            onChangeText={onChangeCustomerId}
-            placeholder="Necessário para fiado. É o número da conta."
-            placeholderTextColor={COLORS.muted}
-            style={styles.input}
-            keyboardType="number-pad"
-          />
+          <Text style={styles.fieldHelp}>Quanto o cliente pagou, em reais. Ex.: 42,00</Text>
+          <View style={styles.moneyRow}>
+            <Text style={styles.moneyPrefix}>R$</Text>
+            <TextInput
+              value={total}
+              onChangeText={(value) => onChangeTotal(maskBrlTyping(value))}
+              placeholder="0,00"
+              placeholderTextColor={COLORS.muted}
+              style={[styles.input, styles.moneyInput]}
+              keyboardType="decimal-pad"
+              accessibilityLabel="Valor da venda"
+            />
+          </View>
+          {paymentMethod === "fiado" ? (
+            <>
+              <Text style={styles.fieldLabel}>CLIENTE DO FIADO</Text>
+              <Text style={styles.fieldHelp}>
+                Escolha quem fica devendo. O valor entra na conta dessa pessoa.
+              </Text>
+              {customers.length ? (
+                customers.map((customer) => {
+                  const selected = customerId === String(customer.id);
+                  return (
+                    <Pressable
+                      key={customer.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Lançar fiado para ${customer.name}`}
+                      onPress={() => onChangeCustomerId(String(customer.id))}
+                      style={[
+                        saleStyles.method,
+                        selected && saleStyles.methodActive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          saleStyles.methodText,
+                          selected && saleStyles.methodTextActive,
+                        ]}
+                      >
+                        {customer.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })
+              ) : (
+                <Text style={styles.fieldHelp}>
+                  Cadastre o cliente na aba Clientes antes de lançar no fiado.
+                </Text>
+              )}
+            </>
+          ) : null}
           <Text style={styles.fieldLabel}>FORMA DE PAGAMENTO</Text>
           <View style={saleStyles.methods}>
             {(["cash", "pix", "fiado"] as const).map((method) => (
@@ -5650,12 +5882,13 @@ function CheckoutModal({
   onSubmit: () => void;
   onClose: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.modalBackdrop}
     >
-      <View style={[styles.sheet, styles.sheetTall]}>
+      <View style={[styles.sheet, styles.sheetTall, { paddingBottom: bottomSafeInset(insets.bottom, Platform.OS) }]}>
         <ScrollView
           style={styles.sheetScroll}
           contentContainerStyle={styles.sheetContent}

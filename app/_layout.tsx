@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
 import { Platform, View } from "react-native";
+import * as SystemUI from "expo-system-ui";
 import "@/lib/_core/nativewind-pressable";
 import { ThemeProvider } from "@/lib/theme-provider";
 import {
@@ -44,6 +45,15 @@ const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
 export const unstable_settings = {
   anchor: "(tabs)",
 };
+
+function SystemChrome() {
+  const { theme } = useAppPreferences();
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    void SystemUI.setBackgroundColorAsync(theme.canvas);
+  }, [theme.canvas]);
+  return <StatusBar style="dark" translucent backgroundColor="transparent" />;
+}
 
 function MascotNavigationBridge() {
   const pathname = usePathname();
@@ -180,13 +190,14 @@ export default function RootLayout() {
   }, [initialInsets, initialFrame]);
 
   const content = (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#FFF4E8" }}>
       <trpc.Provider client={trpcClient} queryClient={queryClient}>
         <QueryClientProvider client={queryClient}>
           {/* Default to hiding native headers so raw route segments don't appear (e.g. "(tabs)", "products/[id]"). */}
           {/* If a screen needs the native header, explicitly enable it and set a human title via Stack.Screen options. */}
           {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}
           <AppPreferencesProvider>
+            <SystemChrome />
             <AuthPromptHost />
             <StoreOrderAlarm />
             <MascotNavigationBridge />
@@ -198,7 +209,6 @@ export default function RootLayout() {
             </CartProvider>
             <OnboardingGate />
           </AppPreferencesProvider>
-          <StatusBar style="auto" />
         </QueryClientProvider>
       </trpc.Provider>
     </GestureHandlerRootView>

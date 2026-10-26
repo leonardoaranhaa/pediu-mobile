@@ -66,6 +66,7 @@ export function Page({
       />
       <ScrollView
         keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
         contentContainerStyle={[
           s.content,
           {
@@ -79,6 +80,8 @@ export function Page({
         <View style={s.header}>
           {back ? (
             <PediuPressable
+              accessibilityRole="button"
+              accessibilityLabel="Voltar"
               onPress={() => (onBack ? onBack() : router.back())}
               style={[s.back, { backgroundColor: theme.card, borderColor: theme.line }]}
             >

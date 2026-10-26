@@ -65,9 +65,7 @@ const styles = StyleSheet.create({
     overflow: "visible",
   },
   mascotStage: {
-    width: 82,
-    height: 82,
+    alignItems: "flex-end",
     overflow: "visible",
-    justifyContent: "flex-end",
   },
 });

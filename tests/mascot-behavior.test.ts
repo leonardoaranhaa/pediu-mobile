@@ -10,6 +10,10 @@ describe("Pediu mascot behavior", () => {
     expect(scene.line).toContain("Privacidade");
   });
 
+  it("keeps the home mascot upright instead of lying on its side", () => {
+    expect(sceneForReaction("hungry").gesture).toBe("stand");
+  });
+
   it("keeps a deliberate gesture for the order completion scene", () => {
     const scene = sceneForReaction("full");
 

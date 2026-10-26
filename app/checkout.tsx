@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MaterialIcons } from "@expo/vector-icons";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, BackHandler, Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   Card,
@@ -14,6 +14,7 @@ import { askToJoin } from "@/components/auth-prompt";
 import { useAuth } from "@/hooks/use-auth";
 import { cartFlashEligible } from "@/lib/cart";
 import { cancellationPolicyCopy, deliverySummaryCopy } from "@/lib/checkout-copy";
+import { friendlyUserMessage } from "@/lib/user-message";
 import { useCart } from "@/providers/cart-provider";
 import { trpc } from "@/lib/trpc";
 
@@ -54,6 +55,25 @@ export default function CheckoutScreen() {
   const [changeFor, setChangeFor] = useState("");
   const [changeError, setChangeError] = useState("");
   const [idempotencyKey, setIdempotencyKey] = useState("");
+  const confirmLeave = useCallback(() => {
+    Alert.alert(
+      "Sair do pedido?",
+      "Seu carrinho continua salvo. O pedido ainda não foi enviado.",
+      [
+        { text: "Continuar pedido", style: "cancel" },
+        { text: "Sair", style: "destructive", onPress: () => router.back() },
+      ],
+    );
+  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+        confirmLeave();
+        return true;
+      });
+      return () => subscription.remove();
+    }, [confirmLeave]),
+  );
   const [couponCode, setCouponCode] = useState("");
   const [appliedCouponCode, setAppliedCouponCode] = useState("");
   const [fulfillment, setFulfillment] = useState<Fulfillment>("standard");
@@ -230,7 +250,7 @@ export default function CheckoutScreen() {
 
   if (!hydrated)
     return (
-      <Page title="Checkout" eyebrow="PEDIDO" back>
+      <Page title="Pedido" eyebrow="PEDIU" back onBack={confirmLeave}>
         <Card>
           <Text style={s.sectionTitle}>Restaurando pedido...</Text>
         </Card>
@@ -238,7 +258,7 @@ export default function CheckoutScreen() {
     );
   if (!isAuthenticated)
     return (
-      <Page title="Checkout" eyebrow="PEDIDO" back>
+      <Page title="Pedido" eyebrow="PEDIU" back onBack={confirmLeave}>
         <Card>
           <Text style={s.sectionTitle}>Entre para continuar</Text>
           <Text style={s.muted}>
@@ -253,7 +273,7 @@ export default function CheckoutScreen() {
     );
   if (!items.length)
     return (
-      <Page title="Checkout" eyebrow="PEDIDO" back>
+      <Page title="Pedido" eyebrow="PEDIU" back onBack={confirmLeave}>
         <Card>
           <Text style={s.sectionTitle}>Seu carrinho está vazio</Text>
           <PrimaryButton
@@ -275,7 +295,7 @@ export default function CheckoutScreen() {
   );
 
   return (
-    <Page title="Finalizar pedido" eyebrow="CHECKOUT" back>
+    <Page title="Finalizar pedido" eyebrow="PEDIU" back onBack={confirmLeave}>
       <Card>
         <Text style={s.sectionTitle}>Conferência do pedido</Text>
         {quote.isLoading ? (
@@ -737,14 +757,12 @@ export default function CheckoutScreen() {
         </Text>
         {createOrder.error ? (
           <Text style={{ color: PEDIU.coral, fontSize: 12 }}>
-            {createOrder.error.message}
+            {friendlyUserMessage(createOrder.error.message)}
           </Text>
         ) : null}
         {createPix.error ? (
           <Text style={{ color: PEDIU.coral, fontSize: 12 }}>
-            Não foi possível gerar o PIX: {createPix.error.message}. O pedido já
-            foi salvo; tente confirmar novamente para repetir a operação com
-            segurança.
+            Não foi possível gerar o PIX. O pedido já foi salvo; tente confirmar novamente.
           </Text>
         ) : null}
         <PrimaryButton

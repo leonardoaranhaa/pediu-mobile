@@ -1,6 +1,9 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Image, Modal, ScrollView, StyleSheet, Text, View } from "react-native";
+import { StatusBar } from "expo-status-bar";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { edgeModalProps } from "@/components/edge-modal";
 
 import {
   PediuFloating,
@@ -152,7 +155,7 @@ export function PediuV2Discovery({
                     </View>
                   </View>
                   <Text
-                    numberOfLines={1}
+                    numberOfLines={2}
                     style={[styles.storyLabel, { color: theme.text }]}
                   >
                     {product.store}
@@ -350,7 +353,7 @@ function ContextFocus({
           style={[styles.contextFocusSubtitle, { color: theme.muted }]}
           numberOfLines={2}
         >
-          {context.focusDescription} Mercado fica sempre a um toque.
+          {context.focusDescription}
         </Text>
       </View>
       <MaterialIcons name="chevron-right" size={20} color={theme.muted} />
@@ -614,6 +617,7 @@ function StoryViewer({
   onProductPress: (product: DiscoveryProduct) => void;
 }) {
   const product = stories[index];
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const timer = setTimeout(onNext, 4200);
@@ -628,9 +632,11 @@ function StoryViewer({
       animationType="fade"
       presentationStyle="fullScreen"
       onRequestClose={onClose}
+      {...edgeModalProps}
     >
-      <View style={styles.storyViewer}>
-        <View style={styles.storyProgressRow}>
+      <View style={[styles.storyViewer, { paddingTop: insets.top }]}>
+        <StatusBar style="light" translucent backgroundColor="transparent" />
+        <View style={[styles.storyProgressRow, { top: insets.top + 8 }]}>
           {stories.map((story, storyNumber) => (
             <View key={story.id} style={styles.storyProgressTrack}>
               {storyNumber < index ? (
@@ -643,7 +649,7 @@ function StoryViewer({
             </View>
           ))}
         </View>
-        <View style={styles.storyViewerHeader}>
+        <View style={[styles.storyViewerHeader, { top: insets.top + 22 }]}>
           <Text style={styles.storyViewerTitle}>{product.store}</Text>
           <PediuPressable
             onPress={onClose}
@@ -991,7 +997,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   storyRail: { gap: 13, paddingVertical: 2, paddingRight: 12 },
-  storyItem: { width: 65, alignItems: "center", gap: 6 },
+  storyItem: { width: 92, alignItems: "center", gap: 6 },
   storyRing: {
     width: 60,
     height: 60,
@@ -1011,9 +1017,11 @@ const styles = StyleSheet.create({
   storyImageAsset: { width: "100%", height: "100%" },
   storyEmoji: { fontSize: 25 },
   storyLabel: {
-    width: 65,
+    width: 92,
+    minHeight: 28,
     textAlign: "center",
-    fontSize: 10,
+    fontSize: 11,
+    lineHeight: 14,
     fontWeight: "800",
     fontFamily: "Nunito",
   },
@@ -1356,7 +1364,7 @@ const styles = StyleSheet.create({
   storyProgressRow: {
     position: "absolute",
     zIndex: 4,
-    top: 14,
+    top: 8,
     left: 12,
     right: 12,
     flexDirection: "row",
@@ -1378,7 +1386,7 @@ const styles = StyleSheet.create({
   storyViewerHeader: {
     position: "absolute",
     zIndex: 4,
-    top: 28,
+    top: 22,
     left: 16,
     right: 12,
     flexDirection: "row",
@@ -1391,8 +1399,8 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   storyClose: {
-    width: 42,
-    height: 42,
+    width: 44,
+    height: 44,
     borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",

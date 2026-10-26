@@ -6,6 +6,8 @@ import { OpeningHoursEditor } from "@/components/opening-hours-editor";
 import { PinMap } from "@/components/pin-map";
 import { useAuth } from "@/hooks/use-auth";
 import { geocodeTypedAddress } from "@/lib/location";
+import { decimalToBrlInput, decimalToKmInput, maskBrazilPhone, maskBrlTyping, brlInputToDecimal, kmInputToDecimal } from "@/lib/br-fields";
+import { friendlyUserMessage } from "@/lib/user-message";
 import { trpc } from "@/lib/trpc";
 import { Card, Page, PrimaryButton, Row, s } from "@/components/pediu-page";
 import { ThemePicker } from "@/components/theme-picker";
@@ -41,12 +43,12 @@ export default function SellerSettingsPage() {
 
   useEffect(() => {
     setName(store.data?.name ?? "");
-    setPhone(store.data?.phone ?? "");
+    setPhone(maskBrazilPhone(store.data?.phone ?? ""));
     setAddress(store.data?.address ?? "");
     setPixKey(store.data?.pixKey ?? "");
-    setDeliveryFee((store.data?.deliveryFee ?? "0,00").replace(".", ","));
-    setFeePerKm((store.data?.feePerKm ?? "0,00").replace(".", ","));
-    setRadiusKm((store.data?.deliveryRadiusKm ?? "10,00").replace(".", ","));
+    setDeliveryFee(decimalToBrlInput(store.data?.deliveryFee ?? "0"));
+    setFeePerKm(decimalToBrlInput(store.data?.feePerKm ?? "0"));
+    setRadiusKm(decimalToKmInput(store.data?.deliveryRadiusKm ?? "10"));
     setFeeMode(store.data?.feeMode === "distance" ? "distance" : "fixed");
     setCardCredit(Boolean(store.data?.cardCreditEnabled));
     setCardDebit(Boolean(store.data?.cardDebitEnabled));
@@ -98,14 +100,14 @@ export default function SellerSettingsPage() {
   };
 
   const save = () => {
-    const fee = deliveryFee.replace(",", ".").trim();
-    const perKm = feePerKm.replace(",", ".").trim();
-    const radius = radiusKm.replace(",", ".").trim();
+    const fee = brlInputToDecimal(deliveryFee);
+    const perKm = brlInputToDecimal(feePerKm);
+    const radius = kmInputToDecimal(radiusKm);
     if (
       name.trim().length < 2 ||
-      !/^\d+(\.\d{1,2})?$/.test(fee) ||
-      !/^\d+(\.\d{1,2})?$/.test(perKm) ||
-      !/^\d+(\.\d{1,2})?$/.test(radius) ||
+      !fee ||
+      !perKm ||
+      !radius ||
       Number(radius) <= 0
     ) {
       setSaved("Confira o nome, a taxa e o raio de entrega.");
@@ -119,7 +121,7 @@ export default function SellerSettingsPage() {
     update.mutate(
       {
         name: name.trim(),
-        phone: phone.trim() || undefined,
+        phone: maskBrazilPhone(phone) || undefined,
         address: address.trim() || undefined,
         pixKey: pixKey.trim() || undefined,
         deliveryFee: fee,
@@ -143,11 +145,11 @@ export default function SellerSettingsPage() {
                 setSaved("Salvo");
                 void store.refetch();
               },
-              onError: (error) => setSaved(error.message),
+              onError: (error) => setSaved(friendlyUserMessage(error.message)),
             },
           );
         },
-        onError: (error) => setSaved(error.message),
+        onError: (error) => setSaved(friendlyUserMessage(error.message)),
       },
     );
   };
@@ -155,15 +157,17 @@ export default function SellerSettingsPage() {
   return <Page title="Configurações da loja" eyebrow="MINHA OPERAÇÃO" dock={<SellerDock active="settings" />}>
     <Card>
       <Text style={s.sectionTitle}>Dados publicados</Text>
-      <Field label="NOME DA LOJA" value={name} onChangeText={setName} placeholder="Nome do seu negócio" />
-      <Field label="WHATSAPP / TELEFONE" value={phone} onChangeText={setPhone} placeholder="(11) 99999-9999" keyboardType="phone-pad" />
-      <Field label="ENDEREÇO" value={address} onChangeText={setAddress} placeholder="Rua, número e bairro" />
-      <Pressable onPress={() => void locate()}><Text style={{ color: PEDIU.coral, fontWeight: "900" }}>{locating ? "Procurando no mapa..." : "Ver endereço no mapa"}</Text></Pressable>
+      <Field label="NOME DA LOJA" help="Como a loja aparece para quem pede." value={name} onChangeText={setName} placeholder="Ex.: Delícia de Avaí" accessibilityLabel="Nome da loja" />
+      <Field label="WHATSAPP" help="Telefone com DDD para o cliente falar com a loja." value={phone} onChangeText={(value) => setPhone(maskBrazilPhone(value))} placeholder="(14) 98110-4964" keyboardType="phone-pad" accessibilityLabel="WhatsApp da loja" />
+      <Field label="ENDEREÇO DA LOJA" help="Rua, número, bairro e cidade. Depois busque no mapa." value={address} onChangeText={setAddress} placeholder="Rua, número, bairro e cidade" accessibilityLabel="Endereço da loja" />
+      <Pressable accessibilityRole="button" accessibilityLabel="Buscar este endereço no mapa" onPress={() => void locate()} style={{ minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: PEDIU.coral, alignItems: "center", justifyContent: "center", paddingHorizontal: 12 }}>
+        <Text style={{ color: PEDIU.coral, fontWeight: "900" }}>{locating ? "Procurando no mapa..." : "Buscar este endereço no mapa"}</Text>
+      </Pressable>
       {pin ? <PinMap latitude={pin.latitude} longitude={pin.longitude} anchorKey={`${store.data.id}-${pinKey}`} label="Loja" onChange={setPin} /> : null}
       {mapMessage ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{mapMessage}</Text> : null}
       <Text style={s.muted}>Arraste o ponto até a porta da loja. Não precisa digitar latitude nem longitude.</Text>
       <OpeningHoursEditor key={store.data.id} initial={store.data.openingHours} onChange={setHoursJson} />
-      <Field label="CHAVE PIX" value={pixKey} onChangeText={setPixKey} placeholder="CPF, telefone ou e-mail" />
+      <Field label="CHAVE PIX DA LOJA" help="CPF, celular, e-mail ou chave aleatória. O cliente usa essa chave para pagar você." value={pixKey} onChangeText={setPixKey} placeholder="CPF, celular, e-mail ou chave aleatória" accessibilityLabel="Chave PIX da loja" />
       <Text style={s.label}>COMO COBRAR A ENTREGA</Text>
       <View style={{ flexDirection: "row", gap: 8 }}>
         <Pressable onPress={() => setFeeMode("fixed")} style={{ flex: 1, borderWidth: 1, borderColor: feeMode === "fixed" ? PEDIU.coral : PEDIU.line, backgroundColor: feeMode === "fixed" ? "#FFE8E4" : PEDIU.white, borderRadius: 12, padding: 10 }}>
@@ -173,9 +177,9 @@ export default function SellerSettingsPage() {
           <Text style={{ color: feeMode === "distance" ? PEDIU.coral : PEDIU.muted, fontWeight: "900", textAlign: "center" }}>Por distância</Text>
         </Pressable>
       </View>
-      <Field label="VALOR FIXO" value={deliveryFee} onChangeText={setDeliveryFee} placeholder="0,00" keyboardType="decimal-pad" />
-      {feeMode === "distance" ? <Field label="VALOR POR KM" value={feePerKm} onChangeText={setFeePerKm} placeholder="2,00" keyboardType="decimal-pad" /> : null}
-      <Field label="RAIO MÁXIMO (KM)" value={radiusKm} onChangeText={setRadiusKm} placeholder="10,00" keyboardType="decimal-pad" />
+      <Field label="TAXA DE ENTREGA (R$)" help="Valor cobrado em cada entrega. Ex.: 5,00" value={deliveryFee} onChangeText={(value) => setDeliveryFee(maskBrlTyping(value))} placeholder="0,00" keyboardType="decimal-pad" accessibilityLabel="Taxa de entrega em reais" />
+      {feeMode === "distance" ? <Field label="VALOR POR KM (R$)" help="Somado à taxa fixa conforme a distância." value={feePerKm} onChangeText={(value) => setFeePerKm(maskBrlTyping(value))} placeholder="2,00" keyboardType="decimal-pad" accessibilityLabel="Valor por quilômetro" /> : null}
+      <Field label="RAIO DO DELIVERY (KM)" help="Distância máxima. Ex.: 10" value={radiusKm} onChangeText={(value) => setRadiusKm(value.replace(/[^\d,]/g, ""))} placeholder="10" keyboardType="decimal-pad" accessibilityLabel="Raio de entrega em quilômetros" />
       <Text style={s.muted}>{feeMode === "distance" ? "O cliente paga o valor fixo mais o quilômetro até o endereço, dentro do raio." : "O mesmo valor para qualquer endereço dentro do raio."}</Text>
       <ToggleRow title={cardCredit ? "Crédito na entrega ligado" : "Crédito na entrega"} subtitle="A maquininha cobra no crédito quando o pedido chega" on={cardCredit} onPress={() => setCardCredit((value) => !value)} />
       <ToggleRow title={cardDebit ? "Débito na entrega ligado" : "Débito na entrega"} subtitle="A maquininha cobra no débito quando o pedido chega" on={cardDebit} onPress={() => setCardDebit((value) => !value)} />
@@ -190,7 +194,7 @@ export default function SellerSettingsPage() {
         ) : (
           <>
             {([15, 30, 60] as const).map((minutes) => (
-              <Pressable key={minutes} onPress={() => pauseStore.mutate({ minutes })} style={{ borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: PEDIU.canvas }}>
+            <Pressable key={minutes} onPress={() => pauseStore.mutate({ minutes })} style={{ minHeight: 48, borderRadius: 12, paddingHorizontal: 12, alignItems: "center", justifyContent: "center", backgroundColor: PEDIU.canvas }}>
                 <Text style={{ color: PEDIU.ink, fontWeight: "900" }}>{minutes} min</Text>
               </Pressable>
             ))}
@@ -200,9 +204,9 @@ export default function SellerSettingsPage() {
           </>
         )}
       </View>
-      {pauseStore.error ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{pauseStore.error.message}</Text> : null}
+      {pauseStore.error ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{friendlyUserMessage(pauseStore.error.message)}</Text> : null}
       {saved ? <Text style={{ color: saved === "Salvo" ? "#0B8A5C" : PEDIU.coral, fontSize: 13, fontWeight: "800" }}>{saved}</Text> : null}
-      {update.error ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{update.error.message}</Text> : null}
+      {update.error ? <Text style={{ color: PEDIU.coral, fontSize: 12 }}>{friendlyUserMessage(update.error.message)}</Text> : null}
       <PrimaryButton title={update.isPending ? "Salvando..." : "Salvar configurações"} disabled={update.isPending} onPress={save} />
     </Card>
     <Card><ThemePicker title="Personalize o painel da loja" description="Escolha as cores do aplicativo." /></Card>
@@ -230,8 +234,14 @@ export default function SellerSettingsPage() {
   </Page>;
 }
 
-function Field({ label, value, onChangeText, placeholder, keyboardType }: { label: string; value: string; onChangeText: (value: string) => void; placeholder: string; keyboardType?: "phone-pad" | "decimal-pad" }) {
-  return <View style={{ gap: 7 }}><Text style={s.label}>{label}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={PEDIU.muted} keyboardType={keyboardType} style={s.input} /></View>;
+function Field({ label, help, value, onChangeText, placeholder, keyboardType, accessibilityLabel }: { label: string; help?: string; value: string; onChangeText: (value: string) => void; placeholder: string; keyboardType?: "phone-pad" | "decimal-pad"; accessibilityLabel?: string }) {
+  return (
+    <View style={{ gap: 7 }}>
+      <Text style={s.label}>{label}</Text>
+      {help ? <Text style={s.muted}>{help}</Text> : null}
+      <TextInput accessibilityLabel={accessibilityLabel ?? label} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={PEDIU.muted} keyboardType={keyboardType} style={s.input} />
+    </View>
+  );
 }
 
 function ToggleRow({ title, subtitle, on, onPress }: { title: string; subtitle: string; on: boolean; onPress: () => void }) {

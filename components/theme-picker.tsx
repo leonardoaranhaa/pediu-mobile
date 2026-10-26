@@ -4,6 +4,7 @@ import {
   Animated,
   Easing,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,8 +12,11 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PediuMascot } from "@/components/pediu-mascot";
+import { edgeModalProps } from "@/components/edge-modal";
+import { bottomSafeInset } from "@/lib/screen-space";
 import { s } from "@/components/pediu-page";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -445,6 +449,7 @@ export function ThemePicker({
     updateCustomization,
     resetCustomization,
   } = useAppPreferences();
+  const insets = useSafeAreaInsets();
   const profileQuery = trpc.pediu.account.profile.mine.useQuery(undefined, {
     enabled: isAuthenticated,
     staleTime: 60_000,
@@ -569,6 +574,7 @@ export function ThemePicker({
         transparent
         animationType="none"
         onRequestClose={close}
+        {...edgeModalProps}
       >
         <View
           style={{
@@ -588,7 +594,7 @@ export function ThemePicker({
               borderTopRightRadius: 30,
               paddingHorizontal: modalHorizontalPadding,
               paddingTop: 11,
-              paddingBottom: 24,
+              paddingBottom: bottomSafeInset(insets.bottom, Platform.OS),
               transform: [
                 {
                   translateY: modalProgress.interpolate({
@@ -678,7 +684,7 @@ export function ThemePicker({
                   padding: 13,
                   gap: 10,
                   minHeight: 136,
-                  overflow: "hidden",
+                  overflow: "visible",
                 }}
               >
                 <PediuMascot

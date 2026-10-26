@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Image, Linking, Modal, Text, TextInput, View } from "react-native";
 import { AssistantChat } from "@/components/assistant-chat";
+import { edgeModalProps } from "@/components/edge-modal";
 import { askToJoin } from "@/components/auth-prompt";
 import { useAuth } from "@/hooks/use-auth";
 import { pickPhotoDataUrl } from "@/lib/pick-photo";
@@ -830,7 +831,7 @@ export default function CourierHomePage() {
           />
         </OpsCard>
       ) : null}
-      <Modal visible={assistantOpen} transparent animationType="slide" onRequestClose={() => setAssistantOpen(false)}>
+      <Modal visible={assistantOpen} transparent animationType="slide" onRequestClose={() => setAssistantOpen(false)} {...edgeModalProps}>
         <AssistantChat audience="courier" onClose={() => setAssistantOpen(false)} />
       </Modal>
     </OpsShell>

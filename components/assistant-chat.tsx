@@ -20,6 +20,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { bottomSafeInset } from "@/lib/screen-space";
 import { cartLineKey, type CartProduct } from "@/lib/cart";
 import { useAppPreferences } from "@/lib/app-preferences";
 import { useCart } from "@/providers/cart-provider";
@@ -254,15 +255,16 @@ export function AssistantChat({
   return (
     <KeyboardAvoidingView
       style={[styles.backdrop, { paddingTop: Math.max(insets.top, 12) }]}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior="padding"
+      keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
     >
-      <View style={[styles.sheet, { backgroundColor: theme.card, paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={[styles.sheet, { backgroundColor: theme.card, paddingBottom: bottomSafeInset(insets.bottom, Platform.OS) }]}>
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.kicker, { color: theme.primary }]}>PEDIU</Text>
             <Text style={[styles.title, { color: theme.ink }]}>Fale com o Pediu</Text>
           </View>
-          <Pressable accessibilityLabel="Fechar assistente" onPress={onClose} hitSlop={10}>
+          <Pressable accessibilityLabel="Fechar assistente" onPress={onClose} hitSlop={8} style={styles.close}>
             <MaterialIcons name="close" size={22} color={theme.ink} />
           </Pressable>
         </View>
@@ -335,6 +337,7 @@ export function AssistantChat({
           <TextInput
             value={draft}
             onChangeText={setDraft}
+            accessibilityLabel="Mensagem para o assistente"
             placeholder="Escreva aqui"
             placeholderTextColor={theme.muted}
             style={[styles.input, { color: theme.ink }]}
@@ -342,7 +345,7 @@ export function AssistantChat({
             onSubmitEditing={() => void send(draft)}
             returnKeyType="send"
           />
-          <Pressable accessibilityLabel="Ativar microfone" style={[styles.send, { backgroundColor: recorderState.isRecording ? theme.ink : theme.primary }]} onPress={() => void toggleMic()} disabled={busy && !recorderState.isRecording}>
+          <Pressable accessibilityLabel={recorderState.isRecording ? "Parar gravação" : "Falar com o assistente"} style={[styles.send, { backgroundColor: recorderState.isRecording ? theme.ink : theme.primary }]} onPress={() => void toggleMic()} disabled={busy && !recorderState.isRecording}>
             <MaterialIcons name={recorderState.isRecording ? "stop" : "mic"} size={18} color="#FFFFFF" />
           </Pressable>
           <Pressable accessibilityLabel="Enviar" style={[styles.send, { backgroundColor: theme.primary }]} onPress={() => void send(draft)} disabled={busy || !draft.trim()}>
@@ -372,5 +375,6 @@ const styles = StyleSheet.create({
   chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
   composer: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 22, padding: 6 },
   input: { flex: 1, fontSize: 16, paddingHorizontal: 8, minHeight: 40 },
-  send: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  close: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  send: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center" },
 });

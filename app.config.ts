@@ -42,7 +42,7 @@ const config: ExpoConfig = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: bundleId,
-    versionCode: 11,
+    versionCode: 12,
     permissions: ["POST_NOTIFICATIONS"],
     intentFilters: [
       {
@@ -52,6 +52,16 @@ const config: ExpoConfig = {
         category: ["BROWSABLE", "DEFAULT"],
       },
     ],
+  },
+  androidStatusBar: {
+    barStyle: "dark-content",
+    backgroundColor: "#00000000",
+    translucent: true,
+  },
+  androidNavigationBar: {
+    barStyle: "dark-content",
+    backgroundColor: "#FFF4E8",
+    enforceContrast: false,
   },
   web: {
     bundler: "metro",
