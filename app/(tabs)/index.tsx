@@ -34,6 +34,7 @@ import { OpeningHoursEditor } from "@/components/opening-hours-editor";
 import { PinMap } from "@/components/pin-map";
 import { ProductExtrasFields, type ProductExtras } from "@/components/product-extras-fields";
 import { askToJoin } from "@/components/auth-prompt";
+import { AssistantChat } from "@/components/assistant-chat";
 import { ProfileHome } from "@/components/profile-home";
 import { StoreSignupForm } from "@/components/store-signup-form";
 import { StoreTour } from "@/components/store-tour";
@@ -1484,19 +1485,19 @@ export default function HomeScreen() {
           animationType="fade"
           onRequestClose={() => setShowVoice(false)}
         >
-          <VoiceAssistantModal
-            mode={voiceMode}
-            busy={voiceMutation.isPending || transcribeMutation.isPending}
-            isRecording={recorderState.isRecording}
-            onRecord={toggleNativeRecording}
-            reply={voiceReply}
-            onClose={() => {
-              setShowVoice(false);
-              setVoiceReply("");
+          <AssistantChat
+            audience={role === "seller" ? "merchant" : isAuthenticated ? "customer" : "guest"}
+            onClose={() => setShowVoice(false)}
+            onNavigate={(target) => {
+              if (target.screen === "orders") changeCustomerTab("orders");
+              if (target.screen === "cart") setShowCart(true);
+              if (target.screen === "catalog") changeSellerTab("catalog");
+              if (target.screen === "store_orders") changeSellerTab("orders");
+              if (target.screen === "track" && target.orderId) {
+                setShowVoice(false);
+                router.push({ pathname: "/order/track", params: { orderId: String(target.orderId) } });
+              }
             }}
-            onAction={handleVoiceAction}
-            onCommand={handleVoiceCommand}
-            theme={theme}
           />
         </Modal>
 
@@ -3032,7 +3033,7 @@ function SellerSettings({
         <View style={{ flex: 1 }}>
           <Text style={styles.cardTitle}>Assistente do Pediu</Text>
           <Text style={styles.muted}>
-            Vendas, fiado, catálogo e divulgação por voz
+            Pedidos, loja e vendas por aqui
           </Text>
         </View>
         <MaterialIcons name="chevron-right" size={20} color={COLORS.muted} />
@@ -4856,7 +4857,7 @@ function SellerVoiceLauncher({ onPress }: { onPress: () => void }) {
       <View style={{ flex: 1 }}>
         <Text style={voiceStyles.launcherTitle}>Fale com o Pediu</Text>
         <Text style={voiceStyles.launcherText}>
-          Registrar venda, consultar fiado ou divulgar
+          Pedidos, loja e vendas por aqui
         </Text>
       </View>
       <MaterialIcons name="arrow-forward" size={18} color={COLORS.ink} />

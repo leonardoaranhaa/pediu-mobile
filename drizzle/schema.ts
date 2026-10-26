@@ -1517,6 +1517,25 @@ export const courierEarnings = pgTable(
   }),
 ).enableRLS();
 
+export const assistantConfirmations = pgTable(
+  "pediu_assistant_confirmations",
+  {
+    id: varchar("id", { length: 64 }).primaryKey(),
+    userId: integer("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tool: varchar("tool", { length: 64 }).notNull(),
+    payload: text("payload").notNull(),
+    summary: varchar("summary", { length: 500 }).notNull(),
+    expiresAt: timestamp("expiresAt").notNull(),
+    usedAt: timestamp("usedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdx: index("pediu_assistant_confirmations_user_idx").on(table.userId),
+  }),
+).enableRLS();
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type EmailVerificationToken =

@@ -68,6 +68,64 @@ export async function openAiChat(input: {
   return content;
 }
 
+export type OpenAiToolCall = {
+  id: string;
+  name: string;
+  arguments: string;
+};
+
+export async function openAiToolStep(input: {
+  model: string;
+  messages: Array<Record<string, unknown>>;
+  tools: Array<{
+    type: "function";
+    function: { name: string; description: string; parameters: Record<string, unknown> };
+  }>;
+}) {
+  if (!openAiConfigured()) throw new Error(AI_UNAVAILABLE);
+  const response = await fetch(`${OPENAI_API}/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${openAiKey()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: input.model,
+      messages: input.messages,
+      tools: input.tools,
+      tool_choice: "auto",
+      max_completion_tokens: 700,
+    }),
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (!response.ok) {
+    throw new Error("Não consegui falar com a inteligência artificial agora. Tente de novo.");
+  }
+  const payload = (await response.json()) as {
+    choices?: Array<{
+      message?: {
+        content?: string | null;
+        tool_calls?: Array<{
+          id?: string;
+          function?: { name?: string; arguments?: string };
+        }>;
+      };
+    }>;
+  };
+  const message = payload.choices?.[0]?.message;
+  const toolCalls = (message?.tool_calls ?? [])
+    .map((call) => ({
+      id: call.id ?? "",
+      name: call.function?.name ?? "",
+      arguments: call.function?.arguments ?? "{}",
+    }))
+    .filter((call) => call.id && call.name);
+  return {
+    content: typeof message?.content === "string" ? message.content : null,
+    toolCalls,
+  };
+}
+
 export async function openAiImage(input: {
   model: string;
   prompt: string;

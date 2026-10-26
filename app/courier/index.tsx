@@ -1,7 +1,8 @@
 import * as Location from "expo-location";
 import { router } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Image, Linking, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Linking, Modal, Text, TextInput, View } from "react-native";
+import { AssistantChat } from "@/components/assistant-chat";
 import { askToJoin } from "@/components/auth-prompt";
 import { useAuth } from "@/hooks/use-auth";
 import { pickPhotoDataUrl } from "@/lib/pick-photo";
@@ -116,6 +117,7 @@ export default function CourierHomePage() {
   const [deliveryPhoto, setDeliveryPhoto] = useState<string>();
   const [deliveryNotice, setDeliveryNotice] = useState("");
   const [tab, setTab] = useState<"offers" | "ride" | "earnings" | "account">("offers");
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const watcher = useRef<Location.LocationSubscription | null>(null);
   const lastLocationAt = useRef(0);
   const locationSequence = useRef(0);
@@ -543,6 +545,7 @@ export default function CourierHomePage() {
       {locationError ? (
         <Text style={{ color: PEDIU.coral, fontFamily: "Nunito" }}>{locationError}</Text>
       ) : null}
+      <OpsButton title="Fale com o Pediu" onPress={() => setAssistantOpen(true)} />
       <View style={{ flexDirection: "row", gap: 12 }}>
         <OpsMetric value={offers.data?.length ?? 0} label="no radar" dark />
         <OpsMetric value={formatMoney(earned)} label="a receber" />
@@ -827,6 +830,9 @@ export default function CourierHomePage() {
           />
         </OpsCard>
       ) : null}
+      <Modal visible={assistantOpen} transparent animationType="slide" onRequestClose={() => setAssistantOpen(false)}>
+        <AssistantChat audience="courier" onClose={() => setAssistantOpen(false)} />
+      </Modal>
     </OpsShell>
   );
 }

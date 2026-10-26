@@ -207,7 +207,7 @@ export default function SellerSettingsPage() {
     </Card>
     <Card><ThemePicker title="Personalize o painel da loja" description="Escolha as cores do aplicativo." /></Card>
     <Card>
-      <Row icon="auto-awesome" title="Assistente do Pediu" subtitle="Atalhos para vendas, fiado, catálogo e divulgação" onPress={() => router.replace({ pathname: "/(tabs)", params: { assistant: "seller" } } as never)} />
+      <Row icon="auto-awesome" title="Assistente do Pediu" subtitle="Peça ajuda com a loja" onPress={() => router.replace({ pathname: "/(tabs)", params: { assistant: "seller" } } as never)} />
       <Row icon="inventory-2" title="Catálogo" subtitle="Produtos, preços e disponibilidade" onPress={() => router.push("/seller/catalog")} />
       <Row icon="people" title="Clientes e fiado" subtitle="Crédito e histórico por cliente" onPress={() => router.push("/seller/clients")} />
       <Row icon="receipt-long" title="Vendas" subtitle="Histórico e formas de pagamento" onPress={() => router.push("/seller/sales")} />

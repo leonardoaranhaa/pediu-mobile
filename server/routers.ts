@@ -18,6 +18,11 @@ import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { systemRouter } from "./_core/systemRouter";
 import { interpretVoiceCommand } from "./voice";
+import {
+  cancelAssistantTurn,
+  confirmAssistantTurn,
+  runAssistantChat,
+} from "./assistant";
 import { localModerationNote } from "../shared/ad-moderation";
 import { openAiFlagged } from "./_core/openai";
 import { createPixCharge, mercadoPagoConfigured } from "./payments";
@@ -2169,6 +2174,103 @@ export const appRouter = router({
           if (!store)
             throw new Error("Cadastre sua loja antes de registrar vendas");
           return db.createSale({ ...input, storeId: store.id });
+        }),
+    }),
+    assistant: router({
+      chat: publicProcedure
+        .input(
+          z.object({
+            messages: z
+              .array(
+                z.object({
+                  role: z.enum(["user", "assistant"]),
+                  content: z.string().trim().min(1).max(1000),
+                }),
+              )
+              .min(1)
+              .max(20),
+            cart: z
+              .array(
+                z.object({
+                  productId: z.number().int().positive(),
+                  quantity: z.number().int().positive().max(50),
+                  optionIds: z.array(z.number().int().positive()).max(12).optional(),
+                  note: z.string().trim().max(500).optional(),
+                }),
+              )
+              .max(30)
+              .optional(),
+          }),
+        )
+        .mutation(async ({ ctx, input }) => {
+          await enforceDistributedRateLimit(ctx, {
+            scope: "assistant:chat",
+            identity: ctx.user?.id,
+            limit: 20,
+            windowMs: 5 * 60_000,
+            message: "Muitas mensagens em pouco tempo. Espere um instante.",
+          });
+          return withConcurrencyLimit("assistant:chat", 4, () =>
+            withTimeout(
+              runAssistantChat({
+                user: ctx.user,
+                messages: input.messages,
+                cart: input.cart ?? [],
+                req: ctx.req,
+                res: ctx.res,
+              }),
+              30_000,
+              "Demorou demais. Tente de novo com um pedido mais curto.",
+            ),
+          );
+        }),
+      confirm: protectedProcedure
+        .input(
+          z.object({
+            token: z.string().trim().min(8).max(180),
+            cart: z
+              .array(
+                z.object({
+                  productId: z.number().int().positive(),
+                  quantity: z.number().int().positive().max(50),
+                  optionIds: z.array(z.number().int().positive()).max(12).optional(),
+                }),
+              )
+              .max(30)
+              .optional(),
+          }),
+        )
+        .mutation(async ({ ctx, input }) => {
+          await enforceDistributedRateLimit(ctx, {
+            scope: "assistant:confirm",
+            identity: ctx.user.id,
+            limit: 20,
+            windowMs: 5 * 60_000,
+            message: "Muitas confirmações em pouco tempo. Espere um instante.",
+          });
+          return withTimeout(
+            confirmAssistantTurn({
+              user: ctx.user,
+              token: input.token,
+              cart: input.cart ?? [],
+              req: ctx.req,
+              res: ctx.res,
+            }),
+            90_000,
+            "Demorou demais. Tente de novo.",
+          );
+        }),
+      cancel: protectedProcedure
+        .input(z.object({ token: z.string().trim().min(8).max(180) }))
+        .mutation(async ({ ctx, input }) => {
+          await enforceDistributedRateLimit(ctx, {
+            scope: "assistant:cancel",
+            identity: ctx.user.id,
+            limit: 20,
+            windowMs: 5 * 60_000,
+            message: "Muitas tentativas. Espere um instante.",
+          });
+          return cancelAssistantTurn({ user: ctx.user, token: input.token });
         }),
     }),
     voice: router({
