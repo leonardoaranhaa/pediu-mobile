@@ -119,15 +119,13 @@ export function PediuV2Discovery({
       >
         {stories.length
           ? stories.map((product, index) => (
-              <PediuReveal
+              <PediuPressable
                 key={product.id}
-                delay={index * 55}
-                enabled={motionEnabled}
+                accessibilityRole="button"
+                accessibilityLabel={`Ver ${product.store}`}
+                onPress={() => setStoryIndex(index)}
+                style={styles.storyItem}
               >
-                <PediuPressable
-                  onPress={() => setStoryIndex(index)}
-                  style={styles.storyItem}
-                >
                   <View
                     style={[
                       styles.storyRing,
@@ -161,7 +159,6 @@ export function PediuV2Discovery({
                     {product.store}
                   </Text>
                 </PediuPressable>
-              </PediuReveal>
             ))
           : DISCOVERY_CATEGORIES.map((category, index) => (
               <PediuReveal

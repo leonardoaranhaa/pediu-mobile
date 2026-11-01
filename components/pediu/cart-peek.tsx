@@ -1,5 +1,7 @@
 import { MaterialIcons } from "@expo/vector-icons";
-import { StyleSheet, Text, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { bottomSafeInset } from "@/lib/screen-space";
 import {
   PediuPressable,
   PediuPulse,
@@ -15,9 +17,16 @@ type Props = {
 };
 
 export function CartPeek({ itemCount, subtitle, totalLabel, onPress }: Props) {
+  const insets = useSafeAreaInsets();
   if (itemCount <= 0) return null;
   return (
-    <PediuReveal variant="slideUp" style={styles.wrap}>
+    <PediuReveal
+      variant="slideUp"
+      style={[
+        styles.wrap,
+        { bottom: bottomSafeInset(insets.bottom, Platform.OS) + 94 },
+      ]}
+    >
       <View pointerEvents="box-none">
         <PediuPressable style={styles.bar} onPress={onPress}>
           <View style={styles.left}>

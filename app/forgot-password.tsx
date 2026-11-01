@@ -19,9 +19,9 @@ export default function ForgotPasswordScreen() {
   return (
     <Page title="Nova senha" eyebrow="SEGURANÇA" back>
       <Card>
-        <Text style={s.sectionTitle}>O Pediu ainda não envia e-mail</Text>
+        <Text style={s.sectionTitle}>Esqueceu a senha?</Text>
         <Text style={s.muted}>
-          Se você esqueceu a senha, peça um código de 8 números para o administrador do Pediu. Ele aparece só na tela de usuários do painel e vale 30 minutos. Nada de aviso falso de “e-mail enviado”.
+          Fale com o suporte do Pediu para receber um código de 8 números. O código vale 30 minutos. Depois é só criar a senha nova aqui.
         </Text>
         <Field label="E-mail da conta" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
         <Field label="Código de 8 números" value={code} onChangeText={setCode} keyboardType="number-pad" maxLength={8} />

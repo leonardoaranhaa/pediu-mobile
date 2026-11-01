@@ -40,6 +40,7 @@ const config: ExpoConfig = {
       monochromeImage: "./assets/images/android-icon-monochrome.png",
     },
     edgeToEdgeEnabled: true,
+    softwareKeyboardLayoutMode: "resize",
     predictiveBackGestureEnabled: false,
     package: bundleId,
     versionCode: 12,

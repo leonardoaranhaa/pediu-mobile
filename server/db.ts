@@ -154,6 +154,7 @@ import {
 } from "./domain/store-ops";
 import { isTrackingCapturedAtAcceptable } from "./domain/tracking";
 import { isUniqueConstraintError } from "./domain/idempotency";
+import { PIX_TTL_MS, classifyPendingOrder } from "./pix-lifecycle";
 import {
   calculateCommissionCents,
   comparePaymentForReconciliation,
@@ -164,7 +165,6 @@ import {
 import {
   DEFAULT_INVENTORY_RESERVATION_TTL_MS,
   inventoryAdjustmentForStatusChange,
-  inventoryReservationCutoff,
   normalizeInventoryQuantity,
 } from "./domain/inventory";
 import {
@@ -2639,7 +2639,23 @@ export async function listOrdersForStore(
   return db
     .select()
     .from(orders)
-    .where(eq(orders.storeId, storeId))
+    .where(
+      and(
+        eq(orders.storeId, storeId),
+        notExists(
+          db
+            .select({ id: payments.id })
+            .from(payments)
+            .where(
+              and(
+                eq(payments.orderId, orders.id),
+                eq(payments.method, "pix"),
+                eq(payments.status, "pending"),
+              ),
+            ),
+        ),
+      ),
+    )
     .orderBy(desc(orders.updatedAt), desc(orders.id))
     .limit(Math.min(limit, 100))
     .offset(Math.max(offset, 0));
@@ -2928,20 +2944,35 @@ export async function expireStaleInventoryReservations(
   const now = input.now ?? new Date();
   const ttlMs = input.ttlMs ?? DEFAULT_INVENTORY_RESERVATION_TTL_MS;
   const limit = Math.min(Math.max(input.limit ?? 100, 1), 500);
-  const cutoff = inventoryReservationCutoff(now, ttlMs);
 
   const outcome = await db.transaction(async (tx) => {
-    const staleOrders = await tx
+    const pendingRows = await tx
       .select({
         id: orders.id,
         customerId: orders.customerId,
         storeId: orders.storeId,
+        createdAt: orders.createdAt,
+        updatedAt: orders.updatedAt,
+        paymentMethod: payments.method,
+        paymentStatus: payments.status,
       })
       .from(orders)
-      .where(and(eq(orders.status, "Pendente"), lte(orders.createdAt, cutoff)))
+      .leftJoin(payments, eq(payments.orderId, orders.id))
+      .where(eq(orders.status, "Pendente"))
       .orderBy(orders.createdAt, orders.id)
-      .limit(limit)
-      .for("update");
+      .limit(limit);
+    const staleOrders = pendingRows.filter((row) => {
+      const decision = classifyPendingOrder({
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        paymentMethod: row.paymentMethod,
+        paymentStatus: row.paymentStatus,
+        now,
+        acceptTtlMs: ttlMs,
+        pixTtlMs: PIX_TTL_MS,
+      });
+      return decision !== "keep";
+    });
     const expiredOrderIds: number[] = [];
     const notices: Array<{
       orderId: number;
@@ -4871,7 +4902,18 @@ export async function applyPaymentWebhook(input: {
   amount: string;
   currency: "BRL";
   status: PaymentStatus;
-}): Promise<{ paymentId: number; status: PaymentStatus; duplicate: boolean }> {
+}): Promise<{
+  paymentId: number;
+  status: PaymentStatus;
+  duplicate: boolean;
+  releaseToStore?: boolean;
+  refundCancelledOrder?: boolean;
+  orderId?: number;
+  customerId?: number;
+  storeId?: number;
+  amount?: string;
+  transactionId?: string | null;
+}> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const providerAmountCents = parseAmountToCents(input.amount);
@@ -4950,6 +4992,12 @@ export async function applyPaymentWebhook(input: {
           .where(eq(webhookEvents.id, event.id));
         throw new Error("Payment webhook amount mismatch");
       }
+      const refundCancelledOrder =
+        input.status === "paid" && order.status === "Cancelado";
+      const releaseToStore =
+        input.status === "paid" &&
+        order.status === "Pendente" &&
+        payment.method === "pix";
       if (!canTransitionPayment(payment.status, input.status)) {
         await tx
           .update(webhookEvents)
@@ -4959,6 +5007,13 @@ export async function applyPaymentWebhook(input: {
           paymentId: payment.id,
           status: payment.status,
           duplicate: false,
+          releaseToStore: false,
+          refundCancelledOrder: false,
+          orderId: order.id,
+          customerId: order.customerId,
+          storeId: order.storeId,
+          amount: order.total,
+          transactionId: input.transactionId ?? payment.transactionId ?? null,
         };
       }
       await tx
@@ -4983,7 +5038,13 @@ export async function applyPaymentWebhook(input: {
             ),
           );
       }
-      if (input.status === "paid") {
+      if (releaseToStore) {
+        await tx
+          .update(orders)
+          .set({ updatedAt: new Date() })
+          .where(eq(orders.id, order.id));
+      }
+      if (input.status === "paid" && !refundCancelledOrder) {
         const providerTransactionId =
           input.transactionId ?? payment.transactionId ?? null;
         const transactionIdempotencyKey = `webhook:${input.provider}:${input.providerEventId}`;
@@ -5103,7 +5164,18 @@ export async function applyPaymentWebhook(input: {
         .update(webhookEvents)
         .set({ status: "processed", processedAt: new Date() })
         .where(eq(webhookEvents.id, event.id));
-      return { paymentId: payment.id, status: input.status, duplicate: false };
+      return {
+        paymentId: payment.id,
+        status: input.status,
+        duplicate: false,
+        releaseToStore,
+        refundCancelledOrder,
+        orderId: order.id,
+        customerId: order.customerId,
+        storeId: order.storeId,
+        amount: order.total,
+        transactionId: input.transactionId ?? payment.transactionId ?? null,
+      };
     });
   } catch (error) {
     if (!isUniqueConstraintError(error)) throw error;
@@ -5138,6 +5210,37 @@ export async function applyPaymentWebhook(input: {
     }
     throw error;
   }
+}
+
+export async function getOrderPaymentContext(orderId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select({
+      payment: payments,
+      total: orders.total,
+      customerId: orders.customerId,
+    })
+    .from(payments)
+    .innerJoin(orders, eq(payments.orderId, orders.id))
+    .where(eq(payments.orderId, orderId))
+    .limit(1);
+  return rows[0];
+}
+
+export async function listExpiredCreditPurchases(now = new Date(), ttlMs = PIX_TTL_MS) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(adCreditPurchases)
+    .where(
+      and(
+        eq(adCreditPurchases.status, "pending"),
+        lte(adCreditPurchases.createdAt, new Date(now.getTime() - ttlMs)),
+      ),
+    )
+    .limit(50);
 }
 
 export async function cancelPendingPaymentForOrder(

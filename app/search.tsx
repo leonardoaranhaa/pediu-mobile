@@ -1,6 +1,6 @@
 import { MaterialIcons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useState } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -33,7 +33,12 @@ function parsePrice(value: string) {
 }
 
 export default function SearchScreen() {
-  const [query, setQuery] = useState("");
+  const params = useLocalSearchParams<{ q?: string }>();
+  const initialQuery = typeof params.q === "string" ? params.q : "";
+  const [query, setQuery] = useState(initialQuery);
+  useEffect(() => {
+    if (initialQuery) setQuery(initialQuery);
+  }, [initialQuery]);
   const [vertical, setVertical] =
     useState<(typeof VERTICALS)[number]["id"]>("all");
   const [minPrice, setMinPrice] = useState("");

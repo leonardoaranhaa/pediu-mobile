@@ -1,6 +1,6 @@
 # Auditoria da beta fechada (APK v11 → v12)
 
-Leonardo testou o APK v11 em celulares Android. Esta lista cobre os quatro problemas das fotos, o mascote torto e o restante do app revisado neste ciclo. Nada disso foi conferido de novo em um aparelho físico: o emulador desta máquina não sobe. A conferência foi no código e nos testes automáticos.
+Leonardo testou o APK v11 em celulares Android. Esta lista cobre os quatro problemas das fotos, o mascote torto e o restante do app revisado neste ciclo. O primeiro ciclo foi conferido no código. O reteste do cliente foi no emulador Android 11 com 3 botões, a partir do commit `e539c45`.
 
 Não há migration nova. Os arquivos `drizzle/0004` a `drizzle/0009` não mudaram.
 
@@ -40,11 +40,33 @@ Depois, o mascote é **um SVG só**, caixa 88×104, largura e altura sempre na m
 - Splash e ícone são PNG únicos, não o mascote de peças. O problema torto não está neles.
 - Estados vazios (carrinho, catálogo, ganhos do motoboy) são texto, não o mascote.
 
+## Reteste no emulador (e539c45, Android 11, 3 botões)
+
+Confirmado no emulador: faixa do relógio, abas acima dos botões do sistema, nome da loja inteiro, mascote em pé, perguntas do botão voltar e o título “Finalizar pedido”.
+
+| # | Gravidade | Onde | Problema | Status |
+| --- | --- | --- | --- | --- |
+| N01 | Alta | Pedido confirmado | O botão “Acompanhar pedido” ficava embaixo dos botões do Android. | Corrigido. O botão ficou fixo acima da barra do sistema. A tela inteira também reserva esse espaço, inclusive a sacola flutuante. |
+| N09 | Alta | PIX no Mercado Pago | Pedido cancelado (na hora, pela loja ou pelo prazo de aceite) só mudava a linha local. O QR continuava pagável. | Corrigido. A cobrança nasce com validade de 30 minutos. Ao cancelar o pedido, o servidor pede o cancelamento no Mercado Pago. Se o dinheiro chegar depois do cancelamento, o servidor estorna e avisa. O mesmo vale para o PIX de crédito de anúncio. O prazo de aceite da loja só começa depois que o PIX é aprovado, e a loja só vê o pedido pago. |
+| N02 | Média | Login e troco | O teclado cobria “Entrar” e o campo “Troco para quanto?”. | Corrigido. A tela sobe com a altura do teclado e o Android redimensiona a janela. |
+| N03 | Média | Pedido confirmado | Dizia “Tudo certo” com o PIX ainda em aberto. A loja era avisada antes do pagamento. | Corrigido. Enquanto o PIX não entra, a tela diz “Aguardando pagamento do PIX”. A loja só é avisada quando o pagamento é aprovado. |
+| N04 | Média | Voltar do acompanhamento | Caía no carrinho vazio e depois no produto. | Corrigido. Depois de enviar o pedido, a pilha volta para o início e abre a confirmação. Voltar do acompanhamento cai no início. |
+| N05 | Média | Círculos da home | O toque no círculo da loja não abria nada. A animação de entrada segurava o toque. | Corrigido. O círculo abre o story na hora, sem esperar a animação. |
+| N12 | Média | Acompanhar pedido | Não tinha “Cancelar pedido”, embora o checkout prometesse. | Corrigido. O botão aparece enquanto o pedido está pendente ou aceito, com confirmação. |
+| N13 | Média | Assistente | “1 pizza grande da TESTE Hiki Loja” pedia o nome de novo. A loja também pedia o nome da pizza e da loja quando só havia uma. | Corrigido. “Pizza” acha o único produto com esse nome e “grande” entra como tamanho. Na conta da loja, um único produto compatível é usado. A pergunta só aparece se houver mais de um. |
+| N06 | Baixa | Busca da home | Enter só filtrava os círculos. | Corrigido. Enter abre a Busca com o texto digitado. |
+| N07 | Baixa | Tamanho obrigatório | Broto e Grande nasciam sem escolha e o preço era o base. | Corrigido. O primeiro tamanho já vem marcado e entra no preço. Sem escolha, o botão pede o tamanho. |
+| N08 | Baixa | Gorjeta | “Sem gorjeta” quebrava em duas linhas. | Corrigido. O chip mostra “R$ 0”, no mesmo formato dos outros. |
+| N10 | Baixa | Esqueci a senha | O texto falava de painel e de aviso falso. | Corrigido. O texto pede para falar com o suporte do Pediu. |
+| N11 | Baixa | Login | Não tinha seta para voltar. | Corrigido. |
+| N14 | Baixa | Repetir pedido | Não dizia que o último pedido tinha sido cancelado. | Corrigido. A frase avisa e o Confirmar continua valendo se a pessoa quiser repetir. |
+
 ## Ainda aberto
 
 | Gravidade | Item | Por quê ficou |
 | --- | --- | --- |
-| Média | Olhar a beta num celular de verdade, com navegação de 3 botões e de gesto, e com letra grande | Esta máquina não roda o emulador Android. |
+| Média | Telas de lojista e motoboy neste emulador | O reteste cobriu o cliente. O restante chega num passe separado. |
+| Média | Olhar de novo num celular de verdade, com gesto e com letra grande | O emulador foi Android 11 com 3 botões. O aparelho do Leonardo ainda precisa de uma passada. |
 | Média | O número 12 no APK publicado | O contador remoto do EAS é quem define o `versionCode` do arquivo instalado. |
 | Baixa | Algumas telas de administração ainda têm frases em inglês, como “Support ticket not found” | Não entram no caminho de cliente, loja ou motoboy da beta. Os testes dependem dessas frases. |
 | Baixa | Conferir a splash no aparelho | É um PNG separado. Não foi redesenhada neste ciclo. |

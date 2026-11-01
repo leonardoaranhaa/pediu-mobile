@@ -1,6 +1,6 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import { Image, Linking, Pressable, Text, View } from "react-native";
+import { Alert, Image, Linking, Pressable, Text, View } from "react-native";
 import { Page, Card, OutlineButton, PEDIU, s } from "@/components/pediu-page";
 import { orderStatusCopy, paymentStatusLabel } from "@/lib/order-copy";
 import { trpc } from "@/lib/trpc";
@@ -30,6 +30,9 @@ export default function TrackOrderPage() {
       refetchInterval: 5000,
     },
   );
+  const cancelOrder = trpc.pediu.orders.status.useMutation({
+    onSuccess: () => void query.refetch(),
+  });
   const paymentQuery = trpc.pediu.payments.get.useQuery(
     { paymentId },
     {
@@ -243,6 +246,30 @@ export default function TrackOrderPage() {
           <Text style={{ color: PEDIU.ink, fontSize: 22, fontWeight: "900" }}>
             Código para o motoboy: {query.data.deliveryCode}
           </Text>
+        ) : null}
+        {query.data.status === "Pendente" || query.data.status === "Aceito" ? (
+          <OutlineButton
+            title={cancelOrder.isPending ? "Cancelando..." : "Cancelar pedido"}
+            disabled={cancelOrder.isPending}
+            onPress={() =>
+              Alert.alert(
+                "Cancelar pedido?",
+                "Dá para cancelar enquanto a loja ainda não começou a preparar.",
+                [
+                  { text: "Manter pedido", style: "cancel" },
+                  {
+                    text: "Cancelar pedido",
+                    style: "destructive",
+                    onPress: () =>
+                      cancelOrder.mutate({
+                        orderId: query.data.id,
+                        status: "Cancelado",
+                      }),
+                  },
+                ],
+              )
+            }
+          />
         ) : null}
         {query.data.status !== "Cancelado" ? (
           <OutlineButton

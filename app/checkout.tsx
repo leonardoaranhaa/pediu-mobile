@@ -131,7 +131,8 @@ export default function CheckoutScreen() {
         }
       }
       clear();
-      router.replace({
+      router.dismissAll();
+      router.push({
         pathname: "/order/success",
         params: {
           orderId: String(result.orderId),
@@ -600,7 +601,7 @@ export default function CheckoutScreen() {
                     fontWeight: "900",
                   }}
                 >
-                  {value ? money(value) : "Sem gorjeta"}
+                  {value ? money(value) : "R$ 0"}
                 </Text>
               </Pressable>
             ))}

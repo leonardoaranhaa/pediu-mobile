@@ -1,7 +1,8 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import type { ComponentProps, ReactNode } from "react";
+import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import {
+  Keyboard,
   Platform,
   ScrollView,
   StyleSheet,
@@ -14,11 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PediuPressable } from "@/components/pediu-motion";
 import { useAppPreferences } from "@/lib/app-preferences";
 import { PEDIU_TOKENS } from "@/lib/pediu-tokens";
-import {
-  bottomSafeInset,
-  scrollPaddingForFloatingBar,
-  scrollPaddingForScreenEnd,
-} from "@/lib/screen-space";
+import { bottomSafeInset } from "@/lib/screen-space";
 
 export const PEDIU = {
   coral: "#E20D2A",
@@ -54,8 +51,31 @@ export function Page({
 }) {
   const { theme } = useAppPreferences();
   const insets = useSafeAreaInsets();
+  const [keyboard, setKeyboard] = useState(0);
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const show = Keyboard.addListener(showEvent, (event) => {
+      setKeyboard(event.endCoordinates.height);
+    });
+    const hide = Keyboard.addListener(hideEvent, () => setKeyboard(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  const systemBottom = bottomSafeInset(insets.bottom, Platform.OS);
   return (
-    <View style={[s.root, { backgroundColor: theme.canvas, paddingTop: insets.top }]}>
+    <View
+      style={[
+        s.root,
+        {
+          backgroundColor: theme.canvas,
+          paddingTop: insets.top,
+          paddingBottom: systemBottom,
+        },
+      ]}
+    >
       <View
         pointerEvents="none"
         style={[s.backgroundOrb, s.backgroundOrbOne]}
@@ -70,9 +90,7 @@ export function Page({
         contentContainerStyle={[
           s.content,
           {
-            paddingBottom: dock
-              ? scrollPaddingForFloatingBar(insets.bottom, Platform.OS)
-              : scrollPaddingForScreenEnd(insets.bottom, Platform.OS),
+            paddingBottom: (dock ? 150 : 28) + keyboard,
           },
         ]}
         showsVerticalScrollIndicator={false}

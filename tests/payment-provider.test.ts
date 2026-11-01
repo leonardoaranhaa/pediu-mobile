@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createPixCharge, requestPixRefund } from "../server/payments";
+import { cancelMercadoPagoPayment, createPixCharge, requestPixRefund } from "../server/payments";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -82,13 +82,21 @@ describe("Mercado Pago PIX provider", () => {
     const headers = new Headers(init.headers);
     expect(headers.get("Authorization")).toBe("Bearer test-access-token");
     expect(headers.get("X-Idempotency-Key")).toBe("pix-order-20");
-    expect(JSON.parse(String(init.body))).toEqual({
+    const body = JSON.parse(String(init.body)) as {
+      date_of_expiration?: string;
+      transaction_amount: number;
+    };
+    expect(body).toMatchObject({
       transaction_amount: 15,
       payment_method_id: "pix",
       payer: { email: "cliente@example.test" },
       external_reference: "pediu-order-20",
       notification_url: "https://pediu.example.test/api/webhooks/payments",
     });
+    expect(body.date_of_expiration).toBeTruthy();
+    const expiresAt = new Date(body.date_of_expiration ?? "").getTime();
+    expect(expiresAt).toBeGreaterThan(Date.now() + 20 * 60 * 1000);
+    expect(expiresAt).toBeLessThan(Date.now() + 40 * 60 * 1000);
   });
 
   it("keeps an approved create response pending until the canonical webhook flow confirms it", async () => {
@@ -150,6 +158,24 @@ describe("Mercado Pago PIX provider", () => {
       status: "failed",
       providerChargeId: "987",
     });
+  });
+
+  it("cancels an open Mercado Pago charge with a status update", async () => {
+    configureMercadoPago();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 187, status: "cancelled" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(cancelMercadoPagoPayment("187159459792")).resolves.toBe("cancelled");
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://api.mercadopago.com/v1/payments/187159459792");
+    expect(init.method).toBe("PUT");
+    expect(JSON.parse(String(init.body))).toEqual({ status: "cancelled" });
   });
 
   it("creates a partial refund with the official Payments API contract", async () => {

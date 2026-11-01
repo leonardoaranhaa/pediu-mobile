@@ -1,7 +1,8 @@
 import crypto from "node:crypto";
 import express, { type Express, type Request } from "express";
 import * as db from "./db";
-import { getMercadoPagoPayment } from "./payments";
+import { getMercadoPagoPayment, requestPixRefund } from "./payments";
+import { sendPushToUser } from "./push";
 
 const PAYMENT_PROVIDER = "mercado_pago";
 const WEBHOOK_STATUSES = new Set([
@@ -210,6 +211,22 @@ export function registerPaymentWebhookRoutes(app: Express) {
             res.status(200).json({ ok: true, ignored: true });
             return;
           }
+          if (creditStatus === "paid" && purchase.status === "cancelled") {
+            try {
+              await requestPixRefund({
+                paymentId: purchase.id,
+                orderId: purchase.id,
+                transactionId: paymentId,
+                amount: purchase.amount,
+                idempotencyKey: `credit-refund-${purchase.id}`,
+                reason: "Compra de créditos já cancelada",
+              });
+            } catch (error) {
+              console.warn("[PIX] Failed to refund a cancelled credit purchase", error);
+            }
+            res.status(200).json({ ok: true, credits: true, refunded: true });
+            return;
+          }
           await db.applyCreditPurchaseStatus({
             purchaseId: purchase.id,
             status: creditStatus,
@@ -241,6 +258,48 @@ export function registerPaymentWebhookRoutes(app: Express) {
           currency: "BRL",
           status,
         });
+        if ("releaseToStore" in result && result.releaseToStore && result.storeId) {
+          const store = await db.getStoreById(result.storeId);
+          if (store) {
+            try {
+              await sendPushToUser(
+                store.ownerId,
+                "Novo pedido",
+                `O pedido #${result.orderId} foi pago e está pendente de aceite.`,
+                { type: "order", orderId: result.orderId, status: "Pendente" },
+              );
+            } catch (error) {
+              console.warn("[PIX] Failed to notify the store about a paid order", error);
+            }
+          }
+        }
+        if (
+          "refundCancelledOrder" in result &&
+          result.refundCancelledOrder &&
+          result.transactionId &&
+          result.orderId &&
+          result.customerId &&
+          result.amount
+        ) {
+          try {
+            await requestPixRefund({
+              paymentId: result.paymentId,
+              orderId: result.orderId,
+              transactionId: result.transactionId,
+              amount: result.amount,
+              idempotencyKey: `pix-refund-webhook-${result.orderId}`,
+              reason: "Pedido já cancelado",
+            });
+            await sendPushToUser(
+              result.customerId,
+              "PIX estornado",
+              "O pedido já estava cancelado. O valor do PIX foi estornado.",
+              { type: "payment", orderId: result.orderId, status: "refunded" },
+            );
+          } catch (error) {
+            console.warn("[PIX] Failed to refund a payment for a cancelled order", error);
+          }
+        }
         res.status(200).json({ ok: true, ...result });
       } catch {
         res.status(422).json({ error: "Payment webhook could not be applied" });

@@ -58,7 +58,7 @@ export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
     audiences: ["customer"],
     confirm: false,
     description:
-      "Coloca um produto na sacola pelo nome. Se a pessoa não disser qual item, chame com o nome da loja para mostrar o cardápio e pergunte o nome. Não peça código.",
+      "Coloca um produto na sacola pelo nome. Se a frase já diz o produto, a loja e o tamanho, chame esta ferramenta com esses nomes. Só mostre o cardápio quando o item não foi dito. Não peça código.",
     parameters: object({
       productName: text,
       storeName: text,

@@ -113,9 +113,17 @@ async function ownProduct(
   }
   const needle = input.productName?.trim().toLowerCase() ?? "";
   if (!needle) {
+    if (products.length === 1) return { ok: true as const, store: owned.store, product: products[0] };
     return { ok: false as const, message: "Qual produto?", cards: [] as AssistantCard[], refs: [] as Array<Record<string, unknown>> };
   }
-  const matches = products.filter((item) => item.name.toLowerCase().includes(needle));
+  const { phraseMatchesName } = await import("./assistant-match");
+  const fuzzy = products.filter((item) => phraseMatchesName(needle, item.name));
+  const matches = fuzzy.length
+    ? fuzzy
+    : products.filter((item) => item.name.toLowerCase().includes(needle));
+  if (!matches.length && products.length === 1) {
+    return { ok: true as const, store: owned.store, product: products[0] };
+  }
   if (matches.length === 1) return { ok: true as const, store: owned.store, product: matches[0] };
   if (!matches.length) {
     return { ok: false as const, message: "Não encontrei esse produto na sua loja.", cards: [] as AssistantCard[], refs: [] as Array<Record<string, unknown>> };
@@ -377,12 +385,24 @@ async function addToCart(args: Record<string, unknown>, ctx: AssistantContext): 
   }
   if (!quantity || quantity > 50) return empty("Quantos você quer?");
   if (!productId && productName) {
-    const found = await db.searchAvailableProducts({ query: productName, limit: 20 });
-    const needle = productName.toLowerCase();
+    const { splitOrderPhrase, phraseMatchesName } = await import("./assistant-match");
+    const splitFrom = productName.split(/\s+d[aeo]s?\s+/i);
+    const phrase = splitFrom[0]?.trim() || productName;
+    const hintedStore = splitFrom.length > 1 ? splitFrom.slice(1).join(" ").trim() : "";
+    const { productWords } = splitOrderPhrase(phrase);
+    const query = productWords.join(" ") || phrase;
+    const found = await db.searchAvailableProducts({ query, limit: 20 });
+    const needle = query.toLowerCase();
     let matches = found.items.filter(
-      (item) => item.available !== 0 && item.name.toLowerCase().includes(needle),
+      (item) =>
+        item.available !== 0 &&
+        (phraseMatchesName(phrase, item.name) || item.name.toLowerCase().includes(needle)),
     );
-    const storeName = typeof args.storeName === "string" ? args.storeName.trim() : "";
+    if (!matches.length) {
+      matches = found.items.filter((item) => item.available !== 0 && phraseMatchesName(phrase, item.name));
+    }
+    const storeName =
+      (typeof args.storeName === "string" ? args.storeName.trim() : "") || hintedStore;
     if (storeName && !/^\d+$/.test(storeName)) {
       matches = matches.filter((item) => item.storeName.toLowerCase().includes(storeName.toLowerCase()));
     }
@@ -408,9 +428,16 @@ async function addToCart(args: Record<string, unknown>, ctx: AssistantContext): 
   const store = await db.getStoreById(product.storeId);
   if (!store || !(await db.storeListedForCustomers(store))) return empty("Essa loja não está disponível.");
   const groups = await db.listProductOptions(product.id);
-  const wanted = Array.isArray(args.optionNames)
-    ? args.optionNames.filter((item): item is string => typeof item === "string")
-    : [];
+  const { splitOrderPhrase: splitOptions } = await import("./assistant-match");
+  const spokenOptions = splitOptions(
+    typeof args.productName === "string" ? args.productName : "",
+  ).optionWords;
+  const wanted = [
+    ...(Array.isArray(args.optionNames)
+      ? args.optionNames.filter((item): item is string => typeof item === "string")
+      : []),
+    ...spokenOptions,
+  ];
   const optionIds: number[] = [];
   const chosen = [];
   for (const name of wanted) {
@@ -423,6 +450,7 @@ async function addToCart(args: Record<string, unknown>, ctx: AssistantContext): 
     if (matches.length !== 1) {
       return empty(`Não encontrei a opção "${name}" nesse produto. Pode escolher de novo?`);
     }
+    if (optionIds.includes(matches[0].id)) continue;
     optionIds.push(matches[0].id);
     chosen.push(matches[0]);
   }
@@ -596,10 +624,17 @@ async function repeatLastOrder(ctx: AssistantContext): Promise<ToolEffect> {
   if (!ctx.user) return empty("Entre na sua conta para repetir um pedido.");
   const [latest] = await db.listOrdersForCustomer(ctx.user.id, 1, 0);
   if (!latest || latest.customerId !== ctx.user.id) return empty("Não encontrei um pedido anterior.");
-  return empty("Toque em Confirmar para repetir o último pedido.", {
+  const cancelled = latest.status === "Cancelado";
+  return empty(
+    cancelled
+      ? "O último pedido foi cancelado. Toque em Confirmar se quiser repetir mesmo assim."
+      : "Toque em Confirmar para repetir o último pedido.",
+    {
     pending: {
       tool: "repeat_last_order",
-      summary: `Repetir o pedido ${latest.id} de ${latest.storeName}. Se o preço mudou, vale o valor de agora.`,
+      summary: cancelled
+        ? `O pedido ${latest.id} de ${latest.storeName} foi cancelado. Repetir mesmo assim, pelo preço de agora.`
+        : `Repetir o pedido ${latest.id} de ${latest.storeName}. Se o preço mudou, vale o valor de agora.`,
       payload: { orderId: latest.id },
     },
     cards: [{ title: latest.storeName || "Pedido", amount: money(latest.total), badge: latest.status }],

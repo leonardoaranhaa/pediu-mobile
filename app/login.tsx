@@ -26,7 +26,11 @@ export default function LoginScreen() {
   });
 
   return (
-    <Page title="Entrar no Pediu" eyebrow="BEM-VINDO" back={false}>
+    <Page
+      title="Entrar no Pediu"
+      eyebrow="BEM-VINDO"
+      onBack={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)" as never))}
+    >
       <View style={{ alignItems: "center", gap: 12, paddingVertical: 18 }}>
         <View style={{ width: 64, height: 64, borderRadius: 18, backgroundColor: PEDIU.coral, alignItems: "center", justifyContent: "center", transform: [{ rotate: "-8deg" }] }}>
           <Text style={{ color: PEDIU.white, fontSize: 48, fontWeight: "900", fontStyle: "italic", lineHeight: 52 }}>p</Text>

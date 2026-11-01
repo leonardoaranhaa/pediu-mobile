@@ -59,6 +59,7 @@ import {
   maskBrlTyping,
 } from "@/lib/br-fields";
 import { friendlyUserMessage } from "@/lib/user-message";
+import { defaultOptionSelection, groupRequiresChoice } from "@/lib/option-selection";
 import type { MascotReaction } from "@/components/pediu-mascot";
 import { CartPeek } from "@/components/pediu/cart-peek";
 import { PediuMascot } from "@/components/pediu-mascot";
@@ -341,7 +342,7 @@ export default function HomeScreen() {
               void customerOrdersQuery.refetch();
               void notifyWithHaptic(
                 charge.status === "pending"
-                  ? "Pedido enviado. PIX aguardando confirmação"
+                  ? "PIX gerado. A loja recebe o pedido quando o pagamento for aprovado"
                   : charge.status === "paid"
                     ? "Pedido enviado. PIX confirmado"
                     : charge.status === "cancelled"
@@ -1884,6 +1885,14 @@ function CustomerDiscover({
           placeholderTextColor={theme.muted}
           style={[styles.searchInput, { color: theme.text }]}
           returnKeyType="search"
+          onSubmitEditing={() => {
+            const typed = searchQuery.trim();
+            if (!typed) {
+              onSearch();
+              return;
+            }
+            router.push({ pathname: "/search", params: { q: typed } });
+          }}
         />
       </View>
       <PediuV2Discovery
@@ -2083,6 +2092,11 @@ function ProductModal({
   const insets = useSafeAreaInsets();
   const detail = trpc.pediu.marketplace.detail.useQuery({ productId: product.id });
   const [selected, setSelected] = useState<Record<number, number>>({});
+  useEffect(() => {
+    const groups = detail.data?.options;
+    if (!groups?.length) return;
+    setSelected((current) => ({ ...defaultOptionSelection(groups), ...current }));
+  }, [detail.data]);
   const [choiceNotice, setChoiceNotice] = useState("");
   const groups = detail.data?.options ?? [];
   const base = Number(detail.data?.product.price ?? 0);
@@ -2094,7 +2108,7 @@ function ProductModal({
   const confirm = () => {
     if (!product.available || detail.data?.storeOpen === false) return;
     if (detail.isLoading || !detail.data) return;
-    const missing = groups.find((group) => group.required && !selected[group.id]);
+    const missing = groups.find((group) => groupRequiresChoice(group) && !selected[group.id]);
     if (missing) {
       setChoiceNotice(`Escolha ${missing.name} para continuar.`);
       return;
@@ -2168,7 +2182,7 @@ function ProductModal({
             <View key={group.id} style={{ gap: 8 }}>
               <Text style={styles.cardTitle}>
                 {group.name}
-                {group.required ? " · obrigatório" : " · opcional"}
+                {groupRequiresChoice(group) ? " · obrigatório" : " · opcional"}
               </Text>
               {group.choices.map((choice) => {
                 const on = selected[group.id] === choice.id;

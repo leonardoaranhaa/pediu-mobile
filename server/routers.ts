@@ -1825,12 +1825,14 @@ export const appRouter = router({
           }
           const { orderId, paymentId } = orderAndPayment;
           try {
-            await sendPushToUser(
-              store.ownerId,
-              "Novo pedido",
-              `O pedido #${orderId} foi recebido e está pendente de aceite.`,
-              { type: "order", orderId, status: "Pendente" },
-            );
+            if (input.paymentMethod !== "pix") {
+              await sendPushToUser(
+                store.ownerId,
+                "Novo pedido",
+                `O pedido #${orderId} foi recebido e está pendente de aceite.`,
+                { type: "order", orderId, status: "Pendente" },
+              );
+            }
           } catch (error) {
             console.warn(
               "[Orders] Failed to notify store owner about new order:",
@@ -1884,6 +1886,12 @@ export const appRouter = router({
             if (!updated.changed && updated.status !== input.status)
               throw new Error("O pedido mudou durante o cancelamento");
             await db.cancelPendingPaymentForOrder(input.orderId);
+            try {
+              const { releaseProviderPixForOrder } = await import("./pix-release");
+              await releaseProviderPixForOrder(input.orderId);
+            } catch (error) {
+              console.warn("[PIX] Failed to cancel the provider charge", error);
+            }
             const store = await db.getStoreById(order.storeId);
             if (store) {
               try {
@@ -1921,6 +1929,15 @@ export const appRouter = router({
             if (updated.status !== input.status)
               throw new Error("O pedido mudou durante a atualização");
             return { success: true as const };
+          }
+          if (input.status === "Cancelado") {
+            await db.cancelPendingPaymentForOrder(input.orderId);
+            try {
+              const { releaseProviderPixForOrder } = await import("./pix-release");
+              await releaseProviderPixForOrder(input.orderId);
+            } catch (error) {
+              console.warn("[PIX] Failed to cancel the provider charge", error);
+            }
           }
           if (input.status === "Entregue") {
             try {

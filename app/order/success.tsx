@@ -38,6 +38,13 @@ export default function OrderSuccessPage() {
   const validOrder = Boolean(
     orderId && Number.isInteger(Number(orderId)) && Number(orderId) > 0,
   );
+  const pixPending =
+    paymentQuery.data?.method === "pix" &&
+    paymentQuery.data.status === "pending";
+  const pixFailed =
+    paymentQuery.data?.method === "pix" &&
+    (paymentQuery.data.status === "failed" ||
+      paymentQuery.data.status === "cancelled");
 
   if (!validOrder) {
     return (
@@ -53,7 +60,34 @@ export default function OrderSuccessPage() {
   }
 
   return (
-    <Page title="Pedido confirmado" eyebrow="TUDO CERTO">
+    <Page
+      title={
+        pixPending
+          ? "Aguardando pagamento"
+          : pixFailed
+            ? "Pagamento não concluído"
+            : "Pedido confirmado"
+      }
+      eyebrow={pixPending ? "PIX" : pixFailed ? "PIX" : "TUDO CERTO"}
+      onBack={() => router.replace("/(tabs)" as never)}
+      dock={
+        <View style={{ gap: 10 }}>
+          <PrimaryButton
+            title="Acompanhar pedido"
+            onPress={() =>
+              router.replace({
+                pathname: "/order/track",
+                params: { orderId, paymentId: paymentId ?? "" },
+              })
+            }
+          />
+          <OutlineButton
+            title="Voltar ao início"
+            onPress={() => router.replace("/(tabs)" as never)}
+          />
+        </View>
+      }
+    >
       <Card>
         <View
           style={{
@@ -70,10 +104,19 @@ export default function OrderSuccessPage() {
             ✓
           </Text>
         </View>
-        <Text style={s.sectionTitle}>Recebemos seu pedido</Text>
+        <Text style={s.sectionTitle}>
+          {pixPending
+            ? "Aguardando pagamento do PIX"
+            : pixFailed
+              ? "O PIX não foi pago"
+              : "Recebemos seu pedido"}
+        </Text>
         <Text style={s.body}>
-          O estabelecimento recebeu a solicitação e poderá atualizar o status a
-          qualquer momento.
+          {pixPending
+            ? "A loja só recebe o pedido depois que o PIX for aprovado. Pague no QR Code abaixo."
+            : pixFailed
+              ? "A cobrança não foi concluída. O pedido não segue para a loja."
+              : "O estabelecimento recebeu a solicitação e poderá atualizar o status a qualquer momento."}
         </Text>
         {customization.mascotEnabled ? (
           <View
@@ -82,9 +125,14 @@ export default function OrderSuccessPage() {
             <PediuMascot
               theme={theme}
               styleId={customization.mascotStyle}
-              reaction="full"
+              reaction={pixPending || pixFailed ? "curious" : "full"}
               motionEnabled={customization.motionEnabled}
               showSpeech
+              speechText={
+                pixPending
+                  ? "O pedido só segue para a loja depois do PIX."
+                  : undefined
+              }
               speechSide="right"
             />
           </View>
@@ -175,19 +223,6 @@ export default function OrderSuccessPage() {
           )}
         </Card>
       ) : null}
-      <PrimaryButton
-        title="Acompanhar pedido"
-        onPress={() =>
-          router.replace({
-            pathname: "/order/track",
-            params: { orderId, paymentId: paymentId ?? "" },
-          })
-        }
-      />
-      <OutlineButton
-        title="Voltar para descobrir"
-        onPress={() => router.replace("/(tabs)" as never)}
-      />
     </Page>
   );
 }

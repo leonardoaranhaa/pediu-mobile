@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { askToJoin } from "@/components/auth-prompt";
@@ -6,6 +6,7 @@ import { Page, Card, PrimaryButton, PEDIU, s } from "@/components/pediu-page";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
 import { useCart } from "@/providers/cart-provider";
+import { defaultOptionSelection, groupRequiresChoice } from "@/lib/option-selection";
 import { formatCatalogPrice, unitSubtitle } from "@/shared/market-units";
 import { formatMoney } from "@/shared/pilot-ops";
 
@@ -21,6 +22,11 @@ export default function ProductDetailPage() {
   const [quantity, setQuantity] = useState(1);
   const [notice, setNotice] = useState("");
   const [selected, setSelected] = useState<Record<number, number>>({});
+  useEffect(() => {
+    const groups = query.data?.options;
+    if (!groups?.length) return;
+    setSelected((current) => ({ ...defaultOptionSelection(groups), ...current }));
+  }, [query.data]);
 
   const detail = query.data;
   const product = detail?.product;
@@ -80,7 +86,9 @@ export default function ProductDetailPage() {
       setNotice(detail.nextOpenLabel ?? "Esta loja está fechada agora.");
       return;
     }
-    const missing = detail.options.find((group) => group.required && !selected[group.id]);
+    const missing = detail.options.find(
+      (group) => groupRequiresChoice(group) && !selected[group.id],
+    );
     if (missing) {
       setNotice(`Escolha ${missing.name} para continuar.`);
       return;
@@ -168,7 +176,7 @@ export default function ProductDetailPage() {
         <Card key={group.id}>
           <Text style={s.sectionTitle}>
             {group.name}
-            {group.required ? " · obrigatório" : ""}
+            {groupRequiresChoice(group) ? " · obrigatório" : ""}
           </Text>
           {group.choices.map((choice) => {
             const on = selected[group.id] === choice.id;
