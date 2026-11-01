@@ -14,6 +14,7 @@ import {
 import type { AppTheme } from "@/lib/app-preferences";
 import type { HomeContext } from "@/lib/home-context";
 import { FOOD_ASSETS } from "@/lib/pediu-tokens";
+import { uniqueStoreStories } from "@/lib/story-rail";
 
 type DiscoveryProduct = {
   id: number;
@@ -85,7 +86,7 @@ export function PediuV2Discovery({
 }) {
   const [storyIndex, setStoryIndex] = useState<number | null>(null);
   const [promoIndex, setPromoIndex] = useState(0);
-  const stories = useMemo(() => products.slice(0, 6), [products]);
+  const stories = useMemo(() => uniqueStoreStories(products, 8), [products]);
   const flashProducts = useMemo(
     () =>
       products

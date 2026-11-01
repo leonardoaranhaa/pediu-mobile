@@ -2,7 +2,9 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ProductExtrasFields, type ProductExtras } from "@/components/product-extras-fields";
-import { Alert, Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Text, View } from "react-native";
+import { edgeModalProps } from "@/components/edge-modal";
 import { SellerDock } from "@/components/seller-dock";
 import { EmptyState } from "@/components/pediu/empty-state";
 import { useAuth } from "@/hooks/use-auth";
@@ -31,6 +33,10 @@ export default function SellerCatalogPage() {
   const [seed, setSeed] = useState(0);
   const [initialExtras, setInitialExtras] = useState<ProductExtras | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingLabel, setEditingLabel] = useState("");
+  const [formOpen, setFormOpen] = useState(false);
+  const [keyboard, setKeyboard] = useState(0);
+  const insets = useSafeAreaInsets();
   const [inventoryTracked, setInventoryTracked] = useState(false);
   const [stockQuantity, setStockQuantity] = useState(0);
   const [formError, setFormError] = useState("");
@@ -48,6 +54,17 @@ export default function SellerCatalogPage() {
   useEffect(() => {
     if (store.data?.id && !category.trim() && !editingId) setCategory(defaultCategory);
   }, [category, defaultCategory, editingId, store.data?.id]);
+
+  useEffect(() => {
+    const show = Keyboard.addListener("keyboardDidShow", (event) => {
+      setKeyboard(event.endCoordinates.height);
+    });
+    const hide = Keyboard.addListener("keyboardDidHide", () => setKeyboard(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (!editingId || !detail.data || detail.data.id !== editingId) return;
@@ -80,6 +97,37 @@ export default function SellerCatalogPage() {
     setFormError("");
   }, [detail.data, editingId]);
 
+  const closeComposer = () => {
+    setFormOpen(false);
+    setEditingId(null);
+    setEditingLabel("");
+    setName("");
+    setDescription("");
+    setPrice("");
+    setExtras({});
+    setInitialExtras(null);
+    loadedId.current = null;
+    setFormError("");
+  };
+  const openNew = () => {
+    loadedId.current = null;
+    setEditingId(null);
+    setEditingLabel("");
+    setName("");
+    setCategory(defaultCategory);
+    setDescription("");
+    setPrice("");
+    setSaleUnit(suggestedSaleUnitForCategory(isMarket ? "Hortifruti" : "Geral", store.data?.kind));
+    setPackSize("");
+    setExtras({});
+    setInitialExtras(null);
+    setInventoryTracked(false);
+    setStockQuantity(0);
+    setSeed((value) => value + 1);
+    setFormError("");
+    setSavedNotice("");
+    setFormOpen(true);
+  };
   const resetForm = () => {
     setName("");
     setCategory(defaultCategory);
@@ -95,11 +143,40 @@ export default function SellerCatalogPage() {
     loadedId.current = null;
     setSeed((value) => value + 1);
     setFormError("");
+    setFormOpen(false);
     setSavedNotice("Produto salvo.");
     void products.refetch();
   };
-  const create = trpc.pediu.products.create.useMutation({ onSuccess: resetForm });
-  const update = trpc.pediu.products.update.useMutation({ onSuccess: resetForm });
+  const create = trpc.pediu.products.create.useMutation({
+    onSuccess: resetForm,
+    onError: (error) => setFormError(error.message),
+  });
+  const update = trpc.pediu.products.update.useMutation({
+    onSuccess: resetForm,
+    onError: (error) => setFormError(error.message),
+  });
+  const archive = trpc.pediu.products.archive.useMutation({
+    onSuccess: () => {
+      closeComposer();
+      setSavedNotice("Produto arquivado. Ele saiu do cardápio.");
+      void products.refetch();
+    },
+    onError: (error) => Alert.alert("Não foi possível arquivar", error.message),
+  });
+  const confirmArchive = (product: { id: number; name: string }) => {
+    Alert.alert(
+      "Arquivar produto?",
+      `${product.name} sai do cardápio e dos anúncios. Pedidos antigos continuam com o nome.`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Arquivar",
+          style: "destructive",
+          onPress: () => archive.mutate({ productId: product.id }),
+        },
+      ],
+    );
+  };
   const availability = trpc.pediu.products.availability.useMutation({ onSuccess: () => void products.refetch() });
 
   const publish = async () => {
@@ -175,7 +252,36 @@ export default function SellerCatalogPage() {
         </Text>
       </View>
       <Card>
-        <Text style={s.sectionTitle}>{editingId ? "Editar produto" : "Novo produto"}</Text>
+        <Text style={s.sectionTitle}>Novo produto</Text>
+        <Text style={s.muted}>O formulário abre nesta tela, acima da lista, para o teclado não cobrir o preço.</Text>
+        <PrimaryButton title="Adicionar produto" onPress={openNew} disabled={!store.data?.id} />
+        {savedNotice ? <Text style={{ color: "#0B8A5C", fontSize: 12, fontWeight: "800" }}>{savedNotice}</Text> : null}
+      </Card>
+      <Modal
+        visible={formOpen}
+        animationType="slide"
+        onRequestClose={closeComposer}
+        {...edgeModalProps}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1, backgroundColor: "#FFF4E8" }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{
+              paddingHorizontal: 20,
+              paddingTop: insets.top + 16,
+              paddingBottom: insets.bottom + keyboard + 28,
+              gap: 12,
+            }}
+          >
+            <Text style={s.sectionTitle}>
+              {editingId ? `Editando: ${editingLabel || name}` : "Novo produto"}
+            </Text>
+            <Pressable accessibilityRole="button" onPress={closeComposer} style={{ alignSelf: "flex-start", minHeight: 44, justifyContent: "center" }}>
+              <Text style={{ color: "#E20D2A", fontWeight: "800" }}>{editingId ? "Cancelar edição" : "Cancelar"}</Text>
+            </Pressable>
         <Field label="NOME DO PRODUTO" value={name} onChangeText={setName} placeholder={isMarket ? catalogPlaceholder.marketName : catalogPlaceholder.productName} />
         <Field
           label="CATEGORIA"
@@ -262,10 +368,18 @@ export default function SellerCatalogPage() {
           onPress={saveProduct}
         />
         {formError ? <Text style={{ color: "#E20D2A", fontSize: 12 }}>{formError}</Text> : null}
-        {savedNotice ? <Text style={{ color: "#0B8A5C", fontSize: 12, fontWeight: "800" }}>{savedNotice}</Text> : null}
-        {create.error ? <Text style={{ color: "#E20D2A", fontSize: 12 }}>{create.error.message}</Text> : null}
-        {update.error ? <Text style={{ color: "#E20D2A", fontSize: 12 }}>{update.error.message}</Text> : null}
-      </Card>
+        {editingId ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => confirmArchive({ id: editingId, name: editingLabel || name })}
+            style={{ minHeight: 44, justifyContent: "center" }}
+          >
+            <Text style={{ color: "#E20D2A", fontWeight: "800" }}>Arquivar produto</Text>
+          </Pressable>
+        ) : null}
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
       <Card>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <Text style={s.sectionTitle}>Produtos publicados</Text>
@@ -288,14 +402,26 @@ export default function SellerCatalogPage() {
             subtitle={`${product.category} · ${formatCatalogPrice(product.price, product.saleUnit, product.packSize)}${product.description ? ` · ${product.description}` : ""} · toque para editar`}
             onPress={() => {
               loadedId.current = null;
+              setEditingLabel(product.name);
               setEditingId(product.id);
+              setFormOpen(true);
             }}
             right={
-              <Pressable onPress={() => availability.mutate({ productId: product.id, available: !product.available })} style={{ padding: 4 }}>
-                <Text style={{ color: product.available ? "#0B8A5C" : "#E20D2A", fontWeight: "900", fontSize: 11 }}>
-                  {product.available ? "DISPONÍVEL" : "ESGOTADO"}
-                </Text>
-              </Pressable>
+              <View style={{ alignItems: "flex-end", gap: 8 }}>
+                <Pressable onPress={() => availability.mutate({ productId: product.id, available: !product.available })} style={{ padding: 4 }}>
+                  <Text style={{ color: product.available ? "#0B8A5C" : "#E20D2A", fontWeight: "900", fontSize: 11 }}>
+                    {product.available ? "DISPONÍVEL" : "ESGOTADO"}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Arquivar ${product.name}`}
+                  onPress={() => confirmArchive(product)}
+                  style={{ padding: 4 }}
+                >
+                  <Text style={{ color: "#E20D2A", fontWeight: "800", fontSize: 11 }}>ARQUIVAR</Text>
+                </Pressable>
+              </View>
             }
           />
         ))}

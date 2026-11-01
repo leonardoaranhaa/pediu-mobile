@@ -144,7 +144,13 @@ import {
   dispatchReofferKey,
   offerStillBlocksCourier,
 } from "./domain/dispatch";
+import {
+  fiadoChargeDecision,
+  fiadoPaymentDecision,
+  NO_FIADO_LIMIT_MESSAGE,
+} from "./domain/fiado-sale";
 import { paymentLabelWithChange, paymentMethodLabel, type OrderPaymentMethod } from "./domain/order-options";
+import { isUndefinedColumn } from "./domain/sql-errors";
 import {
   DEFAULT_STORE_OPS,
   storePauseView,
@@ -2307,9 +2313,11 @@ export async function searchAvailableProducts(
       nextOpenLabel: availability.nextOpenLabel,
     };
   });
+  const hidden = await archivedProductIds(db);
+  const listed = hidden.size ? items.filter((item) => !hidden.has(item.id)) : items;
   const hasMore = result.length > limit;
-  const lastItem = items.at(-1);
-  const visible = await decorateMarketplace(items);
+  const lastItem = listed.at(-1);
+  const visible = await decorateMarketplace(listed);
   return {
     items: visible,
     hasMore,
@@ -2362,12 +2370,73 @@ export async function listProductsForStore(
 ): Promise<Product[]> {
   const db = await getDb();
   if (!db) return [];
-  return db
+  const rows = await db
     .select()
     .from(products)
     .where(eq(products.storeId, storeId))
     .orderBy(products.createdAt, products.id)
     .limit(200);
+  const hidden = await archivedProductIds(db);
+  return hidden.size ? rows.filter((row) => !hidden.has(row.id)) : rows;
+}
+
+function sqlIdRows(result: unknown) {
+  const list = Array.isArray(result)
+    ? result
+    : result && typeof result === "object" && Array.isArray((result as { rows?: unknown }).rows)
+      ? (result as { rows: unknown[] }).rows
+      : [];
+  return list
+    .map((row) => Number((row as { id?: unknown }).id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+}
+
+async function archivedProductIds(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  try {
+    const rows = await db.execute(sql`SELECT id FROM pediu_products WHERE archived = 1`);
+    return new Set(sqlIdRows(rows));
+  } catch (error) {
+    if (isUndefinedColumn(error) || isMissingRelation(error)) return new Set<number>();
+    throw error;
+  }
+}
+
+async function productIsArchived(
+  db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
+  productId: number,
+) {
+  try {
+    const rows = await db.execute(
+      sql`SELECT id FROM pediu_products WHERE id = ${productId} AND archived = 1`,
+    );
+    return sqlIdRows(rows).length > 0;
+  } catch (error) {
+    if (isUndefinedColumn(error) || isMissingRelation(error)) return false;
+    throw error;
+  }
+}
+
+export async function isProductArchived(productId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  return productIsArchived(db, productId);
+}
+
+export async function archiveStoreProduct(storeId: number, productId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  try {
+    const rows = await db.execute(
+      sql`UPDATE pediu_products SET archived = 1 WHERE id = ${productId} AND "storeId" = ${storeId} AND archived = 0 RETURNING id`,
+    );
+    if (!sqlIdRows(rows).length) throw new Error("Produto não encontrado");
+  } catch (error) {
+    if (error instanceof Error && error.message === "Produto não encontrado") throw error;
+    if (isUndefinedColumn(error) || isMissingRelation(error)) {
+      throw new Error("Arquivar produto ainda não está disponível. Avise o suporte do Pediu.");
+    }
+    throw error;
+  }
 }
 
 export async function updateStoreProduct(
@@ -2580,7 +2649,9 @@ export async function getAvailableProductForStore(
       sql`${products.id} = ${productId} AND ${products.storeId} = ${storeId} AND ${products.available} = 1 AND ${stockPredicate}`,
     )
     .limit(1);
-  return result[0];
+  const product = result[0];
+  if (!product || (await productIsArchived(db, product.id))) return undefined;
+  return product;
 }
 
 export async function getOrderForCustomer(orderId: number, userId: number) {
@@ -5703,12 +5774,17 @@ export async function createLedgerEntry(
       throw new Error("Cliente bloqueado");
 
     const current = Number(customer.balance);
-    const newBalance =
-      input.type === "credit"
-        ? current + amount
-        : Math.max(0, current - amount);
-    if (input.type === "credit" && newBalance > Number(customer.creditLimit))
-      throw new Error("Lançamento excede o limite de crédito");
+    let newBalance = Math.max(0, current - amount);
+    if (input.type === "credit") {
+      const limit = Number(customer.creditLimit);
+      if (!Number.isFinite(limit) || limit <= 0) throw new Error(NO_FIADO_LIMIT_MESSAGE);
+      newBalance = current + amount;
+      if (newBalance > limit) throw new Error("Lançamento excede o limite de crédito");
+    } else if (input.type === "payment") {
+      const decision = fiadoPaymentDecision(current, amount);
+      if (!decision.ok) throw new Error(decision.message);
+      newBalance = decision.newBalance;
+    }
 
     const result = await tx
       .insert(ledgerEntries)
@@ -5734,11 +5810,57 @@ export async function listSalesForStore(storeId: number): Promise<Sale[]> {
     .limit(200);
 }
 
-export async function createSale(input: InsertSale): Promise<number> {
+export async function createSale(
+  input: InsertSale & { creditLimit?: string | null },
+): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(sales).values(input).returning({ id: sales.id });
-  return getInsertId(result);
+  const { creditLimit: proposedLimitRaw, ...sale } = input;
+  if (sale.paymentMethod !== "fiado") {
+    const result = await db.insert(sales).values(sale).returning({ id: sales.id });
+    return getInsertId(result);
+  }
+  if (!sale.customerId) throw new Error("Escolha o cliente para lançar no fiado");
+  const amount = Number(sale.total);
+  const proposed =
+    proposedLimitRaw == null || proposedLimitRaw === "" ? null : Number(proposedLimitRaw);
+
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(customers)
+      .where(and(eq(customers.id, sale.customerId!), eq(customers.storeId, sale.storeId)))
+      .limit(1)
+      .for("update");
+    const customer = rows[0];
+    if (!customer) throw new Error("Cliente não pertence a esta loja");
+    const decision = fiadoChargeDecision({
+      amount,
+      balance: Number(customer.balance),
+      creditLimit: Number(customer.creditLimit),
+      proposedLimit: proposed,
+      status: customer.status,
+    });
+    if (!decision.ok) throw new Error(decision.message);
+    const inserted = await tx.insert(sales).values(sale).returning({ id: sales.id });
+    const saleId = getInsertId(inserted);
+    await tx.insert(ledgerEntries).values({
+      storeId: sale.storeId,
+      customerId: sale.customerId!,
+      type: "credit",
+      amount: amount.toFixed(2),
+      balanceAfter: decision.newBalance.toFixed(2),
+      note: sale.note ?? "Venda fiada",
+    });
+    await tx
+      .update(customers)
+      .set({
+        creditLimit: decision.creditLimit.toFixed(2),
+        balance: decision.newBalance.toFixed(2),
+      })
+      .where(and(eq(customers.id, customer.id), eq(customers.storeId, sale.storeId)));
+    return saleId;
+  });
 }
 
 export async function registerPushToken(input: InsertPushToken): Promise<void> {

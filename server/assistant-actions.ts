@@ -860,6 +860,9 @@ async function generateAd(args: Record<string, unknown>, ctx: AssistantContext):
     productName: typeof args.productName === "string" ? args.productName : undefined,
   });
   if (!found.ok) return empty(found.message, { cards: found.cards, refs: found.refs });
+  if (found.product.available === 0) {
+    return empty("Esse produto está esgotado. Reponha antes de anunciar.");
+  }
   const tone = args.tone === "caseiro" || args.tone === "premium" || args.tone === "divertido" ? args.tone : "irresistivel";
   return empty("Toque em Confirmar para criar o anúncio. Isso usa 1 crédito.", {
     pending: {
@@ -1045,15 +1048,8 @@ async function commitSale(body: Record<string, unknown>, ctx: AssistantContext):
     total,
     paymentMethod,
     customerId: paymentMethod === "fiado" ? customerId : undefined,
+    note: paymentMethod === "fiado" ? "Venda fiada" : undefined,
   });
-  if (paymentMethod === "fiado" && customerId) {
-    await caller.pediu.ledger.add({
-      customerId,
-      type: "credit",
-      amount: total,
-      note: "Venda registrada pelo assistente",
-    });
-  }
   return empty(`Venda de ${money(total)} registrada.`);
 }
 
@@ -1063,7 +1059,12 @@ async function commitAd(body: Record<string, unknown>, ctx: AssistantContext): P
   const owned = await ownStore(ctx.user.id);
   if (!owned.ok) return empty(owned.message);
   const product = await db.getProductForStore(productId, owned.store.id);
-  if (!product) return empty("Esse produto não é da sua loja.");
+  if (!product || product.available === 0) {
+    return empty("Esse produto está esgotado. Reponha antes de anunciar.");
+  }
+  if (await db.isProductArchived(product.id)) {
+    return empty("Esse produto foi arquivado e não entra em anúncio.");
+  }
   const tone =
     body.tone === "caseiro" || body.tone === "premium" || body.tone === "divertido"
       ? body.tone

@@ -2,7 +2,7 @@
 
 Leonardo testou o APK v11 em celulares Android. Esta lista cobre os quatro problemas das fotos, o mascote torto e o restante do app revisado neste ciclo. O primeiro ciclo foi conferido no código. O reteste do cliente foi no emulador Android 11 com 3 botões, a partir do commit `e539c45`.
 
-Não há migration nova. Os arquivos `drizzle/0004` a `drizzle/0009` não mudaram.
+Há uma migration nova, ainda não aplicada no banco: `drizzle/0010_pediu_product_archive.sql`. O journal `when` é `1793052800000`. O sha256 do arquivo é `dbac214cddd0fbb24b416b3fb4f885d4408b06b9a4130832f236cc538be89b9a`. Ela só acrescenta a coluna `archived` em `pediu_products`. Os arquivos `drizzle/0004` a `drizzle/0009` não mudaram. Enquanto essa migration não for aplicada, arquivar um produto avisa que ainda não está disponível e o cardápio continua igual. O servidor não lê essa coluna pelo modelo antigo, então as listas seguem funcionando antes do SQL.
 
 O `versionCode` do projeto passou para **12**. O EAS continua com `appVersionSource: remote` e `autoIncrement: true`. O próximo APK só sai como 12 se o contador remoto da Expo já estiver em 11 (o autoIncrement sobe 1) ou se alguém ajustar esse contador. O arquivo do projeto sozinho não manda no número do APK.
 
@@ -70,12 +70,23 @@ Confirmado no emulador: faixa do relógio, abas acima dos botões do sistema, no
 | N22 | Média | Pedido pronto | Chamar motoboy pedia duas telas, e a oferta vencida não voltava sozinha. | Corrigido. Ao marcar pronto, a oferta sai para motoboys perto. O card fica em "Procurando motoboy…". Oferta vencida segue para o próximo, como já era no servidor. |
 | N23 | Baixa | Textos da loja | "Fila Flash", "PADRÃO" e o status repetido. "Marcar esgotado" ficava em cima de "Aceitar". | Corrigido. Texto simples. Esgotar o produto foi para baixo das ações do pedido. |
 | N24 | Baixa | Barra do relógio | Ao rolar, o card passava por baixo do relógio. | Corrigido. O topo da tela fica na cor do app e o conteúdo não entra nessa faixa. |
+| N28 | Alta | Venda fiada | A venda era salva e a dívida não. Com limite R$ 0, o segundo passo respondia “excede o limite de crédito” e a tela dizia “Venda registrada com sucesso”. | Corrigido. Venda e dívida entram juntas. Se o limite é R$ 0, a venda não é salva: a tela pede um limite na hora. Se o valor passa do limite, a venda também não entra e a mensagem mostra o valor em R$. Um pagamento maior que o saldo é recusado. |
+| N29 | Média | Painel da loja | Não havia “Registrar venda” nem “Fiado”. A venda só abria pelo assistente. | Corrigido. Os dois atalhos ficam no início da home da loja. Fiado abre a venda já nessa forma. |
+| N30 | Média | Card de vendas | O total quebrava no meio: “R$ 2 / 00,00”. | Corrigido. O valor fica em uma linha e diminui a letra se não couber. |
+| N25 | Média | Cardápio | Não dava para apagar nem arquivar um produto. | Corrigido. Arquivar pede confirmação e tira o produto do cardápio e dos anúncios. Pedidos antigos continuam com o nome. Não é exclusão definitiva. |
+| N32 | Média | Motoboy online | Sem localização, a frase era só “Não conseguimos ler sua localização”. | Corrigido. Antes do pedido do celular, uma tela explica o uso. Se a leitura falha, tenta de novo com menos precisão e com o último ponto conhecido. Se a permissão foi negada, o botão abre os ajustes. |
+| N26 | Baixa | Editar produto | O formulário carregava fora da tela. | Corrigido. Editar abre uma folha com “Editando: nome” e “Cancelar edição”. |
+| N27 | Baixa | Preço da opção | O teclado cobria o campo de preço da opção. | Corrigido. A folha do produto rola com o teclado. |
+| N31 | Baixa | Anúncios | Produto esgotado podia ser escolhido. | Corrigido. Esgotado não aparece na lista e o servidor recusa o anúncio. |
+| N33 | Baixa | Home do motoboy | O online era um botão pequeno e “Fale com o Pediu” era o principal. Ganhos não tinham data. | Corrigido. “Ficar online” é o botão grande. O assistente ficou secundário. Ganhos mostra o total de hoje e a data de cada entrega. |
+| N34 | Baixa | Círculos da home | A mesma loja aparecia em três círculos iguais. | Corrigido. Um círculo por loja. |
 
 ## Ainda aberto
 
+A lista da beta fechada, do item 1 ao N34, está corrigida no código. O que segue não foi um bug numerado deste emulador.
+
 | Gravidade | Item | Por quê ficou |
 | --- | --- | --- |
-| Média | Cardápio, venda, fiado, anúncios e motoboy neste emulador | Esses fluxos ainda podem chegar num passe seguinte. |
 | Média | Olhar de novo num celular de verdade, com gesto e com letra grande | O emulador foi Android 11 com 3 botões. O aparelho do Leonardo ainda precisa de uma passada. |
 | Média | O número 12 no APK publicado | O contador remoto do EAS é quem define o `versionCode` do arquivo instalado. |
 | Baixa | Algumas telas de administração ainda têm frases em inglês, como “Support ticket not found” | Não entram no caminho de cliente, loja ou motoboy da beta. Os testes dependem dessas frases. |

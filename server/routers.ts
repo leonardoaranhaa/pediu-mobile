@@ -438,7 +438,7 @@ export const appRouter = router({
         .input(z.object({ productId: z.number().int().positive() }))
         .query(async ({ input }) => {
           const product = await db.getProductById(input.productId);
-          if (!product) return null;
+          if (!product || (await db.isProductArchived(product.id))) return null;
           const store = await db.getStoreById(product.storeId);
           if (!store || !(await db.storeListedForCustomers(store))) return null;
           const ops = await db.getStoreOps(store.id);
@@ -1111,6 +1111,18 @@ export const appRouter = router({
             store.id,
           );
           if (!product) throw new Error("Produto não pertence à sua loja");
+          if (await db.isProductArchived(product.id)) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Esse produto foi arquivado e não entra em anúncio.",
+            });
+          }
+          if (product.available !== 1) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Esse produto está esgotado. Reponha antes de anunciar.",
+            });
+          }
           const settings = await db.getPlatformSettings();
           const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
           const recent = await db.countRecentGeneratedAds(store.id, since);
@@ -1407,6 +1419,22 @@ export const appRouter = router({
           );
           if (!product) throw new Error("Produto não pertence à sua loja");
           return db.updateProductAvailability(input.productId, input.available);
+        }),
+      archive: protectedProcedure
+        .input(z.object({ productId: z.number().int().positive() }))
+        .mutation(async ({ ctx, input }) => {
+          const store = await db.getStoreForOwner(ctx.user.id);
+          if (!store) throw new Error("Loja não encontrada");
+          try {
+            await db.archiveStoreProduct(store.id, input.productId);
+          } catch (error) {
+            const message =
+              error instanceof Error
+                ? error.message
+                : "Não foi possível arquivar o produto";
+            throw new TRPCError({ code: "BAD_REQUEST", message });
+          }
+          return { success: true as const };
         }),
       inventory: protectedProcedure
         .input(
@@ -2128,8 +2156,18 @@ export const appRouter = router({
         .mutation(async ({ ctx, input }) => {
           const store = await db.getStoreForOwner(ctx.user.id);
           if (!store)
-            throw new Error("Cadastre sua loja antes de lançar fiado");
-          return db.createLedgerEntry({ ...input, storeId: store.id });
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Cadastre sua loja antes de lançar fiado",
+            });
+          try {
+            return await db.createLedgerEntry({ ...input, storeId: store.id });
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : "Não foi possível lançar o fiado";
+            if (message === "Database not available") throw error;
+            throw new TRPCError({ code: "BAD_REQUEST", message });
+          }
         }),
     }),
     credit: router({
@@ -2195,13 +2233,24 @@ export const appRouter = router({
             total: z.string().regex(/^\d+(\.\d{1,2})?$/),
             paymentMethod: z.enum(["pix", "card", "cash", "fiado"]),
             note: z.string().max(255).optional(),
+            creditLimit: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
           }),
         )
         .mutation(async ({ ctx, input }) => {
           const store = await db.getStoreForOwner(ctx.user.id);
           if (!store)
-            throw new Error("Cadastre sua loja antes de registrar vendas");
-          return db.createSale({ ...input, storeId: store.id });
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Cadastre sua loja antes de registrar vendas",
+            });
+          try {
+            return await db.createSale({ ...input, storeId: store.id });
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : "Não foi possível registrar a venda";
+            if (message === "Database not available") throw error;
+            throw new TRPCError({ code: "BAD_REQUEST", message });
+          }
         }),
     }),
     assistant: router({

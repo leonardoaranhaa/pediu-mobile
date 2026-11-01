@@ -30,6 +30,7 @@ import {
   OpsSectionTitle,
   OpsShell,
 } from "@/components/pediu-ops-ui";
+import { readPositionWithFallback } from "@/lib/courier-location";
 import {
   countdownLabel,
   courierEarning,
@@ -54,6 +55,21 @@ const vehicleLabels: Record<VehicleType, string> = {
   moto: "Moto",
   car: "Carro",
 };
+
+function formatEarningDate(value: Date | string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Data indisponível";
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function isSameDay(value: Date | string, today: Date) {
+  const date = new Date(value);
+  return (
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate()
+  );
+}
 
 function pointOf(latitude: unknown, longitude: unknown) {
   const lat = Number(latitude);
@@ -113,6 +129,8 @@ export default function CourierHomePage() {
   const [workHours, setWorkHours] = useState("");
   const [tracking, setTracking] = useState(false);
   const [locationError, setLocationError] = useState("");
+  const [explainLocation, setExplainLocation] = useState(false);
+  const [locationDenied, setLocationDenied] = useState(false);
   const [deliveryCode, setDeliveryCode] = useState("");
   const [cashReceived, setCashReceived] = useState(false);
   const [deliveryPhoto, setDeliveryPhoto] = useState<string>();
@@ -244,27 +262,51 @@ export default function CourierHomePage() {
     setTracking(true);
   };
 
-  const goOnline = async () => {
+  const goOnline = () => {
     setLocationError("");
-    const permission = await Location.requestForegroundPermissionsAsync();
+    setExplainLocation(true);
+  };
+
+  const confirmGoOnline = async () => {
+    setExplainLocation(false);
+    setLocationError("");
+    const current = await Location.getForegroundPermissionsAsync();
+    const permission =
+      current.status === "granted" ? current : await Location.requestForegroundPermissionsAsync();
     if (permission.status !== "granted") {
+      setLocationDenied(true);
       setLocationError(
-        "Para receber corridas perto de você, permita a localização e tente ficar online de novo.",
+        permission.canAskAgain === false
+          ? "A localização está bloqueada. Abra os ajustes do celular e permita o Pediu."
+          : "Para receber corridas perto de você, permita a localização.",
       );
       return;
     }
-    try {
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      availability.mutate({
-        value: "available",
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-      });
-    } catch {
-      setLocationError("Não conseguimos ler sua localização. Tente ficar online de novo.");
+    setLocationDenied(false);
+    const position = await readPositionWithFallback({
+      lastKnown: async () => {
+        const last = await Location.getLastKnownPositionAsync();
+        return last
+          ? { latitude: last.coords.latitude, longitude: last.coords.longitude }
+          : null;
+      },
+      current: async (accuracy) => {
+        const reading = await Location.getCurrentPositionAsync({
+          accuracy: accuracy === "low" ? Location.Accuracy.Low : Location.Accuracy.Balanced,
+        });
+        return { latitude: reading.coords.latitude, longitude: reading.coords.longitude };
+      },
+    });
+    if (!position) {
+      setLocationError("Não conseguimos ler sua localização. Tente de novo em um lugar aberto, ou abra os ajustes se a permissão estiver desligada.");
+      setLocationDenied(true);
+      return;
     }
+    availability.mutate({
+      value: "available",
+      latitude: position.latitude,
+      longitude: position.longitude,
+    });
   };
 
   const documentsReady = Boolean(
@@ -470,6 +512,9 @@ export default function CourierHomePage() {
         ? "success"
         : "neutral";
   const earned = (earnings.data ?? []).reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
+  const earnedToday = (earnings.data ?? [])
+    .filter((row) => isSameDay(row.createdAt, new Date()))
+    .reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
   const storePoint = current ? pointOf(current.store.latitude, current.store.longitude) : null;
   const destinationPoint = current
     ? pointOf(current.order.destinationLatitude, current.order.destinationLongitude)
@@ -535,21 +580,38 @@ export default function CourierHomePage() {
         status={availabilityLabel}
         statusTone={availabilityTone}
         statusIcon="two-wheeler"
-        onStatusPress={() => {
+      />
+      <OpsButton
+        title={
+          approvedProfile.availability === "available"
+            ? "Ficar offline"
+            : approvedProfile.availability === "busy"
+              ? "Você está em rota"
+              : "Ficar online"
+        }
+        onPress={() => {
           if (approvedProfile.availability === "available") {
             availability.mutate({ value: "offline" });
             return;
           }
-          void goOnline();
+          if (approvedProfile.availability === "busy") return;
+          goOnline();
         }}
       />
       {locationError ? (
         <Text style={{ color: PEDIU.coral, fontFamily: "Nunito" }}>{locationError}</Text>
       ) : null}
-      <OpsButton title="Fale com o Pediu" onPress={() => setAssistantOpen(true)} />
+      {locationDenied ? (
+        <OpsButton
+          title="Abrir ajustes do celular"
+          variant="outline"
+          onPress={() => void Linking.openSettings()}
+        />
+      ) : null}
+      <OpsButton title="Fale com o Pediu" variant="outline" onPress={() => setAssistantOpen(true)} />
       <View style={{ flexDirection: "row", gap: 12 }}>
         <OpsMetric value={offers.data?.length ?? 0} label="no radar" dark />
-        <OpsMetric value={formatMoney(earned)} label="a receber" />
+        <OpsMetric value={formatMoney(earned)} label="no total" />
       </View>
       {tab === "offers" ? (
       <>
@@ -786,16 +848,18 @@ export default function CourierHomePage() {
           <OpsSectionTitle title="Ganhos" count={earnings.data?.length ?? 0} />
           <OpsCard>
             <Text style={{ fontFamily: "Fredoka", fontSize: 28, fontWeight: "900", color: "#111111" }}>
-              {formatMoney(earned)}
+              {formatMoney(earnedToday)}
             </Text>
-            <Text style={s.muted}>Soma do que já ficou registrado nas entregas concluídas.</Text>
+            <Text style={s.muted}>Entregas concluídas hoje. No total, {formatMoney(earned)}.</Text>
           </OpsCard>
           {(earnings.data ?? []).map((row) => (
             <OpsCard key={row.id}>
               <Text style={{ fontFamily: "Fredoka", fontSize: 20, fontWeight: "900", color: "#111111" }}>
                 {formatMoney(row.amount)}
               </Text>
-              <Text style={s.muted}>Pedido {row.orderId}</Text>
+              <Text style={s.muted}>
+                {formatEarningDate(row.createdAt)} · Pedido {row.orderId}
+              </Text>
             </OpsCard>
           ))}
           {!earnings.data?.length ? (
@@ -831,6 +895,20 @@ export default function CourierHomePage() {
           />
         </OpsCard>
       ) : null}
+      <Modal visible={explainLocation} transparent animationType="fade" onRequestClose={() => setExplainLocation(false)} {...edgeModalProps}>
+        <View style={{ flex: 1, backgroundColor: "rgba(17,17,17,0.45)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: "#FFF4E8", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 22, gap: 12 }}>
+            <Text style={{ fontFamily: "Fredoka", fontSize: 24, fontWeight: "900", color: "#111111" }}>
+              Para ficar online
+            </Text>
+            <Text style={{ fontFamily: "Nunito", fontSize: 16, lineHeight: 22, color: "#3A2A22" }}>
+              O Pediu usa sua localização só para mostrar corridas perto de você. O celular vai pedir essa permissão agora.
+            </Text>
+            <OpsButton title="Continuar" onPress={() => void confirmGoOnline()} />
+            <OpsButton title="Agora não" variant="outline" onPress={() => setExplainLocation(false)} />
+          </View>
+        </View>
+      </Modal>
       <Modal visible={assistantOpen} transparent animationType="slide" onRequestClose={() => setAssistantOpen(false)} {...edgeModalProps}>
         <AssistantChat audience="courier" onClose={() => setAssistantOpen(false)} />
       </Modal>

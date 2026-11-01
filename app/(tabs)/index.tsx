@@ -411,9 +411,12 @@ export default function HomeScreen() {
       setShowSaleModal(false);
       setSaleTotal("");
       setSaleCustomerId("");
+      setSaleCreditLimit("");
       void salesQuery.refetch();
+      void clientsQuery.refetch();
       notify("Venda registrada com sucesso");
     },
+    onError: (error) => notify(friendlyUserMessage(error.message)),
   });
   const addLedgerMutation = trpc.pediu.ledger.add.useMutation();
   const createClientMutation = trpc.pediu.clients.create.useMutation({
@@ -526,6 +529,7 @@ export default function HomeScreen() {
   const [salePaymentMethod, setSalePaymentMethod] = useState<
     "pix" | "cash" | "fiado"
   >("cash");
+  const [saleCreditLimit, setSaleCreditLimit] = useState("");
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [newProductName, setNewProductName] = useState("");
   const [newProductPrice, setNewProductPrice] = useState("");
@@ -1073,26 +1077,28 @@ export default function HomeScreen() {
       );
       return;
     }
-    createSaleMutation.mutate(
-      {
-        total: normalizedTotal,
-        customerId,
-        paymentMethod: salePaymentMethod,
-      },
-      {
-        onSuccess: () => {
-          if (salePaymentMethod === "fiado" && customerId) {
-            addLedgerMutation.mutate({
-              customerId,
-              type: "credit",
-              amount: normalizedTotal,
-              note: "Venda fiada",
-            });
-          }
-        },
-        onError: (error) => notify(friendlyUserMessage(error.message)),
-      },
-    );
+    const customer = (clientsQuery.data ?? []).find((item) => item.id === customerId);
+    const proposedLimit = brlInputToDecimal(saleCreditLimit);
+    if (
+      salePaymentMethod === "fiado" &&
+      customer &&
+      Number(customer.creditLimit) <= 0 &&
+      (!proposedLimit || Number(proposedLimit) <= 0)
+    ) {
+      void notifyWithHaptic(
+        "Esse cliente ainda não tem limite de fiado. Defina um limite para continuar.",
+      );
+      return;
+    }
+    createSaleMutation.mutate({
+      total: normalizedTotal,
+      customerId,
+      paymentMethod: salePaymentMethod,
+      creditLimit:
+        salePaymentMethod === "fiado" && customer && Number(customer.creditLimit) <= 0
+          ? proposedLimit
+          : undefined,
+    });
   };
 
   const createStore = () => {
@@ -1273,6 +1279,14 @@ export default function HomeScreen() {
                       (sum, sale) => sum + Number(sale.total),
                       0,
                     )}
+                    onSale={() => {
+                      setSalePaymentMethod("cash");
+                      setShowSaleModal(true);
+                    }}
+                    onFiado={() => {
+                      setSalePaymentMethod("fiado");
+                      setShowSaleModal(true);
+                    }}
                     onCatalog={() => changeSellerTab("catalog")}
                     onOrders={() => changeSellerTab("orders")}
                     onClients={() => changeSellerTab("clients")}
@@ -1629,10 +1643,17 @@ export default function HomeScreen() {
             total={saleTotal}
             customerId={saleCustomerId}
             paymentMethod={salePaymentMethod}
-            busy={createSaleMutation.isPending || addLedgerMutation.isPending}
+            busy={createSaleMutation.isPending}
+            creditLimit={saleCreditLimit}
+            errorMessage={
+              createSaleMutation.error
+                ? friendlyUserMessage(createSaleMutation.error.message)
+                : ""
+            }
             onChangeTotal={setSaleTotal}
             onChangeCustomerId={setSaleCustomerId}
             onChangePaymentMethod={setSalePaymentMethod}
+            onChangeCreditLimit={setSaleCreditLimit}
             onSubmit={submitSale}
             onClose={() => setShowSaleModal(false)}
           />
@@ -2431,6 +2452,8 @@ function SellerHome({
   orders,
   productCount,
   salesTotal,
+  onSale,
+  onFiado,
   onCatalog,
   onOrders,
   onClients,
@@ -2444,6 +2467,8 @@ function SellerHome({
   orders: { status: string }[];
   productCount: number;
   salesTotal: number;
+  onSale: () => void;
+  onFiado: () => void;
   onCatalog: () => void;
   onOrders: () => void;
   onClients: () => void;
@@ -2491,7 +2516,10 @@ function SellerHome({
           ]}
         >
           <Text
-            style={[styles.statNumber, { color: theme.ink }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.6}
+            style={[styles.statNumber, { color: theme.ink, width: "100%" }]}
           >{`R$ ${salesTotal.toFixed(2).replace(".", ",")}`}</Text>
           <Text style={styles.statLabel}>vendas registradas</Text>
           <MaterialIcons name="trending-up" size={22} color={COLORS.green} />
@@ -2525,6 +2553,30 @@ function SellerHome({
         <Text style={styles.sectionTitle}>Atalhos</Text>
       </View>
       <View style={styles.shortcutGrid}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.shortcut,
+            { backgroundColor: theme.card, borderColor: theme.line },
+            pressed && styles.cardPressed,
+          ]}
+          onPress={onSale}
+        >
+          <MaterialIcons name="point-of-sale" size={24} color={theme.primary} />
+          <Text style={styles.shortcutTitle}>Registrar venda</Text>
+          <Text style={styles.shortcutSub}>Dinheiro, PIX ou fiado</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [
+            styles.shortcut,
+            { backgroundColor: theme.card, borderColor: theme.line },
+            pressed && styles.cardPressed,
+          ]}
+          onPress={onFiado}
+        >
+          <MaterialIcons name="receipt-long" size={24} color={COLORS.green} />
+          <Text style={styles.shortcutTitle}>Fiado</Text>
+          <Text style={styles.shortcutSub}>Lançar o que ficou devendo</Text>
+        </Pressable>
         <Pressable
           style={({ pressed }) => [
             styles.shortcut,
@@ -2777,6 +2829,26 @@ function SellerCatalog({
   onToggle: (id: number, available: boolean) => void;
   onShare: () => void;
 }) {
+  const utils = trpc.useUtils();
+  const archive = trpc.pediu.products.archive.useMutation({
+    onSuccess: () => void utils.pediu.products.mine.invalidate(),
+    onError: (error) =>
+      Alert.alert("Não foi possível arquivar", friendlyUserMessage(error.message)),
+  });
+  const confirmArchive = (product: Product) => {
+    Alert.alert(
+      "Arquivar produto?",
+      `${product.name} sai do cardápio e dos anúncios. Pedidos antigos continuam com o nome.`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Arquivar",
+          style: "destructive",
+          onPress: () => archive.mutate({ productId: product.id }),
+        },
+      ],
+    );
+  };
   return (
     <>
       <View style={styles.simpleHeader}>
@@ -2812,6 +2884,14 @@ function SellerCatalog({
                   {product.description}
                 </Text>
               ) : null}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Arquivar ${product.name}`}
+                onPress={() => confirmArchive(product)}
+                style={{ alignSelf: "flex-start", paddingVertical: 6 }}
+              >
+                <Text style={{ color: "#E20D2A", fontSize: 12, fontWeight: "800" }}>Arquivar</Text>
+              </Pressable>
             </View>
             <Pressable
               accessibilityLabel={`${product.available ? "Desativar" : "Ativar"} ${product.name}`}
@@ -5875,24 +5955,32 @@ function SaleModal({
   total,
   customerId,
   paymentMethod,
+  creditLimit,
+  errorMessage,
   busy,
   onChangeTotal,
   onChangeCustomerId,
   onChangePaymentMethod,
+  onChangeCreditLimit,
   onSubmit,
   onClose,
 }: {
-  customers: { id: number; name: string }[];
+  customers: { id: number; name: string; creditLimit: string; balance: string }[];
   total: string;
   customerId: string;
   paymentMethod: "pix" | "cash" | "fiado";
+  creditLimit: string;
+  errorMessage: string;
   busy: boolean;
   onChangeTotal: (value: string) => void;
   onChangeCustomerId: (value: string) => void;
   onChangePaymentMethod: (value: "pix" | "cash" | "fiado") => void;
+  onChangeCreditLimit: (value: string) => void;
   onSubmit: () => void;
   onClose: () => void;
 }) {
+  const selected = customers.find((customer) => String(customer.id) === customerId);
+  const missingLimit = Boolean(selected && Number(selected.creditLimit) <= 0);
   const insets = useSafeAreaInsets();
   return (
     <View style={styles.modalBackdrop}>
@@ -5959,6 +6047,31 @@ function SaleModal({
                   Cadastre o cliente na aba Clientes antes de lançar no fiado.
                 </Text>
               )}
+              {selected && !missingLimit ? (
+                <Text style={styles.fieldHelp}>
+                  {`Limite ${Number(selected.creditLimit).toFixed(2).replace(".", ",")} · já deve R$ ${Number(selected.balance).toFixed(2).replace(".", ",")}`}
+                </Text>
+              ) : null}
+              {missingLimit ? (
+                <>
+                  <Text style={styles.fieldLabel}>LIMITE DE FIADO</Text>
+                  <Text style={styles.fieldHelp}>
+                    Sem limite definido. Diga quanto essa pessoa pode ficar devendo. A venda só entra depois disso.
+                  </Text>
+                  <View style={styles.moneyRow}>
+                    <Text style={styles.moneyPrefix}>R$</Text>
+                    <TextInput
+                      value={creditLimit}
+                      onChangeText={(value) => onChangeCreditLimit(maskBrlTyping(value))}
+                      placeholder="0,00"
+                      placeholderTextColor={COLORS.muted}
+                      style={[styles.input, styles.moneyInput]}
+                      keyboardType="decimal-pad"
+                      accessibilityLabel="Limite de fiado"
+                    />
+                  </View>
+                </>
+              ) : null}
             </>
           ) : null}
           <Text style={styles.fieldLabel}>FORMA DE PAGAMENTO</Text>
@@ -5997,6 +6110,11 @@ function SaleModal({
             </Text>
             <MaterialIcons name="check" size={18} color={COLORS.white} />
           </Pressable>
+          {errorMessage ? (
+            <Text style={{ color: "#E20D2A", fontSize: 13, fontWeight: "700" }}>
+              {errorMessage}
+            </Text>
+          ) : null}
           <Pressable style={styles.textButton} onPress={onClose}>
             <Text style={styles.textButtonLabel}>Cancelar</Text>
           </Pressable>

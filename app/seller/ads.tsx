@@ -228,9 +228,9 @@ export default function SellerAdsPage() {
         <Text style={s.sectionTitle}>1. Escolha o produto</Text>
         {products.isLoading ? (
           <Text style={s.muted}>Carregando catálogo...</Text>
-        ) : products.data?.length ? (
+        ) : products.data?.some((product) => product.available) ? (
           <View style={{ gap: 8 }}>
-            {products.data.map((product) => (
+            {products.data.filter((product) => product.available).map((product) => (
               <Pressable
                 key={product.id}
                 onPress={() => setProductId(String(product.id))}
@@ -300,7 +300,9 @@ export default function SellerAdsPage() {
           </View>
         ) : (
           <Text style={s.muted}>
-            Adicione um produto no catálogo antes de criar um anúncio.
+            {products.data?.length
+              ? "Produtos esgotados não entram em anúncio. Reponha um item para anunciar."
+              : "Adicione um produto no catálogo antes de criar um anúncio."}
           </Text>
         )}
       </Card>
