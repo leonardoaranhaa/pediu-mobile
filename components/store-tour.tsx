@@ -9,15 +9,17 @@ const STEPS = [
   { title: "O cardápio mora aqui.", body: "Cadastre o primeiro produto na aba Cardápio.", tab: "Cardápio" },
   { title: "Pedido novo cai aqui e o celular avisa.", body: "A fila de pedidos avisa enquanto o aplicativo estiver aberto.", tab: "Pedidos" },
   { title: "Anúncio fica aqui e gasta créditos da loja.", body: "Cada imagem usa um crédito. Publicar no Explorar não gasta outro.", tab: "Anúncios" },
-  { title: "Horário, raio, motoboy e PIX ficam em Ajustes.", body: "É lá que a entrega e o repasse se acertam.", tab: "Ajustes" },
+  { title: "Horário, pausa, raio e PIX ficam em Ajustes.", body: "É lá que a entrega e o recebimento se acertam.", tab: "Ajustes" },
 ];
 
 export function StoreTour({
   userId,
   storeName,
+  productCount = 0,
 }: {
   userId: number;
   storeName: string;
+  productCount?: number;
 }) {
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState<number | null>(null);
@@ -67,9 +69,10 @@ export function StoreTour({
         PASSO {step + 1} DE 5 · {storeName}
       </Text>
       <Text style={{ color: "#FFF8F2", fontSize: 18, fontWeight: "900" }}>{current.title}</Text>
-      <Text style={{ color: "#F3E6D8", fontSize: 14 }}>{current.body}</Text>
-      <Text style={{ color: "#F6C445", fontSize: 13, fontWeight: "800" }}>
-        Aponte para a aba {current.tab}, aqui embaixo.
+      <Text style={{ color: "#F3E6D8", fontSize: 14 }}>
+        {step === 1 && productCount > 0
+          ? "Seus produtos já estão no cardápio. Preço e estoque ficam na aba Cardápio."
+          : current.body}
       </Text>
       <View style={{ flexDirection: "row", gap: 16, marginTop: 4 }}>
         <Pressable onPress={finish}>

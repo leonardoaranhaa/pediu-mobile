@@ -59,7 +59,7 @@ export function ScreenContainer({
         "bg-background",
         containerClassName
       )}
-      style={backgroundColor ? { backgroundColor } : undefined}
+      style={backgroundColor ? { backgroundColor, overflow: "hidden" } : { overflow: "hidden" }}
       {...props}
     >
       <SafeAreaView

@@ -9,8 +9,8 @@ import {
 
 const LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
-function initialHours(raw: string | null | undefined): OpeningHours {
-  return parseOpeningHours(raw) ?? defaultOpeningHours();
+function initialHours(raw: string | null | undefined): OpeningHours | null {
+  return parseOpeningHours(raw);
 }
 
 export function OpeningHoursEditor({
@@ -18,14 +18,54 @@ export function OpeningHoursEditor({
   onChange,
 }: {
   initial?: string | null;
-  onChange: (json: string) => void;
+  onChange: (json: string | null) => void;
 }) {
-  const [hours, setHours] = useState<OpeningHours>(() => initialHours(initial));
+  const parsed = initialHours(initial);
+  const [defined, setDefined] = useState(parsed !== null);
+  const [hours, setHours] = useState<OpeningHours>(
+    () => parsed ?? defaultOpeningHours(),
+  );
 
   const commit = (next: OpeningHours) => {
     setHours(next);
     onChange(JSON.stringify(next));
   };
+
+  const start = () => {
+    const next = defaultOpeningHours();
+    setDefined(true);
+    commit(next);
+  };
+
+  if (!defined) {
+    return (
+      <View style={{ gap: 8 }}>
+        <Text style={{ color: "#6E635A", fontSize: 12, fontWeight: "800" }}>
+          HORÁRIO POR DIA
+        </Text>
+        <Text style={{ color: "#111111", fontWeight: "800" }}>
+          Sem horário definido
+        </Text>
+        <Text style={{ color: "#6E635A", fontSize: 13, lineHeight: 18 }}>
+          A loja fica aberta sempre que "Loja aberta" estiver ligado. Nada é salvo até você definir os dias.
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={start}
+          style={{
+            minHeight: 48,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: "#E20D2A",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Text style={{ color: "#E20D2A", fontWeight: "900" }}>Definir horário</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   const patch = (day: string, value: Partial<WeekdayHours>) => {
     const current = hours[day as keyof OpeningHours] ?? {

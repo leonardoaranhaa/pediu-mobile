@@ -59,6 +59,7 @@ import {
   maskBrlTyping,
 } from "@/lib/br-fields";
 import { friendlyUserMessage } from "@/lib/user-message";
+import { useNewOrderChime } from "@/lib/new-order-chime";
 import { defaultOptionSelection, groupRequiresChoice } from "@/lib/option-selection";
 import type { MascotReaction } from "@/components/pediu-mascot";
 import { CartPeek } from "@/components/pediu/cart-peek";
@@ -186,7 +187,7 @@ export default function HomeScreen() {
     setMascotMoment,
     updateCustomization,
   } = useAppPreferences();
-  const params = useLocalSearchParams<{ assistant?: string; tab?: string }>();
+  const params = useLocalSearchParams<{ assistant?: string; tab?: string; sellerTab?: string }>();
   const {
     items: globalCartItems,
     itemCount: globalCartCount,
@@ -202,6 +203,18 @@ export default function HomeScreen() {
       setCustomerTab(params.tab);
     }
   }, [params.tab]);
+  useEffect(() => {
+    const next = params.sellerTab;
+    if (
+      next === "home" ||
+      next === "orders" ||
+      next === "catalog" ||
+      next === "clients" ||
+      next === "settings"
+    ) {
+      setSellerTab(next);
+    }
+  }, [params.sellerTab]);
   const [sellerTab, setSellerTab] = useState<
     "home" | "orders" | "catalog" | "clients" | "settings"
   >("home");
@@ -274,6 +287,11 @@ export default function HomeScreen() {
     enabled: isAuthenticated && role === "seller",
     refetchInterval: 10_000,
   });
+  useNewOrderChime(
+    role === "seller"
+      ? (storeOrdersQuery.data ?? []).filter((order) => order.status === "Pendente").length
+      : 0,
+  );
   const customerOrdersQuery = trpc.pediu.orders.mine.useQuery(undefined, {
     enabled: isAuthenticated && role === "customer",
     refetchInterval: 5_000,
@@ -1315,6 +1333,7 @@ export default function HomeScreen() {
                   onSave={updateStore}
                   saving={updateStoreMutation.isPending}
                   onAssistant={() => openVoiceAssistant("seller")}
+                  onRefresh={() => void storeQuery.refetch()}
                 />
               )}
             </ScrollView>
@@ -1335,7 +1354,7 @@ export default function HomeScreen() {
         ) : null}
 
         {role === "seller" && sellerTab === "home" && user?.id && storeQuery.data ? (
-          <StoreTour userId={user.id} storeName={storeQuery.data.name} />
+          <StoreTour userId={user.id} storeName={storeQuery.data.name} productCount={sellerProducts.length} />
         ) : null}
 
         <Modal
@@ -2446,7 +2465,7 @@ function SellerHome({
           <Text style={styles.sellerTitle}>{store?.name ?? "Sua loja"}</Text>
           <Text style={styles.sellerSubtitle}>
             {firstName
-              ? `Bom dia, ${firstName}. Tudo pronto?`
+              ? `${new Date().getHours() < 12 ? "Bom dia" : new Date().getHours() < 18 ? "Boa tarde" : "Boa noite"}, ${firstName}. Tudo pronto?`
               : "Configure sua loja para começar."}
           </Text>
         </View>
@@ -2602,7 +2621,7 @@ function SellerOrders({
     status: string;
     deliveryAddress: string | null;
     fulfillmentMode?: "delivery" | "pickup";
-    createdAt: Date | null;
+    createdAt: Date | string | null;
   }[];
   onUpdateStatus: (
     orderId: number,
@@ -2689,7 +2708,14 @@ function SellerOrders({
                   {Number(line.unitPrice).toFixed(2).replace(".", ",")}
                 </Text>
               ))}
-              <Text style={styles.muted}>{order.paymentLabel || "Pagamento a confirmar"}</Text>
+              <Text style={styles.muted}>
+                {order.paymentLabel || "Pagamento a confirmar"}
+              </Text>
+              {order.status === "Pendente" && order.createdAt ? (
+                <Text style={{ color: COLORS.coral, fontWeight: "900" }}>
+                  Aceite em até 5 min
+                </Text>
+              ) : null}
 
               {next ? (
                 <View style={styles.orderActions}>
@@ -2832,6 +2858,7 @@ function SellerSettings({
   onSave,
   saving,
   onAssistant,
+  onRefresh,
 }: {
   store?: {
     id: number;
@@ -2847,6 +2874,12 @@ function SellerSettings({
     longitude: string | null;
     isOpen: number;
     openingHours?: string | null;
+    paused?: boolean;
+    pauseMessage?: string | null;
+    cardCreditEnabled?: boolean;
+    cardDebitEnabled?: boolean;
+    feeMode?: "fixed" | "distance";
+    feePerKm?: string;
   };
   salesCount: number;
   onSave: (input: {
@@ -2865,6 +2898,7 @@ function SellerSettings({
   }) => void;
   saving: boolean;
   onAssistant: () => void;
+  onRefresh?: () => void;
 }) {
   const [name, setName] = useState(store?.name ?? "");
   const [phone, setPhone] = useState(maskBrazilPhone(store?.phone ?? ""));
@@ -2888,10 +2922,19 @@ function SellerSettings({
       : null,
   );
   const [pinKey, setPinKey] = useState(0);
+  const [showMap, setShowMap] = useState(false);
   const [locating, setLocating] = useState(false);
   const [hoursJson, setHoursJson] = useState<string | null>(null);
   const [validationMessage, setValidationMessage] = useState("");
   const [isOpen, setIsOpen] = useState(Boolean(store?.isOpen));
+  const [feeMode, setFeeMode] = useState<"fixed" | "distance">(store?.feeMode === "distance" ? "distance" : "fixed");
+  const [feePerKm, setFeePerKm] = useState(decimalToBrlInput(store?.feePerKm ?? "0"));
+  const [cardCredit, setCardCredit] = useState(Boolean(store?.cardCreditEnabled));
+  const [cardDebit, setCardDebit] = useState(Boolean(store?.cardDebitEnabled));
+  const { logout } = useAuth();
+  const pauseStore = trpc.pediu.stores.pause.useMutation({ onSuccess: () => onRefresh?.() });
+  const resumeStore = trpc.pediu.stores.resume.useMutation({ onSuccess: () => onRefresh?.() });
+  const deliverySettings = trpc.pediu.stores.deliverySettings.useMutation({ onSuccess: () => onRefresh?.() });
   useEffect(() => {
     setName(store?.name ?? "");
     setPhone(maskBrazilPhone(store?.phone ?? ""));
@@ -2907,6 +2950,10 @@ function SellerSettings({
         : null,
     );
     setIsOpen(Boolean(store?.isOpen));
+    setFeeMode(store?.feeMode === "distance" ? "distance" : "fixed");
+    setFeePerKm(decimalToBrlInput(store?.feePerKm ?? "0"));
+    setCardCredit(Boolean(store?.cardCreditEnabled));
+    setCardDebit(Boolean(store?.cardDebitEnabled));
   }, [
     store?.id,
     store?.name,
@@ -2920,6 +2967,10 @@ function SellerSettings({
     store?.latitude,
     store?.longitude,
     store?.isOpen,
+    store?.feeMode,
+    store?.feePerKm,
+    store?.cardCreditEnabled,
+    store?.cardDebitEnabled,
   ]);
   const locateStore = async () => {
     setValidationMessage("");
@@ -2986,6 +3037,15 @@ function SellerSettings({
       isOpen,
       ...(hoursJson ? { openingHours: hoursJson } : {}),
     });
+    const perKm = brlInputToDecimal(feePerKm);
+    if (perKm) {
+      deliverySettings.mutate({
+        cardCreditEnabled: cardCredit,
+        cardDebitEnabled: cardDebit,
+        feeMode,
+        feePerKm: perKm,
+      });
+    }
   };
   return (
     <>
@@ -2994,7 +3054,9 @@ function SellerSettings({
           <Text style={styles.eyebrow}>CONFIGURAÇÕES</Text>
           <Text style={styles.pageTitle}>Sua loja</Text>
         </View>
-        <Text style={styles.link}>{salesCount} vendas</Text>
+        <Text style={styles.link}>
+          {salesCount} {salesCount === 1 ? "venda" : "vendas"}
+        </Text>
       </View>
       <View style={styles.fieldCard}>
         <Text style={styles.sectionTitle}>Dados publicados</Text>
@@ -3121,7 +3183,7 @@ function SellerSettings({
           />
           <Text style={styles.moneyPrefix}>km</Text>
         </View>
-        {pin ? (
+        {pin && showMap ? (
           <PinMap
             latitude={pin.latitude}
             longitude={pin.longitude}
@@ -3129,6 +3191,21 @@ function SellerSettings({
             label="Loja"
             onChange={setPin}
           />
+        ) : pin ? (
+          <View style={{ gap: 6 }}>
+            <Text style={styles.muted}>
+              Ponto da loja marcado. O mapa abre só quando você pedir, para a tela não travar.
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Ver no mapa"
+              onPress={() => setShowMap(true)}
+              style={styles.mapButton}
+            >
+              <MaterialIcons name="map" size={18} color={COLORS.coral} />
+              <Text style={styles.mapButtonText}>Ver no mapa</Text>
+            </Pressable>
+          </View>
         ) : null}
         <Text style={styles.muted}>
           Arraste o ponto até a porta da loja. Não precisa digitar latitude nem longitude.
@@ -3168,6 +3245,69 @@ function SellerSettings({
             <View style={[styles.stockKnob, isOpen && styles.stockKnobOn]} />
           </View>
         </Pressable>
+        <Text style={styles.fieldLabel}>COMO COBRAR A ENTREGA</Text>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Pressable onPress={() => setFeeMode("fixed")} style={[styles.mapButton, feeMode === "fixed" && { borderColor: COLORS.coral, backgroundColor: COLORS.coralSoft }]}>
+            <Text style={{ color: feeMode === "fixed" ? COLORS.coral : COLORS.muted, fontWeight: "900" }}>Taxa fixa</Text>
+          </Pressable>
+          <Pressable onPress={() => setFeeMode("distance")} style={[styles.mapButton, feeMode === "distance" && { borderColor: COLORS.coral, backgroundColor: COLORS.coralSoft }]}>
+            <Text style={{ color: feeMode === "distance" ? COLORS.coral : COLORS.muted, fontWeight: "900" }}>Por distância</Text>
+          </Pressable>
+        </View>
+        {feeMode === "distance" ? (
+          <>
+            <Text style={styles.fieldLabel}>VALOR POR KM</Text>
+            <Text style={styles.fieldHelp}>Somado à taxa fixa, conforme a distância.</Text>
+            <View style={styles.moneyRow}>
+              <Text style={styles.moneyPrefix}>R$</Text>
+              <TextInput
+                value={feePerKm}
+                onChangeText={(value) => setFeePerKm(maskBrlTyping(value))}
+                placeholder="2,00"
+                placeholderTextColor={COLORS.muted}
+                style={[styles.input, styles.moneyInput]}
+                keyboardType="decimal-pad"
+                accessibilityLabel="Valor por quilômetro"
+              />
+            </View>
+          </>
+        ) : null}
+        <Pressable style={styles.settingsRow} onPress={() => setCardCredit((value) => !value)}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>{cardCredit ? "Crédito na entrega ligado" : "Crédito na entrega"}</Text>
+            <Text style={styles.muted}>A maquininha cobra no crédito quando o pedido chega.</Text>
+          </View>
+        </Pressable>
+        <Pressable style={styles.settingsRow} onPress={() => setCardDebit((value) => !value)}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>{cardDebit ? "Débito na entrega ligado" : "Débito na entrega"}</Text>
+            <Text style={styles.muted}>A maquininha cobra no débito quando o pedido chega.</Text>
+          </View>
+        </Pressable>
+        <Text style={styles.sectionTitle}>Pausar por um tempo</Text>
+        <Text style={styles.muted}>
+          {store?.paused
+            ? (store.pauseMessage ?? "Fechada no momento")
+            : "A loja continua no ar, mas ninguém consegue pedir até você reabrir."}
+        </Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          {store?.paused ? (
+            <Pressable onPress={() => resumeStore.mutate()} style={styles.mapButton}>
+              <Text style={styles.mapButtonText}>{resumeStore.isPending ? "Reabrindo..." : "Reabrir agora"}</Text>
+            </Pressable>
+          ) : (
+            <>
+              {([15, 30, 60] as const).map((minutes) => (
+                <Pressable key={minutes} onPress={() => pauseStore.mutate({ minutes })} style={styles.mapButton}>
+                  <Text style={{ color: COLORS.ink, fontWeight: "900" }}>{minutes} min</Text>
+                </Pressable>
+              ))}
+              <Pressable onPress={() => pauseStore.mutate({ manual: true })} style={styles.mapButton}>
+                <Text style={{ color: COLORS.ink, fontWeight: "900" }}>Até eu reabrir</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
         <Pressable
           style={[styles.primaryButton, saving && styles.disabledButton]}
           disabled={saving}
@@ -3199,6 +3339,17 @@ function SellerSettings({
       </Pressable>
       <Pressable style={styles.outlineButton} onPress={() => router.push("/account/profile")}>
         <Text style={styles.outlineButtonText}>Minha conta</Text>
+      </Pressable>
+      <Pressable
+        style={styles.outlineButton}
+        onPress={() =>
+          Alert.alert("Sair da conta?", "Você volta para a tela de entrada.", [
+            { text: "Continuar conectado", style: "cancel" },
+            { text: "Sair", style: "destructive", onPress: () => void logout() },
+          ])
+        }
+      >
+        <Text style={styles.outlineButtonText}>Sair da conta</Text>
       </Pressable>
     </>
   );

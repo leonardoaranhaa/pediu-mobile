@@ -60,12 +60,22 @@ Confirmado no emulador: faixa do relógio, abas acima dos botões do sistema, no
 | N10 | Baixa | Esqueci a senha | O texto falava de painel e de aviso falso. | Corrigido. O texto pede para falar com o suporte do Pediu. |
 | N11 | Baixa | Login | Não tinha seta para voltar. | Corrigido. |
 | N14 | Baixa | Repetir pedido | Não dizia que o último pedido tinha sido cancelado. | Corrigido. A frase avisa e o Confirmar continua valendo se a pessoa quiser repetir. |
+| N15 | Baixa | Painel da loja | A saudação era sempre "Bom dia". | Corrigido. Usa bom dia, boa tarde ou boa noite conforme a hora. |
+| N16 | Baixa | Tour da loja | O passo do cardápio pedia o primeiro produto mesmo quando já havia produtos, e cada passo dizia "Aponte para a aba". | Corrigido. O texto muda se já existe produto. A linha de apontar saiu. |
+| N17 | Média | Ajustes | Havia duas telas diferentes. A aba não tinha pausa, cartão na entrega, valor por km nem sair da conta. Pedir com a loja pausada voltava erro 500. | Corrigido. Tudo ficou na aba Ajustes, com a mesma barra de baixo. A outra tela só abre essa aba. A pausa recusa o pedido com a frase da loja, sem erro interno. "1 venda" no singular. |
+| N18 | Baixa | Mapa em Ajustes | O mapa aberto na rolagem travava o aparelho lento. | Corrigido. A tela mostra o ponto marcado e o mapa só abre em "Ver no mapa". |
+| N19 | Média | Horário | Sem horário salvo, a tela inventava um quadro e um toque gravava tudo. | Corrigido. Aparece "Sem horário definido". O quadro só é gravado quando a pessoa define o horário, e o que aparece é o que salva. |
+| N20 | Média | Pedido da loja | Dinheiro com troco aparecia só como "Dinheiro". | Corrigido. A linha fica "Dinheiro · troco para R$ 50,00". |
+| N21 | Média | Pedido novo | Não havia contagem para aceitar nem aviso com o app aberto. | Corrigido. O card mostra "Aceite em 4:32". Pedido novo vibra e toca o aviso do celular. |
+| N22 | Média | Pedido pronto | Chamar motoboy pedia duas telas, e a oferta vencida não voltava sozinha. | Corrigido. Ao marcar pronto, a oferta sai para motoboys perto. O card fica em "Procurando motoboy…". Oferta vencida segue para o próximo, como já era no servidor. |
+| N23 | Baixa | Textos da loja | "Fila Flash", "PADRÃO" e o status repetido. "Marcar esgotado" ficava em cima de "Aceitar". | Corrigido. Texto simples. Esgotar o produto foi para baixo das ações do pedido. |
+| N24 | Baixa | Barra do relógio | Ao rolar, o card passava por baixo do relógio. | Corrigido. O topo da tela fica na cor do app e o conteúdo não entra nessa faixa. |
 
 ## Ainda aberto
 
 | Gravidade | Item | Por quê ficou |
 | --- | --- | --- |
-| Média | Telas de lojista e motoboy neste emulador | O reteste cobriu o cliente. O restante chega num passe separado. |
+| Média | Cardápio, venda, fiado, anúncios e motoboy neste emulador | Esses fluxos ainda podem chegar num passe seguinte. |
 | Média | Olhar de novo num celular de verdade, com gesto e com letra grande | O emulador foi Android 11 com 3 botões. O aparelho do Leonardo ainda precisa de uma passada. |
 | Média | O número 12 no APK publicado | O contador remoto do EAS é quem define o `versionCode` do arquivo instalado. |
 | Baixa | Algumas telas de administração ainda têm frases em inglês, como “Support ticket not found” | Não entram no caminho de cliente, loja ou motoboy da beta. Os testes dependem dessas frases. |

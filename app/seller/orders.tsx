@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { router } from "expo-router";
 import { Text, View } from "react-native";
 import { useAuth } from "@/hooks/use-auth";
@@ -6,6 +7,7 @@ import { useAppPreferences } from "@/lib/app-preferences";
 import { EmptyState } from "@/components/pediu/empty-state";
 import { s } from "@/components/pediu-page";
 import { SellerDock } from "@/components/seller-dock";
+import { useNewOrderChime } from "@/lib/new-order-chime";
 import {
   OpsBadge,
   OpsButton,
@@ -27,6 +29,20 @@ const actionLabel: Record<string, string> = {
   Preparando: "Marcar como pronto",
   Pronto: "Liberar retirada",
 };
+
+function AcceptCountdown({ createdAt }: { createdAt: Date | string }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const left = new Date(createdAt).getTime() + 5 * 60 * 1000 - now;
+  const label =
+    left <= 0
+      ? "O prazo de aceite acabou"
+      : `Aceite em ${Math.floor(left / 60000)}:${String(Math.floor((left % 60000) / 1000)).padStart(2, "0")}`;
+  return <Text style={{ color: "#E20D2A", fontWeight: "900" }}>{label}</Text>;
+}
 
 function money(value: unknown) {
   return `R$ ${Number(value ?? 0)
@@ -52,7 +68,12 @@ export default function SellerOrdersPage() {
   const availability = trpc.pediu.products.availability.useMutation({
     onSuccess: () => void q.refetch(),
   });
+  const callCourier = trpc.pediu.experience.delivery.broadcast.useMutation({
+    onSuccess: () => void q.refetch(),
+  });
   const orders = q.data ?? [];
+  const pendingCount = orders.filter((order) => order.status === "Pendente").length;
+  useNewOrderChime(pendingCount);
   const groups = [
     { title: "Na fila", statuses: ["Pendente", "Aceito"] },
     { title: "No fogo", statuses: ["Preparando"] },
@@ -87,7 +108,7 @@ export default function SellerOrdersPage() {
           Pedidos
         </Text>
         <Text style={s.muted}>
-          A fila da loja, com Flash em destaque e as ações que você pode fazer agora.
+          Os pedidos novos aparecem aqui. Aceite antes do tempo acabar.
         </Text>
       </View>
       {q.isLoading ? (
@@ -182,7 +203,7 @@ export default function SellerOrdersPage() {
                           }}
                         >
                           <OpsBadge tone={isFlash ? "primary" : "muted"}>
-                            {isFlash ? "FLASH" : order.status}
+                            {isFlash ? "Entrega rápida" : order.status}
                           </OpsBadge>
                           {isFlash ? (
                             <OpsBadge tone="accent">PRIORIDADE</OpsBadge>
@@ -206,30 +227,12 @@ export default function SellerOrdersPage() {
                             order.paymentLabel || "Pagamento a confirmar",
                             order.tipAmount && Number(order.tipAmount) > 0
                               ? `Gorjeta: ${money(order.tipAmount)}`
-                              : isMarket
-                                ? "Separação de mercado"
-                                : `Situação: ${order.status}`,
-                          ]}
+                              : "",
+                          ].filter(Boolean)}
                         />
-                        {(order.lines ?? [])
-                          .filter(
-                            (line, index, lines) =>
-                              lines.findIndex((item) => item.productId === line.productId) === index,
-                          )
-                          .map((line) => (
-                            <OpsButton
-                              key={line.productId}
-                              title={line.available ? `Marcar ${line.name} esgotado` : `Voltar a vender ${line.name}`}
-                              variant="outline"
-                              disabled={availability.isPending}
-                              onPress={() =>
-                                availability.mutate({
-                                  productId: line.productId,
-                                  available: !line.available,
-                                })
-                              }
-                            />
-                          ))}
+                        {order.status === "Pendente" && order.createdAt ? (
+                          <AcceptCountdown createdAt={order.createdAt} />
+                        ) : null}
                         {next ? (
                           <OpsButton
                             title={
@@ -247,15 +250,14 @@ export default function SellerOrdersPage() {
                           />
                         ) : null}
                         {order.status === "Pronto" && delivery ? (
-                          <OpsButton
-                            title="Chamar motoboy"
-                            onPress={() =>
-                              router.push({
-                                pathname: "/seller/delivery",
-                                params: { orderId: String(order.id) },
-                              })
-                            }
-                          />
+                          <>
+                            <Text style={s.muted}>Procurando motoboy…</Text>
+                            <OpsButton
+                              title="Chamar de novo"
+                              onPress={() => callCourier.mutate({ orderId: order.id })}
+                              disabled={callCourier.isPending}
+                            />
+                          </>
                         ) : null}
                         {order.status === "A caminho" ? (
                           <Text style={s.muted}>
@@ -275,6 +277,25 @@ export default function SellerOrdersPage() {
                             disabled={updateStatus.isPending}
                           />
                         ) : null}
+                        {(order.lines ?? [])
+                          .filter(
+                            (line, index, lines) =>
+                              lines.findIndex((item) => item.productId === line.productId) === index,
+                          )
+                          .map((line) => (
+                            <OpsButton
+                              key={line.productId}
+                              title={line.available ? `Esgotar ${line.name}` : `Voltar a vender ${line.name}`}
+                              variant="ghost"
+                              disabled={availability.isPending}
+                              onPress={() =>
+                                availability.mutate({
+                                  productId: line.productId,
+                                  available: !line.available,
+                                })
+                              }
+                            />
+                          ))}
                         <View style={{ flexDirection: "row", gap: 10 }}>
                           <OpsButton
                             title="Acompanhar"

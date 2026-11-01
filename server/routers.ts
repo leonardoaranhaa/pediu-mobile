@@ -609,7 +609,9 @@ export const appRouter = router({
             paused: pause.paused,
             pauseMessage: pause.message,
           });
-          if (blocked) throw new Error(blocked);
+          if (blocked) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: blocked });
+          }
           const availability = resolveStoreAvailability({
             isOpen: store.isOpen,
             openingHours: store.openingHours,
@@ -1575,7 +1577,9 @@ export const appRouter = router({
             paused: pause.paused,
             pauseMessage: pause.message,
           });
-          if (blocked) throw new Error(blocked);
+          if (blocked) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: blocked });
+          }
           const cardRejection = cardOnDeliveryRejection(input.paymentMethod, ops);
           if (cardRejection) throw new Error(cardRejection);
           const availability = resolveStoreAvailability({
@@ -1937,6 +1941,13 @@ export const appRouter = router({
               await releaseProviderPixForOrder(input.orderId);
             } catch (error) {
               console.warn("[PIX] Failed to cancel the provider charge", error);
+            }
+          }
+          if (input.status === "Pronto" && order.fulfillmentMode !== "pickup") {
+            try {
+              await db.dispatchNearbyOffers(ctx.user.id, input.orderId);
+            } catch (error) {
+              console.warn("[Delivery] Could not offer the ready order yet", error);
             }
           }
           if (input.status === "Entregue") {

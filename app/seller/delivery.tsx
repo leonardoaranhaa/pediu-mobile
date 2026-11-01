@@ -99,12 +99,12 @@ export default function SellerDeliveryPage() {
         subtitle={
           isMarket
             ? "Coleta do mercado e entrega ao endereço do cliente"
-            : "Fila Flash e chamada do motoboy"
+            : "Entregas e chamada do motoboy"
         }
         status={
           queueQuery.data?.flashCount
             ? `${queueQuery.data.flashCount} Flash`
-            : "Fila normal"
+            : "Entrega comum"
         }
         statusTone={queueQuery.data?.flashCount ? "accent" : "neutral"}
         statusIcon="two-wheeler"
@@ -161,7 +161,7 @@ export default function SellerDeliveryPage() {
               {selectedOrder.isFlash ? (
                 <OpsBadge tone="primary">FLASH</OpsBadge>
               ) : (
-                <OpsBadge tone="muted">PADRÃO</OpsBadge>
+                <OpsBadge tone="muted">COMUM</OpsBadge>
               )}
               {isMarket ? (
                 <OpsBadge tone="success">MERCADO · COLETA</OpsBadge>
@@ -172,7 +172,7 @@ export default function SellerDeliveryPage() {
                 `${selectedOrder.status} · ${money(selectedOrder.total)}`,
                 selectedOrder.isFlash
                   ? `Previsão sugerida: ${selectedOrder.suggestedEtaMinutes ?? queueQuery.data?.flashEtaMaxMinutes ?? 20} min`
-                  : "Entrega da fila da loja",
+                  : "Entrega da sua loja",
                 selectedOrder.deliveryAddress ??
                   "Endereço informado no pedido",
               ]}
@@ -224,7 +224,7 @@ export default function SellerDeliveryPage() {
             />
             <Text style={s.muted}>
               A chamada vai para motoboys aprovados que estão online perto da loja.
-              Não é preciso o número da conta.
+              O motoboy vê a oferta no aplicativo. Você não precisa digitar um número.
             </Text>
             {broadcast.data && broadcast.data.courierUserIds.length === 0 ? (
               <Text style={s.muted}>

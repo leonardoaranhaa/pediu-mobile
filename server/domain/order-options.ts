@@ -104,6 +104,18 @@ export function paymentMethodLabel(method: string | null | undefined) {
   return "Pagamento a confirmar";
 }
 
+export function paymentLabelWithChange(
+  method: string | null | undefined,
+  changeFor: string | number | null | undefined,
+) {
+  const label = paymentMethodLabel(method);
+  const amount = Number(changeFor);
+  if (method === "cash" && Number.isFinite(amount) && amount > 0) {
+    return `${label} · troco para R$ ${amount.toFixed(2).replace(".", ",")}`;
+  }
+  return label;
+}
+
 export function collectsPaymentOnDelivery(method: string | null | undefined) {
   return method === "cash" || method === "card_credit" || method === "card_debit";
 }

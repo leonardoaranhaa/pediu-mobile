@@ -44,7 +44,7 @@ export function OpsShell({
     };
   }, []);
   return (
-    <View style={[styles.root, { backgroundColor: theme.canvas }]}>
+    <View style={[styles.root, { backgroundColor: theme.canvas, paddingTop: insets.top, overflow: "hidden" }]}>
       <View
         pointerEvents="none"
         style={[
@@ -67,7 +67,7 @@ export function OpsShell({
         contentContainerStyle={[
           styles.content,
           {
-            paddingTop: insets.top + 16,
+            paddingTop: 16,
             paddingBottom:
               scrollPaddingForFloatingBar(insets.bottom, Platform.OS) + keyboard,
           },

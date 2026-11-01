@@ -144,7 +144,7 @@ import {
   dispatchReofferKey,
   offerStillBlocksCourier,
 } from "./domain/dispatch";
-import { paymentMethodLabel, type OrderPaymentMethod } from "./domain/order-options";
+import { paymentLabelWithChange, paymentMethodLabel, type OrderPaymentMethod } from "./domain/order-options";
 import {
   DEFAULT_STORE_OPS,
   storePauseView,
@@ -4237,7 +4237,12 @@ export async function enrichOrdersForStore<
         })),
       customerName: nameById.get(order.customerId) ?? null,
       paymentMethod: method,
-      paymentLabel: paymentMethodLabel(method),
+      paymentLabel: paymentLabelWithChange(
+        method,
+        "changeFor" in order
+          ? (order as { changeFor?: string | number | null }).changeFor
+          : null,
+      ),
     };
   });
 }

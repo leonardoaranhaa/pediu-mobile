@@ -1,3 +1,4 @@
+import { router } from "expo-router";
 import { OpsDock } from "@/components/pediu-ops-ui";
 
 export type SellerTab = "home" | "orders" | "catalog" | "ads" | "settings";
@@ -10,7 +11,7 @@ export function SellerDock({ active }: { active: SellerTab }) {
         { label: "Pedidos", icon: "receipt-long", to: "/seller/orders", active: active === "orders" },
         { label: "Cardápio", icon: "restaurant-menu", to: "/seller/catalog", active: active === "catalog" },
         { label: "Anúncios", icon: "campaign", to: "/seller/ads", active: active === "ads" },
-        { label: "Ajustes", icon: "tune", to: "/seller/settings", active: active === "settings" },
+        { label: "Ajustes", icon: "tune", to: "/(tabs)", active: active === "settings", onPress: () => router.replace({ pathname: "/(tabs)", params: { sellerTab: "settings" } } as never) },
       ]}
     />
   );
