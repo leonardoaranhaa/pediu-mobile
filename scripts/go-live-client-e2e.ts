@@ -442,6 +442,18 @@ async function main() {
       ticketUrl: `https://pediu-test.invalid/pix/${orderId}`,
     });
 
+    const hiddenFromStore = await callTrpc<
+      Array<{ id: number; status: string; total: string }>
+    >("pediu.orders.storeMine", { limit: 20, offset: 0 }, merchantToken);
+    assert.equal(
+      hiddenFromStore.filter((order) => order.id === orderId).length,
+      0,
+      "Unpaid PIX must stay hidden from the store",
+    );
+    await connection.execute(
+      "UPDATE pediu_payments SET status = 'paid' WHERE orderId = ?",
+      [orderId],
+    );
     const storeOrders = await callTrpc<
       Array<{ id: number; status: string; total: string }>
     >("pediu.orders.storeMine", { limit: 20, offset: 0 }, merchantToken);
