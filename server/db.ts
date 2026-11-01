@@ -5212,6 +5212,24 @@ export async function applyPaymentWebhook(input: {
   }
 }
 
+export async function listRecentCancelledPix(since: Date) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({ orderId: orders.id })
+    .from(orders)
+    .innerJoin(payments, eq(payments.orderId, orders.id))
+    .where(
+      and(
+        eq(orders.status, "Cancelado"),
+        eq(payments.method, "pix"),
+        sql`${payments.transactionId} is not null`,
+        gte(orders.updatedAt, since),
+      ),
+    )
+    .limit(30);
+}
+
 export async function getOrderPaymentContext(orderId: number) {
   const db = await getDb();
   if (!db) return undefined;

@@ -1,9 +1,10 @@
-import { expireStaleInventoryReservations, listExpiredCreditPurchases, applyCreditPurchaseStatus } from "./db";
+import { expireStaleInventoryReservations, listExpiredCreditPurchases, listRecentCancelledPix, applyCreditPurchaseStatus } from "./db";
 import { orderAcceptTimeoutMs } from "./domain/order-accept";
 import { cancelMercadoPagoPayment } from "./payments";
 import { releaseProviderPixForOrder } from "./pix-release";
 
 let running = false;
+const releasedCancelledPix = new Set<number>();
 
 export async function sweepUnacceptedOrders() {
   if (!process.env.DATABASE_URL?.trim()) return;
@@ -16,6 +17,17 @@ export async function sweepUnacceptedOrders() {
         await releaseProviderPixForOrder(orderId);
       } catch (error) {
         console.warn("[PIX] Failed to cancel the charge for order", orderId, error);
+      }
+    }
+    const recentCancelled = await listRecentCancelledPix(new Date(Date.now() - 48 * 60 * 60 * 1000));
+    for (const row of recentCancelled) {
+      if (releasedCancelledPix.has(row.orderId)) continue;
+      releasedCancelledPix.add(row.orderId);
+      try {
+        await releaseProviderPixForOrder(row.orderId);
+      } catch (error) {
+        releasedCancelledPix.delete(row.orderId);
+        console.warn("[PIX] Failed to close a charge for a cancelled order", row.orderId, error);
       }
     }
     const staleCredits = await listExpiredCreditPurchases();
