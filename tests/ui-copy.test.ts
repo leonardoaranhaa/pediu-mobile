@@ -35,6 +35,19 @@ describe("Pediu user-facing UI copy", () => {
     }
   });
 
+  it("opens courier approval from the admin home in Portuguese", () => {
+    const home = source("app/admin/index.tsx");
+    const couriers = source("app/admin/couriers.tsx");
+    expect(home).toContain('title="Entregadores"');
+    expect(home).toContain('"/admin/couriers"');
+    expect(home).toContain("em análise");
+    expect(couriers).toContain("Aprovar");
+    expect(couriers).toContain("Rejeitar");
+    expect(couriers).toContain("couriers.refetch()");
+    expect(couriers).not.toContain("Approve");
+    expect(couriers).not.toContain("Reject");
+  });
+
   it("keeps the account flow free of developer wording", () => {
     const files = [
       "app/login.tsx",

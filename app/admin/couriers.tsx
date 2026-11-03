@@ -29,8 +29,12 @@ export default function AdminCouriersPage() {
     { limit: 100, offset: 0 },
     { enabled: allowed },
   );
+  const utils = trpc.useUtils();
   const review = trpc.admin.courierReview.useMutation({
-    onSuccess: () => void couriers.refetch(),
+    onSuccess: async () => {
+      await couriers.refetch();
+      await utils.admin.overview.invalidate();
+    },
   });
   if (loading)
     return (
@@ -97,7 +101,7 @@ export default function AdminCouriersPage() {
             {item.profile.status === "pending" ? (
               <View style={{ flexDirection: "row", gap: 8 }}>
                 <OutlineButton
-                  title={review.isPending ? "..." : "Aprovar"}
+                  title={review.isPending ? "Salvando..." : "Aprovar"}
                   onPress={() =>
                     review.mutate({
                       profileId: item.profile.id,

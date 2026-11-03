@@ -80,6 +80,12 @@ export default function AdminDashboard() {
 
       <Text style={s.sectionTitle}>Operação</Text>
       <Row icon="people-outline" title="Usuários" subtitle={data ? `${data.users} contas` : "Papéis e acesso"} onPress={() => router.push("/admin/users")} />
+      <Row
+        icon="two-wheeler"
+        title="Entregadores"
+        subtitle={data ? `${data.pendingCouriers} em análise` : "Aprovar cadastros"}
+        onPress={() => router.push("/admin/couriers")}
+      />
       <Row icon="storefront" title="Estabelecimentos" subtitle={data ? `${data.stores} lojas · ${data.flashStores} Flash` : "Flash, vertical e abertura"} onPress={() => router.push("/admin/stores")} />
       <Row icon="receipt-long" title="Pedidos" subtitle={data ? `${data.pendingOrders} na fila · ${data.flashOrdersToday} Flash hoje` : "Fila e filtros"} onPress={() => router.push("/admin/orders")} />
       <Row icon="savings" title="Gorjetas" subtitle={data ? `${data.tipsSettled} liquidadas · R$ ${Number(data.tipsSettledAmount).toFixed(2).replace(".", ",")}` : "Valores pagos depois da entrega"} onPress={() => router.push("/admin/tips")} />

@@ -36,6 +36,7 @@ describe("Pediu admin authorization and contracts", () => {
       tipsSettled: 3,
       tipsPending: 1,
       tipsSettledAmount: "24.00",
+      pendingCouriers: 2,
     });
     vi.spyOn(db, "listAdminUsers").mockResolvedValue([{ id: 10, name: "User", email: "user@test.local", role: "user", loginMethod: "test", createdAt: new Date(), lastSignedIn: new Date() }] as any);
     vi.spyOn(db, "listAdminStores").mockResolvedValue([{ id: 7, name: "Loja", ownerId: 10 }] as any);
@@ -59,6 +60,7 @@ describe("Pediu admin authorization and contracts", () => {
       flashOrdersToday: 3,
       tipsSettled: 3,
       tipsSettledAmount: "24.00",
+      pendingCouriers: 2,
     });
     await expect(caller.admin.users(input)).resolves.toHaveLength(1);
     await expect(caller.admin.stores(input)).resolves.toHaveLength(1);

@@ -1022,6 +1022,7 @@ export async function getAdminOverview() {
       tipsSettled: 0,
       tipsPending: 0,
       tipsSettledAmount: "0.00",
+      pendingCouriers: 0,
     };
   }
 
@@ -1085,6 +1086,10 @@ export async function getAdminOverview() {
     .select({ value: sql<string>`coalesce(sum(${tipSettlements.amount}), 0)` })
     .from(tipSettlements)
     .where(eq(tipSettlements.status, "settled"));
+  const [pendingCouriers] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(courierProfiles)
+    .where(eq(courierProfiles.status, "pending"));
 
   return {
     users: Number(usersCount?.value ?? 0),
@@ -1103,6 +1108,7 @@ export async function getAdminOverview() {
     tipsSettled: Number(tipsSettled?.value ?? 0),
     tipsPending: Number(tipsPending?.value ?? 0),
     tipsSettledAmount: Number(tipsSettledAmount?.value ?? 0).toFixed(2),
+    pendingCouriers: Number(pendingCouriers?.value ?? 0),
   };
 }
 
