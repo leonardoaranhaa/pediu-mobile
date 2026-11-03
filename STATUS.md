@@ -8,6 +8,7 @@ Atualizado em 02/11/2026.
 - Cada semana tem uma entrega fechada. Fechada quer dizer que funciona e tem print ou vídeo curto.
 - Se uma semana terminar sem entrega, é sinal de alerta, não fracasso. A semana seguinte fica com metade do escopo.
 - Este arquivo é atualizado a cada entrega.
+- Fase atual: polimento e validação, não construção. O Pediu é um app próprio e independente. Apps de delivery consolidados (como o 99Food) servem só como referência visual e de estrutura para polir as telas que já existem.
 
 ## Feito (até a versão 12 do app)
 
@@ -55,26 +56,30 @@ Critérios de pronto (todos precisam estar ok):
 - [ ] Vídeo curto (até 1 minuto) mostrando o pedido sendo feito.
 - [ ] Lista dos bugs vistos no caminho, anotada aqui.
 
-Fora do escopo desta semana: painel no computador, 99Food, repasse automático, novas telas.
+Fora do escopo desta semana: painel no computador, repasse automático, novas telas.
 
 ## Plano semanal (semanas 2 a 12)
 
-O núcleo (login, lista de lojas, cardápio, carrinho, checkout) já existe. Por isso as semanas 2 a 4 não refazem esse trabalho. Elas corrigem o que o pedido real da Semana 1 mostrar e preparam a primeira loja de verdade.
+O núcleo (login, lista de lojas, cardápio, carrinho, checkout com PIX, painel do lojista e do entregador) já existe e foi testado. Por isso as semanas 2 a 4 não refazem esse trabalho. Elas corrigem o que o pedido real da Semana 1 mostrar e preparam a primeira loja de verdade.
 
 | Semana | Datas | Entrega fechada |
 | --- | --- | --- |
 | 1 | 02/11 a 08/11 | Um pedido real de ponta a ponta com PIX pago (ver acima). |
-| 2 | 09/11 a 15/11 | Correções da Semana 1 e passada em celular real (gestos e letra grande). Nova versão do app. Pedido de acesso de desenvolvedor na 99Food enviado. |
+| 2 | 09/11 a 15/11 | Correções da Semana 1 e passada em celular real (gestos e letra grande). Nova versão do app. |
 | 3 | 16/11 a 22/11 | Primeira loja real de Bauru cadastrada, com cardápio completo e aberta no app. |
 | 4 | 23/11 a 29/11 | Repasse da loja: relatório semanal no Painel do Pediu com quanto cada loja vendeu, a comissão e quanto repassar. Primeiro repasse feito à mão. |
 | 5 | 30/11 a 06/12 | Termos de uso, política de privacidade e tela de ajuda revisados. Textos em inglês removidos do admin. Splash nova. |
-| 6 | 07/12 a 13/12 | 99Food: se o acesso saiu, receber pedidos da 99Food no painel da loja (teste). Se não saiu, trocar por: link do cardápio da loja para mandar no WhatsApp. |
+| 6 | 07/12 a 13/12 | Polimento visual das telas existentes com base nas referências do Leonardo (cores, tom, cards) e link do cardápio da loja para mandar no WhatsApp. |
 | 7 | 14/12 a 20/12 | Segunda e terceira lojas reais cadastradas. 2 motoboys aprovados. |
 | 8 | 21/12 a 27/12 | Primeiro cliente real (não da família) faz um pedido pago. |
 | 9 | 28/12 a 03/01 | Beta aberta para amigos e família: 5 pessoas com o app instalado. Formulário de opinião. |
 | 10 | 04/01 a 10/01 | Divulgação local em Bauru (Instagram e grupos). Meta: 5 usuários ativos (pelo menos 1 pedido cada). |
 | 11 | 11/01 a 17/01 | Correções das opiniões da beta. Nova versão. |
 | 12 | 18/01 a 31/01 | Fechamento: números da beta (pedidos, lojas, usuários), lista do que falta e decisão do próximo passo. |
+
+## Extras opcionais (fora do núcleo)
+
+- Ver no painel do lojista os pedidos que a loja recebe por outros apps (por exemplo, pela API 99Food Open Platform). É periférico e só entra se sobrar tempo depois da beta.
 
 ## Histórico de entregas
 
