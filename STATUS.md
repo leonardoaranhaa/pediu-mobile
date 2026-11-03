@@ -1,6 +1,6 @@
 # Pediu · Status do projeto
 
-Atualizado em 02/11/2026.
+Atualizado em 03/11/2026.
 
 ## Desafio 90 dias
 
@@ -21,38 +21,38 @@ Atualizado em 02/11/2026.
 - Conta master: painel com usuários, lojas, pedidos, pagamentos, suporte e auditoria.
 - Assistente com IA (OpenAI) para os quatro perfis. Ações com dinheiro pedem confirmação.
 - Auditoria da beta com 48 correções (ver docs/beta-audit.md).
-- Testes feitos até agora: 2 pedidos entregues e pagos em dinheiro, todos de teste. Nenhum PIX foi pago de verdade ainda.
+- Testes feitos até agora: pedidos de teste entregues e o fluxo de PIX validado de ponta a ponta no servidor de teste. Ainda não houve pedido real de cliente.
 
 ## Em andamento
 
-- Semana 1 do desafio (ver "Próxima entrega").
+- Semana 1 do desafio (ver "Próxima entrega"). Item "Entregadores" no Painel do Pediu sendo colocado no app.
 
 ## Bloqueios
 
 1. A tela de aprovar motoboy existe, mas nenhum botão do Painel do Pediu leva até ela. Hoje não dá para aprovar um motoboy pelo app. O motoboy cadastrado em 01/11 está "em análise".
 2. Não existe loja real pronta. A "Delicia de Avaí" está fechada, sem produtos, sem endereço e sem chave PIX. A outra loja é de teste.
-3. O PIX nunca foi pago de ponta a ponta em produção. O único PIX gerado foi cancelado.
+3. Pagamento PIX: o fluxo já foi validado de ponta a ponta no servidor de teste (informado pelo Leonardo em 03/11). Falta só o primeiro pedido real pago, que é parte da Semana 1.
 4. O dinheiro do PIX cai na conta Mercado Pago do Pediu. O repasse para a loja ainda não é automático. Na beta, ele vai ser feito à mão.
 5. Faltam testes em celular de verdade: navegação por gestos e letra grande.
 6. Pequenos: frases em inglês nas telas de administração e a tela de abertura (splash).
 
 ## Próxima entrega: Semana 1 (02/11 a 08/11/2026)
 
-**Um pedido real, do começo ao fim, com celulares de verdade e PIX pago.**
+**Configuração real e primeiro pedido real.** O PIX já foi validado nos testes, então a semana é mais curta e foca no que é real.
 
-Escopo fechado:
+Escopo fechado (escopo aprovado pelo Leonardo em 03/11/2026):
 
-1. Colocar o item "Entregadores" no Painel do Pediu (aprovar e rejeitar pelo app).
-2. Aprovar 1 motoboy real pelo app.
-3. Deixar 1 loja pronta: endereço, horário, chave PIX e pelo menos 3 produtos com foto e preço. Pode ser a "Delicia de Avaí" ou a loja de um amigo.
-4. Fazer 1 pedido de verdade com 3 celulares (cliente, loja e motoboy):
-   cliente pede → paga PIX de verdade (valor baixo) → loja aceita → loja marca pronto → motoboy aceita → motoboy entrega com o código → pedido "Entregue".
+1. Configurar 1 loja REAL: endereço, horário, chave PIX e pelo menos 3 produtos com foto e preço.
+2. Aprovar 1 entregador REAL pelo app. Para isso, entra no Painel do Pediu o item "Entregadores" (hoje a tela existe, mas não tem botão que leve até ela) e sai uma versão nova do app.
+3. Fazer 1 pedido real com PIX pago, de ponta a ponta, usando a loja e o entregador reais:
+   cliente pede → paga PIX → loja aceita → loja marca pronto → entregador aceita → entrega com o código → pedido "Entregue".
 
 Critérios de pronto (todos precisam estar ok):
 
-- [ ] O pedido aparece como "Entregue" e o pagamento como "pago" no Painel do Pediu.
-- [ ] O PIX aparece pago no Mercado Pago.
-- [ ] Prints das telas principais: loja, carrinho, PIX pago, pedido na loja, entrega no motoboy, "Entregue".
+- [ ] Loja real aberta no app, com endereço, horário, chave PIX e 3 produtos ou mais com foto e preço.
+- [ ] Entregador real aprovado pelo Painel do Pediu.
+- [ ] O pedido real aparece como "Entregue" e o pagamento como "pago" no Painel do Pediu.
+- [ ] Prints das telas principais: loja, carrinho, PIX pago, pedido na loja, entrega no entregador, "Entregue".
 - [ ] Vídeo curto (até 1 minuto) mostrando o pedido sendo feito.
 - [ ] Lista dos bugs vistos no caminho, anotada aqui.
 
@@ -64,7 +64,7 @@ O núcleo (login, lista de lojas, cardápio, carrinho, checkout com PIX, painel 
 
 | Semana | Datas | Entrega fechada |
 | --- | --- | --- |
-| 1 | 02/11 a 08/11 | Um pedido real de ponta a ponta com PIX pago (ver acima). |
+| 1 | 02/11 a 08/11 | Loja real configurada, entregador real aprovado e primeiro pedido real com PIX pago (ver acima). |
 | 2 | 09/11 a 15/11 | Correções da Semana 1 e passada em celular real (gestos e letra grande). Nova versão do app. |
 | 3 | 16/11 a 22/11 | Primeira loja real de Bauru cadastrada, com cardápio completo e aberta no app. |
 | 4 | 23/11 a 29/11 | Repasse da loja: relatório semanal no Painel do Pediu com quanto cada loja vendeu, a comissão e quanto repassar. Primeiro repasse feito à mão. |
