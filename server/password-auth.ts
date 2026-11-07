@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { and, eq, isNull } from "drizzle-orm";
+import { sendPasswordResetCode, passwordResetEmailConfigured } from "./email-verification";
 import { passwordResets, users, type User } from "../drizzle/schema";
 import { isAdminEmail } from "./_core/env";
 import { sdk } from "./_core/sdk";
@@ -182,6 +183,66 @@ export async function changeAccountPassword(input: {
 
 function hashResetCode(code: string) {
   return createHash("sha256").update(code).digest("hex");
+}
+
+export const RESET_SUPPORT_MESSAGE =
+  "O Pediu não envia e-mail sozinho. Fale com o suporte do Pediu para receber um código de 8 números. Ele vale 30 minutos.";
+
+export const RESET_EMAIL_MESSAGE =
+  "Se essa conta existir, tentamos enviar um código de 8 números para o e-mail. Ele vale 30 minutos. Se não chegar, fale com o suporte do Pediu.";
+
+async function voidUnusedPasswordResets(userId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .update(passwordResets)
+    .set({ usedAt: new Date() })
+    .where(and(eq(passwordResets.userId, userId), isNull(passwordResets.usedAt)));
+}
+
+export async function deliverPasswordReset(input: {
+  channelConfigured: boolean;
+  user: { id: number; email: string } | null;
+  issue: () => Promise<{ code: string }>;
+  send: (code: string) => Promise<boolean>;
+  voidCodes: () => Promise<void>;
+}) {
+  if (!input.channelConfigured) return { message: RESET_SUPPORT_MESSAGE };
+  if (!input.user) return { message: RESET_EMAIL_MESSAGE };
+  let sent = false;
+  try {
+    const issued = await input.issue();
+    sent = await input.send(issued.code);
+  } catch {
+    sent = false;
+  }
+  if (!sent) {
+    try {
+      await input.voidCodes();
+    } catch {
+      // A failed send must not leave a usable code, but the person still gets the same sentence.
+    }
+  }
+  return { message: RESET_EMAIL_MESSAGE };
+}
+
+export async function requestPasswordReset(email: string) {
+  const normalized = normalizeEmail(email);
+  let user: User | undefined;
+  if (passwordResetEmailConfigured()) {
+    try {
+      user = await getUserByEmail(normalized);
+    } catch {
+      return { message: RESET_SUPPORT_MESSAGE };
+    }
+  }
+  return deliverPasswordReset({
+    channelConfigured: passwordResetEmailConfigured(),
+    user: user?.email ? { id: user.id, email: user.email } : null,
+    issue: () => issuePasswordReset({ email: normalized, createdByUserId: user!.id }),
+    send: (code) => sendPasswordResetCode({ email: user!.email!, code }),
+    voidCodes: () => voidUnusedPasswordResets(user!.id),
+  });
 }
 
 export async function issuePasswordReset(input: {

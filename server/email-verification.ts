@@ -6,6 +6,32 @@ export function hashEmailToken(token: string) {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
+export function passwordResetEmailConfigured() {
+  return Boolean(process.env.EMAIL_WEBHOOK_URL?.trim());
+}
+
+export async function sendPasswordResetCode(input: { email: string; code: string }) {
+  const endpoint = process.env.EMAIL_WEBHOOK_URL?.trim();
+  if (!endpoint) return false;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(process.env.EMAIL_WEBHOOK_SECRET
+        ? { Authorization: `Bearer ${process.env.EMAIL_WEBHOOK_SECRET}` }
+        : {}),
+    },
+    body: JSON.stringify({
+      to: input.email,
+      subject: "Código para nova senha no Pediu",
+      kind: "password_reset",
+      text: `Seu código do Pediu é ${input.code}. Ele vale 30 minutos. Se você não pediu, ignore esta mensagem.`,
+    }),
+    signal: AbortSignal.timeout(8_000),
+  });
+  return response.ok;
+}
+
 export async function sendEmailVerification(input: { email: string; token: string }) {
   const endpoint = process.env.EMAIL_WEBHOOK_URL?.trim();
   if (!endpoint) return false;

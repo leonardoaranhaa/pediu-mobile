@@ -1,12 +1,16 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { isAdminEmail } from "../server/_core/env";
 import { isPublicPasswordAuth } from "../server/_core/security";
 import {
   LOGIN_ERROR,
+  RESET_EMAIL_MESSAGE,
+  RESET_SUPPORT_MESSAGE,
   SIGNUP_ERROR,
+  deliverPasswordReset,
   hashPassword,
   normalizeEmail,
   normalizePhone,
+  requestPasswordReset,
   verifyPassword,
 } from "../server/password-auth";
 import { ONE_YEAR_MS, SESSION_TTL_MS } from "../shared/const";
@@ -45,6 +49,48 @@ describe("password auth", () => {
   it("uses a generic message when login or signup fails", () => {
     expect(LOGIN_ERROR).toBe("E-mail ou senha não conferem.");
     expect(SIGNUP_ERROR).not.toMatch(/já existe|duplicad/i);
+  });
+
+  it("does not claim an email was sent when mail delivery is off", async () => {
+    const previous = process.env.EMAIL_WEBHOOK_URL;
+    delete process.env.EMAIL_WEBHOOK_URL;
+    try {
+      const result = await requestPasswordReset("pessoa@exemplo.com");
+      expect(result).toEqual({ message: RESET_SUPPORT_MESSAGE });
+      expect(result).not.toHaveProperty("code");
+      expect(result.message).not.toMatch(/enviamos|enviado/i);
+    } finally {
+      if (previous === undefined) delete process.env.EMAIL_WEBHOOK_URL;
+      else process.env.EMAIL_WEBHOOK_URL = previous;
+    }
+  });
+
+  it("burns a reset code when the mail channel fails and never returns the code", async () => {
+    const issue = vi.fn(async () => ({ code: "12345678" }));
+    const send = vi.fn(async () => false);
+    const voidCodes = vi.fn(async () => undefined);
+    const result = await deliverPasswordReset({
+      channelConfigured: true,
+      user: { id: 4, email: "pessoa@exemplo.com" },
+      issue,
+      send,
+      voidCodes,
+    });
+    expect(send).toHaveBeenCalledWith("12345678");
+    expect(voidCodes).toHaveBeenCalledOnce();
+    expect(result).toEqual({ message: RESET_EMAIL_MESSAGE });
+    expect(JSON.stringify(result)).not.toContain("12345678");
+  });
+
+  it("allows the password request from the mobile app without an Origin header", () => {
+    expect(
+      isPublicPasswordAuth({
+        originalUrl: "/api/trpc/auth.requestPasswordReset",
+        baseUrl: "/api/trpc",
+        path: "/auth.requestPasswordReset",
+        url: "/auth.requestPasswordReset",
+      }),
+    ).toBe(true);
   });
 
   it("allows mobile signup without an Origin header", () => {

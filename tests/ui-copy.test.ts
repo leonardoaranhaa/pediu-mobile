@@ -35,6 +35,16 @@ describe("Pediu user-facing UI copy", () => {
     }
   });
 
+  it("lets a waiting courier refresh approval without English labels", () => {
+    const couriers = source("app/courier/index.tsx");
+    const forgot = source("app/forgot-password.tsx");
+    expect(couriers).toContain("Atualizar situação");
+    expect(couriers).toContain("A aprovação não é automática");
+    expect(couriers).not.toContain("approved ? 15_000 : false");
+    expect(forgot).toContain("Pedir código");
+    expect(forgot).not.toMatch(/enviamos um e-mail/i);
+  });
+
   it("opens courier approval from the admin home in Portuguese", () => {
     const home = source("app/admin/index.tsx");
     const couriers = source("app/admin/couriers.tsx");

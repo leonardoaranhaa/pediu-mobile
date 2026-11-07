@@ -10,6 +10,7 @@ import {
   loginAccount,
   PASSWORD_ERROR,
   RESET_ERROR,
+  requestPasswordReset,
   resetAccountPassword,
   SIGNUP_ERROR,
   signupAccount,
@@ -240,6 +241,18 @@ export const appRouter = router({
             message: error instanceof Error ? error.message : PASSWORD_ERROR,
           });
         }
+      }),
+    requestPasswordReset: publicProcedure
+      .input(z.object({ email: z.string().trim().email().max(320) }))
+      .mutation(async ({ ctx, input }) => {
+        await enforceDistributedRateLimit(ctx, {
+          scope: "auth-request-reset",
+          identity: input.email,
+          limit: 5,
+          windowMs: 15 * 60_000,
+          message: "Muitas tentativas. Espere um pouco e tente de novo.",
+        });
+        return requestPasswordReset(input.email);
       }),
     resetPassword: publicProcedure
       .input(

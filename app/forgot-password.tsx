@@ -12,6 +12,11 @@ export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
+  const [notice, setNotice] = useState("");
+  const requestCode = trpc.auth.requestPasswordReset.useMutation({
+    onSuccess: (result) => setNotice(result.message),
+    onError: (error) => setNotice(messageOf(error)),
+  });
   const reset = trpc.auth.resetPassword.useMutation({
     onSuccess: () => router.replace("/login"),
   });
@@ -21,9 +26,15 @@ export default function ForgotPasswordScreen() {
       <Card>
         <Text style={s.sectionTitle}>Esqueceu a senha?</Text>
         <Text style={s.muted}>
-          Fale com o suporte do Pediu para receber um código de 8 números. O código vale 30 minutos. Depois é só criar a senha nova aqui.
+          Peça o código aqui. Se o envio de e-mail estiver ligado, tentamos mandar os 8 números. Se não estiver, o suporte do Pediu entrega o código. Ele vale 30 minutos.
         </Text>
         <Field label="E-mail da conta" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
+        <OutlineButton
+          title={requestCode.isPending ? "Pedindo..." : "Pedir código"}
+          disabled={requestCode.isPending || !email.includes("@")}
+          onPress={() => requestCode.mutate({ email: email.trim() })}
+        />
+        {notice ? <Text style={{ color: PEDIU.ink, fontWeight: "700" }}>{notice}</Text> : null}
         <Field label="Código de 8 números" value={code} onChangeText={setCode} keyboardType="number-pad" maxLength={8} />
         <Field label="Nova senha" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" />
         {reset.isSuccess ? <Text style={{ color: PEDIU.ink, fontWeight: "700" }}>Senha trocada. Entre com a nova senha.</Text> : null}

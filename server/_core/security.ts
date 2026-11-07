@@ -39,6 +39,7 @@ export function isUnsafeMethod(method: string): boolean {
 const PUBLIC_PASSWORD_AUTH = new Set([
   "/api/trpc/auth.signup",
   "/api/trpc/auth.login",
+  "/api/trpc/auth.requestPasswordReset",
   "/api/trpc/auth.resetPassword",
   "/api/trpc/auth.refresh",
 ]);
