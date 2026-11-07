@@ -81,6 +81,20 @@ Confirmado no emulador: faixa do relógio, abas acima dos botões do sistema, no
 | N33 | Baixa | Home do motoboy | O online era um botão pequeno e “Fale com o Pediu” era o principal. Ganhos não tinham data. | Corrigido. “Ficar online” é o botão grande. O assistente ficou secundário. Ganhos mostra o total de hoje e a data de cada entrega. |
 | N34 | Baixa | Círculos da home | A mesma loja aparecia em três círculos iguais. | Corrigido. Um círculo por loja. |
 
+## Passe de 07/11/2026 — fluxo essencial
+
+Pedido de 06/11: fazer o caminho que já existe (mercado, fast food, cliente e entrega) funcionar e ser testável. Sem app de terceiro, sem repasse automático e sem tela nova.
+
+| O quê | Prova | O que não foi provado |
+| --- | --- | --- |
+| Mercado não aceita retirada. Fast food cobra o tamanho no servidor (pizza R$ 25 + grande R$ 10 + entrega R$ 5 = R$ 40). Estoque rastreado não vende além da prateleira. | Teste automático `tests/essential-flow.test.ts`. Chamadas externas de PIX nesses testes são simuladas. Nenhum pagamento real foi criado. | Pedido real com loja, foto e celular. |
+| PIX pendente não aparece para a loja. Antes de 30 minutos ele não cai no prazo de aceite. Aos 30 minutos expira. | O mesmo teste, mais os testes de webhook já existentes (assinatura, valor, moeda e repetição). | PIX pago na conta de produção do Mercado Pago. A base de produção tinha zero PIX pago. |
+| Motoboy em análise atualiza a tela e o botão "Atualizar situação". Aprovar continua manual, pelo item Entregadores do painel. | O código e o teste de texto da tela. O atalho do painel já estava no commit `ca32d58`. | O APK v12 instalado não tem esse atalho. Não houve compilação nova. |
+| Pedir senha não diz que um e-mail saiu quando o envio não está ligado. Se `EMAIL_WEBHOOK_URL` existir, o servidor tenta mandar o código e, se o envio falhar, o código é invalidado. O código nunca volta para o celular. | Teste de senha. Sem essa variável, o caminho continua sendo o suporte, com o código só na tela de administração. | Envio real de e-mail. Não há provedor contratado neste passe. |
+| Foto de produto e de documento fica no banco, em texto da imagem. Não depende do Forge para o cardápio. | Código de escolha da foto. | Foto grande no aparelho e anúncio com imagem de IA. Anúncio e voz não são o pedido essencial. |
+
+Não há migration nova neste passe.
+
 ## Ainda aberto
 
 A lista da beta fechada, do item 1 ao N34, está corrigida no código. O que segue não foi um bug numerado deste emulador.
