@@ -9,7 +9,8 @@ import { useRouter } from "expo-router";
 const roleLabel: Record<string, string> = {
   user: "Cliente",
   merchant: "Lojista",
-  admin: "Admin",
+  courier: "Motoboy",
+  admin: "Administração",
 };
 
 export default function AdminUsersPage() {

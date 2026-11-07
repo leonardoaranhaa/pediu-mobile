@@ -143,7 +143,7 @@ export default function CourierHomePage() {
 
   const profile = trpc.pediu.courier.profile.mine.useQuery(undefined, {
     enabled: isAuthenticated,
-    refetchInterval: (query) => (query.state.data?.status === "approved" ? 15_000 : false),
+    refetchInterval: (query) => (query.state.data ? 15_000 : false),
   });
   const offers = trpc.pediu.courier.offers.useQuery(undefined, {
     enabled: profile.data?.status === "approved",
@@ -490,6 +490,13 @@ export default function CourierHomePage() {
               ? "Documentos enviados. Aguarde a conferência."
               : "Envie CNH, veículo e foto para concluir a análise."}
           </Text>
+          <Text style={s.muted}>
+            A aprovação não é automática. Esta tela atualiza sozinha e o botão abaixo busca a situação agora.
+          </Text>
+          <PrimaryButton
+            title={profile.isFetching ? "Atualizando..." : "Atualizar situação"}
+            onPress={() => void profile.refetch()}
+          />
         </Card>
         {profile.data.status === "rejected" ? applicationForm : null}
         <OutlineButton title="Voltar ao perfil" onPress={() => router.back()} />
