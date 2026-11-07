@@ -40,6 +40,8 @@ const addressInput = {
   city: "São Paulo",
   state: "sp",
   postalCode: "01001000",
+  latitude: "-23.5505200",
+  longitude: "-46.6333080",
   isDefault: true,
 };
 
@@ -67,8 +69,17 @@ describe("Pediu customer address contract", () => {
     expect(result).toBe(address.id);
     expect(create).toHaveBeenCalledWith(customer.id, expect.objectContaining({
       state: "SP",
+      latitude: "-23.5505200",
+      longitude: "-46.6333080",
       isDefault: true,
     }));
+  });
+
+  it("rejects a delivery address without a map point", async () => {
+    const caller = appRouter.createCaller({ user: customer } as any);
+    const { latitude: _lat, longitude: _lng, ...withoutPoint } = addressInput;
+
+    await expect(caller.pediu.addresses.create(withoutPoint as typeof addressInput)).rejects.toThrow();
   });
 
   it("rejects address reads without an authenticated session", async () => {

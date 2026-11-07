@@ -50,8 +50,7 @@ export default function CouponsPage() {
           Leve uma vantagem no próximo pedido.
         </Text>
         <Text style={{ color: "#BCD0D1", fontSize: 13, lineHeight: 19 }}>
-          Os cupons abaixo são publicados pelo Pediu e validados pelo servidor
-          no checkout.
+          Os cupons abaixo valem no fechamento do pedido, com as regras de cada loja.
         </Text>
       </View>
       {coupons.isLoading ? (

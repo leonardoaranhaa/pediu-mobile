@@ -1,7 +1,5 @@
 /**
- * Custom environment loader that prioritizes system environment variables
- * over .env file values. This ensures that Manus platform-injected variables
- * are not overridden by placeholder values in .env
+ * Loads .env without overriding variables already set in the process.
  */
 import fs from "fs";
 import path from "path";
@@ -40,12 +38,7 @@ for (const envPath of envPaths) {
 
 // Map system variables to Expo public variables
 const mappings = {
-  VITE_APP_ID: "EXPO_PUBLIC_APP_ID",
   API_BASE_URL: "EXPO_PUBLIC_API_BASE_URL",
-  VITE_OAUTH_PORTAL_URL: "EXPO_PUBLIC_OAUTH_PORTAL_URL",
-  OAUTH_SERVER_URL: "EXPO_PUBLIC_OAUTH_SERVER_URL",
-  OWNER_OPEN_ID: "EXPO_PUBLIC_OWNER_OPEN_ID",
-  OWNER_NAME: "EXPO_PUBLIC_OWNER_NAME",
 };
 
 for (const [systemVar, expoVar] of Object.entries(mappings)) {

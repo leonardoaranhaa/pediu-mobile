@@ -3,16 +3,11 @@ import express from "express";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { registerOAuthRoutes } from "./oauth";
+import { registerAuthRoutes } from "./auth-routes";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
-import {
-  isAllowedOrigin,
-  isUnsafeMethod,
-  requestHasAllowedOrigin,
-  requestUsesBearer,
-} from "./security";
+import { isAllowedOrigin, isTrpcMutationAllowed } from "./security";
 import { registerPaymentWebhookRoutes } from "../payment-webhook";
 import { registerEmailVerificationRoutes } from "../email-verification";
 import { assertRuntimeConfig } from "./env";
@@ -22,6 +17,10 @@ import { startDispatchOfferSweeper } from "../dispatch-offer-sweeper";
 import { startInventoryReservationSweeper } from "../inventory-reservation-sweeper";
 import { startNotificationOutboxWorker } from "../notification-outbox-worker";
 import { startRateLimitBucketSweeper } from "../rate-limit-bucket-sweeper";
+import { runWorkerCatchUp } from "../worker-tick";
+import { sweepUnacceptedOrders } from "../order-sweep";
+import { sweepAccountRoles } from "../account-role-sweep";
+import crypto from "node:crypto";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -81,11 +80,48 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "16mb", extended: true }));
 
   registerStorageProxy(app);
-  registerOAuthRoutes(app);
+  registerAuthRoutes(app);
 
-  app.get("/api/health", (_req, res) => {
+  app.get("/api/health", async (_req, res) => {
+    await sweepUnacceptedOrders();
+    await sweepAccountRoles();
     res.json({ ok: true, timestamp: Date.now() });
   });
+  const workerTick = async (
+    req: express.Request,
+    res: express.Response,
+  ) => {
+    const configured = process.env.OBSERVABILITY_TOKEN?.trim();
+    if (!configured) {
+      res.sendStatus(404);
+      return;
+    }
+    const header = req.header("authorization") ?? "";
+    const provided = header.startsWith("Bearer ")
+      ? header.slice("Bearer ".length).trim()
+      : typeof req.query.token === "string"
+        ? req.query.token
+        : "";
+    const expected = Buffer.from(configured);
+    const actual = Buffer.from(provided);
+    const allowed =
+      expected.length > 0 &&
+      expected.length === actual.length &&
+      crypto.timingSafeEqual(expected, actual);
+    if (!allowed) {
+      res.sendStatus(401);
+      return;
+    }
+    try {
+      const result = await runWorkerCatchUp();
+      res.json({ ok: true, ...result });
+    } catch (error) {
+      console.error("[Workers] Catch-up tick failed", error);
+      res.status(503).json({ ok: false });
+    }
+  };
+  app.get("/api/internal/workers/tick", workerTick);
+  app.post("/api/internal/workers/tick", workerTick);
   app.get("/api/readyz", async (_req, res) => {
     const result = await probeReadiness();
     res.status(result.ready ? 200 : 503).json({
@@ -100,11 +136,7 @@ async function startServer() {
   app.use(
     "/api/trpc",
     (req, res, next) => {
-      if (
-        isUnsafeMethod(req.method) &&
-        !requestUsesBearer(req) &&
-        !requestHasAllowedOrigin(req)
-      ) {
+      if (!isTrpcMutationAllowed(req)) {
         res.status(403).json({
           error: "Origin not allowed for cookie-authenticated mutation",
         });
@@ -131,6 +163,9 @@ async function startServer() {
     startInventoryReservationSweeper();
     startNotificationOutboxWorker();
     startRateLimitBucketSweeper();
+    void runWorkerCatchUp().catch((error) => {
+      console.error("[Workers] Boot catch-up failed", error);
+    });
   });
 }
 

@@ -8,7 +8,7 @@ const user = {
   name: "Entregador Teste",
   email: "courier@example.com",
   loginMethod: "test",
-  role: "user" as const,
+  role: "courier" as const,
   themePreference: "classic" as const,
   lastSignedIn: new Date(),
 };
@@ -24,6 +24,16 @@ const profile = {
   locationConsentAt: null,
   approvedAt: null,
   statusReason: null,
+  documentNumber: null,
+  documentPhoto: null,
+  vehiclePhoto: null,
+  selfiePhoto: null,
+  lastLatitude: null,
+  lastLongitude: null,
+  lastLocationAt: null,
+  pixKey: null,
+  workArea: null,
+  workHours: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -32,6 +42,7 @@ describe("Pediu courier flow", () => {
   afterEach(() => vi.restoreAllMocks());
 
   it("creates a courier application for the authenticated account", async () => {
+    vi.spyOn(db, "listAccountRoles").mockResolvedValue(["courier"]);
     const apply = vi
       .spyOn(db, "upsertCourierProfile")
       .mockResolvedValue(profile);
@@ -50,6 +61,19 @@ describe("Pediu courier flow", () => {
       vehiclePlate: "ABC1D23",
       phone: "11999999999",
     });
+  });
+
+  it("refuses a customer account that tries to become a courier", async () => {
+    vi.spyOn(db, "listAccountRoles").mockResolvedValue(["customer"]);
+    const caller = appRouter.createCaller({
+      user: { ...user, role: "user" },
+    } as any);
+    await expect(
+      caller.pediu.courier.profile.register({
+        vehicleType: "moto",
+        phone: "11999999999",
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
   it("does not expose courier onboarding to an anonymous caller", async () => {

@@ -10,12 +10,13 @@ import {
   useAudioRecorderState,
 } from "expo-audio";
 import * as FileSystem from "expo-file-system/legacy";
-import { isOAuthConfigured, startOAuthLogin } from "@/constants/oauth";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/hooks/use-auth";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  Alert,
   Animated,
+  BackHandler,
   Easing,
   Image,
   KeyboardAvoidingView,
@@ -31,15 +32,57 @@ import {
   View,
 } from "react-native";
 
+import { OpeningHoursEditor } from "@/components/opening-hours-editor";
+import { PinMap } from "@/components/pin-map";
+import { ProductExtrasFields, type ProductExtras } from "@/components/product-extras-fields";
+import { askToJoin } from "@/components/auth-prompt";
+import { AssistantChat } from "@/components/assistant-chat";
+import { ProfileHome } from "@/components/profile-home";
+import { StoreSignupForm } from "@/components/store-signup-form";
+import { StoreTour } from "@/components/store-tour";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenContainer } from "@/components/screen-container";
-import { PediuMascot, type MascotReaction } from "@/components/pediu-mascot";
+import { edgeModalProps } from "@/components/edge-modal";
+import type { AccountAction, SignupRole } from "@/lib/guest-access";
+import { geocodeTypedAddress } from "@/lib/location";
+import {
+  bottomSafeInset,
+  scrollPaddingForFloatingBar,
+  scrollPaddingForScreenEnd,
+} from "@/lib/screen-space";
+import {
+  brlInputToDecimal,
+  decimalToBrlInput,
+  decimalToKmInput,
+  kmInputToDecimal,
+  maskBrazilPhone,
+  maskBrlTyping,
+} from "@/lib/br-fields";
+import { friendlyUserMessage } from "@/lib/user-message";
+import { useNewOrderChime } from "@/lib/new-order-chime";
+import { defaultOptionSelection, groupRequiresChoice } from "@/lib/option-selection";
+import type { MascotReaction } from "@/components/pediu-mascot";
+import { CartPeek } from "@/components/pediu/cart-peek";
+import { PediuMascot } from "@/components/pediu-mascot";
+import {
+  PediuPressable,
+  PediuPulse,
+  PediuReveal,
+} from "@/components/pediu-motion";
 import { PediuV2Discovery } from "@/components/pediu-v2-discovery";
 import { ThemePicker } from "@/components/theme-picker";
 import { trpc } from "@/lib/trpc";
+import type { CartOption } from "@/lib/cart";
 import { canRegisterSale, cartTotal, pixPaymentLabel } from "@/lib/pediu-mvp";
 import { useCart } from "@/providers/cart-provider";
 import { useAppPreferences, type AppTheme } from "@/lib/app-preferences";
+import {
+  getHomeContext,
+  rankHomeProducts,
+  type HomeContext,
+} from "@/lib/home-context";
 import { resolveCurrentLocation } from "@/lib/location";
+import { FOOD_ASSETS } from "@/lib/pediu-tokens";
 
 const COLORS = {
   coral: "#E20D2A",
@@ -72,6 +115,11 @@ type Product = {
   emoji: string;
   available: boolean;
   deliveryFee?: string;
+  storeKind?: "restaurant" | "market" | "service";
+  flashEnabled?: boolean;
+  flash?: boolean;
+  storeOpen?: boolean;
+  nextOpenLabel?: string | null;
 };
 
 type SavedAddress = {
@@ -120,17 +168,26 @@ type OrderStatus =
 type VoiceMode = "customer" | "seller";
 
 const CATEGORIES = [
-  { label: "Tudo", icon: "✨" },
-  { label: "Doces", icon: "🍰" },
-  { label: "Lanches", icon: "🍔" },
-  { label: "Serviços", icon: "🛠️" },
+  { label: "Flash 99", query: "__flash__", image: FOOD_ASSETS.burger },
+  { label: "Pizza", query: "Pizza", image: FOOD_ASSETS.pizza },
+  { label: "Burger", query: "Lanches", image: FOOD_ASSETS.burger },
+  { label: "Japonesa", query: "Japonesa", image: FOOD_ASSETS.sushi },
+  { label: "Brasileira", query: "Brasileira", image: FOOD_ASSETS.feijoada },
+  { label: "Churrasco", query: "Churrasco", image: FOOD_ASSETS.churrasco },
+  { label: "Saudável", query: "Saudável", image: FOOD_ASSETS.acai },
 ];
 
 export default function HomeScreen() {
-  const { user, isAuthenticated, logout, refresh: refreshAuth } = useAuth();
-  const { theme, customization, mascotMoment, setMascotMoment } =
-    useAppPreferences();
-  const params = useLocalSearchParams<{ assistant?: string }>();
+  const { user, nameConfirmed, isAuthenticated, refresh: refreshAuth } = useAuth();
+  const insets = useSafeAreaInsets();
+  const {
+    theme,
+    customization,
+    mascotMoment,
+    setMascotMoment,
+    updateCustomization,
+  } = useAppPreferences();
+  const params = useLocalSearchParams<{ assistant?: string; tab?: string; sellerTab?: string }>();
   const {
     items: globalCartItems,
     itemCount: globalCartCount,
@@ -141,24 +198,82 @@ export default function HomeScreen() {
   const [customerTab, setCustomerTab] = useState<
     "discover" | "orders" | "profile"
   >("discover");
+  useEffect(() => {
+    if (params.tab === "orders" || params.tab === "profile" || params.tab === "discover") {
+      setCustomerTab(params.tab);
+    }
+  }, [params.tab]);
+  useEffect(() => {
+    const next = params.sellerTab;
+    if (
+      next === "home" ||
+      next === "orders" ||
+      next === "catalog" ||
+      next === "clients" ||
+      next === "settings"
+    ) {
+      setSellerTab(next);
+    }
+  }, [params.sellerTab]);
   const [sellerTab, setSellerTab] = useState<
     "home" | "orders" | "catalog" | "clients" | "settings"
   >("home");
-  const [mascotReaction, setMascotReaction] =
-    useState<MascotReaction>("hungry");
-  const mascotResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    setRole(user?.role === "merchant" ? "seller" : "customer");
-  }, [user?.role]);
+    if (!user?.id) {
+      setRole("customer");
+      return;
+    }
+    const roles = user?.roles ?? [];
+    const merchant = user?.role === "merchant" || roles.includes("merchant");
+    const courier = user?.role === "courier" || roles.includes("courier");
+    if (courier && !merchant) {
+      router.replace("/courier");
+      return;
+    }
+    setRole(merchant ? "seller" : "customer");
+  }, [user?.id, user?.role, user?.roles]);
 
-  const [category, setCategory] = useState("Tudo");
+  const [category, setCategory] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [localHour, setLocalHour] = useState(() => new Date().getHours());
+  const homeContext = useMemo(
+    () => getHomeContext(new Date(2020, 0, 1, localHour)),
+    [localHour],
+  );
+  const effectiveHomeContext = useMemo(
+    () =>
+      customization.smartHomeEnabled
+        ? homeContext
+        : {
+            ...homeContext,
+            greeting: "Olá",
+            subtitle:
+              "Escolha seus favoritos e descubra o que está disponível.",
+            focusLabel: "Ofertas perto de você",
+            focusDescription:
+              "Mercado, restaurantes e Flash ficam sempre acessíveis.",
+          },
+    [customization.smartHomeEnabled, homeContext],
+  );
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const nextHour = new Date().getHours();
+      setLocalHour((current) => (current === nextHour ? current : nextHour));
+    }, 60_000);
+    return () => clearInterval(timer);
+  }, []);
   const marketplaceQuery = trpc.pediu.marketplace.search.useQuery(
-    { category, query: searchQuery.trim() || undefined, limit: 50, offset: 0 },
+    {
+      category: category && category !== "__flash__" ? category : undefined,
+      flash: category === "__flash__" ? true : undefined,
+      query: searchQuery.trim() || undefined,
+      limit: 50,
+      offset: 0,
+    },
     { staleTime: 30_000 },
   );
   const storeQuery = trpc.pediu.stores.mine.useQuery(undefined, {
-    enabled: isAuthenticated && role === "seller",
+    enabled: isAuthenticated,
   });
   const storeProductsQuery = trpc.pediu.products.mine.useQuery(
     { storeId: storeQuery.data?.id ?? 0 },
@@ -172,6 +287,11 @@ export default function HomeScreen() {
     enabled: isAuthenticated && role === "seller",
     refetchInterval: 10_000,
   });
+  useNewOrderChime(
+    role === "seller"
+      ? (storeOrdersQuery.data ?? []).filter((order) => order.status === "Pendente").length
+      : 0,
+  );
   const customerOrdersQuery = trpc.pediu.orders.mine.useQuery(undefined, {
     enabled: isAuthenticated && role === "customer",
     refetchInterval: 5_000,
@@ -179,13 +299,14 @@ export default function HomeScreen() {
   const customerAddressesQuery = trpc.pediu.addresses.list.useQuery(undefined, {
     enabled: isAuthenticated && role === "customer",
   });
-  const showMascotMoment = (nextReaction: MascotReaction, duration = 4600) => {
-    setMascotReaction(nextReaction);
+  const showMascotMoment = (nextReaction: MascotReaction) => {
     setMascotMoment(nextReaction);
     if (mascotResetTimer.current) clearTimeout(mascotResetTimer.current);
     mascotResetTimer.current = setTimeout(
-      () => setMascotReaction("hungry"),
-      duration,
+      () => {
+        setMascotMoment("hungry");
+      },
+      nextReaction === "full" ? 7_600 : 3_800,
     );
   };
   const changeCustomerTab = (nextTab: "discover" | "orders" | "profile") => {
@@ -209,7 +330,7 @@ export default function HomeScreen() {
       void storeOrdersQuery.refetch();
       void customerOrdersQuery.refetch();
     },
-    onError: (error) => notify(error.message),
+    onError: (error) => notify(friendlyUserMessage(error.message)),
   });
   const clientsQuery = trpc.pediu.clients.mine.useQuery(undefined, {
     enabled: isAuthenticated && role === "seller",
@@ -221,7 +342,7 @@ export default function HomeScreen() {
     enabled: isAuthenticated,
   });
   const createPixMutation = trpc.pediu.payments.createPix.useMutation({
-    onError: (error) => notifyWithHaptic(error.message, false),
+    onError: (error) => notifyWithHaptic(friendlyUserMessage(error.message), false),
   });
   const createOrderMutation = trpc.pediu.orders.create.useMutation({
     onSuccess: (result) => {
@@ -231,7 +352,7 @@ export default function HomeScreen() {
           {
             onSuccess: (charge) => {
               clearGlobalCart();
-              showMascotMoment("full", 7600);
+              showMascotMoment("full");
               setShowCheckout(false);
               setShowCart(false);
               setPixPaymentPending(charge.status === "pending");
@@ -239,7 +360,7 @@ export default function HomeScreen() {
               void customerOrdersQuery.refetch();
               void notifyWithHaptic(
                 charge.status === "pending"
-                  ? "Pedido enviado. PIX aguardando confirmação"
+                  ? "PIX gerado. A loja recebe o pedido quando o pagamento for aprovado"
                   : charge.status === "paid"
                     ? "Pedido enviado. PIX confirmado"
                     : charge.status === "cancelled"
@@ -266,7 +387,7 @@ export default function HomeScreen() {
       }
 
       clearGlobalCart();
-      showMascotMoment("full", 7600);
+      showMascotMoment("full");
       setShowCheckout(false);
       setShowCart(false);
       setPixPaymentPending(false);
@@ -281,7 +402,7 @@ export default function HomeScreen() {
         params: { orderId: String(result.orderId) },
       });
     },
-    onError: (error) => notifyWithHaptic(error.message, false),
+    onError: (error) => notifyWithHaptic(friendlyUserMessage(error.message), false),
   });
   const voiceMutation = trpc.pediu.voice.interpret.useMutation();
   const transcribeMutation = trpc.pediu.voice.transcribe.useMutation();
@@ -290,9 +411,12 @@ export default function HomeScreen() {
       setShowSaleModal(false);
       setSaleTotal("");
       setSaleCustomerId("");
+      setSaleCreditLimit("");
       void salesQuery.refetch();
+      void clientsQuery.refetch();
       notify("Venda registrada com sucesso");
     },
+    onError: (error) => notify(friendlyUserMessage(error.message)),
   });
   const addLedgerMutation = trpc.pediu.ledger.add.useMutation();
   const createClientMutation = trpc.pediu.clients.create.useMutation({
@@ -300,21 +424,21 @@ export default function HomeScreen() {
       void clientsQuery.refetch();
       notify("Cliente salvo no relacionamento");
     },
-    onError: (error) => notify(error.message),
+    onError: (error) => notify(friendlyUserMessage(error.message)),
   });
   const setClientLimitMutation = trpc.pediu.credit.setLimit.useMutation({
     onSuccess: () => {
       void clientsQuery.refetch();
       notify("Limite de fiado atualizado");
     },
-    onError: (error) => notify(error.message),
+    onError: (error) => notify(friendlyUserMessage(error.message)),
   });
   const blockClientMutation = trpc.pediu.credit.block.useMutation({
     onSuccess: () => {
       void clientsQuery.refetch();
       notify("Status do cliente atualizado");
     },
-    onError: (error) => notify(error.message),
+    onError: (error) => notify(friendlyUserMessage(error.message)),
   });
   const registerPushMutation = trpc.pediu.notifications.register.useMutation();
   const markNotificationMutation =
@@ -343,21 +467,21 @@ export default function HomeScreen() {
       void storeProductsQuery.refetch();
       notify("Produto salvo no catálogo");
     },
-    onError: (error) => notify(error.message),
+    onError: (error) => notify(friendlyUserMessage(error.message)),
   });
   const updateProductAvailabilityMutation =
     trpc.pediu.products.availability.useMutation({
       onSuccess: () => {
         void storeProductsQuery.refetch();
       },
-      onError: (error) => notify(error.message),
+      onError: (error) => notify(friendlyUserMessage(error.message)),
     });
   const updateStoreMutation = trpc.pediu.stores.update.useMutation({
     onSuccess: () => {
       void storeQuery.refetch();
       notify("Configurações da loja atualizadas");
     },
-    onError: (error) => notify(error.message),
+    onError: (error) => notify(friendlyUserMessage(error.message)),
   });
   const cart = useMemo<Product[]>(
     () =>
@@ -373,6 +497,8 @@ export default function HomeScreen() {
           emoji: item.emoji ?? "🍽️",
           available: true,
           deliveryFee: item.deliveryFee,
+          storeKind: item.storeKind,
+          flashEnabled: Boolean(item.flashEnabled),
         })),
       ),
     [globalCartItems],
@@ -403,19 +529,21 @@ export default function HomeScreen() {
   const [salePaymentMethod, setSalePaymentMethod] = useState<
     "pix" | "cash" | "fiado"
   >("cash");
+  const [saleCreditLimit, setSaleCreditLimit] = useState("");
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [newProductName, setNewProductName] = useState("");
   const [newProductPrice, setNewProductPrice] = useState("");
   const [newProductCategory, setNewProductCategory] = useState("Doces");
   const [newProductDescription, setNewProductDescription] = useState("");
+  const [productExtras, setProductExtras] = useState<ProductExtras>({});
   const [notice, setNotice] = useState("");
   const [pixPaymentPending, setPixPaymentPending] = useState(false);
   const [locationLabel, setLocationLabel] = useState("Usar minha localização");
   const [locationAddress, setLocationAddress] = useState("");
   const [locationLoading, setLocationLoading] = useState(false);
-  const [cartPulse, setCartPulse] = useState(false);
   const screenOpacity = useRef(new Animated.Value(1)).current;
   const cartScale = useRef(new Animated.Value(1)).current;
+  const mascotResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const assistantAutoOpened = useRef(false);
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(audioRecorder);
@@ -441,19 +569,72 @@ export default function HomeScreen() {
     router.setParams({ assistant: undefined } as never);
   }, [params.assistant, role, showVoice]);
 
-  const enterSellerMode = () => {
-    if (!isAuthenticated) {
-      requestLogin();
-      return;
-    }
-    if (user?.role !== "merchant") {
-      notify("Sua conta ainda não possui perfil de vendedor");
-      return;
-    }
-    setRole("seller");
-    changeSellerTab("home");
-    if (!storeQuery.data) setShowSellerOnboarding(true);
-  };
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (selectedProduct) {
+        setSelectedProduct(null);
+        return true;
+      }
+      if (showCheckout) {
+        Alert.alert(
+          "Sair do pedido?",
+          "Seu carrinho continua salvo. O pedido ainda não foi enviado.",
+          [
+            { text: "Continuar pedido", style: "cancel" },
+            { text: "Sair", onPress: () => setShowCheckout(false) },
+          ],
+        );
+        return true;
+      }
+      if (showCart) {
+        setShowCart(false);
+        return true;
+      }
+      if (showAddProduct) {
+        setShowAddProduct(false);
+        return true;
+      }
+      if (showVoice) {
+        setShowVoice(false);
+        return true;
+      }
+      if (showSaleModal) {
+        setShowSaleModal(false);
+        return true;
+      }
+      if (showSellerOnboarding) {
+        setShowSellerOnboarding(false);
+        return true;
+      }
+      if (role === "customer" && customerTab !== "discover") {
+        changeCustomerTab("discover");
+        return true;
+      }
+      if (role === "seller" && sellerTab !== "home") {
+        changeSellerTab("home");
+        return true;
+      }
+      Alert.alert("Sair do Pediu?", "Você pode voltar quando quiser.", [
+        { text: "Ficar", style: "cancel" },
+        { text: "Sair", style: "destructive", onPress: () => BackHandler.exitApp() },
+      ]);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [
+    customerTab,
+    role,
+    selectedProduct,
+    sellerTab,
+    showAddProduct,
+    showCart,
+    showCheckout,
+    showSaleModal,
+    showSellerOnboarding,
+    showVoice,
+  ]),
+  );
 
   useEffect(() => {
     Animated.sequence([
@@ -528,11 +709,14 @@ export default function HomeScreen() {
       const resolved = await resolveCurrentLocation();
       setLocationLabel(resolved.shortAddress);
       setLocationAddress(resolved.address);
+      if (!customization.locationEnabled) {
+        updateCustomization({ locationEnabled: true });
+      }
       notify("Endereço atualizado automaticamente");
     } catch (error) {
       notifyWithHaptic(
         error instanceof Error
-          ? error.message
+          ? friendlyUserMessage(error.message)
           : "Não foi possível localizar você",
         false,
       );
@@ -543,6 +727,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     if (Platform.OS === "web") return;
+    if (!customization.locationEnabled) return;
     void Location.getForegroundPermissionsAsync().then((permission) => {
       if (!permission.granted) return;
       void resolveCurrentLocation()
@@ -552,7 +737,7 @@ export default function HomeScreen() {
         })
         .catch(() => undefined);
     });
-  }, []);
+  }, [customization.locationEnabled]);
 
   const liveProducts = useMemo(
     () =>
@@ -565,7 +750,7 @@ export default function HomeScreen() {
         distance: "perto de você",
         category: product.category,
         description: product.description,
-        imageUrl: product.adImageUrl,
+        imageUrl: product.imageData || product.adImageUrl,
         adId: product.adId,
         adHeadline: product.adHeadline,
         adDescription: product.adDescription,
@@ -573,21 +758,52 @@ export default function HomeScreen() {
         emoji:
           product.category === "Lanches"
             ? "🍔"
-            : product.category === "Serviços"
-              ? "🛠️"
-              : "🍰",
+            : product.category === "Pizza"
+              ? "🍕"
+              : product.category === "Doces"
+                ? "🍰"
+                : product.category === "Serviços"
+                  ? "🛠️"
+                  : "🍽️",
         available: Boolean(product.available),
+        storeOpen: product.storeOpen,
+        nextOpenLabel: product.nextOpenLabel,
         deliveryFee: product.deliveryFee,
+        storeKind: product.storeKind,
+        flashEnabled: Boolean(product.flashEnabled),
+        flash: Boolean(product.flashEnabled),
       })),
     [marketplaceQuery.data],
   );
 
   const filteredProducts = useMemo(
     () =>
-      liveProducts.filter(
-        (product) => category === "Tudo" || product.category === category,
+      customization.smartHomeEnabled
+        ? rankHomeProducts(
+            liveProducts.filter(
+              (product) =>
+                !category ||
+                (category === "__flash__"
+                  ? product.flash
+                  : product.category === category),
+            ),
+            homeContext,
+          )
+        : liveProducts.filter(
+            (product) =>
+              !category ||
+              (category === "__flash__"
+                ? product.flash
+                : product.category === category),
+          ),
+    [category, customization.smartHomeEnabled, homeContext, liveProducts],
+  );
+  const activeCustomerOrder = useMemo(
+    () =>
+      (customerOrdersQuery.data ?? []).find(
+        (order) => !["Entregue", "Cancelado"].includes(order.status),
       ),
-    [category, liveProducts],
+    [customerOrdersQuery.data],
   );
 
   const notify = (message: string) => {
@@ -595,37 +811,43 @@ export default function HomeScreen() {
     setTimeout(() => setNotice(""), 2400);
   };
 
-  const requestLogin = () => {
-    if (!isOAuthConfigured) {
-      notify("Login seguro ainda não está configurado neste ambiente.");
-      return;
-    }
-    void startOAuthLogin();
+  const requestLogin = (action: AccountAction = "account", role?: SignupRole) => {
+    askToJoin({ action, role, returnTo: "/(tabs)" });
   };
 
-  const addToCart = (product: Product) => {
-    if (!isAuthenticated) {
-      notify("Entre para salvar itens no seu carrinho");
-      requestLogin();
+  const addToCart = (product: Product, options: CartOption[] = [], unitPrice?: string) => {
+    if (!product.available) {
+      void notifyWithHaptic("Este produto está esgotado", false);
       return;
     }
+    if (product.storeOpen === false) {
+      void notifyWithHaptic(product.nextOpenLabel || "Fechada no momento", false);
+      return;
+    }
+    if (!isAuthenticated) {
+      requestLogin("cart");
+      return;
+    }
+    const optionLabel = options.map((option) => option.name).join(", ");
     const result = addGlobalItem({
       id: product.id,
       storeId: product.storeId ?? 0,
-      name: product.name,
+      name: optionLabel ? `${product.name} (${optionLabel})` : product.name,
       storeName: product.store,
       category: product.category,
-      price: String(cartTotal([product.price]).toFixed(2)),
+      price: unitPrice ?? String(cartTotal([product.price]).toFixed(2)),
       deliveryFee: String(product.deliveryFee ?? "0.00"),
       emoji: product.emoji,
+      storeKind: product.storeKind,
+      flashEnabled: Boolean(product.flashEnabled),
+      options,
     });
     if (!result.ok) {
       notify(result.error ?? "Não foi possível adicionar o produto");
       return;
     }
     setSelectedProduct(null);
-    setCartPulse(true);
-    showMascotMoment("happy", 2600);
+    showMascotMoment("happy");
     Animated.sequence([
       Animated.timing(cartScale, {
         toValue: 1.18,
@@ -638,14 +860,14 @@ export default function HomeScreen() {
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
-    ]).start(() => setCartPulse(false));
+    ]).start();
     void notifyWithHaptic("Adicionado ao seu pedido");
   };
 
   const openCheckout = () => {
     if (!cart.length) return;
     if (!isAuthenticated) {
-      requestLogin();
+      requestLogin("checkout");
       return;
     }
     setShowCart(false);
@@ -657,20 +879,25 @@ export default function HomeScreen() {
       void notifyWithHaptic("Informe o endereço de entrega", false);
       return;
     }
-    const itemsTotal = cartTotal(cart.map((item) => item.price));
-    const deliveryFee = Number(cart[0]?.deliveryFee ?? 0);
+    const itemsTotal = globalCartItems.reduce(
+      (sum, item) => sum + Number(item.price) * item.quantity,
+      0,
+    );
+    const deliveryFee = Number(globalCartItems[0]?.deliveryFee ?? 0);
     const total = (itemsTotal + deliveryFee).toFixed(2);
     createOrderMutation.mutate({
       idempotencyKey: checkoutIdempotencyKey,
-      storeId: cart[0]?.storeId ?? 1,
+      storeId: globalCartItems[0]?.storeId ?? 1,
       total,
       paymentMethod: checkoutPayment,
       addressId: deliveryAddressId,
       deliveryAddress: deliveryAddress.trim(),
-      items: cart.map((item) => ({
+      items: globalCartItems.map((item) => ({
         productId: item.id,
-        quantity: 1,
-        unitPrice: cartTotal([item.price]).toFixed(2),
+        quantity: item.quantity,
+        unitPrice: Number(item.price).toFixed(2),
+        note: item.note,
+        optionIds: item.options?.map((option) => option.id),
       })),
     });
   };
@@ -727,7 +954,7 @@ export default function HomeScreen() {
     if (
       !storeId ||
       !newProductName.trim() ||
-      !/^\\d+(\\.\\d{1,2})?$/.test(price)
+      !/^\d+(\.\d{1,2})?$/.test(price)
     ) {
       notify("Informe nome, categoria e um preço válido");
       return;
@@ -738,6 +965,8 @@ export default function HomeScreen() {
       category: newProductCategory.trim() || "Geral",
       description: newProductDescription.trim() || undefined,
       price,
+      imageData: productExtras.imageData,
+      optionGroups: productExtras.optionGroups,
     });
   };
 
@@ -749,14 +978,14 @@ export default function HomeScreen() {
   const handleVoiceAction = (action: string) => {
     setShowVoice(false);
     if (action === "doces") {
-      setRole("customer");
+      if (role !== "customer") return;
       changeCustomerTab("discover");
       setCategory("Doces");
       void notifyWithHaptic("Encontrei doces perto de você");
       return;
     }
     if (action === "pedidos") {
-      setRole("customer");
+      if (role !== "customer") return;
       changeCustomerTab("orders");
       return;
     }
@@ -764,28 +993,24 @@ export default function HomeScreen() {
       router.push("/support");
       return;
     }
+    if (role !== "seller") return;
     if (action === "venda") {
-      setRole("seller");
       changeSellerTab("home");
       setShowSaleModal(true);
       return;
     }
     if (action === "fiado") {
-      setRole("seller");
       changeSellerTab("clients");
       void notifyWithHaptic("Abrindo clientes e vendas fiadas");
       return;
     }
     if (action === "catalogo") {
-      setRole("seller");
       changeSellerTab("catalog");
       return;
     }
     if (action === "divulgar") {
-      setRole("seller");
       changeSellerTab("home");
       void shareStoreCatalog();
-      return;
     }
     void notifyWithHaptic("Ação não reconhecida", false);
   };
@@ -847,8 +1072,21 @@ export default function HomeScreen() {
     if (!canRegisterSale(normalizedTotal, salePaymentMethod, customerId)) {
       void notifyWithHaptic(
         salePaymentMethod === "fiado"
-          ? "Informe o ID do cliente para lançar no fiado"
+          ? "Escolha o cliente para lançar no fiado"
           : "Informe um valor válido",
+      );
+      return;
+    }
+    const customer = (clientsQuery.data ?? []).find((item) => item.id === customerId);
+    const proposedLimit = brlInputToDecimal(saleCreditLimit);
+    if (
+      salePaymentMethod === "fiado" &&
+      customer &&
+      Number(customer.creditLimit) <= 0 &&
+      (!proposedLimit || Number(proposedLimit) <= 0)
+    ) {
+      void notifyWithHaptic(
+        "Esse cliente ainda não tem limite de fiado. Defina um limite para continuar.",
       );
       return;
     }
@@ -856,19 +1094,16 @@ export default function HomeScreen() {
       total: normalizedTotal,
       customerId,
       paymentMethod: salePaymentMethod,
+      creditLimit:
+        salePaymentMethod === "fiado" && customer && Number(customer.creditLimit) <= 0
+          ? proposedLimit
+          : undefined,
     });
-    if (salePaymentMethod === "fiado" && customerId)
-      addLedgerMutation.mutate({
-        customerId,
-        type: "credit",
-        amount: normalizedTotal,
-        note: "Venda registrada pelo assistente",
-      });
   };
 
   const createStore = () => {
     if (!isAuthenticated) {
-      requestLogin();
+      requestLogin("seller", "merchant");
       return;
     }
     if (!storeName.trim()) return;
@@ -910,13 +1145,14 @@ export default function HomeScreen() {
     latitude?: number | null;
     longitude?: number | null;
     isOpen?: boolean;
+    openingHours?: string;
   }) => {
     updateStoreMutation.mutate(input);
   };
 
   return (
     <ScreenContainer
-      containerClassName="bg-[#FFF4E8]"
+      backgroundColor={theme.canvas}
       edges={["top", "left", "right"]}
     >
       <Animated.View
@@ -929,7 +1165,12 @@ export default function HomeScreen() {
         {role === "customer" ? (
           <>
             <ScrollView
-              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
+              automaticallyAdjustKeyboardInsets
+              contentContainerStyle={[
+                styles.scrollContent,
+                { paddingBottom: scrollPaddingForFloatingBar(insets.bottom, Platform.OS) },
+              ]}
               showsVerticalScrollIndicator={false}
             >
               {customerTab === "discover" && (
@@ -937,16 +1178,12 @@ export default function HomeScreen() {
                   products={filteredProducts}
                   loading={marketplaceQuery.isLoading}
                   error={marketplaceQuery.isError}
-                  userName={user?.name}
-                  category={category}
-                  setCategory={setCategory}
+                  homeContext={effectiveHomeContext}
+                  motionEnabled={customization.motionEnabled}
+                  userName={nameConfirmed ? user?.name : null}
                   searchQuery={searchQuery}
                   setSearchQuery={setSearchQuery}
                   onProductPress={setSelectedProduct}
-                  cartCount={globalCartCount}
-                  cartScale={cartScale}
-                  cartPulse={cartPulse}
-                  onCartPress={() => router.push("/cart")}
                   locationLabel={locationLabel}
                   locationAddress={locationAddress}
                   locationLoading={locationLoading}
@@ -955,10 +1192,34 @@ export default function HomeScreen() {
                   onAssistant={() => openVoiceAssistant("customer")}
                   onOrders={() => changeCustomerTab("orders")}
                   onBenefits={() => router.push("/coupons")}
+                  onMarket={() => router.push("/market")}
                   onSearch={() => router.push("/search")}
+                  onCategory={setCategory}
+                  activeOrder={activeCustomerOrder}
+                  onActiveOrder={() => {
+                    if (!activeCustomerOrder) return;
+                    router.push({
+                      pathname: "/order/track",
+                      params: { orderId: String(activeCustomerOrder.id) },
+                    });
+                  }}
                   notifications={notificationsQuery.data ?? []}
                   onReadNotification={(id) =>
                     markNotificationMutation.mutate({ notificationId: id })
+                  }
+                  mascot={
+                    customization.mascotEnabled ? (
+                      <PediuMascot
+                        theme={theme}
+                        styleId={customization.mascotStyle}
+                        reaction={mascotMoment?.reaction ?? "hungry"}
+                        motionEnabled={customization.motionEnabled}
+                        compact
+                        programmed={false}
+                        showSpeech={false}
+                        onPress={() => openVoiceAssistant("customer")}
+                      />
+                    ) : null
                   }
                 />
               )}
@@ -967,7 +1228,7 @@ export default function HomeScreen() {
                   orders={customerOrdersQuery.data ?? []}
                   loading={customerOrdersQuery.isLoading}
                   isAuthenticated={isAuthenticated}
-                  onLogin={requestLogin}
+                  onLogin={() => requestLogin("orders")}
                   onCancel={(orderId) =>
                     updateOrderStatusMutation.mutate({
                       orderId,
@@ -977,41 +1238,33 @@ export default function HomeScreen() {
                   onDiscover={() => changeCustomerTab("discover")}
                 />
               )}
-              {customerTab === "profile" && (
-                <>
-                  <CustomerProfile
-                    user={user}
-                    isAuthenticated={isAuthenticated}
-                    theme={theme}
-                    customization={customization}
-                    notifications={notificationsQuery.data ?? []}
-                    onReadNotification={(id) =>
-                      markNotificationMutation.mutate({ notificationId: id })
-                    }
-                    onLogin={requestLogin}
-                    onLogout={() => void logout()}
-                    onSellerMode={enterSellerMode}
-                  />
-                  <AuthPanel
-                    user={user}
-                    isAuthenticated={isAuthenticated}
-                    onLogin={requestLogin}
-                    onLogout={() => void logout()}
-                  />
-                </>
-              )}
+              {customerTab === "profile" && <ProfileHome />}
             </ScrollView>
+            <CartPeek
+              itemCount={globalCartCount}
+              subtitle={globalCartItems[0]?.storeName}
+              totalLabel={`R$ ${cartTotal(cart.map((item) => item.price))
+                .toFixed(2)
+                .replace(".", ",")}`}
+              onPress={() => router.push("/cart")}
+            />
             <CustomerNav
               active={customerTab}
               onChange={changeCustomerTab}
-              onAssistant={() => openVoiceAssistant("customer")}
+              onSearch={() => router.push("/search")}
+              bottomInset={insets.bottom}
               theme={theme}
             />
           </>
         ) : (
           <>
             <ScrollView
-              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
+              automaticallyAdjustKeyboardInsets
+              contentContainerStyle={[
+                styles.scrollContent,
+                { paddingBottom: scrollPaddingForFloatingBar(insets.bottom, Platform.OS) },
+              ]}
               showsVerticalScrollIndicator={false}
             >
               {sellerTab === "home" && (
@@ -1026,6 +1279,14 @@ export default function HomeScreen() {
                       (sum, sale) => sum + Number(sale.total),
                       0,
                     )}
+                    onSale={() => {
+                      setSalePaymentMethod("cash");
+                      setShowSaleModal(true);
+                    }}
+                    onFiado={() => {
+                      setSalePaymentMethod("fiado");
+                      setShowSaleModal(true);
+                    }}
                     onCatalog={() => changeSellerTab("catalog")}
                     onOrders={() => changeSellerTab("orders")}
                     onClients={() => changeSellerTab("clients")}
@@ -1043,6 +1304,12 @@ export default function HomeScreen() {
                   orders={storeOrdersQuery.data ?? []}
                   onUpdateStatus={(orderId, status) =>
                     updateOrderStatusMutation.mutate({ orderId, status })
+                  }
+                  onCallCourier={(orderId) =>
+                    router.push({
+                      pathname: "/seller/delivery",
+                      params: { orderId: String(orderId) },
+                    })
                   }
                 />
               )}
@@ -1080,16 +1347,14 @@ export default function HomeScreen() {
                   onSave={updateStore}
                   saving={updateStoreMutation.isPending}
                   onAssistant={() => openVoiceAssistant("seller")}
-                  onCustomerMode={() => {
-                    setRole("customer");
-                    changeCustomerTab("discover");
-                  }}
+                  onRefresh={() => void storeQuery.refetch()}
                 />
               )}
             </ScrollView>
             <SellerNav
               active={sellerTab}
               onChange={changeSellerTab}
+              bottomInset={insets.bottom}
               theme={theme}
             />
           </>
@@ -1102,38 +1367,8 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
-        {role === "customer" &&
-        customerTab !== "profile" &&
-        !showVoice &&
-        !selectedProduct &&
-        !showCart &&
-        !showCheckout &&
-        !showAddProduct &&
-        !showSaleModal &&
-        !showSellerOnboarding &&
-        customization.mascotEnabled ? (
-          <View style={styles.mascotDock}>
-            <PediuMascot
-              theme={theme}
-              styleId={customization.mascotStyle}
-              reaction={mascotMoment?.reaction ?? mascotReaction}
-              programmed
-              showSpeech
-              motionEnabled={customization.motionEnabled}
-              compact
-              onPress={() =>
-                notify(
-                  (mascotMoment?.reaction ?? mascotReaction) === "happy"
-                    ? "O mascote adorou essa escolha"
-                    : (mascotMoment?.reaction ?? mascotReaction) === "full"
-                      ? "Barriguinha cheia, coração tranquilo"
-                      : globalCartCount
-                        ? "Mais um pouquinho e fechamos seu pedido"
-                        : "Estou com fome de uma boa escolha",
-                )
-              }
-            />
-          </View>
+        {role === "seller" && sellerTab === "home" && user?.id && storeQuery.data ? (
+          <StoreTour userId={user.id} storeName={storeQuery.data.name} productCount={sellerProducts.length} />
         ) : null}
 
         <Modal
@@ -1141,12 +1376,13 @@ export default function HomeScreen() {
           transparent
           animationType="slide"
           onRequestClose={() => setSelectedProduct(null)}
+          {...edgeModalProps}
         >
           {selectedProduct ? (
             <ProductModal
               product={selectedProduct}
               onClose={() => setSelectedProduct(null)}
-              onAdd={() => addToCart(selectedProduct)}
+              onAdd={(options, unitPrice) => addToCart(selectedProduct, options, unitPrice)}
             />
           ) : null}
         </Modal>
@@ -1156,9 +1392,10 @@ export default function HomeScreen() {
           transparent
           animationType="slide"
           onRequestClose={() => setShowCart(false)}
+          {...edgeModalProps}
         >
           <View style={styles.modalBackdrop}>
-            <View style={[styles.sheet, styles.sheetTall]}>
+            <View style={[styles.sheet, styles.sheetTall, { paddingBottom: bottomSafeInset(insets.bottom, Platform.OS) }]}>
               <ScrollView
                 style={styles.sheetScroll}
                 contentContainerStyle={styles.sheetContent}
@@ -1269,6 +1506,7 @@ export default function HomeScreen() {
           transparent
           animationType="slide"
           onRequestClose={() => setShowCheckout(false)}
+          {...edgeModalProps}
         >
           <CheckoutModal
             addresses={customerAddressesQuery.data ?? []}
@@ -1298,9 +1536,10 @@ export default function HomeScreen() {
           transparent
           animationType="slide"
           onRequestClose={() => setShowAddProduct(false)}
+          {...edgeModalProps}
         >
           <View style={styles.modalBackdrop}>
-            <View style={[styles.sheet, styles.sheetTall]}>
+            <View style={[styles.sheet, styles.sheetTall, { paddingBottom: bottomSafeInset(insets.bottom, Platform.OS) }]}>
               <ScrollView
                 style={styles.sheetScroll}
                 contentContainerStyle={styles.sheetContent}
@@ -1343,6 +1582,7 @@ export default function HomeScreen() {
                   style={styles.input}
                   multiline
                 />
+                <ProductExtrasFields onChange={setProductExtras} />
                 <Pressable
                   style={[
                     styles.primaryButton,
@@ -1373,20 +1613,21 @@ export default function HomeScreen() {
           transparent
           animationType="fade"
           onRequestClose={() => setShowVoice(false)}
+          {...edgeModalProps}
         >
-          <VoiceAssistantModal
-            mode={voiceMode}
-            busy={voiceMutation.isPending || transcribeMutation.isPending}
-            isRecording={recorderState.isRecording}
-            onRecord={toggleNativeRecording}
-            reply={voiceReply}
-            onClose={() => {
-              setShowVoice(false);
-              setVoiceReply("");
+          <AssistantChat
+            audience={role === "seller" ? "merchant" : isAuthenticated ? "customer" : "guest"}
+            onClose={() => setShowVoice(false)}
+            onNavigate={(target) => {
+              if (target.screen === "orders") changeCustomerTab("orders");
+              if (target.screen === "cart") setShowCart(true);
+              if (target.screen === "catalog") changeSellerTab("catalog");
+              if (target.screen === "store_orders") changeSellerTab("orders");
+              if (target.screen === "track" && target.orderId) {
+                setShowVoice(false);
+                router.push({ pathname: "/order/track", params: { orderId: String(target.orderId) } });
+              }
             }}
-            onAction={handleVoiceAction}
-            onCommand={handleVoiceCommand}
-            theme={theme}
           />
         </Modal>
 
@@ -1395,15 +1636,24 @@ export default function HomeScreen() {
           transparent
           animationType="slide"
           onRequestClose={() => setShowSaleModal(false)}
+          {...edgeModalProps}
         >
           <SaleModal
+            customers={clientsQuery.data ?? []}
             total={saleTotal}
             customerId={saleCustomerId}
             paymentMethod={salePaymentMethod}
-            busy={createSaleMutation.isPending || addLedgerMutation.isPending}
+            busy={createSaleMutation.isPending}
+            creditLimit={saleCreditLimit}
+            errorMessage={
+              createSaleMutation.error
+                ? friendlyUserMessage(createSaleMutation.error.message)
+                : ""
+            }
             onChangeTotal={setSaleTotal}
             onChangeCustomerId={setSaleCustomerId}
             onChangePaymentMethod={setSalePaymentMethod}
+            onChangeCreditLimit={setSaleCreditLimit}
             onSubmit={submitSale}
             onClose={() => setShowSaleModal(false)}
           />
@@ -1414,22 +1664,31 @@ export default function HomeScreen() {
           transparent
           animationType="slide"
           onRequestClose={() => setShowSellerOnboarding(false)}
+          {...edgeModalProps}
         >
-          <SellerOnboardingModal
-            isAuthenticated={isAuthenticated}
-            name={storeName}
-            phone={storePhone}
-            address={storeAddress}
-            pixKey={storePixKey}
-            onChangeName={setStoreName}
-            onChangePhone={setStorePhone}
-            onChangeAddress={setStoreAddress}
-            onChangePixKey={setStorePixKey}
-            onLogin={requestLogin}
-            onCreate={createStore}
-            onClose={() => setShowSellerOnboarding(false)}
-            busy={createStoreMutation.isPending}
-          />
+          <View style={styles.modalBackdrop}>
+            <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: scrollPaddingForScreenEnd(insets.bottom, Platform.OS) }}>
+              {isAuthenticated ? (
+                <StoreSignupForm
+                  onCreated={() => {
+                    setShowSellerOnboarding(false);
+                    void storeQuery.refetch();
+                  }}
+                  onClose={() => setShowSellerOnboarding(false)}
+                />
+              ) : (
+                <View style={{ backgroundColor: "#fff", borderRadius: 20, padding: 16, gap: 8 }}>
+                  <Text style={styles.cardTitle}>Entre para cadastrar a loja</Text>
+                  <Pressable onPress={() => requestLogin("seller", "merchant")}>
+                    <Text style={styles.link}>Criar conta da loja</Text>
+                  </Pressable>
+                  <Pressable onPress={() => setShowSellerOnboarding(false)}>
+                    <Text style={styles.link}>Agora não</Text>
+                  </Pressable>
+                </View>
+              )}
+            </ScrollView>
+          </View>
         </Modal>
       </Animated.View>
     </ScreenContainer>
@@ -1536,16 +1795,12 @@ function CustomerDiscover({
   products,
   loading,
   error,
+  homeContext,
+  motionEnabled,
   userName,
-  category,
-  setCategory,
   searchQuery,
   setSearchQuery,
   onProductPress,
-  cartCount,
-  cartScale,
-  cartPulse,
-  onCartPress,
   locationLabel,
   locationAddress,
   locationLoading,
@@ -1553,24 +1808,25 @@ function CustomerDiscover({
   onAssistant,
   onOrders,
   onBenefits,
+  onMarket,
   onSearch,
+  onCategory,
+  activeOrder,
+  onActiveOrder,
   notifications,
   onReadNotification,
   theme,
+  mascot,
 }: {
   products: Product[];
   loading: boolean;
   error: boolean;
+  homeContext: HomeContext;
+  motionEnabled: boolean;
   userName?: string | null;
-  category: string;
-  setCategory: (value: string) => void;
   searchQuery: string;
   setSearchQuery: (value: string) => void;
   onProductPress: (product: Product) => void;
-  cartCount: number;
-  cartScale: Animated.Value;
-  cartPulse: boolean;
-  onCartPress: () => void;
   locationLabel: string;
   locationAddress: string;
   locationLoading: boolean;
@@ -1578,7 +1834,11 @@ function CustomerDiscover({
   onAssistant: () => void;
   onOrders: () => void;
   onBenefits: () => void;
+  onMarket: () => void;
   onSearch: () => void;
+  onCategory: (value: string) => void;
+  activeOrder?: { id: number; status: string };
+  onActiveOrder: () => void;
   notifications: {
     id: number;
     title: string;
@@ -1588,162 +1848,69 @@ function CustomerDiscover({
   }[];
   onReadNotification: (notificationId: number) => void;
   theme: AppTheme;
+  mascot?: ReactNode;
 }) {
   const firstName = userName?.trim().split(/\s+/)[0];
-  const avatarLetter = firstName?.[0]?.toUpperCase() ?? "?";
   return (
     <>
-      <View style={styles.topBar}>
-        <View style={styles.brandRow}>
-          <BrandMark small />
-          <Text style={styles.brandName}>Pediu</Text>
-        </View>
-        <View style={styles.topActions}>
-          <Animated.View style={{ transform: [{ scale: cartScale }] }}>
-            <Pressable style={styles.iconButton} onPress={onCartPress}>
-              <MaterialIcons name="shopping-bag" size={21} color={COLORS.ink} />
-              {cartCount ? (
-                <View
-                  style={[
-                    styles.badge,
-                    cartPulse && { backgroundColor: COLORS.green },
-                  ]}
-                >
-                  <Text style={styles.badgeText}>{cartCount}</Text>
-                </View>
-              ) : null}
-            </Pressable>
-          </Animated.View>
-          <Pressable style={styles.iconButton} onPress={onOrders}>
-            <MaterialIcons name="receipt-long" size={21} color={COLORS.ink} />
-          </Pressable>
-        </View>
-      </View>
-      <View style={styles.greetingRow}>
-        <View>
-          <Text style={styles.eyebrow}>PERTO DE VOCÊ</Text>
-          <Text style={styles.pageTitle}>
-            {firstName ? `Oi, ${firstName}!` : "Olá!"}
-          </Text>
-        </View>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{avatarLetter}</Text>
-        </View>
-      </View>
-      <View
-        style={[
-          styles.heroBanner,
-          { backgroundColor: theme.ink, shadowColor: theme.ink },
-        ]}
-      >
-        <View style={styles.heroCopy}>
-          <Text style={[styles.heroKicker, { color: theme.highlight }]}>
-            DESCOBERTA LOCAL
-          </Text>
-          <Text style={styles.heroTitle}>Seu bairro, do seu jeito.</Text>
-          <Text style={styles.heroText}>
-            Encontre sabores, serviços e pessoas que fazem parte da sua rotina.
-          </Text>
-          <View style={styles.heroPills}>
-            <View style={styles.heroPill}>
-              <MaterialIcons name="bolt" size={13} color={theme.highlight} />
-              <Text style={styles.heroPillText}>perto</Text>
-            </View>
-            <View style={styles.heroPill}>
-              <MaterialIcons name="favorite" size={13} color={theme.primary} />
-              <Text style={styles.heroPillText}>feito com cuidado</Text>
-            </View>
-          </View>
-        </View>
-        <View
-          style={[
-            styles.heroOrb,
-            { backgroundColor: theme.primary, shadowColor: theme.primary },
-          ]}
-        >
-          <Text style={styles.heroOrbEmoji}>✦</Text>
-        </View>
-      </View>
-      <Pressable
-        style={({ pressed }) => [
-          locationStyles.locationCard,
-          { borderColor: theme.line, backgroundColor: theme.card },
-          pressed && styles.cardPressed,
-        ]}
+      <PediuPressable
+        accessibilityRole="button"
+        accessibilityLabel="Escolher onde entregar"
+        style={styles.p3LocationRow}
         onPress={onLocationPress}
       >
-        <View
-          style={[
-            locationStyles.locationIcon,
-            { backgroundColor: theme.primarySoft },
-          ]}
-        >
+        <View style={styles.p3LocationTitle}>
+          <MaterialIcons name="location-on" size={21} color={theme.primary} />
+          <Text style={[styles.p3LocationText, { color: theme.text }]}>
+            {locationLoading
+              ? "Buscando endereço..."
+              : locationLabel === "Usar minha localização"
+                ? "Meu endereço"
+                : locationLabel}
+          </Text>
           <MaterialIcons
-            name={locationLoading ? "my-location" : "location-on"}
+            name="keyboard-arrow-down"
             size={19}
-            color={theme.primary}
+            color={theme.muted}
           />
         </View>
-        <View style={{ flex: 1 }}>
-          <View style={locationStyles.locationHeading}>
-            <Text
-              style={[locationStyles.locationLabel, { color: theme.primary }]}
-            >
-              ENTREGAR EM
-            </Text>
-            <View
-              style={[
-                locationStyles.liveDot,
-                {
-                  backgroundColor: locationLoading
-                    ? theme.highlight
-                    : COLORS.green,
-                },
-              ]}
-            />
-          </View>
-          <Text style={[locationStyles.locationValue, { color: theme.ink }]}>
-            {locationLoading ? "Buscando endereço..." : locationLabel}
-          </Text>
-          {locationAddress ? (
-            <Text
-              numberOfLines={1}
-              style={[locationStyles.locationAddress, { color: theme.muted }]}
-            >
-              {locationAddress}
-            </Text>
-          ) : null}
-        </View>
-        <View
-          style={[
-            locationStyles.locationAction,
-            { backgroundColor: theme.ink },
-          ]}
+        <Text
+          numberOfLines={2}
+          style={[styles.p3LocationAddress, { color: theme.muted }]}
         >
-          <MaterialIcons name="my-location" size={16} color={theme.highlight} />
-        </View>
-      </Pressable>
-      <Pressable
-        style={({ pressed }) => [
-          styles.voiceCard,
-          { backgroundColor: theme.primarySoft, borderColor: theme.line },
-          pressed && styles.pressed,
-        ]}
-        onPress={onAssistant}
-      >
-        <View style={[styles.voiceIcon, { backgroundColor: theme.primary }]}>
-          <MaterialIcons name="mic" size={22} color={COLORS.white} />
-        </View>
+          {locationAddress || "Toque para informar onde entregar"}
+        </Text>
+      </PediuPressable>
+      <View style={styles.p3GreetingRow}>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.voiceTitle, { color: theme.ink }]}>
-            O que você quer pedir hoje?
+          <Text style={[styles.p3Greeting, { color: theme.ink }]}>
+            {homeContext.greeting}
+            {firstName ? `, ${firstName}` : ""}.
           </Text>
-          <Text style={styles.voiceSub}>
-            Fale ou digite. A gente encontra perto.
+          <Text style={[styles.p3GreetingSub, { color: theme.muted }]}>
+            {homeContext.subtitle}
           </Text>
         </View>
-        <MaterialIcons name="arrow-forward" size={20} color={theme.ink} />
-      </Pressable>
+        <View style={styles.p3MascotSlot}>{mascot}</View>
+        <PediuPressable
+          accessibilityRole="button"
+          accessibilityLabel="Notificações"
+          style={[
+            styles.p3Bell,
+            { backgroundColor: theme.card, borderColor: theme.line },
+          ]}
+          onPress={() => router.push("/account/notifications")}
+        >
+          <MaterialIcons
+            name="notifications-none"
+            size={25}
+            color={theme.ink}
+          />
+          <View
+            style={[styles.p3BellDot, { backgroundColor: theme.primary }]}
+          />
+        </PediuPressable>
+      </View>
       <View
         style={[
           styles.searchBox,
@@ -1758,10 +1925,20 @@ function CustomerDiscover({
           placeholderTextColor={theme.muted}
           style={[styles.searchInput, { color: theme.text }]}
           returnKeyType="search"
+          onSubmitEditing={() => {
+            const typed = searchQuery.trim();
+            if (!typed) {
+              onSearch();
+              return;
+            }
+            router.push({ pathname: "/search", params: { q: typed } });
+          }}
         />
       </View>
       <PediuV2Discovery
         theme={theme}
+        homeContext={homeContext}
+        motionEnabled={motionEnabled}
         products={products}
         notifications={notifications}
         onProductPress={onProductPress}
@@ -1770,10 +1947,16 @@ function CustomerDiscover({
         onAssistant={onAssistant}
         onOrders={onOrders}
         onBenefits={onBenefits}
+        onMarket={onMarket}
+        onCategory={onCategory}
+        activeOrder={activeOrder}
+        onActiveOrder={onActiveOrder}
       />
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Categorias</Text>
-        <Text style={styles.link}>Ver tudo</Text>
+        <Text style={styles.sectionTitle}>Escolha pelo sabor</Text>
+        <PediuPressable onPress={onSearch}>
+          <Text style={styles.link}>Ver tudo</Text>
+        </PediuPressable>
       </View>
       <ScrollView
         horizontal
@@ -1781,32 +1964,19 @@ function CustomerDiscover({
         contentContainerStyle={styles.categoryRow}
       >
         {CATEGORIES.map((item) => (
-          <Pressable
+          <PediuPressable
             key={item.label}
-            style={[
-              styles.categoryChip,
-              { backgroundColor: theme.card, borderColor: theme.line },
-              category === item.label && {
-                backgroundColor: theme.ink,
-                borderColor: theme.ink,
-              },
-            ]}
-            onPress={() => setCategory(item.label)}
+            style={styles.categoryTile}
+            onPress={() => onCategory(item.query)}
           >
-            <Text style={styles.categoryIcon}>{item.icon}</Text>
-            <Text
-              style={[
-                styles.categoryLabel,
-                { color: theme.muted },
-                category === item.label && styles.categoryLabelActive,
-              ]}
-            >
+            <Image source={item.image} style={styles.categoryImage} />
+            <Text style={[styles.categoryLabel, { color: theme.text }]}>
               {item.label}
             </Text>
-          </Pressable>
+          </PediuPressable>
         ))}
       </ScrollView>
-      <Pressable
+      <PediuPressable
         style={[
           styles.benefitCard,
           { backgroundColor: theme.primarySoft, borderColor: theme.line },
@@ -1826,9 +1996,9 @@ function CustomerDiscover({
           </Text>
         </View>
         <MaterialIcons name="chevron-right" size={20} color={theme.ink} />
-      </Pressable>
+      </PediuPressable>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Boas opções para pedir agora</Text>
+        <Text style={styles.sectionTitle}>{homeContext.focusLabel}</Text>
         <Text style={styles.link}>Ver tudo</Text>
       </View>
       {loading ? (
@@ -1848,78 +2018,86 @@ function CustomerDiscover({
           </Text>
         </View>
       ) : products.length ? (
-        products.map((product) => (
-          <Pressable
-            key={product.id}
-            style={({ pressed }) => [
-              styles.productCard,
-              pressed && styles.cardPressed,
-            ]}
-            onPress={() => onProductPress(product)}
-          >
-            <View style={styles.productImage}>
-              {product.imageUrl ? (
-                <Image
-                  source={{ uri: product.imageUrl }}
-                  style={styles.productImageAsset}
-                  resizeMode="cover"
-                />
-              ) : (
-                <Text style={styles.productEmoji}>{product.emoji}</Text>
-              )}
-              <View style={styles.availablePill}>
-                <View
-                  style={[
-                    styles.dot,
-                    product.adId ? { backgroundColor: COLORS.orange } : null,
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.availableText,
-                    product.adId ? { color: COLORS.orange } : null,
-                  ]}
-                >
-                  {product.adId ? "OFERTA PEDIU" : "DISPONÍVEL"}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.productInfo}>
-              <View style={{ flex: 1 }}>
-                <View style={styles.ratingRow}>
-                  <Text style={styles.rating}>
-                    {product.adOfferLabel || "Disponível agora"}
-                  </Text>
-                  <Text style={styles.distance}>{product.distance}</Text>
-                </View>
-                <Text style={styles.productName}>
-                  {product.adHeadline || product.name}
-                </Text>
-                {product.adHeadline ? (
-                  <Text style={styles.storeName}>
-                    {product.name} · {product.store}
-                  </Text>
+        products.map((product, index) => (
+          <PediuReveal key={product.id} delay={index * 65}>
+            <PediuPressable
+              style={styles.productCard}
+              onPress={() => onProductPress(product)}
+            >
+              <View style={styles.productImage}>
+                {product.imageUrl ? (
+                  <Image
+                    source={{ uri: product.imageUrl }}
+                    style={styles.productImageAsset}
+                    resizeMode="cover"
+                  />
                 ) : (
-                  <Text style={styles.storeName}>{product.store}</Text>
+                  <Text style={styles.productEmoji}>{product.emoji}</Text>
                 )}
+                <View style={styles.availablePill}>
+                  <View
+                    style={[
+                      styles.dot,
+                      product.adId ? { backgroundColor: COLORS.orange } : null,
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.availableText,
+                      product.adId ? { color: COLORS.orange } : null,
+                    ]}
+                  >
+                    {product.storeOpen === false
+                      ? "FECHADA"
+                      : !product.available
+                        ? "ESGOTADO"
+                        : product.adId
+                          ? "OFERTA PEDIU"
+                          : "DISPONÍVEL"}
+                  </Text>
+                </View>
               </View>
-              <Text style={styles.productPrice}>{product.price}</Text>
-            </View>
-            <View style={styles.productFooter}>
-              <Text style={styles.localText}>
-                {product.adDescription ||
-                  product.description ||
-                  "Publicado pela loja no catálogo do Pediu"}
-              </Text>
-              <View style={styles.arrowCircle}>
-                <MaterialIcons
-                  name="arrow-forward"
-                  size={17}
-                  color={COLORS.white}
-                />
+              <View style={styles.productInfo}>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.ratingRow}>
+                    <Text style={styles.rating}>
+                      {product.storeOpen === false
+                        ? product.nextOpenLabel || "Fechada no momento"
+                        : !product.available
+                          ? "Esgotado"
+                          : product.adOfferLabel || "Disponível agora"}
+                    </Text>
+                    <Text style={styles.distance}>{product.distance}</Text>
+                  </View>
+                  <Text style={styles.productName}>
+                    {product.adHeadline || product.name}
+                  </Text>
+                  {product.adHeadline ? (
+                    <Text style={styles.storeName}>
+                      {product.name} · {product.store}
+                    </Text>
+                  ) : (
+                    <Text style={styles.storeName}>{product.store}</Text>
+                  )}
+                </View>
+                <Text style={styles.productPrice}>{product.price}</Text>
               </View>
-            </View>
-          </Pressable>
+              <View style={styles.productFooter}>
+                <Text style={styles.localText}>
+                  {product.adDescription ||
+                    product.description ||
+                    "Publicado pela loja no catálogo do Pediu"}
+                </Text>
+                <View style={styles.arrowCircle}>
+                  <MaterialIcons
+                    name="arrow-forward"
+                    size={17}
+                    color={COLORS.white}
+                  />
+                </View>
+              </View>
+            </PediuPressable>
+          </PediuReveal>
         ))
       ) : (
         <View style={styles.emptyState}>
@@ -1949,11 +2127,48 @@ function ProductModal({
 }: {
   product: Product;
   onClose: () => void;
-  onAdd: () => void;
+  onAdd: (options: CartOption[], unitPrice: string) => void;
 }) {
+  const insets = useSafeAreaInsets();
+  const detail = trpc.pediu.marketplace.detail.useQuery({ productId: product.id });
+  const [selected, setSelected] = useState<Record<number, number>>({});
+  useEffect(() => {
+    const groups = detail.data?.options;
+    if (!groups?.length) return;
+    setSelected((current) => ({ ...defaultOptionSelection(groups), ...current }));
+  }, [detail.data]);
+  const [choiceNotice, setChoiceNotice] = useState("");
+  const groups = detail.data?.options ?? [];
+  const base = Number(detail.data?.product.price ?? 0);
+  const extra = groups.reduce((sum, group) => {
+    const choice = group.choices.find((item) => item.id === selected[group.id]);
+    return sum + Number(choice?.priceDelta ?? 0);
+  }, 0);
+  const unitPrice = (Number.isFinite(base) ? base + extra : 0).toFixed(2);
+  const confirm = () => {
+    if (!product.available || detail.data?.storeOpen === false) return;
+    if (detail.isLoading || !detail.data) return;
+    const missing = groups.find((group) => groupRequiresChoice(group) && !selected[group.id]);
+    if (missing) {
+      setChoiceNotice(`Escolha ${missing.name} para continuar.`);
+      return;
+    }
+    const options = groups.flatMap((group) => {
+      const choice = group.choices.find((item) => item.id === selected[group.id]);
+      if (!choice) return [];
+      return [{
+        id: choice.id,
+        groupId: group.id,
+        groupName: group.name,
+        name: choice.name,
+        priceDelta: String(choice.priceDelta),
+      }];
+    });
+    onAdd(options, unitPrice);
+  };
   return (
     <View style={styles.modalBackdrop}>
-      <View style={[styles.sheet, styles.sheetTall]}>
+      <View style={[styles.sheet, styles.sheetTall, { paddingBottom: bottomSafeInset(insets.bottom, Platform.OS) }]}>
         <ScrollView
           style={styles.sheetScroll}
           contentContainerStyle={styles.sheetContent}
@@ -1981,7 +2196,11 @@ function ProductModal({
           ) : null}
           <Text style={styles.muted}>
             {product.distance} ·{" "}
-            {product.available ? "disponível agora" : "indisponível"}
+            {detail.data?.storeOpen === false
+              ? (detail.data.nextOpenLabel ?? "Fechada no momento")
+              : product.available
+                ? "disponível agora"
+                : "Esgotado"}
           </Text>
           <Text style={styles.modalDescription}>
             {product.adDescription ||
@@ -1998,29 +2217,67 @@ function ProductModal({
               <Text style={styles.modalOfferText}>{product.adOfferLabel}</Text>
             </View>
           ) : null}
+          {detail.isLoading ? <Text style={styles.muted}>Carregando opções...</Text> : null}
+          {groups.map((group) => (
+            <View key={group.id} style={{ gap: 8 }}>
+              <Text style={styles.cardTitle}>
+                {group.name}
+                {groupRequiresChoice(group) ? " · obrigatório" : " · opcional"}
+              </Text>
+              {group.choices.map((choice) => {
+                const on = selected[group.id] === choice.id;
+                const delta = Number(choice.priceDelta);
+                return (
+                  <Pressable
+                    key={choice.id}
+                    onPress={() => {
+                      setChoiceNotice("");
+                      setSelected((current) => ({ ...current, [group.id]: choice.id }));
+                    }}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: on ? COLORS.coral : COLORS.line,
+                      backgroundColor: on ? COLORS.coralSoft : COLORS.white,
+                      borderRadius: 12,
+                      padding: 10,
+                    }}
+                  >
+                    <Text style={styles.cardTitle}>
+                      {choice.name}
+                      {delta > 0 ? ` · +R$ ${delta.toFixed(2).replace(".", ",")}` : ""}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ))}
+          {choiceNotice ? <Text style={{ color: COLORS.coral, fontWeight: "800" }}>{choiceNotice}</Text> : null}
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Preço</Text>
-            <Text style={styles.totalValue}>{product.price}</Text>
+            <Text style={styles.totalValue}>
+              {detail.data ? `R$ ${unitPrice.replace(".", ",")}` : product.price}
+            </Text>
           </View>
-          <Pressable
-            disabled={!product.available}
-            style={({ pressed }) => [
+          <PediuPressable
+            disabled={!product.available || detail.data?.storeOpen === false || detail.isLoading || !detail.data}
+            style={[
               styles.primaryButton,
-              pressed && styles.pressed,
-              !product.available && styles.disabledButton,
+              (!product.available || detail.data?.storeOpen === false || detail.isLoading) && styles.disabledButton,
             ]}
-            onPress={onAdd}
+            onPress={confirm}
           >
             <Text style={styles.primaryButtonText}>
-              {product.available
-                ? "Adicionar ao pedido"
-                : "Produto indisponível"}
+              {!product.available
+                ? "Esgotado"
+                : detail.data?.storeOpen === false
+                  ? "Loja fechada"
+                  : "Adicionar ao pedido"}
             </Text>
             <MaterialIcons name="add" size={19} color={COLORS.white} />
-          </Pressable>
-          <Pressable style={styles.textButton} onPress={onClose}>
+          </PediuPressable>
+          <PediuPressable style={styles.textButton} onPress={onClose}>
             <Text style={styles.textButtonLabel}>Voltar</Text>
-          </Pressable>
+          </PediuPressable>
         </ScrollView>
       </View>
     </View>
@@ -2038,8 +2295,10 @@ function CustomerOrders({
   orders: {
     id: number;
     storeId: number;
+    storeName?: string | null;
     status: OrderStatus;
     total: string;
+    cancelReason?: string | null;
     deliveryAddress: string | null;
     createdAt: Date | string | null;
   }[];
@@ -2073,14 +2332,14 @@ function CustomerOrders({
         </View>
         <View style={styles.emptyState}>
           <Text style={styles.emptyTitle}>
-            Entre para consultar seus pedidos
+            Entre para ver seus pedidos
           </Text>
           <Text style={styles.emptyText}>
-            Sua conta precisa estar sincronizada para carregar o histórico real.
+            Seus pedidos ficam salvos na sua conta, neste celular e nos outros.
           </Text>
           <Pressable style={styles.primaryButton} onPress={onLogin}>
             <Text style={styles.primaryButtonText}>
-              Entrar com login seguro
+              Entrar ou criar conta
             </Text>
           </Pressable>
         </View>
@@ -2107,9 +2366,9 @@ function CustomerOrders({
           <View style={styles.orderCard} key={order.id}>
             <View style={styles.orderTop}>
               <View>
-                <Text style={styles.eyebrow}>`PEDIDO #${order.id}`</Text>
+                <Text style={styles.eyebrow}>PEDIDO #{order.id}</Text>
                 <Text style={styles.orderStore}>
-                  `Estabelecimento #${order.storeId}`
+                  {order.storeName || "Loja"}
                 </Text>
               </View>
               <View style={styles.statusPill}>
@@ -2121,7 +2380,7 @@ function CustomerOrders({
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Total</Text>
               <Text style={styles.totalValue}>
-                `R$ ${Number(order.total).toFixed(2).replace(".", ",")}`
+                {`R$ ${Number(order.total).toFixed(2).replace(".", ",")}`}
               </Text>
             </View>
             {order.deliveryAddress ? (
@@ -2146,7 +2405,9 @@ function CustomerOrders({
                 </View>
               </>
             ) : (
-              <Text style={styles.muted}>Este pedido foi cancelado.</Text>
+              <Text style={styles.muted}>
+                {order.cancelReason || "Este pedido foi cancelado."}
+              </Text>
             )}
             <Pressable
               style={styles.outlineButtonSmall}
@@ -2184,160 +2445,6 @@ function CustomerOrders({
     </>
   );
 }
-function CustomerProfile({
-  user,
-  isAuthenticated,
-  theme,
-  customization,
-  notifications,
-  onReadNotification,
-  onLogin,
-  onLogout,
-  onSellerMode,
-}: {
-  user: { name: string | null; email: string | null } | null;
-  isAuthenticated: boolean;
-  theme: AppTheme;
-  customization: {
-    mascotStyle: "classic" | "ocean" | "sunset";
-    mascotEnabled: boolean;
-    motionEnabled: boolean;
-  };
-  notifications: {
-    id: number;
-    title: string;
-    body: string;
-    readAt: Date | null;
-  }[];
-  onReadNotification: (id: number) => void;
-  onLogin: () => void;
-  onLogout: () => void;
-  onSellerMode: () => void;
-}) {
-  const profileName = user?.name ?? "Visitante";
-  const profileEmail = user?.email ?? "Entre para sincronizar seus pedidos";
-  const avatarLetter = user?.name?.trim()?.[0]?.toUpperCase() ?? "?";
-  return (
-    <>
-      <View style={styles.simpleHeader}>
-        <View>
-          <Text style={styles.eyebrow}>SUA CONTA</Text>
-          <Text style={styles.pageTitle}>Perfil</Text>
-        </View>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{avatarLetter}</Text>
-        </View>
-      </View>
-      <View style={styles.profileCard}>
-        <View style={styles.avatarLarge}>
-          <Text style={styles.avatarLargeText}>{avatarLetter}</Text>
-        </View>
-        <Text style={styles.profileName}>{profileName}</Text>
-        <Text style={styles.muted}>{profileEmail}</Text>
-        {!isAuthenticated ? (
-          <Text style={styles.muted}>Você está navegando como visitante.</Text>
-        ) : null}
-        {customization.mascotEnabled ? (
-          <View style={{ width: "100%", alignItems: "center", marginTop: 5 }}>
-            <PediuMascot
-              theme={theme}
-              styleId={customization.mascotStyle}
-              reaction="avoid"
-              motionEnabled={customization.motionEnabled}
-              showSpeech
-              speechSide="right"
-            />
-          </View>
-        ) : null}
-      </View>
-      {[
-        "Dados pessoais",
-        "Meus endereços",
-        "Pagamentos",
-        "Notificações",
-        "Segurança",
-      ].map((item) => (
-        <Pressable
-          style={styles.settingsRow}
-          key={item}
-          onPress={() =>
-            item === "Meus endereços"
-              ? router.push("/account/addresses")
-              : item === "Pagamentos"
-                ? router.push("/account/payment-methods")
-                : item === "Notificações"
-                  ? router.push("/account/notifications")
-                  : item === "Segurança"
-                    ? router.push("/account/settings/advanced")
-                    : router.push("/account/profile")
-          }
-        >
-          <View style={styles.settingsIcon}>
-            <MaterialIcons
-              name={
-                item === "Pagamentos"
-                  ? "credit-card"
-                  : item === "Meus endereços"
-                    ? "location-on"
-                    : item === "Notificações"
-                      ? "notifications"
-                      : "person"
-              }
-              size={20}
-              color={COLORS.ink}
-            />
-          </View>
-          <Text style={styles.cardTitle}>{item}</Text>
-          <MaterialIcons name="chevron-right" size={20} color={COLORS.muted} />
-        </Pressable>
-      ))}
-      <View style={notificationStyles.card}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Histórico de notificações</Text>
-          <Text style={styles.link}>
-            {notifications.filter((item) => !item.readAt).length} novas
-          </Text>
-        </View>
-        {notifications.length ? (
-          notifications.slice(0, 4).map((item) => (
-            <Pressable
-              key={item.id}
-              style={[
-                notificationStyles.item,
-                !item.readAt && notificationStyles.unread,
-              ]}
-              onPress={() => onReadNotification(item.id)}
-            >
-              <MaterialIcons
-                name="notifications"
-                size={18}
-                color={COLORS.coral}
-              />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>{item.title}</Text>
-                <Text style={styles.muted}>{item.body}</Text>
-              </View>
-            </Pressable>
-          ))
-        ) : (
-          <Text style={styles.muted}>
-            Suas confirmações de pedido e pagamento aparecerão aqui.
-          </Text>
-        )}
-      </View>
-      <View style={styles.sellerInvite}>
-        <Text style={styles.sellerInviteTitle}>Você também vende?</Text>
-        <Text style={styles.sellerInviteText}>
-          Crie sua vitrine e comece a vender para sua comunidade.
-        </Text>
-        <Pressable style={styles.outlineButton} onPress={onSellerMode}>
-          <Text style={styles.outlineButtonText}>Abrir modo vendedor</Text>
-        </Pressable>
-      </View>
-    </>
-  );
-}
-
 function SellerHome({
   theme,
   store,
@@ -2345,6 +2452,8 @@ function SellerHome({
   orders,
   productCount,
   salesTotal,
+  onSale,
+  onFiado,
   onCatalog,
   onOrders,
   onClients,
@@ -2358,6 +2467,8 @@ function SellerHome({
   orders: { status: string }[];
   productCount: number;
   salesTotal: number;
+  onSale: () => void;
+  onFiado: () => void;
   onCatalog: () => void;
   onOrders: () => void;
   onClients: () => void;
@@ -2379,7 +2490,7 @@ function SellerHome({
           <Text style={styles.sellerTitle}>{store?.name ?? "Sua loja"}</Text>
           <Text style={styles.sellerSubtitle}>
             {firstName
-              ? `Bom dia, ${firstName}. Tudo pronto?`
+              ? `${new Date().getHours() < 12 ? "Bom dia" : new Date().getHours() < 18 ? "Boa tarde" : "Boa noite"}, ${firstName}. Tudo pronto?`
               : "Configure sua loja para começar."}
           </Text>
         </View>
@@ -2405,7 +2516,10 @@ function SellerHome({
           ]}
         >
           <Text
-            style={[styles.statNumber, { color: theme.ink }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.6}
+            style={[styles.statNumber, { color: theme.ink, width: "100%" }]}
           >{`R$ ${salesTotal.toFixed(2).replace(".", ",")}`}</Text>
           <Text style={styles.statLabel}>vendas registradas</Text>
           <MaterialIcons name="trending-up" size={22} color={COLORS.green} />
@@ -2424,12 +2538,12 @@ function SellerHome({
           <Text style={[styles.aiTitle, { color: theme.ink }]}>
             Crie um anúncio que chama atenção
           </Text>
-          <Text style={styles.aiText}>
+          <Text style={[styles.aiText, { color: "#3A2A22" }]}>
             Imagem e copy prontas para você revisar e publicar.
           </Text>
         </View>
         <Pressable
-          style={[styles.smallLightButton, { backgroundColor: theme.primary }]}
+          style={styles.smallLightButton}
           onPress={onAds}
         >
           <Text style={styles.smallLightButtonText}>Criar</Text>
@@ -2439,6 +2553,30 @@ function SellerHome({
         <Text style={styles.sectionTitle}>Atalhos</Text>
       </View>
       <View style={styles.shortcutGrid}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.shortcut,
+            { backgroundColor: theme.card, borderColor: theme.line },
+            pressed && styles.cardPressed,
+          ]}
+          onPress={onSale}
+        >
+          <MaterialIcons name="point-of-sale" size={24} color={theme.primary} />
+          <Text style={styles.shortcutTitle}>Registrar venda</Text>
+          <Text style={styles.shortcutSub}>Dinheiro, PIX ou fiado</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [
+            styles.shortcut,
+            { backgroundColor: theme.card, borderColor: theme.line },
+            pressed && styles.cardPressed,
+          ]}
+          onPress={onFiado}
+        >
+          <MaterialIcons name="receipt-long" size={24} color={COLORS.green} />
+          <Text style={styles.shortcutTitle}>Fiado</Text>
+          <Text style={styles.shortcutSub}>Lançar o que ficou devendo</Text>
+        </Pressable>
         <Pressable
           style={({ pressed }) => [
             styles.shortcut,
@@ -2481,7 +2619,7 @@ function SellerHome({
         >
           <MaterialIcons name="campaign" size={24} color={theme.ink} />
           <Text style={styles.shortcutTitle}>Divulgar</Text>
-          <Text style={styles.shortcutSub}>Compartilhe dados reais</Text>
+          <Text style={styles.shortcutSub}>Envie o cardápio</Text>
         </Pressable>
         <Pressable
           style={({ pressed }) => [
@@ -2493,7 +2631,7 @@ function SellerHome({
         >
           <MaterialIcons name="people" size={24} color={COLORS.green} />
           <Text style={styles.shortcutTitle}>Clientes</Text>
-          <Text style={styles.shortcutSub}>Fiado e relacionamento</Text>
+          <Text style={styles.shortcutSub}>Quem compra fiado</Text>
         </Pressable>
       </View>
       <View
@@ -2517,15 +2655,25 @@ function SellerHome({
 function SellerOrders({
   orders,
   onUpdateStatus,
+  onCallCourier,
 }: {
   orders: {
     id: number;
     customerId: number;
+    customerName?: string | null;
+    paymentLabel?: string | null;
+    lines?: Array<{
+      productId: number;
+      name: string;
+      quantity: number;
+      unitPrice: string;
+      note: string | null;
+    }>;
     total: string;
     status: string;
     deliveryAddress: string | null;
     fulfillmentMode?: "delivery" | "pickup";
-    createdAt: Date | null;
+    createdAt: Date | string | null;
   }[];
   onUpdateStatus: (
     orderId: number,
@@ -2533,26 +2681,18 @@ function SellerOrders({
       | "Aceito"
       | "Preparando"
       | "Pronto"
-      | "A caminho"
       | "Entregue"
       | "Cancelado",
   ) => void;
+  onCallCourier: (orderId: number) => void;
 }) {
   const nextStatus: Record<
     string,
-    | "Aceito"
-    | "Preparando"
-    | "Pronto"
-    | "A caminho"
-    | "Entregue"
-    | "Cancelado"
-    | undefined
+    "Aceito" | "Preparando" | "Pronto" | "Entregue" | "Cancelado" | undefined
   > = {
     Pendente: "Aceito",
     Aceito: "Preparando",
     Preparando: "Pronto",
-    Pronto: "A caminho",
-    "A caminho": "Entregue",
   };
 
   return (
@@ -2576,8 +2716,9 @@ function SellerOrders({
         </View>
       ) : (
         orders.map((order) => {
+          const delivery = order.fulfillmentMode !== "pickup";
           const next =
-            order.status === "Pronto" && order.fulfillmentMode === "pickup"
+            order.status === "Pronto" && !delivery
               ? "Entregue"
               : nextStatus[order.status];
           const actionLabel =
@@ -2588,34 +2729,45 @@ function SellerOrders({
                 : order.status === "Preparando"
                   ? "Marcar como pronto"
                   : order.status === "Pronto"
-                    ? order.fulfillmentMode === "pickup"
-                      ? "Liberar retirada"
-                      : "Enviar para entrega"
-                    : order.status === "A caminho"
-                      ? "Finalizar pedido"
-                      : order.status;
+                    ? "Liberar retirada"
+                    : order.status;
 
           return (
             <View style={styles.sellerOrderCard} key={order.id}>
-              <View style={styles.orderTop}>
+              <Pressable style={styles.orderTop} onPress={() => router.push("/seller/orders")}>
                 <View>
                   <Text style={styles.eyebrow}>
                     {order.status.toUpperCase()} · #{order.id}
                   </Text>
                   <Text style={styles.orderStore}>
-                    Cliente #{order.customerId}
+                    {order.customerName?.trim() || "Cliente"}
                   </Text>
                 </View>
                 <Text style={styles.price}>
                   R$ {Number(order.total).toFixed(2).replace(".", ",")}
                 </Text>
-              </View>
+              </Pressable>
               <Text style={styles.muted}>
                 {order.fulfillmentMode === "pickup"
                   ? "Retirada na loja"
                   : order.deliveryAddress ||
                     "Endereço de entrega não informado"}
               </Text>
+              {(order.lines ?? []).map((line) => (
+                <Text key={`${order.id}-${line.productId}-${line.note ?? ""}`} style={styles.muted}>
+                  {line.quantity}× {line.name}
+                  {line.note ? ` · ${line.note}` : ""} · R${" "}
+                  {Number(line.unitPrice).toFixed(2).replace(".", ",")}
+                </Text>
+              ))}
+              <Text style={styles.muted}>
+                {order.paymentLabel || "Pagamento a confirmar"}
+              </Text>
+              {order.status === "Pendente" && order.createdAt ? (
+                <Text style={{ color: COLORS.coral, fontWeight: "900" }}>
+                  Aceite em até 5 min
+                </Text>
+              ) : null}
 
               {next ? (
                 <View style={styles.orderActions}>
@@ -2637,6 +2789,22 @@ function SellerOrders({
                     </Pressable>
                   )}
                 </View>
+              ) : order.status === "Pronto" && delivery ? (
+                <View style={styles.orderActions}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.primaryButtonSmall,
+                      pressed && styles.pressed,
+                    ]}
+                    onPress={() => onCallCourier(order.id)}
+                  >
+                    <Text style={styles.primaryButtonText}>Chamar motoboy</Text>
+                  </Pressable>
+                </View>
+              ) : order.status === "A caminho" ? (
+                <Text style={styles.muted}>
+                  O motoboy aceitou ou está na rota. A entrega é concluída por ele.
+                </Text>
               ) : (
                 <Text style={styles.muted}>Pedido encerrado.</Text>
               )}
@@ -2661,6 +2829,26 @@ function SellerCatalog({
   onToggle: (id: number, available: boolean) => void;
   onShare: () => void;
 }) {
+  const utils = trpc.useUtils();
+  const archive = trpc.pediu.products.archive.useMutation({
+    onSuccess: () => void utils.pediu.products.mine.invalidate(),
+    onError: (error) =>
+      Alert.alert("Não foi possível arquivar", friendlyUserMessage(error.message)),
+  });
+  const confirmArchive = (product: Product) => {
+    Alert.alert(
+      "Arquivar produto?",
+      `${product.name} sai do cardápio e dos anúncios. Pedidos antigos continuam com o nome.`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Arquivar",
+          style: "destructive",
+          onPress: () => archive.mutate({ productId: product.id }),
+        },
+      ],
+    );
+  };
   return (
     <>
       <View style={styles.simpleHeader}>
@@ -2696,6 +2884,14 @@ function SellerCatalog({
                   {product.description}
                 </Text>
               ) : null}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Arquivar ${product.name}`}
+                onPress={() => confirmArchive(product)}
+                style={{ alignSelf: "flex-start", paddingVertical: 6 }}
+              >
+                <Text style={{ color: "#E20D2A", fontSize: 12, fontWeight: "800" }}>Arquivar</Text>
+              </Pressable>
             </View>
             <Pressable
               accessibilityLabel={`${product.available ? "Desativar" : "Ativar"} ${product.name}`}
@@ -2742,7 +2938,7 @@ function SellerSettings({
   onSave,
   saving,
   onAssistant,
-  onCustomerMode,
+  onRefresh,
 }: {
   store?: {
     id: number;
@@ -2757,6 +2953,13 @@ function SellerSettings({
     latitude: string | null;
     longitude: string | null;
     isOpen: number;
+    openingHours?: string | null;
+    paused?: boolean;
+    pauseMessage?: string | null;
+    cardCreditEnabled?: boolean;
+    cardDebitEnabled?: boolean;
+    feeMode?: "fixed" | "distance";
+    feePerKm?: string;
   };
   salesCount: number;
   onSave: (input: {
@@ -2771,16 +2974,19 @@ function SellerSettings({
     latitude?: number | null;
     longitude?: number | null;
     isOpen?: boolean;
+    openingHours?: string;
   }) => void;
   saving: boolean;
   onAssistant: () => void;
-  onCustomerMode: () => void;
+  onRefresh?: () => void;
 }) {
   const [name, setName] = useState(store?.name ?? "");
-  const [phone, setPhone] = useState(store?.phone ?? "");
+  const [phone, setPhone] = useState(maskBrazilPhone(store?.phone ?? ""));
   const [address, setAddress] = useState(store?.address ?? "");
   const [pixKey, setPixKey] = useState(store?.pixKey ?? "");
-  const [deliveryFee, setDeliveryFee] = useState(store?.deliveryFee ?? "0.00");
+  const [deliveryFee, setDeliveryFee] = useState(
+    decimalToBrlInput(store?.deliveryFee ?? "0"),
+  );
   const [deliveryEnabled, setDeliveryEnabled] = useState(
     Boolean(store?.deliveryEnabled ?? 1),
   );
@@ -2788,24 +2994,46 @@ function SellerSettings({
     Boolean(store?.pickupEnabled),
   );
   const [deliveryRadiusKm, setDeliveryRadiusKm] = useState(
-    store?.deliveryRadiusKm ?? "10.00",
+    decimalToKmInput(store?.deliveryRadiusKm ?? "10"),
   );
-  const [latitude, setLatitude] = useState(store?.latitude ?? "");
-  const [longitude, setLongitude] = useState(store?.longitude ?? "");
+  const [pin, setPin] = useState<{ latitude: number; longitude: number } | null>(
+    store?.latitude != null && store?.longitude != null
+      ? { latitude: Number(store.latitude), longitude: Number(store.longitude) }
+      : null,
+  );
+  const [pinKey, setPinKey] = useState(0);
+  const [showMap, setShowMap] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [hoursJson, setHoursJson] = useState<string | null>(null);
   const [validationMessage, setValidationMessage] = useState("");
   const [isOpen, setIsOpen] = useState(Boolean(store?.isOpen));
+  const [feeMode, setFeeMode] = useState<"fixed" | "distance">(store?.feeMode === "distance" ? "distance" : "fixed");
+  const [feePerKm, setFeePerKm] = useState(decimalToBrlInput(store?.feePerKm ?? "0"));
+  const [cardCredit, setCardCredit] = useState(Boolean(store?.cardCreditEnabled));
+  const [cardDebit, setCardDebit] = useState(Boolean(store?.cardDebitEnabled));
+  const { logout } = useAuth();
+  const pauseStore = trpc.pediu.stores.pause.useMutation({ onSuccess: () => onRefresh?.() });
+  const resumeStore = trpc.pediu.stores.resume.useMutation({ onSuccess: () => onRefresh?.() });
+  const deliverySettings = trpc.pediu.stores.deliverySettings.useMutation({ onSuccess: () => onRefresh?.() });
   useEffect(() => {
     setName(store?.name ?? "");
-    setPhone(store?.phone ?? "");
+    setPhone(maskBrazilPhone(store?.phone ?? ""));
     setAddress(store?.address ?? "");
     setPixKey(store?.pixKey ?? "");
-    setDeliveryFee(store?.deliveryFee ?? "0.00");
+    setDeliveryFee(decimalToBrlInput(store?.deliveryFee ?? "0"));
     setDeliveryEnabled(Boolean(store?.deliveryEnabled ?? 1));
     setPickupEnabled(Boolean(store?.pickupEnabled));
-    setDeliveryRadiusKm(store?.deliveryRadiusKm ?? "10.00");
-    setLatitude(store?.latitude ?? "");
-    setLongitude(store?.longitude ?? "");
+    setDeliveryRadiusKm(decimalToKmInput(store?.deliveryRadiusKm ?? "10"));
+    setPin(
+      store?.latitude != null && store?.longitude != null
+        ? { latitude: Number(store.latitude), longitude: Number(store.longitude) }
+        : null,
+    );
     setIsOpen(Boolean(store?.isOpen));
+    setFeeMode(store?.feeMode === "distance" ? "distance" : "fixed");
+    setFeePerKm(decimalToBrlInput(store?.feePerKm ?? "0"));
+    setCardCredit(Boolean(store?.cardCreditEnabled));
+    setCardDebit(Boolean(store?.cardDebitEnabled));
   }, [
     store?.id,
     store?.name,
@@ -2819,25 +3047,43 @@ function SellerSettings({
     store?.latitude,
     store?.longitude,
     store?.isOpen,
+    store?.feeMode,
+    store?.feePerKm,
+    store?.cardCreditEnabled,
+    store?.cardDebitEnabled,
   ]);
+  const locateStore = async () => {
+    setValidationMessage("");
+    setLocating(true);
+    try {
+      const point = await geocodeTypedAddress(`${address}, Brasil`);
+      if (!point) {
+        setValidationMessage("Não achamos esse endereço. Confira rua, número e cidade.");
+        return;
+      }
+      setPin(point);
+      setPinKey((value) => value + 1);
+    } catch {
+      setValidationMessage("Não foi possível consultar o mapa agora.");
+    } finally {
+      setLocating(false);
+    }
+  };
   const save = () => {
-    const normalizedRadius = deliveryRadiusKm.replace(",", ".").trim();
-    const parsedLatitude = latitude.trim()
-      ? Number(latitude.replace(",", "."))
-      : null;
-    const parsedLongitude = longitude.trim()
-      ? Number(longitude.replace(",", "."))
-      : null;
-    if (
-      name.trim().length < 2 ||
-      !/^\d+(\.\d{1,2})?$/.test(deliveryFee.replace(",", ".").trim())
-    )
+    const normalizedFee = brlInputToDecimal(deliveryFee);
+    const normalizedRadius = kmInputToDecimal(deliveryRadiusKm);
+    const parsedLatitude = pin?.latitude ?? null;
+    const parsedLongitude = pin?.longitude ?? null;
+    if (name.trim().length < 2) {
+      setValidationMessage("Informe o nome da loja.");
       return;
-    if (
-      !/^\d+(\.\d{1,2})?$/.test(normalizedRadius) ||
-      Number(normalizedRadius) <= 0
-    ) {
-      setValidationMessage("Informe um raio de entrega positivo.");
+    }
+    if (!normalizedFee) {
+      setValidationMessage("Informe a taxa de entrega. Ex.: 5,00");
+      return;
+    }
+    if (!normalizedRadius) {
+      setValidationMessage("Informe o raio de entrega em quilômetros. Ex.: 10");
       return;
     }
     if (
@@ -2852,24 +3098,34 @@ function SellerSettings({
         parsedLongitude > 180)
     ) {
       setValidationMessage(
-        "Delivery ativo exige latitude e longitude válidas da loja.",
+        "Marque o ponto da loja no mapa antes de ativar o delivery.",
       );
       return;
     }
     setValidationMessage("");
     onSave({
       name: name.trim(),
-      phone: phone.trim() || undefined,
+      phone: maskBrazilPhone(phone) || undefined,
       address: address.trim() || undefined,
       pixKey: pixKey.trim() || undefined,
-      deliveryFee: deliveryFee.replace(",", ".").trim(),
+      deliveryFee: normalizedFee,
       deliveryEnabled,
       pickupEnabled,
       deliveryRadiusKm: normalizedRadius,
       latitude: parsedLatitude,
       longitude: parsedLongitude,
       isOpen,
+      ...(hoursJson ? { openingHours: hoursJson } : {}),
     });
+    const perKm = brlInputToDecimal(feePerKm);
+    if (perKm) {
+      deliverySettings.mutate({
+        cardCreditEnabled: cardCredit,
+        cardDebitEnabled: cardDebit,
+        feeMode,
+        feePerKm: perKm,
+      });
+    }
   };
   return (
     <>
@@ -2878,47 +3134,81 @@ function SellerSettings({
           <Text style={styles.eyebrow}>CONFIGURAÇÕES</Text>
           <Text style={styles.pageTitle}>Sua loja</Text>
         </View>
-        <Text style={styles.link}>{salesCount} vendas</Text>
+        <Text style={styles.link}>
+          {salesCount} {salesCount === 1 ? "venda" : "vendas"}
+        </Text>
       </View>
       <View style={styles.fieldCard}>
         <Text style={styles.sectionTitle}>Dados publicados</Text>
+        <Text style={styles.fieldLabel}>NOME DA LOJA</Text>
+        <Text style={styles.fieldHelp}>Como a loja aparece para quem pede.</Text>
         <TextInput
           value={name}
           onChangeText={setName}
-          placeholder="Nome da loja"
+          placeholder="Ex.: Delícia de Avaí"
           placeholderTextColor={COLORS.muted}
           style={styles.input}
+          accessibilityLabel="Nome da loja"
         />
+        <Text style={styles.fieldLabel}>WHATSAPP</Text>
+        <Text style={styles.fieldHelp}>Telefone com DDD para o cliente falar com a loja.</Text>
         <TextInput
           value={phone}
-          onChangeText={setPhone}
-          placeholder="WhatsApp / telefone"
+          onChangeText={(value) => setPhone(maskBrazilPhone(value))}
+          placeholder="(14) 98110-4964"
           placeholderTextColor={COLORS.muted}
           style={styles.input}
           keyboardType="phone-pad"
+          accessibilityLabel="WhatsApp da loja"
         />
+        <Text style={styles.fieldLabel}>ENDEREÇO DA LOJA</Text>
+        <Text style={styles.fieldHelp}>Rua, número, bairro e cidade. Depois busque no mapa.</Text>
         <TextInput
           value={address}
           onChangeText={setAddress}
-          placeholder="Endereço da loja"
+          placeholder="Rua, número, bairro e cidade"
           placeholderTextColor={COLORS.muted}
-          style={styles.input}
+          style={[styles.input, { minHeight: 72, height: undefined, textAlignVertical: "top", paddingTop: 12 }]}
+          multiline
+          accessibilityLabel="Endereço da loja"
         />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Buscar este endereço no mapa"
+          onPress={() => void locateStore()}
+          style={styles.mapButton}
+        >
+          <MaterialIcons name="map" size={18} color={COLORS.coral} />
+          <Text style={styles.mapButtonText}>
+            {locating ? "Procurando no mapa..." : "Buscar este endereço no mapa"}
+          </Text>
+        </Pressable>
+        <Text style={styles.fieldLabel}>CHAVE PIX DA LOJA</Text>
+        <Text style={styles.fieldHelp}>
+          CPF, celular, e-mail ou chave aleatória. O cliente usa essa chave para pagar você.
+        </Text>
         <TextInput
           value={pixKey}
           onChangeText={setPixKey}
-          placeholder="Chave PIX"
+          placeholder="CPF, celular, e-mail ou chave aleatória"
           placeholderTextColor={COLORS.muted}
           style={styles.input}
+          accessibilityLabel="Chave PIX da loja"
         />
-        <TextInput
-          value={deliveryFee}
-          onChangeText={setDeliveryFee}
-          placeholder="Taxa de entrega"
-          placeholderTextColor={COLORS.muted}
-          style={styles.input}
-          keyboardType="decimal-pad"
-        />
+        <Text style={styles.fieldLabel}>TAXA DE ENTREGA</Text>
+        <Text style={styles.fieldHelp}>Valor cobrado em cada entrega. Ex.: R$ 5,00</Text>
+        <View style={styles.moneyRow}>
+          <Text style={styles.moneyPrefix}>R$</Text>
+          <TextInput
+            value={deliveryFee}
+            onChangeText={(value) => setDeliveryFee(maskBrlTyping(value))}
+            placeholder="0,00"
+            placeholderTextColor={COLORS.muted}
+            style={[styles.input, styles.moneyInput]}
+            keyboardType="decimal-pad"
+            accessibilityLabel="Taxa de entrega em reais"
+          />
+        </View>
         <View style={{ gap: 8, marginTop: 6 }}>
           <View style={styles.settingsRow}>
             <View style={styles.settingsIcon}>
@@ -2957,36 +3247,54 @@ function SellerSettings({
             />
           </View>
         </View>
-        <TextInput
-          value={deliveryRadiusKm}
-          onChangeText={setDeliveryRadiusKm}
-          placeholder="Raio de entrega em km"
-          placeholderTextColor={COLORS.muted}
-          style={styles.input}
-          keyboardType="decimal-pad"
-        />
-        <View style={{ flexDirection: "row", gap: 8 }}>
+        <Text style={styles.fieldLabel}>RAIO DO DELIVERY</Text>
+        <Text style={styles.fieldHelp}>Distância máxima, em quilômetros. Ex.: 10</Text>
+        <View style={styles.moneyRow}>
           <TextInput
-            value={latitude}
-            onChangeText={setLatitude}
-            placeholder="Latitude da loja"
+            value={deliveryRadiusKm}
+            onChangeText={(value) =>
+              setDeliveryRadiusKm(value.replace(/[^\d,]/g, "").replace(/(,.*),/g, "$1"))
+            }
+            placeholder="10"
             placeholderTextColor={COLORS.muted}
-            style={[styles.input, { flex: 1 }]}
-            keyboardType="numbers-and-punctuation"
+            style={[styles.input, styles.moneyInput]}
+            keyboardType="decimal-pad"
+            accessibilityLabel="Raio de entrega em quilômetros"
           />
-          <TextInput
-            value={longitude}
-            onChangeText={setLongitude}
-            placeholder="Longitude da loja"
-            placeholderTextColor={COLORS.muted}
-            style={[styles.input, { flex: 1 }]}
-            keyboardType="numbers-and-punctuation"
-          />
+          <Text style={styles.moneyPrefix}>km</Text>
         </View>
+        {pin && showMap ? (
+          <PinMap
+            latitude={pin.latitude}
+            longitude={pin.longitude}
+            anchorKey={`${store?.id ?? 0}-${pinKey}`}
+            label="Loja"
+            onChange={setPin}
+          />
+        ) : pin ? (
+          <View style={{ gap: 6 }}>
+            <Text style={styles.muted}>
+              Ponto da loja marcado. O mapa abre só quando você pedir, para a tela não travar.
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Ver no mapa"
+              onPress={() => setShowMap(true)}
+              style={styles.mapButton}
+            >
+              <MaterialIcons name="map" size={18} color={COLORS.coral} />
+              <Text style={styles.mapButtonText}>Ver no mapa</Text>
+            </Pressable>
+          </View>
+        ) : null}
         <Text style={styles.muted}>
-          Use as coordenadas reais do estabelecimento. O Pediu não promete
-          cobertura quando elas não estiverem configuradas.
+          Arraste o ponto até a porta da loja. Não precisa digitar latitude nem longitude.
         </Text>
+        <OpeningHoursEditor
+          key={store?.id ?? 0}
+          initial={store?.openingHours}
+          onChange={setHoursJson}
+        />
         {validationMessage ? (
           <Text
             style={{ color: COLORS.coral, fontSize: 12, fontWeight: "800" }}
@@ -3010,13 +3318,76 @@ function SellerSettings({
               {isOpen ? "Loja aberta" : "Loja fechada"}
             </Text>
             <Text style={styles.muted}>
-              Controla a disponibilidade no marketplace
+              Define se a loja aparece para quem pede
             </Text>
           </View>
           <View style={[styles.stockSwitch, isOpen && styles.stockSwitchOn]}>
             <View style={[styles.stockKnob, isOpen && styles.stockKnobOn]} />
           </View>
         </Pressable>
+        <Text style={styles.fieldLabel}>COMO COBRAR A ENTREGA</Text>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Pressable onPress={() => setFeeMode("fixed")} style={[styles.mapButton, feeMode === "fixed" && { borderColor: COLORS.coral, backgroundColor: COLORS.coralSoft }]}>
+            <Text style={{ color: feeMode === "fixed" ? COLORS.coral : COLORS.muted, fontWeight: "900" }}>Taxa fixa</Text>
+          </Pressable>
+          <Pressable onPress={() => setFeeMode("distance")} style={[styles.mapButton, feeMode === "distance" && { borderColor: COLORS.coral, backgroundColor: COLORS.coralSoft }]}>
+            <Text style={{ color: feeMode === "distance" ? COLORS.coral : COLORS.muted, fontWeight: "900" }}>Por distância</Text>
+          </Pressable>
+        </View>
+        {feeMode === "distance" ? (
+          <>
+            <Text style={styles.fieldLabel}>VALOR POR KM</Text>
+            <Text style={styles.fieldHelp}>Somado à taxa fixa, conforme a distância.</Text>
+            <View style={styles.moneyRow}>
+              <Text style={styles.moneyPrefix}>R$</Text>
+              <TextInput
+                value={feePerKm}
+                onChangeText={(value) => setFeePerKm(maskBrlTyping(value))}
+                placeholder="2,00"
+                placeholderTextColor={COLORS.muted}
+                style={[styles.input, styles.moneyInput]}
+                keyboardType="decimal-pad"
+                accessibilityLabel="Valor por quilômetro"
+              />
+            </View>
+          </>
+        ) : null}
+        <Pressable style={styles.settingsRow} onPress={() => setCardCredit((value) => !value)}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>{cardCredit ? "Crédito na entrega ligado" : "Crédito na entrega"}</Text>
+            <Text style={styles.muted}>A maquininha cobra no crédito quando o pedido chega.</Text>
+          </View>
+        </Pressable>
+        <Pressable style={styles.settingsRow} onPress={() => setCardDebit((value) => !value)}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>{cardDebit ? "Débito na entrega ligado" : "Débito na entrega"}</Text>
+            <Text style={styles.muted}>A maquininha cobra no débito quando o pedido chega.</Text>
+          </View>
+        </Pressable>
+        <Text style={styles.sectionTitle}>Pausar por um tempo</Text>
+        <Text style={styles.muted}>
+          {store?.paused
+            ? (store.pauseMessage ?? "Fechada no momento")
+            : "A loja continua no ar, mas ninguém consegue pedir até você reabrir."}
+        </Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          {store?.paused ? (
+            <Pressable onPress={() => resumeStore.mutate()} style={styles.mapButton}>
+              <Text style={styles.mapButtonText}>{resumeStore.isPending ? "Reabrindo..." : "Reabrir agora"}</Text>
+            </Pressable>
+          ) : (
+            <>
+              {([15, 30, 60] as const).map((minutes) => (
+                <Pressable key={minutes} onPress={() => pauseStore.mutate({ minutes })} style={styles.mapButton}>
+                  <Text style={{ color: COLORS.ink, fontWeight: "900" }}>{minutes} min</Text>
+                </Pressable>
+              ))}
+              <Pressable onPress={() => pauseStore.mutate({ manual: true })} style={styles.mapButton}>
+                <Text style={{ color: COLORS.ink, fontWeight: "900" }}>Até eu reabrir</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
         <Pressable
           style={[styles.primaryButton, saving && styles.disabledButton]}
           disabled={saving}
@@ -3031,7 +3402,7 @@ function SellerSettings({
       <View style={styles.fieldCard}>
         <ThemePicker
           title="Personalize o painel da loja"
-          description="A mesma identidade visual do Pediu fica disponível para cliente e lojista."
+          description="Escolha as cores do aplicativo."
         />
       </View>
       <Pressable style={styles.settingsRow} onPress={onAssistant}>
@@ -3041,90 +3412,85 @@ function SellerSettings({
         <View style={{ flex: 1 }}>
           <Text style={styles.cardTitle}>Assistente do Pediu</Text>
           <Text style={styles.muted}>
-            Vendas, fiado, catálogo e divulgação por voz
+            Pedidos, loja e vendas por aqui
           </Text>
         </View>
         <MaterialIcons name="chevron-right" size={20} color={COLORS.muted} />
       </Pressable>
-      <Pressable style={styles.outlineButton} onPress={onCustomerMode}>
-        <Text style={styles.outlineButtonText}>Voltar para modo cliente</Text>
+      <Pressable style={styles.outlineButton} onPress={() => router.push("/account/profile")}>
+        <Text style={styles.outlineButtonText}>Minha conta</Text>
+      </Pressable>
+      <Pressable
+        style={styles.outlineButton}
+        onPress={() =>
+          Alert.alert("Sair da conta?", "Você volta para a tela de entrada.", [
+            { text: "Continuar conectado", style: "cancel" },
+            { text: "Sair", style: "destructive", onPress: () => void logout() },
+          ])
+        }
+      >
+        <Text style={styles.outlineButtonText}>Sair da conta</Text>
       </Pressable>
     </>
   );
 }
 
-function PulsingAssistantButton({
+function AssistantNavItem({
+  motionEnabled,
   onPress,
   theme,
-  compact = false,
 }: {
+  motionEnabled: boolean;
   onPress: () => void;
   theme: AppTheme;
-  compact?: boolean;
 }) {
-  const pulse = useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1.09,
-          duration: 850,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 850,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [pulse]);
   return (
-    <Animated.View style={{ transform: [{ scale: pulse }] }}>
-      <Pressable
+    <PediuPulse enabled={motionEnabled} style={styles.assistantNavPulse}>
+      <PediuPressable
+        accessibilityRole="button"
         accessibilityLabel="Abrir assistente do Pediu"
         style={[
-          compact ? voiceStyles.launcherIcon : styles.fabNav,
-          { backgroundColor: theme.primary, shadowColor: theme.primary },
+          styles.navItem,
+          styles.assistantNavItem,
+          { backgroundColor: theme.primary },
         ]}
         onPress={onPress}
       >
-        <MaterialIcons
-          name="auto-awesome"
-          size={compact ? 18 : 22}
-          color={COLORS.white}
-        />
-      </Pressable>
-    </Animated.View>
+        <MaterialIcons name="auto-awesome" size={20} color={COLORS.white} />
+        <Text style={[styles.navLabel, styles.navLabelActive]}>Assistente</Text>
+      </PediuPressable>
+    </PediuPulse>
   );
 }
 
 function CustomerNav({
   active,
   onChange,
-  onAssistant,
+  onSearch,
+  bottomInset,
   theme,
 }: {
   active: string;
   onChange: (value: "discover" | "orders" | "profile") => void;
-  onAssistant: () => void;
+  onSearch: () => void;
+  bottomInset: number;
   theme: AppTheme;
 }) {
   return (
     <View
       style={[
         styles.bottomNav,
-        { borderColor: theme.line, backgroundColor: theme.card },
+        {
+          borderColor: theme.ink,
+          backgroundColor: theme.ink,
+          bottom: bottomSafeInset(bottomInset, Platform.OS),
+        },
       ]}
     >
-      <Pressable
+      <PediuPressable
         style={[
           styles.navItem,
-          active === "discover" && { backgroundColor: theme.ink },
+          active === "discover" && { backgroundColor: theme.primary },
         ]}
         onPress={() => onChange("discover")}
       >
@@ -3139,13 +3505,24 @@ function CustomerNav({
             active === "discover" && styles.navLabelActive,
           ]}
         >
-          {"Descobrir"}
+          Início
         </Text>
-      </Pressable>
-      <Pressable
+      </PediuPressable>
+      <PediuPressable
+        accessibilityRole="button"
+        accessibilityLabel="Abrir busca"
+        style={styles.navItem}
+        onPress={onSearch}
+      >
+        <MaterialIcons name="search" size={21} color={theme.muted} />
+        <Text style={styles.navLabel}>Busca</Text>
+      </PediuPressable>
+      <PediuPressable
+        accessibilityRole="button"
+        accessibilityLabel="Abrir pedidos"
         style={[
           styles.navItem,
-          active === "orders" && { backgroundColor: theme.ink },
+          active === "orders" && { backgroundColor: theme.primary },
         ]}
         onPress={() => onChange("orders")}
       >
@@ -3162,12 +3539,13 @@ function CustomerNav({
         >
           Pedidos
         </Text>
-      </Pressable>
-      <PulsingAssistantButton onPress={onAssistant} theme={theme} />
-      <Pressable
+      </PediuPressable>
+      <PediuPressable
+        accessibilityRole="button"
+        accessibilityLabel="Abrir perfil"
         style={[
           styles.navItem,
-          active === "profile" && { backgroundColor: theme.ink },
+          active === "profile" && { backgroundColor: theme.primary },
         ]}
         onPress={() => onChange("profile")}
       >
@@ -3184,7 +3562,7 @@ function CustomerNav({
         >
           Perfil
         </Text>
-      </Pressable>
+      </PediuPressable>
     </View>
   );
 }
@@ -3192,58 +3570,80 @@ function CustomerNav({
 function SellerNav({
   active,
   onChange,
+  bottomInset,
   theme,
 }: {
   active: string;
   onChange: (
     value: "home" | "orders" | "catalog" | "clients" | "settings",
   ) => void;
+  bottomInset: number;
   theme: AppTheme;
 }) {
   return (
     <View
       style={[
         styles.bottomNav,
-        { borderColor: theme.line, backgroundColor: theme.card },
+        {
+          borderColor: theme.ink,
+          backgroundColor: theme.ink,
+          bottom: bottomSafeInset(bottomInset, Platform.OS),
+        },
       ]}
     >
       {[
-        ["home", "home", "Início"],
+        ["home", "storefront", "Início"],
         ["orders", "receipt-long", "Pedidos"],
-        ["catalog", "inventory-2", "Catálogo"],
-        ["clients", "people", "Clientes"],
+        ["catalog", "restaurant-menu", "Cardápio"],
+        ["ads", "campaign", "Anúncios"],
         ["settings", "tune", "Ajustes"],
-      ].map(([key, icon, label]) => (
-        <Pressable
-          key={key}
-          style={[
-            styles.navItem,
-            active === key && { backgroundColor: theme.ink },
-          ]}
-          onPress={() =>
-            onChange(
-              key as "home" | "orders" | "catalog" | "clients" | "settings",
-            )
-          }
-        >
-          <MaterialIcons
-            name={icon as any}
-            size={22}
-            color={active === key ? COLORS.white : theme.muted}
-          />
-          <Text
-            style={[styles.navLabel, active === key && styles.navLabelActive]}
+      ].map(([key, icon, label]) => {
+        const item = (
+          <PediuPressable
+            key={key}
+            accessibilityRole="button"
+            accessibilityLabel={`Abrir ${label}`}
+            style={[
+              styles.navItem,
+              active === key && { backgroundColor: theme.primary },
+            ]}
+            onPress={() => {
+              if (key === "ads") {
+                router.push("/seller/ads");
+                return;
+              }
+              onChange(
+                key as "home" | "orders" | "catalog" | "clients" | "settings",
+              );
+            }}
           >
-            {label}
-          </Text>
-        </Pressable>
-      ))}
+            <MaterialIcons
+              name={icon as any}
+              size={22}
+              color={active === key ? COLORS.white : theme.muted}
+            />
+            <Text
+              style={[styles.navLabel, active === key && styles.navLabelActive]}
+            >
+              {label}
+            </Text>
+          </PediuPressable>
+        );
+        return item;
+      })}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  appShell: { flex: 1, backgroundColor: COLORS.canvas, overflow: "hidden" },
+  appShell: {
+    flex: 1,
+    width: "100%",
+    maxWidth: 430,
+    alignSelf: "center",
+    backgroundColor: COLORS.canvas,
+    overflow: "hidden",
+  },
   decorLayer: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 0,
@@ -3265,11 +3665,73 @@ const styles = StyleSheet.create({
     left: -90,
   },
   scrollContent: {
-    padding: 20,
-    paddingBottom: 172,
-    gap: 17,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 176,
+    gap: 16,
     zIndex: 1,
     width: "100%",
+    maxWidth: 430,
+    alignSelf: "center",
+  },
+  p3LocationRow: {
+    alignItems: "flex-start",
+    gap: 2,
+    maxWidth: "100%",
+    minHeight: 44,
+    justifyContent: "center",
+  },
+  p3LocationTitle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    maxWidth: "100%",
+  },
+  p3LocationText: {
+    fontFamily: "Nunito",
+    fontSize: 15,
+    fontWeight: "800",
+    flexShrink: 1,
+  },
+  p3LocationAddress: {
+    fontFamily: "Nunito",
+    fontSize: 13,
+    lineHeight: 18,
+    marginLeft: 25,
+  },
+  p3MascotSlot: {
+    flexShrink: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  p3GreetingRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  p3Greeting: {
+    fontFamily: "Fredoka",
+    fontSize: 34,
+    fontWeight: "800",
+    letterSpacing: -0.8,
+  },
+  p3GreetingSub: { fontFamily: "Nunito", fontSize: 16, marginTop: 2 },
+  p3Bell: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    shadowColor: COLORS.ink,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 2,
+  },
+  p3BellDot: {
+    position: "absolute",
+    right: 10,
+    top: 9,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   topBar: {
     flexDirection: "row",
@@ -3283,6 +3745,7 @@ const styles = StyleSheet.create({
     fontSize: 25,
     fontWeight: "800",
     letterSpacing: -0.7,
+    fontFamily: "Fredoka",
   },
   brandMark: {
     width: 48,
@@ -3442,22 +3905,46 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.white,
-    borderRadius: 16,
+    borderRadius: 30,
     paddingHorizontal: 14,
-    height: 52,
+    height: 58,
     borderWidth: 1,
     borderColor: COLORS.line,
   },
-  searchInput: { flex: 1, color: COLORS.text, fontSize: 13, marginLeft: 8 },
+  searchInput: {
+    flex: 1,
+    color: COLORS.text,
+    fontSize: 15,
+    marginLeft: 8,
+    fontFamily: "Nunito",
+  },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginTop: 4,
   },
-  sectionTitle: { color: COLORS.ink, fontSize: 17, fontWeight: "800" },
-  link: { color: COLORS.coral, fontSize: 12, fontWeight: "800" },
+  sectionTitle: {
+    color: COLORS.ink,
+    fontSize: 20,
+    fontWeight: "800",
+    fontFamily: "Fredoka",
+  },
+  link: {
+    color: COLORS.coral,
+    fontSize: 12,
+    fontWeight: "800",
+    fontFamily: "Nunito",
+  },
   categoryRow: { gap: 10, paddingVertical: 2 },
+  categoryTile: { width: 76, alignItems: "center", gap: 7 },
+  categoryImage: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    borderWidth: 3,
+    borderColor: COLORS.coral,
+  },
   categoryChip: {
     flexDirection: "row",
     alignItems: "center",
@@ -3471,7 +3958,13 @@ const styles = StyleSheet.create({
   },
   categoryChipActive: { backgroundColor: COLORS.ink, borderColor: COLORS.ink },
   categoryIcon: { fontSize: 16 },
-  categoryLabel: { color: COLORS.muted, fontSize: 12, fontWeight: "700" },
+  categoryLabel: {
+    color: COLORS.muted,
+    fontSize: 12,
+    fontWeight: "700",
+    fontFamily: "Nunito",
+    textAlign: "center",
+  },
   categoryLabelActive: { color: COLORS.white },
   productCard: {
     backgroundColor: "rgba(255,255,255,0.94)",
@@ -3525,9 +4018,20 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     marginTop: 5,
     letterSpacing: -0.2,
+    fontFamily: "Fredoka",
   },
-  storeName: { color: COLORS.muted, fontSize: 12, marginTop: 2 },
-  productPrice: { color: COLORS.ink, fontSize: 17, fontWeight: "900" },
+  storeName: {
+    color: COLORS.muted,
+    fontSize: 12,
+    marginTop: 2,
+    fontFamily: "Nunito",
+  },
+  productPrice: {
+    color: COLORS.ink,
+    fontSize: 17,
+    fontWeight: "900",
+    fontFamily: "Fredoka",
+  },
   productFooter: {
     flexDirection: "row",
     alignItems: "center",
@@ -3578,18 +4082,19 @@ const styles = StyleSheet.create({
     bottom: 14,
     left: 16,
     right: 16,
-    height: 68,
-    backgroundColor: "rgba(255,255,255,0.96)",
+    height: 78,
+    overflow: "hidden",
+    backgroundColor: COLORS.ink,
     borderWidth: 1,
     borderColor: "rgba(240,233,227,0.95)",
-    borderRadius: 25,
+    borderRadius: 28,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-around",
     paddingHorizontal: 10,
     shadowColor: COLORS.ink,
-    shadowOpacity: 0.13,
-    shadowRadius: 22,
+    shadowOpacity: 0.24,
+    shadowRadius: 20,
     shadowOffset: { width: 0, height: 10 },
     elevation: 8,
   },
@@ -3597,9 +4102,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 3,
-    minWidth: 72,
-    height: 50,
-    borderRadius: 17,
+    minWidth: 52,
+    height: 48,
+    borderRadius: 20,
+  },
+  assistantNavPulse: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  assistantNavItem: {
+    minWidth: 62,
   },
   navItemActive: { backgroundColor: COLORS.ink },
   navLabel: { color: COLORS.muted, fontSize: 10, fontWeight: "800" },
@@ -3744,6 +4256,182 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 4,
+  },
+  p3ProfileHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    marginBottom: 2,
+  },
+  p3ProfileAvatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  p3ProfileName: { fontFamily: "Fredoka", fontSize: 29, fontWeight: "800" },
+  p3ProfileMeta: { fontFamily: "Nunito", fontSize: 16, marginTop: 1 },
+  p3ClubCard: {
+    borderRadius: 28,
+    padding: 20,
+    gap: 10,
+    shadowColor: COLORS.ink,
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 9 },
+    elevation: 4,
+  },
+  p3CardKickerRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  p3CardKicker: {
+    fontFamily: "Nunito",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 1,
+  },
+  p3ClubTitle: {
+    color: COLORS.white,
+    fontFamily: "Fredoka",
+    fontSize: 22,
+    fontWeight: "800",
+    marginTop: 9,
+  },
+  p3ProgressTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    overflow: "hidden",
+    marginTop: 5,
+  },
+  p3ProgressFill: { height: "100%", borderRadius: 4 },
+  p3ClubHint: {
+    color: "rgba(255,244,232,0.72)",
+    fontFamily: "Nunito",
+    fontSize: 13,
+  },
+  p3PayRow: {
+    minHeight: 76,
+    borderRadius: 24,
+    borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 13,
+    paddingHorizontal: 16,
+    shadowColor: COLORS.ink,
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
+  },
+  p3PayIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  p3PayTitle: { fontFamily: "Fredoka", fontSize: 17, fontWeight: "800" },
+  p3PaySubtitle: { fontFamily: "Nunito", fontSize: 13, marginTop: 2 },
+  p3PayAmount: { fontFamily: "Fredoka", fontSize: 17, fontWeight: "800" },
+  p3NameCard: { borderRadius: 24, borderWidth: 1, padding: 20, gap: 7 },
+  p3NameEyebrow: {
+    fontFamily: "Nunito",
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 1,
+  },
+  p3NameValue: { fontFamily: "Fredoka", fontSize: 22, fontWeight: "800" },
+  p3SectionHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 5,
+  },
+  p3SectionTitle: { fontFamily: "Fredoka", fontSize: 20, fontWeight: "800" },
+  p3AddressCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    gap: 3,
+  },
+  p3AddressLabel: { fontFamily: "Fredoka", fontSize: 18, fontWeight: "800" },
+  p3AddressText: {
+    flex: 1,
+    fontFamily: "Nunito",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  p3EmptyRow: {
+    minHeight: 58,
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  p3CouponCard: {
+    minHeight: 84,
+    borderRadius: 22,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  p3CouponCode: { fontFamily: "Fredoka", fontSize: 18, fontWeight: "800" },
+  p3CouponHint: { fontFamily: "Nunito", fontSize: 13, marginTop: 4 },
+  p3CouponValue: {
+    fontFamily: "Nunito",
+    fontSize: 14,
+    fontWeight: "800",
+    textAlign: "right",
+    maxWidth: 126,
+  },
+  p3HelpRow: {
+    minHeight: 62,
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  p3HelpText: { fontFamily: "Fredoka", fontSize: 17, fontWeight: "800" },
+  p3PrimaryButton: {
+    minHeight: 54,
+    borderRadius: 30,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  p3PrimaryButtonText: {
+    color: COLORS.white,
+    fontFamily: "Fredoka",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  p3OutlineButton: {
+    minHeight: 52,
+    borderRadius: 28,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  p3OutlineButtonText: {
+    fontFamily: "Fredoka",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  p3SellerLink: { alignItems: "center", paddingVertical: 4 },
+  p3SellerLinkText: { fontFamily: "Nunito", fontSize: 13, fontWeight: "700" },
+  p3Footer: {
+    fontFamily: "Nunito",
+    fontSize: 12,
+    textAlign: "center",
+    paddingVertical: 6,
   },
   orderCard: {
     backgroundColor: COLORS.white,
@@ -4079,6 +4767,27 @@ const styles = StyleSheet.create({
     letterSpacing: 1.1,
     marginTop: 2,
   },
+  fieldHelp: {
+    color: COLORS.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: -2,
+  },
+  moneyRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  moneyPrefix: { color: COLORS.ink, fontSize: 16, fontWeight: "900", minWidth: 28 },
+  moneyInput: { flex: 1 },
+  mapButton: {
+    minHeight: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.coral,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+  },
+  mapButtonText: { color: COLORS.coral, fontWeight: "900", flexShrink: 1 },
   fieldValue: {
     color: COLORS.ink,
     fontSize: 15,
@@ -4125,121 +4834,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     flexShrink: 1,
   },
-});
-
-const locationStyles = StyleSheet.create({
-  locationCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: COLORS.white,
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    borderWidth: 1,
-    borderColor: COLORS.line,
-    shadowColor: COLORS.ink,
-    shadowOpacity: 0.06,
-    shadowRadius: 13,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 2,
-  },
-  locationIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  locationHeading: { flexDirection: "row", alignItems: "center", gap: 6 },
-  locationLabel: {
-    color: COLORS.muted,
-    fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 1.1,
-  },
-  locationValue: {
-    color: COLORS.ink,
-    fontSize: 12,
-    fontWeight: "800",
-    marginTop: 2,
-  },
-  locationAddress: { fontSize: 10, marginTop: 3 },
-  locationAction: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.green,
-  },
-});
-
-function AuthPanel({
-  user,
-  isAuthenticated,
-  onLogin,
-  onLogout,
-}: {
-  user: { name: string | null; email: string | null } | null;
-  isAuthenticated: boolean;
-  onLogin: () => void;
-  onLogout: () => void;
-}) {
-  return (
-    <View style={authStyles.card}>
-      <MaterialIcons
-        name={isAuthenticated ? "cloud-done" : "cloud-off"}
-        size={22}
-        color={isAuthenticated ? COLORS.green : COLORS.orange}
-      />
-      <View style={{ flex: 1 }}>
-        <Text style={authStyles.title}>
-          {isAuthenticated ? "Conta sincronizada" : "Entre para sincronizar"}
-        </Text>
-        <Text style={authStyles.text}>
-          {isAuthenticated
-            ? `${user?.name || "Sua conta"} · pedidos e catálogo salvos na nuvem.`
-            : "Use o login seguro do Pediu para acessar seus pedidos em qualquer dispositivo."}
-        </Text>
-      </View>
-      <Pressable
-        style={authStyles.button}
-        onPress={isAuthenticated ? onLogout : onLogin}
-      >
-        <Text style={authStyles.buttonText}>
-          {isAuthenticated ? "Sair" : "Entrar"}
-        </Text>
-      </Pressable>
-    </View>
-  );
-}
-
-const authStyles = StyleSheet.create({
-  card: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: COLORS.line,
-  },
-  title: { color: COLORS.ink, fontSize: 13, fontWeight: "800" },
-  text: { color: COLORS.muted, fontSize: 11, lineHeight: 16, marginTop: 3 },
-  button: {
-    backgroundColor: COLORS.ink,
-    borderRadius: 11,
-    paddingHorizontal: 11,
-    paddingVertical: 9,
-  },
-  buttonText: { color: COLORS.white, fontSize: 11, fontWeight: "800" },
 });
 
 const paymentStyles = StyleSheet.create({
@@ -4450,6 +5044,7 @@ function VoiceAssistantModal({
     };
     recognition.start();
   };
+  const insets = useSafeAreaInsets();
   const voiceActive = isListening || isRecording;
   const modeLabel =
     mode === "customer" ? "ASSISTENTE DO CLIENTE" : "ASSISTENTE DA LOJA";
@@ -4462,7 +5057,7 @@ function VoiceAssistantModal({
       : "Toque para falar";
   return (
     <View style={voiceStyles.backdrop}>
-      <View style={[voiceStyles.sheet, { backgroundColor: theme.card }]}>
+      <View style={[voiceStyles.sheet, { backgroundColor: theme.card, paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
         <ScrollView
           style={voiceStyles.sheetScroll}
           contentContainerStyle={voiceStyles.sheetContent}
@@ -4690,7 +5285,7 @@ function SellerVoiceLauncher({ onPress }: { onPress: () => void }) {
       <View style={{ flex: 1 }}>
         <Text style={voiceStyles.launcherTitle}>Fale com o Pediu</Text>
         <Text style={voiceStyles.launcherText}>
-          Registrar venda, consultar fiado ou divulgar
+          Pedidos, loja e vendas por aqui
         </Text>
       </View>
       <MaterialIcons name="arrow-forward" size={18} color={COLORS.ink} />
@@ -4722,7 +5317,7 @@ function SellerClients({
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
-  const [creditLimit, setCreditLimit] = useState("0.00");
+  const [creditLimit, setCreditLimit] = useState("0,00");
   const [selectedId, setSelectedId] = useState<number>();
   const [selectedLimit, setSelectedLimit] = useState("");
   const totalOwed = customers.reduce(
@@ -4730,9 +5325,8 @@ function SellerClients({
     0,
   );
   const submit = () => {
-    const normalizedLimit = creditLimit.replace(",", ".").trim();
-    if (name.trim().length < 2 || !/^\d+(\.\d{1,2})?$/.test(normalizedLimit))
-      return;
+    const normalizedLimit = brlInputToDecimal(creditLimit);
+    if (name.trim().length < 2 || !normalizedLimit) return;
     onCreate({
       name: name.trim(),
       phone: phone.trim() || undefined,
@@ -4742,7 +5336,7 @@ function SellerClients({
     setName("");
     setPhone("");
     setNotes("");
-    setCreditLimit("0.00");
+    setCreditLimit("0,00");
     setShowForm(false);
   };
   return (
@@ -4779,36 +5373,48 @@ function SellerClients({
       {showForm ? (
         <View style={clientStyles.form}>
           <Text style={styles.sectionTitle}>Novo cliente</Text>
+          <Text style={styles.fieldLabel}>NOME</Text>
           <TextInput
             value={name}
             onChangeText={setName}
             placeholder="Nome completo"
             placeholderTextColor={COLORS.muted}
             style={styles.input}
+            accessibilityLabel="Nome do cliente"
           />
+          <Text style={styles.fieldLabel}>TELEFONE</Text>
+          <Text style={styles.fieldHelp}>Opcional. Com DDD.</Text>
           <TextInput
             value={phone}
-            onChangeText={setPhone}
-            placeholder="Telefone (opcional)"
+            onChangeText={(value) => setPhone(maskBrazilPhone(value))}
+            placeholder="(14) 99999-9999"
             placeholderTextColor={COLORS.muted}
             style={styles.input}
             keyboardType="phone-pad"
+            accessibilityLabel="Telefone do cliente"
           />
-          <TextInput
-            value={creditLimit}
-            onChangeText={setCreditLimit}
-            placeholder="Limite de fiado"
-            placeholderTextColor={COLORS.muted}
-            style={styles.input}
-            keyboardType="decimal-pad"
-          />
+          <Text style={styles.fieldLabel}>LIMITE DE FIADO</Text>
+          <Text style={styles.fieldHelp}>Quanto essa pessoa pode ficar devendo. Ex.: R$ 200,00</Text>
+          <View style={styles.moneyRow}>
+            <Text style={styles.moneyPrefix}>R$</Text>
+            <TextInput
+              value={creditLimit}
+              onChangeText={(value) => setCreditLimit(maskBrlTyping(value))}
+              placeholder="0,00"
+              placeholderTextColor={COLORS.muted}
+              style={[styles.input, styles.moneyInput]}
+              keyboardType="decimal-pad"
+              accessibilityLabel="Limite de fiado"
+            />
+          </View>
+          <Text style={styles.fieldLabel}>OBSERVAÇÕES</Text>
           <TextInput
             value={notes}
             onChangeText={setNotes}
-            placeholder="Observações (opcional)"
+            placeholder="Opcional"
             placeholderTextColor={COLORS.muted}
             style={styles.input}
-            multiline
+            accessibilityLabel="Observações do cliente"
           />
           <Pressable
             style={[styles.primaryButton, creating && styles.disabledButton]}
@@ -5236,9 +5842,10 @@ function SellerOnboardingModal({
   onClose: () => void;
   busy: boolean;
 }) {
+  const insets = useSafeAreaInsets();
   return (
     <View style={styles.modalBackdrop}>
-      <View style={[styles.sheet, styles.sheetTall]}>
+      <View style={[styles.sheet, styles.sheetTall, { paddingBottom: bottomSafeInset(insets.bottom, Platform.OS) }]}>
         <ScrollView
           style={styles.sheetScroll}
           contentContainerStyle={styles.sheetContent}
@@ -5262,7 +5869,7 @@ function SellerOnboardingModal({
               </View>
               <Pressable style={styles.primaryButton} onPress={onLogin}>
                 <Text style={styles.primaryButtonText}>
-                  Entrar com login seguro
+                  Entrar
                 </Text>
                 <MaterialIcons
                   name="arrow-forward"
@@ -5344,29 +5951,40 @@ const onboardingStyles = StyleSheet.create({
 });
 
 function SaleModal({
+  customers,
   total,
   customerId,
   paymentMethod,
+  creditLimit,
+  errorMessage,
   busy,
   onChangeTotal,
   onChangeCustomerId,
   onChangePaymentMethod,
+  onChangeCreditLimit,
   onSubmit,
   onClose,
 }: {
+  customers: { id: number; name: string; creditLimit: string; balance: string }[];
   total: string;
   customerId: string;
   paymentMethod: "pix" | "cash" | "fiado";
+  creditLimit: string;
+  errorMessage: string;
   busy: boolean;
   onChangeTotal: (value: string) => void;
   onChangeCustomerId: (value: string) => void;
   onChangePaymentMethod: (value: "pix" | "cash" | "fiado") => void;
+  onChangeCreditLimit: (value: string) => void;
   onSubmit: () => void;
   onClose: () => void;
 }) {
+  const selected = customers.find((customer) => String(customer.id) === customerId);
+  const missingLimit = Boolean(selected && Number(selected.creditLimit) <= 0);
+  const insets = useSafeAreaInsets();
   return (
     <View style={styles.modalBackdrop}>
-      <View style={[styles.sheet, styles.sheetTall]}>
+      <View style={[styles.sheet, styles.sheetTall, { paddingBottom: bottomSafeInset(insets.bottom, Platform.OS) }]}>
         <ScrollView
           style={styles.sheetScroll}
           contentContainerStyle={styles.sheetContent}
@@ -5380,23 +5998,82 @@ function SaleModal({
             O lançamento fica salvo no histórico da sua loja.
           </Text>
           <Text style={styles.fieldLabel}>VALOR DA VENDA</Text>
-          <TextInput
-            value={total}
-            onChangeText={onChangeTotal}
-            placeholder="Ex.: 42,00"
-            placeholderTextColor={COLORS.muted}
-            style={styles.input}
-            keyboardType="decimal-pad"
-          />
-          <Text style={styles.fieldLabel}>ID DO CLIENTE (OPCIONAL)</Text>
-          <TextInput
-            value={customerId}
-            onChangeText={onChangeCustomerId}
-            placeholder="Necessário para fiado"
-            placeholderTextColor={COLORS.muted}
-            style={styles.input}
-            keyboardType="number-pad"
-          />
+          <Text style={styles.fieldHelp}>Quanto o cliente pagou, em reais. Ex.: 42,00</Text>
+          <View style={styles.moneyRow}>
+            <Text style={styles.moneyPrefix}>R$</Text>
+            <TextInput
+              value={total}
+              onChangeText={(value) => onChangeTotal(maskBrlTyping(value))}
+              placeholder="0,00"
+              placeholderTextColor={COLORS.muted}
+              style={[styles.input, styles.moneyInput]}
+              keyboardType="decimal-pad"
+              accessibilityLabel="Valor da venda"
+            />
+          </View>
+          {paymentMethod === "fiado" ? (
+            <>
+              <Text style={styles.fieldLabel}>CLIENTE DO FIADO</Text>
+              <Text style={styles.fieldHelp}>
+                Escolha quem fica devendo. O valor entra na conta dessa pessoa.
+              </Text>
+              {customers.length ? (
+                customers.map((customer) => {
+                  const selected = customerId === String(customer.id);
+                  return (
+                    <Pressable
+                      key={customer.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Lançar fiado para ${customer.name}`}
+                      onPress={() => onChangeCustomerId(String(customer.id))}
+                      style={[
+                        saleStyles.method,
+                        selected && saleStyles.methodActive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          saleStyles.methodText,
+                          selected && saleStyles.methodTextActive,
+                        ]}
+                      >
+                        {customer.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })
+              ) : (
+                <Text style={styles.fieldHelp}>
+                  Cadastre o cliente na aba Clientes antes de lançar no fiado.
+                </Text>
+              )}
+              {selected && !missingLimit ? (
+                <Text style={styles.fieldHelp}>
+                  {`Limite ${Number(selected.creditLimit).toFixed(2).replace(".", ",")} · já deve R$ ${Number(selected.balance).toFixed(2).replace(".", ",")}`}
+                </Text>
+              ) : null}
+              {missingLimit ? (
+                <>
+                  <Text style={styles.fieldLabel}>LIMITE DE FIADO</Text>
+                  <Text style={styles.fieldHelp}>
+                    Sem limite definido. Diga quanto essa pessoa pode ficar devendo. A venda só entra depois disso.
+                  </Text>
+                  <View style={styles.moneyRow}>
+                    <Text style={styles.moneyPrefix}>R$</Text>
+                    <TextInput
+                      value={creditLimit}
+                      onChangeText={(value) => onChangeCreditLimit(maskBrlTyping(value))}
+                      placeholder="0,00"
+                      placeholderTextColor={COLORS.muted}
+                      style={[styles.input, styles.moneyInput]}
+                      keyboardType="decimal-pad"
+                      accessibilityLabel="Limite de fiado"
+                    />
+                  </View>
+                </>
+              ) : null}
+            </>
+          ) : null}
           <Text style={styles.fieldLabel}>FORMA DE PAGAMENTO</Text>
           <View style={saleStyles.methods}>
             {(["cash", "pix", "fiado"] as const).map((method) => (
@@ -5433,6 +6110,11 @@ function SaleModal({
             </Text>
             <MaterialIcons name="check" size={18} color={COLORS.white} />
           </Pressable>
+          {errorMessage ? (
+            <Text style={{ color: "#E20D2A", fontSize: 13, fontWeight: "700" }}>
+              {errorMessage}
+            </Text>
+          ) : null}
           <Pressable style={styles.textButton} onPress={onClose}>
             <Text style={styles.textButtonLabel}>Cancelar</Text>
           </Pressable>
@@ -5460,25 +6142,6 @@ const saleStyles = StyleSheet.create({
   methodTextActive: { color: COLORS.coral },
 });
 
-const notificationStyles = StyleSheet.create({
-  card: {
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: COLORS.line,
-    gap: 9,
-  },
-  item: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 9,
-    borderRadius: 12,
-    padding: 9,
-  },
-  unread: { backgroundColor: COLORS.coralSoft },
-});
-
 function CheckoutModal({
   addresses,
   address,
@@ -5502,12 +6165,13 @@ function CheckoutModal({
   onSubmit: () => void;
   onClose: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.modalBackdrop}
     >
-      <View style={[styles.sheet, styles.sheetTall]}>
+      <View style={[styles.sheet, styles.sheetTall, { paddingBottom: bottomSafeInset(insets.bottom, Platform.OS) }]}>
         <ScrollView
           style={styles.sheetScroll}
           contentContainerStyle={styles.sheetContent}

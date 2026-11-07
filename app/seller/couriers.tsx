@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
+import { SellerDock } from "@/components/seller-dock";
 import {
   Card,
   Field,
@@ -23,7 +24,7 @@ export default function SellerCouriersPage() {
   const { user } = useAuth();
   const [courierUserId, setCourierUserId] = useState("");
   const couriers = trpc.pediu.stores.couriers.useQuery(undefined, {
-    enabled: user?.role === "merchant",
+    enabled: Boolean(user),
     refetchInterval: 15_000,
   });
   const link = trpc.pediu.stores.linkCourier.useMutation({
@@ -36,23 +37,22 @@ export default function SellerCouriersPage() {
     const id = Number(courierUserId);
     if (Number.isInteger(id) && id > 0) link.mutate({ courierUserId: id });
   };
-  const allowed = user?.role === "merchant";
+  const allowed = Boolean(user);
   if (!allowed)
     return (
-      <Page title="Entregadores" eyebrow="OPERAÇÃO DA LOJA">
+      <Page title="Entregadores" eyebrow="OPERAÇÃO DA LOJA" dock={<SellerDock active="home" />}>
         <Card>
-          <Text style={s.rowTitle}>Acesso exclusivo para lojistas.</Text>
+          <Text style={s.rowTitle}>Entre para vincular motoboys à sua loja.</Text>
         </Card>
       </Page>
     );
   return (
-    <Page title="Entregadores" eyebrow="OPERAÇÃO DA LOJA">
+    <Page title="Entregadores" eyebrow="OPERAÇÃO DA LOJA" dock={<SellerDock active="home" />}>
       <Card>
         <Text style={s.sectionTitle}>Vincular entregador aprovado</Text>
         <Text style={s.muted}>
-          O entregador deve concluir o cadastro e ser aprovado pela plataforma
-          antes do vínculo. Nesta primeira versão, use o número da conta exibido
-          no perfil do entregador.
+          O motoboy precisa estar aprovado. O número da conta aparece grande na
+          central dele e aqui na equipe. Use esse número para vincular.
         </Text>
         <Field
           label="ID DA CONTA DO ENTREGADOR"
@@ -80,7 +80,7 @@ export default function SellerCouriersPage() {
           <Row
             key={courier.id}
             icon="two-wheeler"
-            title={courier.name ?? `Conta #${courier.courierUserId}`}
+            title={courier.name ?? `Número ${courier.courierUserId}`}
             subtitle={`${vehicleLabels[courier.vehicleType]} · ${courier.phone ?? "telefone não informado"}`}
             right={
               <View style={{ alignItems: "flex-end", gap: 3 }}>
@@ -102,7 +102,9 @@ export default function SellerCouriersPage() {
                       ? "EM ENTREGA"
                       : "OFFLINE"}
                 </Text>
-                <Text style={s.muted}>#{courier.courierUserId}</Text>
+                <Text style={{ color: PEDIU.ink, fontWeight: "900" }}>
+                  Número {courier.courierUserId}
+                </Text>
               </View>
             }
           />

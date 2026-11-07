@@ -173,6 +173,31 @@ describe("Pediu delivery operational contract", () => {
     expect(result.status).toBe("Entregue");
   });
 
+  it("rejects a delivery code that does not match what the customer shows", async () => {
+    vi.spyOn(db, "getOrderForUser").mockResolvedValue({
+      ...emRota,
+      deliveryCode: "1234",
+    });
+    vi.spyOn(db, "getStoreForOwner").mockResolvedValue(store);
+    vi.spyOn(db, "getDeliveryAssignmentByOrder").mockResolvedValue({
+      ...assignment,
+      status: "in_transit",
+    });
+    const complete = vi.spyOn(db, "completeDelivery");
+
+    const caller = appRouter.createCaller({ user: merchant } as any);
+    await expect(
+      caller.pediu.experience.delivery.complete({
+        orderId: 101,
+        code: "0000",
+      }),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "O código não confere com o que o cliente mostrou.",
+    });
+    expect(complete).not.toHaveBeenCalled();
+  });
+
   it("returns success for two concurrent completions without duplicating the transition", async () => {
     vi.spyOn(db, "getOrderForUser").mockResolvedValue(emRota);
     vi.spyOn(db, "getDeliveryAssignmentByOrder").mockResolvedValue({

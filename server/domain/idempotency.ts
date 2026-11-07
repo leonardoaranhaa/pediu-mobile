@@ -23,6 +23,7 @@ export function isUniqueConstraintError(error: unknown): boolean {
     if (
       code === "ER_DUP_ENTRY" ||
       code === "ER_DUP_KEY" ||
+      code === "23505" ||
       errno === "1062" ||
       /duplicate entry|unique constraint|pediu_orders_idempotency_unique/i.test(
         message,
