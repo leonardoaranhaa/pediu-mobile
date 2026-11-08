@@ -10,6 +10,7 @@
       "environment": "development"
     },
     "preview": {
+      "autoIncrement": true,
       "distribution": "internal",
       "environment": "preview",
       "android": { "buildType": "apk" },
@@ -22,6 +23,11 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "draft"
+      }
+    }
   }
 }

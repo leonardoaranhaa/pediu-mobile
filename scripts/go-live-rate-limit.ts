@@ -12,8 +12,6 @@ const databaseUrl = process.env.DATABASE_URL?.trim() ?? "";
 
 if (!databaseUrl)
   throw new Error("DATABASE_URL is required for rate-limit smoke.");
-if (!process.env.VITE_APP_ID?.trim())
-  throw new Error("VITE_APP_ID is required for rate-limit smoke.");
 if (!process.env.JWT_SECRET?.trim())
   throw new Error("JWT_SECRET is required for rate-limit smoke.");
 
@@ -27,8 +25,8 @@ function insertId(result: any): number {
 }
 
 async function main() {
-  const mysql = await import("mysql2/promise");
-  const connection = await mysql.createConnection(databaseUrl);
+  const { createConnection } = await import("./pg-client");
+  const connection = await createConnection(databaseUrl);
   const runId = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
   const openId = `ci-rate-limit-${runId}`;
   const directBucketKey = `ci-rate-limit-direct-${runId}`;

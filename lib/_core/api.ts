@@ -55,17 +55,6 @@ export async function apiCall<T>(endpoint: string, options: RequestInit = {}): P
   }
 }
 
-export async function exchangeOAuthCode(
-  code: string,
-  state: string,
-): Promise<{ sessionToken: string; user: any }> {
-  const params = new URLSearchParams({ code, state });
-  const endpoint = `/api/oauth/mobile?${params.toString()}`;
-  const result = await apiCall<{ app_session_id: string; user: any }>(endpoint);
-  const sessionToken = result.app_session_id;
-  return { sessionToken, user: result.user };
-}
-
 export async function logout(): Promise<void> {
   await apiCall<void>("/api/auth/logout", { method: "POST" });
 }
@@ -77,6 +66,8 @@ export async function getMe(): Promise<{
   email: string | null;
   loginMethod: string | null;
   role: "user" | "merchant" | "courier" | "admin";
+  roles?: Array<"customer" | "merchant" | "courier" | "admin">;
+  usesCustomerApp?: number;
   themePreference?: "classic" | "ocean" | "sunset";
   lastSignedIn: string;
 } | null> {

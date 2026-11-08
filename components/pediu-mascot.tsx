@@ -1,22 +1,19 @@
-import { MaterialIcons } from "@expo/vector-icons";
 import { usePathname } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import {
-  Animated,
-  Easing,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
+import { useReducedMotion } from "react-native-reanimated";
 
+import {
+  MascotFigure,
+  mascotBox,
+  mascotExpression,
+} from "@/components/mascot-figure";
 import {
   mascotReactionForPath,
   useAppPreferences,
   type AppMascotStyle,
   type AppTheme,
 } from "@/lib/app-preferences";
-
 import {
   AMBIENT_SCENES,
   sceneForReaction,
@@ -26,6 +23,7 @@ import {
 
 export { sceneForReaction } from "@/lib/mascot-scenes";
 export type { MascotReaction } from "@/lib/mascot-scenes";
+
 export function PediuMascot({
   theme,
   styleId = "classic",
@@ -35,7 +33,6 @@ export function PediuMascot({
   showSpeech = false,
   speechText,
   programmed = false,
-  speechSide = "left",
   onPress,
 }: {
   theme: AppTheme;
@@ -58,24 +55,18 @@ export function PediuMascot({
     sceneForReaction(activeReaction),
   );
   const bob = useRef(new Animated.Value(0)).current;
-  const wiggle = useRef(new Animated.Value(0)).current;
-  const blink = useRef(new Animated.Value(0)).current;
-  const sceneProgress = useRef(new Animated.Value(1)).current;
-  const handsProgress = useRef(
-    new Animated.Value(activeReaction === "avoid" ? 1 : 0),
-  ).current;
-  const eyeCloseProgress = useRef(
-    new Animated.Value(
-      activeReaction === "avoid" ||
-        activeReaction === "sleepy" ||
-        activeReaction === "happy" ||
-        activeReaction === "celebrate"
-        ? 1
-        : 0,
-    ),
-  ).current;
+  const reducedMotion = useReducedMotion();
   const scripted =
     programmed && (activeReaction === "idle" || activeReaction === "hungry");
+  const box = mascotBox(compact);
+  const expression = mascotExpression(scene.reaction, scene.gesture);
+  const scarfColor =
+    styleId === "ocean"
+      ? "#7BDFF2"
+      : styleId === "sunset"
+        ? "#FFCB77"
+        : theme.highlight;
+  const speech = speechText ?? scene.line;
 
   useEffect(() => {
     setSceneIndex(0);
@@ -93,559 +84,99 @@ export function PediuMascot({
 
   useEffect(() => {
     if (!scripted) return;
-    setScene(AMBIENT_SCENES[sceneIndex]);
-  }, [sceneIndex, scripted]);
+    setScene(AMBIENT_SCENES[sceneIndex] ?? sceneForReaction(activeReaction));
+  }, [activeReaction, sceneIndex, scripted]);
 
   useEffect(() => {
-    sceneProgress.setValue(0);
-    eyeCloseProgress.stopAnimation();
-    Animated.timing(sceneProgress, {
-      toValue: 1,
-      duration: 520,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-    Animated.timing(handsProgress, {
-      toValue: scene.gesture === "coverEyes" ? 1 : 0,
-      duration: 520,
-      easing: Easing.out(Easing.back(1.15)),
-      useNativeDriver: true,
-    }).start();
-    Animated.timing(eyeCloseProgress, {
-      toValue:
-        scene.gesture === "coverEyes" ||
-        scene.gesture === "sleep" ||
-        scene.reaction === "happy" ||
-        scene.reaction === "celebrate"
-          ? 1
-          : 0,
-      duration: 360,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    }).start();
-  }, [
-    eyeCloseProgress,
-    handsProgress,
-    scene.gesture,
-    scene.id,
-    scene.reaction,
-    sceneProgress,
-  ]);
-
-  useEffect(() => {
-    if (!motionEnabled) {
-      bob.stopAnimation();
-      wiggle.stopAnimation();
+    bob.stopAnimation();
+    bob.setValue(0);
+    if (!motionEnabled || reducedMotion) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(bob, {
+          toValue: 1,
+          duration: 2200,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(bob, {
+          toValue: 0,
+          duration: 2200,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => {
+      loop.stop();
       bob.setValue(0);
-      wiggle.setValue(0);
-      return;
-    }
-    const bobDuration =
-      scene.gesture === "sleep"
-        ? 2100
-        : scene.gesture === "lie" || scene.gesture === "sniff"
-          ? 1500
-          : 2400;
-    const bobLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(bob, {
-          toValue: 1,
-          duration: bobDuration,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(bob, {
-          toValue: 0,
-          duration: bobDuration,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    const wiggleDuration =
-      scene.reaction === "happy" || scene.reaction === "celebrate" ? 480 : 800;
-    const wiggleLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(wiggle, {
-          toValue: 1,
-          duration: wiggleDuration,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(wiggle, {
-          toValue: -1,
-          duration: wiggleDuration,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(wiggle, {
-          toValue: 0,
-          duration: 420,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    bobLoop.start();
-    if (
-      scene.gesture === "wave" ||
-      scene.gesture === "peek" ||
-      scene.gesture === "sniff" ||
-      scene.gesture === "dance"
-    )
-      wiggleLoop.start();
-    return () => {
-      bobLoop.stop();
-      wiggleLoop.stop();
     };
-  }, [bob, motionEnabled, scene.gesture, scene.reaction, wiggle]);
+  }, [bob, motionEnabled, reducedMotion]);
 
-  useEffect(() => {
-    if (!motionEnabled) {
-      blink.stopAnimation();
-      blink.setValue(0);
-      return;
-    }
-    let active = true;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const scheduleBlink = () => {
-      timer = setTimeout(() => {
-        Animated.sequence([
-          Animated.timing(blink, {
-            toValue: 1,
-            duration: 130,
-            easing: Easing.inOut(Easing.quad),
-            useNativeDriver: false,
-          }),
-          Animated.timing(blink, {
-            toValue: 0,
-            duration: 180,
-            easing: Easing.out(Easing.quad),
-            useNativeDriver: false,
-          }),
-        ]).start(() => {
-          if (active) scheduleBlink();
-        });
-      }, 5_200);
-    };
-    scheduleBlink();
-    return () => {
-      active = false;
-      if (timer) clearTimeout(timer);
-      blink.stopAnimation();
-    };
-  }, [blink, motionEnabled]);
+  const figure = (
+    <View style={[styles.slot, { width: box.width, height: box.height + 4 }]}>
+      <Animated.View
+        style={{
+          width: box.width,
+          height: box.height,
+          transform: [
+            {
+              translateY: bob.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, -3],
+              }),
+            },
+          ],
+        }}
+      >
+        <MascotFigure
+          width={box.width}
+          height={box.height}
+          body={theme.primary}
+          face={theme.highlight}
+          ink={theme.ink}
+          scarf={scarfColor}
+          expression={expression}
+        />
+      </Animated.View>
+    </View>
+  );
 
-  const size = compact ? 72 : 104;
-  const bodySize = compact ? 54 : 76;
-  const faceSize = compact ? 43 : 60;
-  const happy = scene.reaction === "happy" || scene.reaction === "celebrate";
-  const sleepy = scene.reaction === "sleepy";
-  const coverEyes = scene.gesture === "coverEyes";
-  const eyesClosed = happy || sleepy || coverEyes;
-  const scarfColor =
-    styleId === "ocean"
-      ? "#7BDFF2"
-      : styleId === "sunset"
-        ? "#FFCB77"
-        : theme.highlight;
-  const accentIcon =
-    styleId === "ocean"
-      ? "water-drop"
-      : styleId === "sunset"
-        ? "wb-sunny"
-        : "favorite";
-  const speech = speechText ?? scene.line;
-  const bodyRotation =
-    scene.gesture === "lie"
-      ? "-70deg"
-      : scene.gesture === "sleep"
-        ? "5deg"
-        : scene.gesture === "dance"
-          ? "-4deg"
-          : "0deg";
-  const bubblePosition =
-    speechSide === "right"
-      ? { left: compact ? 34 : 76 }
-      : { right: compact ? 34 : 8 };
-  const bubbleTailStyle =
-    speechSide === "right" ? styles.speechTailLeft : styles.speechTail;
-  const eyeWidth = compact ? (eyesClosed ? 8 : 5) : eyesClosed ? 11 : 6;
-  const eyeHeight = eyesClosed
-    ? eyeCloseProgress.interpolate({
-        inputRange: [0, 1],
-        outputRange: [compact ? 7 : 9, compact ? 3 : 4],
-      })
-    : blink.interpolate({
-        inputRange: [0, 1],
-        outputRange: [compact ? 7 : 9, 2],
-      });
-  const mouth = happy
-    ? "⌣"
-    : scene.reaction === "full"
-      ? "◡"
-      : scene.reaction === "hungry"
-        ? "◡"
-        : sleepy
-          ? "﹏"
-          : scene.reaction === "curious"
-            ? "o"
-            : scene.reaction === "avoid"
-              ? "—"
-              : "•";
   const content = (
-    <Animated.View
-      style={{
-        width: size,
-        height: size,
-        alignItems: "center",
-        justifyContent: "center",
-        overflow: "visible",
-        transform: [
-          {
-            translateY: bob.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0, scene.gesture === "lie" ? 2 : happy ? -5 : -2],
-            }),
-          },
-          {
-            scale: sceneProgress.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.97, happy ? 1.04 : 1],
-            }),
-          },
-        ],
-      }}
-    >
+    <View style={styles.wrap}>
       {showSpeech ? (
-        <Animated.View
-          pointerEvents="none"
+        <View
           style={[
             styles.speechBubble,
-            compact && styles.speechBubbleCompact,
-            bubblePosition,
-            {
-              borderColor: theme.line,
-              backgroundColor: theme.card,
-              opacity: sceneProgress,
-            },
+            { borderColor: theme.line, backgroundColor: theme.card },
           ]}
         >
-          <View
-            style={[
-              bubbleTailStyle,
-              { backgroundColor: theme.card, borderColor: theme.line },
-            ]}
-          />
           <Text
-            numberOfLines={compact ? 3 : 4}
+            numberOfLines={3}
             ellipsizeMode="tail"
-            style={[
-              styles.speechText,
-              {
-                color: theme.ink,
-                fontSize: compact ? 9 : 11,
-                lineHeight: compact ? 13 : 15,
-              },
-            ]}
+            allowFontScaling={false}
+            style={[styles.speechText, { color: theme.ink }]}
           >
             {speech}
           </Text>
-        </Animated.View>
-      ) : null}
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          styles.sparkles,
-          {
-            opacity: sceneProgress,
-            transform: [
-              {
-                scale: sceneProgress.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.8, 1.15],
-                }),
-              },
-            ],
-          },
-        ]}
-      >
-        <Text style={{ color: scarfColor, fontSize: compact ? 12 : 16 }}>
-          ✦
-        </Text>
-        <Text style={{ color: theme.primary, fontSize: compact ? 9 : 12 }}>
-          •
-        </Text>
-        <Text style={{ color: theme.highlight, fontSize: compact ? 11 : 15 }}>
-          ✦
-        </Text>
-      </Animated.View>
-      <View
-        style={[
-          styles.antenna,
-          {
-            backgroundColor: scarfColor,
-            width: compact ? 3 : 4,
-            height: compact ? 13 : 18,
-            top: compact ? 3 : 0,
-          },
-        ]}
-      >
-        <View
-          style={[
-            styles.antennaDot,
-            {
-              backgroundColor: theme.primary,
-              width: compact ? 8 : 10,
-              height: compact ? 8 : 10,
-            },
-          ]}
-        />
-      </View>
-      <Animated.View
-        style={[
-          styles.body,
-          {
-            width: bodySize,
-            height: bodySize,
-            borderRadius: bodySize / 2.5,
-            backgroundColor: theme.primary,
-            shadowColor: theme.primary,
-            transform: [
-              { rotate: bodyRotation },
-              {
-                rotate: wiggle.interpolate({
-                  inputRange: [-1, 0, 1],
-                  outputRange: ["-2deg", "0deg", "2deg"],
-                }),
-              },
-            ],
-          },
-        ]}
-      >
-        <View
-          style={[
-            styles.arm,
-            styles.leftArm,
-            { backgroundColor: theme.primary },
-          ]}
-        />
-        <View
-          style={[
-            styles.arm,
-            styles.rightArm,
-            { backgroundColor: theme.primary },
-          ]}
-        />
-        <View
-          style={[
-            styles.ear,
-            styles.leftEar,
-            { backgroundColor: theme.primary },
-          ]}
-        />
-        <View
-          style={[
-            styles.ear,
-            styles.rightEar,
-            { backgroundColor: theme.primary },
-          ]}
-        />
-        <View
-          style={[
-            styles.face,
-            {
-              width: faceSize,
-              height: faceSize,
-              borderRadius: faceSize / 2,
-              backgroundColor: theme.highlight,
-            },
-          ]}
-        >
-          {scene.reaction === "hungry" || scene.reaction === "curious" ? (
-            <View style={styles.browRow}>
-              <View style={[styles.brow, { backgroundColor: theme.ink }]} />
-              <View style={[styles.brow, { backgroundColor: theme.ink }]} />
-            </View>
-          ) : null}
-          <View style={styles.eyeRow}>
-            <Animated.View
-              style={[
-                styles.eye,
-                {
-                  width: eyeWidth,
-                  height: eyeHeight,
-                  borderRadius: 6,
-                  backgroundColor: theme.ink,
-                },
-              ]}
-            />
-            <Animated.View
-              style={[
-                styles.eye,
-                {
-                  width: eyeWidth,
-                  height: eyeHeight,
-                  borderRadius: 6,
-                  backgroundColor: theme.ink,
-                },
-              ]}
-            />
-          </View>
-          <View style={styles.cheekRow}>
-            <View style={[styles.cheek, { backgroundColor: theme.primary }]} />
-            <View style={[styles.cheek, { backgroundColor: theme.primary }]} />
-          </View>
-          <Text
-            style={[
-              styles.mouth,
-              { color: theme.ink, fontSize: compact ? 16 : 21 },
-            ]}
-          >
-            {mouth}
-          </Text>
         </View>
-        {coverEyes ? (
-          <>
-            <Animated.View
-              style={[
-                styles.hand,
-                styles.leftHand,
-                {
-                  backgroundColor: theme.highlight,
-                  transform: [
-                    {
-                      translateX: handsProgress.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [-15, 0],
-                      }),
-                    },
-                    { rotate: "-22deg" },
-                  ],
-                },
-              ]}
-            >
-              <View
-                style={[styles.finger, { backgroundColor: theme.primary }]}
-              />
-            </Animated.View>
-            <Animated.View
-              style={[
-                styles.hand,
-                styles.rightHand,
-                {
-                  backgroundColor: theme.highlight,
-                  transform: [
-                    {
-                      translateX: handsProgress.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [15, 0],
-                      }),
-                    },
-                    { rotate: "22deg" },
-                  ],
-                },
-              ]}
-            >
-              <View
-                style={[styles.finger, { backgroundColor: theme.primary }]}
-              />
-            </Animated.View>
-          </>
-        ) : null}
-        <View
-          style={[
-            styles.scarf,
-            { backgroundColor: scarfColor, height: compact ? 8 : 11 },
-          ]}
-        >
-          <Text
-            style={[
-              styles.scarfMark,
-              { color: theme.ink, fontSize: compact ? 8 : 10 },
-            ]}
-          >
-            p
-          </Text>
-        </View>
-        {scene.gesture === "belly" ? (
-          <View style={[styles.belly, { borderColor: scarfColor }]}>
-            <MaterialIcons
-              name="restaurant"
-              size={compact ? 9 : 12}
-              color={scarfColor}
-            />
-          </View>
-        ) : null}
-      </Animated.View>
-      <View
-        style={[
-          styles.foot,
-          styles.leftFoot,
-          { backgroundColor: theme.ink, width: compact ? 18 : 25 },
-        ]}
-      />
-      <View
-        style={[
-          styles.foot,
-          styles.rightFoot,
-          { backgroundColor: theme.ink, width: compact ? 18 : 25 },
-        ]}
-      />
-      <View
-        style={[
-          styles.iconBadge,
-          {
-            backgroundColor: theme.ink,
-            width: compact ? 19 : 25,
-            height: compact ? 19 : 25,
-            borderRadius: compact ? 10 : 13,
-          },
-        ]}
-      >
-        <MaterialIcons
-          name={accentIcon}
-          size={compact ? 10 : 13}
-          color={scarfColor}
-        />
-      </View>
-      {sleepy ? (
-        <Text
-          style={[
-            styles.sleepMark,
-            { color: scarfColor, fontSize: compact ? 12 : 16 },
-          ]}
-        >
-          Zzz
-        </Text>
       ) : null}
-      {scene.gesture === "sniff" ? (
-        <Text
-          style={[
-            styles.sniffMark,
-            { color: scarfColor, fontSize: compact ? 9 : 12 },
-          ]}
-        >
-          snif
-        </Text>
-      ) : null}
-    </Animated.View>
+      {figure}
+    </View>
   );
 
-  const accessibleLabel = `${speech} ${coverEyes ? "Mascote cobrindo os olhos" : "Mascote do Pediu"}`;
-  return onPress ? (
+  const accessibleLabel = `${speech}. Mascote do Pediu`;
+  if (!onPress) return content;
+  return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibleLabel}
       onPress={onPress}
-      style={({ pressed }) => [
-        pressed && { opacity: 0.82, transform: [{ scale: 0.98 }] },
-      ]}
+      style={styles.wrap}
     >
       {content}
     </Pressable>
-  ) : (
-    content
   );
 }
 
@@ -670,15 +201,10 @@ export function MascotStatus({
         },
       ]}
     >
-      <PediuMascot theme={theme} reaction={reaction} motionEnabled compact />
+      <PediuMascot theme={theme} reaction={reaction} motionEnabled={false} compact />
       <View style={{ flex: 1, gap: 2 }}>
-        <Text style={[styles.statusKicker, { color: theme.primary }]}>
-          PEDIU
-        </Text>
-        <Text
-          numberOfLines={3}
-          style={[styles.statusText, { color: theme.ink }]}
-        >
+        <Text style={[styles.statusKicker, { color: theme.primary }]}>PEDIU</Text>
+        <Text numberOfLines={3} style={[styles.statusText, { color: theme.ink }]}>
           {scene.line}
         </Text>
       </View>
@@ -687,175 +213,22 @@ export function MascotStatus({
 }
 
 const styles = StyleSheet.create({
+  wrap: { alignItems: "center", flexShrink: 0, maxWidth: 280 },
+  slot: {
+    alignItems: "center",
+    justifyContent: "flex-end",
+    overflow: "hidden",
+    flexShrink: 0,
+  },
   speechBubble: {
-    position: "absolute",
-    width: 176,
-    minHeight: 34,
+    maxWidth: 240,
     borderWidth: 1,
-    borderRadius: 13,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    shadowColor: "#111111",
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
-    zIndex: 10,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 6,
   },
-  speechBubbleCompact: {
-    width: 138,
-    minHeight: 30,
-    borderRadius: 11,
-    paddingHorizontal: 7,
-    paddingVertical: 5,
-  },
-  speechTail: {
-    position: "absolute",
-    right: -5,
-    bottom: 10,
-    width: 9,
-    height: 9,
-    transform: [{ rotate: "45deg" }],
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
-  },
-  speechTailLeft: {
-    position: "absolute",
-    left: -5,
-    bottom: 10,
-    width: 9,
-    height: 9,
-    transform: [{ rotate: "45deg" }],
-    borderLeftWidth: 1,
-    borderBottomWidth: 1,
-  },
-  speechText: { fontWeight: "800", flexShrink: 1 },
-  antenna: {
-    position: "absolute",
-    alignItems: "center",
-    justifyContent: "flex-start",
-    borderRadius: 5,
-    zIndex: 2,
-  },
-  antennaDot: { borderRadius: 999, position: "absolute", top: -4 },
-  body: {
-    alignItems: "center",
-    justifyContent: "center",
-    shadowOpacity: 0.24,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 5,
-    position: "relative",
-    overflow: "visible",
-  },
-  arm: {
-    position: "absolute",
-    width: 11,
-    height: 25,
-    borderRadius: 10,
-    top: 27,
-    zIndex: 1,
-  },
-  leftArm: { left: -5, transform: [{ rotate: "25deg" }] },
-  rightArm: { right: -5, transform: [{ rotate: "-25deg" }] },
-  ear: {
-    width: 17,
-    height: 21,
-    borderRadius: 10,
-    position: "absolute",
-    top: 10,
-  },
-  leftEar: { left: -6, transform: [{ rotate: "-25deg" }] },
-  rightEar: { right: -6, transform: [{ rotate: "25deg" }] },
-  face: { alignItems: "center", justifyContent: "center", gap: 1, zIndex: 2 },
-  browRow: { flexDirection: "row", gap: 13, height: 5, alignItems: "center" },
-  brow: {
-    width: 10,
-    height: 2,
-    borderRadius: 4,
-    transform: [{ rotate: "-8deg" }],
-  },
-  eyeRow: { flexDirection: "row", gap: 13, alignItems: "center", minHeight: 9 },
-  eye: { minWidth: 3 },
-  cheekRow: {
-    position: "absolute",
-    left: 8,
-    right: 8,
-    top: 31,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    opacity: 0.28,
-  },
-  cheek: { width: 7, height: 3, borderRadius: 4 },
-  mouth: { fontWeight: "900", lineHeight: 21 },
-  hand: {
-    position: "absolute",
-    top: 15,
-    width: 16,
-    height: 32,
-    borderRadius: 9,
-    zIndex: 4,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  leftHand: { left: 19 },
-  rightHand: { right: 19 },
-  finger: { width: 3, height: 13, borderRadius: 3, opacity: 0.5 },
-  scarf: {
-    position: "absolute",
-    bottom: 10,
-    left: 7,
-    right: 7,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 5,
-  },
-  scarfMark: { fontWeight: "900", fontStyle: "italic" },
-  belly: {
-    position: "absolute",
-    bottom: 16,
-    width: 22,
-    height: 16,
-    borderWidth: 1.5,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 4,
-  },
-  foot: { height: 7, borderRadius: 5, position: "absolute", bottom: 5 },
-  leftFoot: { marginLeft: -22, transform: [{ rotate: "-10deg" }] },
-  rightFoot: { marginLeft: 22, transform: [{ rotate: "10deg" }] },
-  sparkles: {
-    position: "absolute",
-    top: -2,
-    left: 8,
-    right: 8,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    zIndex: 3,
-  },
-  iconBadge: {
-    position: "absolute",
-    right: 4,
-    bottom: 9,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  sleepMark: {
-    position: "absolute",
-    right: 0,
-    top: -1,
-    fontWeight: "900",
-    fontStyle: "italic",
-  },
-  sniffMark: {
-    position: "absolute",
-    left: -3,
-    top: 24,
-    fontWeight: "900",
-    fontStyle: "italic",
-  },
+  speechText: { fontWeight: "800", fontSize: 13, lineHeight: 18, textAlign: "center" },
   status: {
     borderWidth: 1,
     borderRadius: 19,

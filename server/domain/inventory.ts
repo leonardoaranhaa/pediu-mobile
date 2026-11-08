@@ -1,6 +1,6 @@
 export type InventoryAdjustment = "reserve" | "release" | "consume" | "none";
 
-export const DEFAULT_INVENTORY_RESERVATION_TTL_MS = 30 * 60_000;
+export const DEFAULT_INVENTORY_RESERVATION_TTL_MS = 5 * 60_000;
 
 export function inventoryReservationCutoff(
   now = new Date(),

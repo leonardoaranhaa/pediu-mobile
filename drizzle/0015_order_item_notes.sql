@@ -1,1 +1,0 @@
-ALTER TABLE `pediu_order_items` ADD `note` varchar(500);

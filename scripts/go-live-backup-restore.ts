@@ -17,8 +17,8 @@ const enabled = required || process.env.BACKUP_RESTORE_RUN === "1";
 
 function parseDatabaseUrl(value: string) {
   const parsed = new URL(value);
-  if (parsed.protocol !== "mysql:")
-    throw new Error("Only mysql:// DATABASE_URL is supported");
+  if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:")
+    throw new Error("DATABASE_URL precisa ser postgresql://");
   const database = decodeURIComponent(parsed.pathname.replace(/^\//, ""));
   if (!database || !/^[A-Za-z0-9_]+$/.test(database))
     throw new Error(
@@ -26,7 +26,7 @@ function parseDatabaseUrl(value: string) {
     );
   return {
     host: parsed.hostname || "127.0.0.1",
-    port: parsed.port || "3306",
+    port: parsed.port || "5432",
     user: decodeURIComponent(parsed.username),
     password: decodeURIComponent(parsed.password),
     database,
@@ -39,20 +39,15 @@ function safeDatabaseName(value: string) {
   return value;
 }
 
-function mysqlArgs(
-  config: ReturnType<typeof parseDatabaseUrl>,
-  extra: string[] = [],
-) {
-  return [
-    "--protocol=tcp",
-    "-h",
-    config.host,
-    "-P",
-    config.port,
-    "-u",
-    config.user,
-    ...extra,
-  ];
+function pgEnv(config: ReturnType<typeof parseDatabaseUrl>) {
+  return {
+    ...process.env,
+    PGHOST: config.host,
+    PGPORT: config.port,
+    PGUSER: config.user,
+    PGPASSWORD: config.password,
+    PGDATABASE: config.database,
+  };
 }
 
 function run(
@@ -69,8 +64,14 @@ function run(
         : [inputFd, "pipe", "pipe"],
     encoding: "utf8",
   });
-  if (result.error || result.status !== 0)
-    throw new Error(`${command} failed during backup/restore`);
+  if (result.error || result.status !== 0) {
+    const detail = (result.stderr || result.error?.message || "").trim().slice(0, 500);
+    throw new Error(
+      detail
+        ? `${command} failed during backup/restore: ${detail}`
+        : `${command} failed during backup/restore`,
+    );
+  }
   return result.stdout.trim();
 }
 
@@ -80,26 +81,23 @@ function runDumpToFile(
 ) {
   const fd = openSync(backupPath, "w");
   const result = spawnSync(
-    "mysqldump",
-    mysqlArgs(config, [
-      "--single-transaction",
-      "--quick",
-      "--routines",
-      "--events",
-      "--triggers",
-      "--no-create-db",
-      "--skip-add-drop-table",
-      config.database,
-    ]),
+    "pg_dump",
+    ["--no-owner", "--no-acl", "--format=plain", config.database],
     {
-      env: { ...process.env, MYSQL_PWD: config.password },
+      env: pgEnv(config),
       stdio: ["ignore", fd, "pipe"],
       encoding: "utf8",
     },
   );
   closeSync(fd);
-  if (result.error || result.status !== 0)
-    throw new Error("mysqldump failed during backup/restore");
+  if (result.error || result.status !== 0) {
+    const detail = (result.stderr || result.error?.message || "").trim().slice(0, 500);
+    throw new Error(
+      detail
+        ? `pg_dump failed during backup/restore: ${detail}`
+        : "pg_dump failed during backup/restore",
+    );
+  }
 }
 
 function query(
@@ -107,11 +105,7 @@ function query(
   sql: string,
   database = config.database,
 ) {
-  return run(
-    "mysql",
-    mysqlArgs(config, ["-N", "-B", "-D", database, "-e", sql]),
-    { ...process.env, MYSQL_PWD: config.password },
-  );
+  return run("psql", ["-d", database, "-tA", "-c", sql], pgEnv(config));
 }
 
 async function main() {
@@ -124,9 +118,11 @@ async function main() {
   if (!sourceUrl)
     throw new Error("DATABASE_URL is required for the backup/restore smoke");
   const source = parseDatabaseUrl(sourceUrl);
-  const admin = parseDatabaseUrl(
+  const adminUrl = new URL(
     process.env.BACKUP_RESTORE_ADMIN_DATABASE_URL?.trim() || sourceUrl,
   );
+  adminUrl.pathname = "/postgres";
+  const admin = parseDatabaseUrl(adminUrl.toString());
   const targetName = safeDatabaseName(
     process.env.BACKUP_RESTORE_TARGET_DATABASE?.trim() ||
       `${source.database}_restore_${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`,
@@ -137,7 +133,7 @@ async function main() {
     "Restore target must differ from source database",
   );
   const backupPath = join(tmpdir(), `pediu-backup-${crypto.randomUUID()}.sql`);
-  const quotedTarget = `\`${targetName}\``;
+  const quotedTarget = `"${targetName}"`;
   const criticalTables = [
     "users",
     "pediu_stores",
@@ -150,22 +146,13 @@ async function main() {
 
   try {
     query(admin, `DROP DATABASE IF EXISTS ${quotedTarget}`, admin.database);
-    query(
-      admin,
-      `CREATE DATABASE ${quotedTarget} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
-      admin.database,
-    );
+    query(admin, `CREATE DATABASE ${quotedTarget}`, admin.database);
     runDumpToFile(source, backupPath);
     assert.ok(existsSync(backupPath), "backup artifact was not created");
     assert.ok(readFileSync(backupPath).length > 0, "backup artifact is empty");
     const inputFd = openSync(backupPath, "r");
     try {
-      run(
-        "mysql",
-        mysqlArgs(admin, ["-D", targetName]),
-        { ...process.env, MYSQL_PWD: admin.password },
-        inputFd,
-      );
+      run("psql", ["-d", targetName, "-v", "ON_ERROR_STOP=1"], pgEnv(admin), inputFd);
     } finally {
       closeSync(inputFd);
     }
@@ -173,13 +160,13 @@ async function main() {
     const sourceTableCount = Number(
       query(
         source,
-        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()",
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'",
       ),
     );
     const targetTableCount = Number(
       query(
         admin,
-        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()",
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'",
         targetName,
       ),
     );
@@ -189,10 +176,14 @@ async function main() {
       "restored table count differs from source",
     );
     const sourceMigrations = Number(
-      query(source, "SELECT COUNT(*) FROM __drizzle_migrations"),
+      query(source, 'SELECT COUNT(*) FROM drizzle.__drizzle_migrations'),
     );
     const targetMigrations = Number(
-      query(admin, "SELECT COUNT(*) FROM __drizzle_migrations", targetName),
+      query(
+        admin,
+        "SELECT COUNT(*) FROM drizzle.__drizzle_migrations",
+        targetName,
+      ),
     );
     assert.equal(
       targetMigrations,
@@ -201,10 +192,10 @@ async function main() {
     );
     for (const table of criticalTables) {
       const sourceRows = Number(
-        query(source, `SELECT COUNT(*) FROM \`${table}\``),
+        query(source, `SELECT COUNT(*) FROM "${table}"`),
       );
       const targetRows = Number(
-        query(admin, `SELECT COUNT(*) FROM \`${table}\``, targetName),
+        query(admin, `SELECT COUNT(*) FROM "${table}"`, targetName),
       );
       assert.equal(
         targetRows,

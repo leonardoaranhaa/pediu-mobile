@@ -16,6 +16,7 @@ import {
   cartItemCount,
   cartSubtotal,
   cartTotal,
+  normalizeStoreKind,
   removeCartItem,
   updateCartNote,
   updateCartQuantity,
@@ -38,9 +39,9 @@ type CartContextValue = {
     product: CartProduct,
     quantity?: number,
   ) => { ok: boolean; error?: string };
-  updateQuantity: (productId: number, quantity: number) => void;
-  updateNote: (productId: number, note: string) => void;
-  removeItem: (productId: number) => void;
+  updateQuantity: (productId: number | string, quantity: number) => void;
+  updateNote: (productId: number | string, note: string) => void;
+  removeItem: (productId: number | string) => void;
   clear: () => void;
 };
 
@@ -51,14 +52,20 @@ function parseStoredCart(value: string | null): CartItem[] {
   try {
     const parsed = JSON.parse(value) as CartItem[];
     return Array.isArray(parsed)
-      ? parsed.filter(
-          (item) =>
-            item &&
-            Number.isInteger(item.id) &&
-            Number.isInteger(item.storeId) &&
-            Number.isInteger(item.quantity) &&
-            item.quantity > 0,
-        )
+      ? parsed
+          .filter(
+            (item) =>
+              item &&
+              Number.isInteger(item.id) &&
+              Number.isInteger(item.storeId) &&
+              Number.isInteger(item.quantity) &&
+              item.quantity > 0,
+          )
+          .map((item) => ({
+            ...item,
+            storeKind: normalizeStoreKind(item.storeKind),
+            flashEnabled: Boolean(item.flashEnabled),
+          }))
       : [];
   } catch {
     return [];
@@ -147,7 +154,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const addItem = useCallback(
     (product: CartProduct, quantity = 1) => {
       if (sessionUserId === undefined)
-        return { ok: false, error: "Aguarde a sincronização da sua sessão." };
+        return { ok: false, error: "Aguarde um instante e tente de novo." };
       if (sessionUserId === null)
         return { ok: false, error: "Entre para salvar itens no seu carrinho." };
       if (!hydrated)

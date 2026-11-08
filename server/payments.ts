@@ -3,6 +3,7 @@ import {
   normalizeCurrency,
   parseAmountToCents,
 } from "./domain/finance";
+import { pixExpiresAt } from "./pix-lifecycle";
 
 export type PixChargeStatus = "pending" | "failed";
 
@@ -43,8 +44,20 @@ function mercadoPagoApiBase() {
   return MERCADO_PAGO_API;
 }
 
+export function mercadoPagoAccessToken() {
+  return (
+    process.env.MERCADOPAGO_ACCESS_TOKEN?.trim() ||
+    process.env.MERCADO_PAGO_ACCESS_TOKEN?.trim() ||
+    ""
+  );
+}
+
+export function mercadoPagoConfigured() {
+  return Boolean(mercadoPagoAccessToken()) && configuredProvider() === "mercado_pago";
+}
+
 function accessToken() {
-  const token = process.env.MERCADO_PAGO_ACCESS_TOKEN?.trim();
+  const token = mercadoPagoAccessToken();
   if (!token) {
     throw new Error(
       "MERCADO_PAGO_ACCESS_TOKEN precisa estar configurado no servidor.",
@@ -72,6 +85,7 @@ export async function createPixCharge(input: {
   amount: string;
   payerEmail: string;
   idempotencyKey: string;
+  externalReference?: string;
 }): Promise<PixChargeResult> {
   const provider = configuredProvider();
   if (provider === "manual") {
@@ -93,7 +107,8 @@ export async function createPixCharge(input: {
 
   const payerEmail = input.payerEmail.trim();
   if (!payerEmail) throw new Error("E-mail do pagador é obrigatório para PIX.");
-  const externalReference = `pediu-order-${input.orderId}`;
+  const externalReference =
+    input.externalReference ?? `pediu-order-${input.orderId}`;
   const notificationUrl = process.env.MERCADO_PAGO_NOTIFICATION_URL?.trim();
   if (!notificationUrl) {
     throw new Error(
@@ -125,6 +140,7 @@ export async function createPixCharge(input: {
       payer: { email: payerEmail },
       external_reference: externalReference,
       notification_url: notificationUrl,
+      date_of_expiration: pixExpiresAt(),
     }),
   });
 
@@ -234,6 +250,46 @@ export async function requestPixRefund(input: {
     providerRefundId: payload.id === undefined ? undefined : String(payload.id),
     message: "Refund enviado ao Mercado Pago; aguardando confirmação canônica.",
   };
+}
+
+/**
+ * Cancels a still-open Mercado Pago charge.
+ * Returns "paid" when the charge can no longer be cancelled because the money arrived.
+ */
+export async function cancelMercadoPagoPayment(
+  transactionId: string,
+): Promise<"cancelled" | "paid" | "skipped"> {
+  const id = transactionId.trim();
+  if (!id || configuredProvider() !== "mercado_pago") return "skipped";
+  const response = await fetch(
+    `${mercadoPagoApiBase()}/v1/payments/${encodeURIComponent(id)}`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${accessToken()}`,
+        "Content-Type": "application/json",
+      },
+      signal: AbortSignal.timeout(10_000),
+      body: JSON.stringify({ status: "cancelled" }),
+    },
+  );
+  if (response.ok) return "cancelled";
+  let remoteStatus = "";
+  try {
+    const payload = (await response.json()) as { status?: string; message?: string };
+    remoteStatus = `${payload.status ?? ""} ${payload.message ?? ""}`.toLowerCase();
+  } catch {
+    remoteStatus = "";
+  }
+  if (/approved|accredited|paid/.test(remoteStatus)) return "paid";
+  try {
+    const remote = await getMercadoPagoPayment(id);
+    if (remote.status === "approved" || remote.status === "authorized") return "paid";
+    if (remote.status === "cancelled" || remote.status === "rejected") return "cancelled";
+  } catch {
+    // The local cancel still stands. A later webhook refunds if the money arrives.
+  }
+  return "cancelled";
 }
 
 /** Fetch the canonical payment resource; webhook body fields are never trusted. */

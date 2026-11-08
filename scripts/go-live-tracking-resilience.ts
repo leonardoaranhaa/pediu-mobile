@@ -7,8 +7,6 @@ const apiBaseUrl = (
 const databaseUrl = process.env.DATABASE_URL?.trim() ?? "";
 if (!databaseUrl)
   throw new Error("DATABASE_URL is required for tracking smoke.");
-if (!process.env.VITE_APP_ID?.trim())
-  throw new Error("VITE_APP_ID is required for tracking smoke.");
 if (!process.env.JWT_SECRET?.trim())
   throw new Error("JWT_SECRET is required for tracking smoke.");
 
@@ -54,9 +52,9 @@ function insertId(result: any): number {
 }
 
 async function main() {
-  const mysql = await import("mysql2/promise");
+  const { createConnection } = await import("./pg-client");
   const { sdk } = await import("../server/_core/sdk");
-  const connection = await mysql.createConnection(databaseUrl);
+  const connection = await createConnection(databaseUrl);
   const runId = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
   const customerOpenId = `ci-tracking-customer-${runId}`;
   const merchantOpenId = `ci-tracking-merchant-${runId}`;
@@ -256,7 +254,12 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+main()
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    const { finishDatabaseScript } = await import("./finish-database-script");
+    await finishDatabaseScript();
+  });

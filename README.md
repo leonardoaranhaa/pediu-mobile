@@ -8,8 +8,8 @@ Aplicativo de delivery local construído com Expo, React Native, Expo Router e u
 
 - **Cliente:** Expo SDK 54, React Native, Expo Router, NativeWind e React Native Web.
 - **Servidor:** Node.js, Express, tRPC v11 e TypeScript.
-- **Persistência:** MariaDB/MySQL com Drizzle ORM e migrations versionadas.
-- **Autenticação:** OAuth com sessão HttpOnly no web e token armazenado no SecureStore em dispositivos nativos.
+- **Persistência:** Postgres com Drizzle ORM e migrations versionadas.
+- **Autenticação:** e-mail e senha do próprio Pediu. A sessão dura 30 dias, fica registrada no servidor e pode ser revogada. No celular o token fica no SecureStore.
 - **Qualidade:** Vitest, TypeScript, ESLint, esbuild e GitHub Actions.
 
 ## Fluxos disponíveis
@@ -28,8 +28,7 @@ O acompanhamento de entregas possui atribuição, localização, ETA, eventos op
 
 - Node.js 20 ou superior.
 - pnpm 9.12.0, conforme `package.json`.
-- MariaDB ou MySQL para executar o backend com persistência.
-- Um provedor OAuth configurado para testar login real.
+- Postgres para executar o backend com persistência.
 
 Instale as dependências com:
 
@@ -39,23 +38,23 @@ pnpm install
 
 ## Configuração de ambiente
 
-O servidor lê variáveis do ambiente. Em `NODE_ENV=production`, a inicialização rejeita a execução quando `VITE_APP_ID`, `JWT_SECRET`, `DATABASE_URL` ou `ALLOWED_ORIGINS` estiverem ausentes.
+O servidor lê variáveis do ambiente. Em `NODE_ENV=production`, a inicialização rejeita a execução quando `JWT_SECRET`, `DATABASE_URL`, `ALLOWED_ORIGINS` ou `OBSERVABILITY_TOKEN` estiverem ausentes.
 
 Exemplo mínimo para desenvolvimento:
 
 ```bash
 export NODE_ENV=development
-export DATABASE_URL='mysql://usuario:senha@127.0.0.1:3306/pediu'
-export VITE_APP_ID='app-id-do-ambiente'
+export DATABASE_URL='postgresql://usuario:senha@127.0.0.1:5432/pediu'
 export JWT_SECRET='segredo-local-apenas-para-desenvolvimento'
 export ALLOWED_ORIGINS='http://localhost:8081'
+export ADMIN_EMAILS='dono@example.com'
 ```
 
 Para habilitar autenticação e integrações, configure também, conforme o recurso usado:
 
-- `OAUTH_SERVER_URL`, `EXPO_PUBLIC_OAUTH_PORTAL_URL`, `EXPO_PUBLIC_OAUTH_SERVER_URL`, `EXPO_PUBLIC_APP_ID` e, quando necessário, `EXPO_PUBLIC_API_BASE_URL`.
-- `OWNER_OPEN_ID` para o usuário proprietário do ambiente.
-- `BUILT_IN_FORGE_API_URL` e `BUILT_IN_FORGE_API_KEY` para os recursos de dados, LLM, storage, transcrição e notificações oferecidos pelo ambiente.
+- `ADMIN_EMAILS`, lista separada por vírgula. Quem cria a conta com um desses e-mails vira administrador.
+- `EXPO_PUBLIC_API_BASE_URL` no aplicativo, com o endereço https do servidor e sem barra no fim.
+- `BUILT_IN_FORGE_API_URL` e `BUILT_IN_FORGE_API_KEY` apenas se for usar imagem gerada, arquivo, transcrição ou texto automático. O piloto de pedido e login não precisa deles.
 - `PIX_PROVIDER=mercado_pago`, `MERCADO_PAGO_ACCESS_TOKEN` e `MERCADO_PAGO_NOTIFICATION_URL` para criar cobranças PIX no Mercado Pago. A URL deve ser o endpoint HTTPS público real `POST /api/webhooks/payments` do ambiente implantado; não a exponha ao cliente.
 - `MERCADO_PAGO_WEBHOOK_SECRET` para validar `x-signature` no endpoint `POST /api/webhooks/payments`. Configure a mesma URL e o segredo correspondente no painel de Webhooks da aplicação Mercado Pago.
 - `EMAIL_WEBHOOK_URL`, `EMAIL_WEBHOOK_SECRET` e `EMAIL_VERIFICATION_BASE_URL` para o envio de links de verificação de e-mail.
@@ -68,7 +67,7 @@ Variáveis com prefixo `EXPO_PUBLIC_` são incorporadas ao cliente. Não coloque
 As migrations comprometidas estão em `drizzle/`. Para aplicar somente o histórico já versionado em um banco existente, use:
 
 ```bash
-DATABASE_URL='mysql://usuario:senha@127.0.0.1:3306/pediu' pnpm exec drizzle-kit migrate
+DATABASE_URL='postgresql://usuario:senha@127.0.0.1:5432/pediu' pnpm exec drizzle-kit migrate
 ```
 
 O comando `pnpm db:push` executa a geração de migration e a aplicação. Use-o apenas quando uma alteração intencional de schema tiver sido revisada, pois ele pode criar novos arquivos no histórico. O CI aplica as migrations comprometidas em um banco MySQL limpo e verifica as tabelas essenciais.
@@ -138,7 +137,20 @@ Os limites de taxa e concorrência são locais ao processo. Antes de escalar hor
 - [Instrução técnica de correção](docs/INSTRUCAO_CORRECAO_15_ACHADOS_2026-09-22.md)
 - [Instrução técnica da fase cliente e anúncios com IA](docs/INSTRUCAO_FASE_CLIENTE_ANUNCIOS_IA.md)
 - [Instrução técnica da fase de personalização e mascote](docs/INSTRUCAO_FASE_MASCOTE_CUSTOMIZACAO.md)
+- [Instrução técnica da central de conta e preferências na nova UI](docs/INSTRUCAO_FASE_CENTRAL_CONTA_PREFERENCIAS_UI_PR9.md)
+- [Instrução técnica das transições de tema e mascote](docs/INSTRUCAO_FASE_ANIMACOES_TEMA_MASCOTE_PR9.md)
+- [Instrução técnica da sincronização do PR #11](docs/INSTRUCAO_FASE_SINCRONIZACAO_PR11_ONBOARDING_PR9.md)
+- [Instrução técnica das jornadas integradas cliente, prestador e motoboy](docs/INSTRUCAO_FASE_JORNADAS_CLIENTE_PRESTADOR_MOTOBOY_PR9.md)
+- [Instrução técnica da lapidação de UI e copy](docs/INSTRUCAO_FASE_LAPIDACAO_UI_COPY_PR9.md)
+- [Instrução técnica de catálogo, pedido e políticas](docs/INSTRUCAO_FASE_LAPIDACAO_CATALOGO_PEDIDO_POLITICAS_PR9.md)
+- [Instrução técnica dos cards de confirmação do checkout](docs/INSTRUCAO_FASE_CARDS_CHECKOUT_CONFIRMADO_PR9.md)
+- [Instrução técnica de Google OAuth e persistência no APK](docs/INSTRUCAO_FASE_GOOGLE_OAUTH_APK_PERSISTENCIA_PR9.md)
+- [Instrução técnica da auditoria de PRs abertos e paridade](docs/INSTRUCAO_FASE_AUDITORIA_PRS_ABERTOS_PR9.md)
+- [Instrução técnica das transições do onboarding](docs/INSTRUCAO_FASE_ANIMACAO_ONBOARDING_PR9.md)
+- [Instrução técnica da correção do onboarding e do mascote](docs/INSTRUCAO_FASE_CORRECAO_ONBOARDING_MASCOTE_PR9.md)
+- [Relatório de auditoria Go Live público do PR #9 — 14/10/2026](docs/RELATORIO_AUDITORIA_GO_LIVE_PUBLICO_PR9_2026-10-14.md)
 - [QA Android e iOS](QA_ANDROID_IOS.md)
+- [Build local Android, EAS e Google Play](docs/INSTRUCAO_FASE_BUILD_SANDBOX_GOOGLE_PLAY_PR9.md)
 
 ## Contribuição
 

@@ -1,25 +1,162 @@
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { adminProcedure, router } from "./_core/trpc";
 import * as db from "./db";
-import { requestPixRefund } from "./payments";
+import { issuePasswordReset } from "./password-auth";
+import { mercadoPagoConfigured, requestPixRefund } from "./payments";
+import { openAiConfigured } from "./_core/openai";
 
 const pagination = z.object({
   limit: z.number().int().min(1).max(100).default(50),
   offset: z.number().int().min(0).default(0),
 });
 
+const orderStatusSchema = z.enum([
+  "Pendente",
+  "Aceito",
+  "Preparando",
+  "Pronto",
+  "A caminho",
+  "Entregue",
+  "Cancelado",
+]);
+
 export const adminRouter = router({
+  overview: adminProcedure.query(() => db.getAdminOverview()),
+
   users: adminProcedure
     .input(pagination)
     .query(({ input }) => db.listAdminUsers(input.limit, input.offset)),
+  issuePasswordReset: adminProcedure
+    .input(z.object({ email: z.string().trim().email().max(320) }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await issuePasswordReset({
+          email: input.email,
+          createdByUserId: ctx.user.id,
+        });
+      } catch (error) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Não foi possível gerar o código.",
+        });
+      }
+    }),
 
   stores: adminProcedure
     .input(pagination)
-    .query(({ input }) => db.listAdminStores(input.limit, input.offset)),
+    .query(async ({ input }) =>
+      db.attachStoreOps(await db.listAdminStores(input.limit, input.offset)),
+    ),
+
+  storeReview: adminProcedure
+    .input(
+      z.object({
+        storeId: z.number().int().positive(),
+        decision: z.enum(["approved", "rejected"]),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const store = await db.getStoreById(input.storeId);
+      if (!store) throw new Error("Estabelecimento não encontrado");
+      await db.saveStoreOps(input.storeId, { approvalStatus: input.decision });
+      await db.createAdminAuditLog({
+        actorId: ctx.user.id,
+        action: "store_reviewed",
+        entityType: "store",
+        entityId: input.storeId,
+        metadata: JSON.stringify({ decision: input.decision }),
+      });
+      return { success: true as const, decision: input.decision };
+    }),
+
+  storeUpdate: adminProcedure
+    .input(
+      z
+        .object({
+          storeId: z.number().int().positive(),
+          isOpen: z.boolean().optional(),
+          flashEnabled: z.boolean().optional(),
+          flashEtaMaxMinutes: z.number().int().min(5).max(120).optional(),
+          flashFeeOverride: z
+            .string()
+            .regex(/^\d+(\.\d{1,2})?$/)
+            .nullable()
+            .optional(),
+          kind: z.enum(["restaurant", "market", "service"]).optional(),
+        })
+        .refine(
+          (input) =>
+            Object.entries(input).some(
+              ([key, value]) => key !== "storeId" && value !== undefined,
+            ),
+          "Informe ao menos uma alteração",
+        ),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const {
+        storeId,
+        isOpen,
+        flashEnabled,
+        flashEtaMaxMinutes,
+        flashFeeOverride,
+        kind,
+      } = input;
+      const store = await db.adminUpdateStore(storeId, {
+        ...(isOpen === undefined ? {} : { isOpen: isOpen ? 1 : 0 }),
+        ...(flashEnabled === undefined
+          ? {}
+          : { flashEnabled: flashEnabled ? 1 : 0 }),
+        ...(flashEtaMaxMinutes === undefined ? {} : { flashEtaMaxMinutes }),
+        ...(flashFeeOverride === undefined ? {} : { flashFeeOverride }),
+        ...(kind === undefined ? {} : { kind }),
+      });
+      await db.createAdminAuditLog({
+        actorId: ctx.user.id,
+        action: "store_updated",
+        entityType: "store",
+        entityId: storeId,
+        metadata: JSON.stringify({
+          isOpen,
+          flashEnabled,
+          flashEtaMaxMinutes,
+          flashFeeOverride,
+          kind,
+        }),
+      });
+      return store;
+    }),
 
   orders: adminProcedure
-    .input(pagination)
-    .query(({ input }) => db.listAdminOrders(input.limit, input.offset)),
+    .input(
+      pagination.extend({
+        status: orderStatusSchema.optional(),
+        flash: z.boolean().optional(),
+      }),
+    )
+    .query(({ input }) =>
+      db.listAdminOrders(input.limit, input.offset, {
+        status: input.status,
+        flash: input.flash,
+      }),
+    ),
+
+  tips: adminProcedure
+    .input(
+      pagination.extend({
+        status: z.enum(["pending", "settled", "reversed"]).optional(),
+        destination: z.enum(["courier", "store", "platform_pool"]).optional(),
+      }),
+    )
+    .query(({ input }) =>
+      db.listAdminTipSettlements(input.limit, input.offset, {
+        status: input.status,
+        destination: input.destination,
+      }),
+    ),
 
   payments: adminProcedure
     .input(pagination)
@@ -191,5 +328,72 @@ export const adminRouter = router({
         }),
       });
       return profile;
+    }),
+
+  intelligence: adminProcedure.query(async () => {
+    const settings = await db.getPlatformSettings();
+    return {
+      ai: openAiConfigured() ? "ligada" : "falta configurar",
+      payments: mercadoPagoConfigured() ? "ligada" : "falta configurar",
+      textModel: settings.textModel,
+      imageModel: settings.imageModel,
+      imageQuality: settings.imageQuality,
+      speechModel: settings.speechModel,
+      creditPrice: settings.creditPrice,
+      dailyCap: settings.dailyCap,
+    };
+  }),
+
+  intelligenceUpdate: adminProcedure
+    .input(
+      z.object({
+        textModel: z.string().trim().min(2).max(80),
+        imageModel: z.string().trim().min(2).max(80),
+        imageQuality: z.enum(["low", "medium", "high"]),
+        speechModel: z.string().trim().min(2).max(80),
+        creditPrice: z.string().regex(/^\d+(\.\d{1,2})?$/),
+        dailyCap: z.number().int().min(1).max(500),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const settings = await db.updatePlatformSettings(input);
+      await db.createAdminAuditLog({
+        actorId: ctx.user.id,
+        action: "ai_settings_updated",
+        entityType: "platform_settings",
+        entityId: 1,
+        metadata: JSON.stringify({
+          textModel: input.textModel,
+          imageModel: input.imageModel,
+          dailyCap: input.dailyCap,
+        }),
+      });
+      return settings;
+    }),
+
+  adsReview: adminProcedure.query(() => db.listAdsForReview(50)),
+
+  adResolve: adminProcedure
+    .input(
+      z.object({
+        adId: z.number().int().positive(),
+        storeId: z.number().int().positive(),
+        decision: z.enum(["publish", "archive"]),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (input.decision === "archive") {
+        await db.archiveGeneratedAd(input.storeId, input.adId);
+      } else {
+        await db.publishGeneratedAd(input.storeId, input.adId);
+      }
+      await db.createAdminAuditLog({
+        actorId: ctx.user.id,
+        action: `ad_${input.decision}`,
+        entityType: "generated_ad",
+        entityId: input.adId,
+        metadata: JSON.stringify({ storeId: input.storeId }),
+      });
+      return { success: true as const };
     }),
 });

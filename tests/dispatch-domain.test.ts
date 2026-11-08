@@ -4,6 +4,7 @@ import {
   boundedDispatchOfferTtl,
   dispatchOfferExpiresAt,
   dispatchReofferKey,
+  offerStillBlocksCourier,
 } from "../server/domain/dispatch";
 
 describe("dispatch reoffer policy", () => {
@@ -25,5 +26,19 @@ describe("dispatch reoffer policy", () => {
     expect(dispatchReofferKey(42, 77)).toBe("dispatch-reoffer-42-77");
     expect(dispatchReofferKey(42, 77)).toBe(dispatchReofferKey(42, 77));
     expect(dispatchReofferKey(42, 78)).not.toBe(dispatchReofferKey(42, 77));
+  });
+
+  it("lets an expired offer be sent again and keeps a live one blocked", () => {
+    const now = new Date("2026-10-01T12:00:00.000Z");
+    expect(offerStillBlocksCourier("accepted", now, now)).toBe(true);
+    expect(
+      offerStillBlocksCourier("pending", new Date("2026-10-01T12:01:00.000Z"), now),
+    ).toBe(true);
+    expect(
+      offerStillBlocksCourier("pending", new Date("2026-10-01T11:59:00.000Z"), now),
+    ).toBe(false);
+    expect(offerStillBlocksCourier("expired", now, now)).toBe(false);
+    expect(offerStillBlocksCourier("rejected", now, now)).toBe(false);
+    expect(offerStillBlocksCourier("cancelled", now, now)).toBe(false);
   });
 });
