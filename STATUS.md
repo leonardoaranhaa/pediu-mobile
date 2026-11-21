@@ -1,6 +1,6 @@
 # Pediu · Status do projeto
 
-Atualizado em 07/11/2026.
+Atualizado em 21/11/2026.
 
 ## Desafio 90 dias
 
@@ -26,13 +26,13 @@ Atualizado em 07/11/2026.
 
 ## Em andamento
 
-- Semana 1 do desafio (ver "Próxima entrega"). Falta loja real, motoboy aprovado no celular e o primeiro pedido real.
+- Semana 2, reduzida para deixar uma loja real pronta. A loja "Cê decide" já existe, com o produto Lasanha, mas o ponto no mapa está errado (caiu no meio do Brasil). O lote 1 corrige o mapa, o aviso de loja em análise, a saída da conta, a foto do produto e a lentidão de entrar. Isso ainda não está no APK instalado.
 
 ## Bloqueios
 
-1. O APK instalado ainda é o v12, de antes do atalho Entregadores. No código o caminho já existe, mas o celular só ganha isso numa compilação nova. O motoboy cadastrado em 01/11 segue em análise até alguém aprovar.
-2. Não existe loja real pronta. A "Delicia de Avaí" está fechada, sem produtos, sem endereço e sem chave PIX. A outra loja é de teste.
-3. Nenhum PIX de produção foi pago até aqui. O que foi dito sobre o servidor de teste não conta como prova desse pagamento real. O primeiro pedido pago continua sendo a entrega da Semana 1.
+1. O APK instalado ainda é o v12. O atalho Entregadores, o mapa com CEP e o restante do lote 1 só entram numa compilação nova.
+2. A loja real "Cê decide" precisa ser marcada de novo em Ajustes, com CEP, número e o pino na porta. Este passe não altera o banco de produção.
+3. A Semana 1 (02 a 08/11) fechou sem o pedido real pago no PIX. Nenhum PIX de produção foi pago.
 4. O dinheiro do PIX cai na conta Mercado Pago do Pediu. O repasse para a loja ainda não é automático. Na beta, ele vai ser feito à mão. Este passe não cria repasse automático.
 5. Faltam testes em celular de verdade: navegação por gestos e letra grande.
 6. Pequenos: frases em inglês nas telas de administração e a tela de abertura (splash).
@@ -65,8 +65,8 @@ O núcleo (login, lista de lojas, cardápio, carrinho, checkout com PIX, painel 
 
 | Semana | Datas | Entrega fechada |
 | --- | --- | --- |
-| 1 | 02/11 a 08/11 | Loja real configurada, entregador real aprovado e primeiro pedido real com PIX pago (ver acima). |
-| 2 | 09/11 a 15/11 | Correções da Semana 1 e passada em celular real (gestos e letra grande). Nova versão do app. |
+| 1 | 02/11 a 08/11 | Fechou sem o pedido real pago no PIX. |
+| 2 | 09/11 a 15/11 | Reduzida para uma loja real pronta. A "Cê decide" existe, com Lasanha, mas o mapa está errado. |
 | 3 | 16/11 a 22/11 | Primeira loja real de Bauru cadastrada, com cardápio completo e aberta no app. |
 | 4 | 23/11 a 29/11 | Repasse da loja: relatório semanal no Painel do Pediu com quanto cada loja vendeu, a comissão e quanto repassar. Primeiro repasse feito à mão. |
 | 5 | 30/11 a 06/12 | Termos de uso, política de privacidade e tela de ajuda revisados. Textos em inglês removidos do admin. Splash nova. |
@@ -86,4 +86,5 @@ O núcleo (login, lista de lojas, cardápio, carrinho, checkout com PIX, painel 
 
 | Semana | Resultado | Observação |
 | --- | --- | --- |
-| 1 | Em andamento | Em 07/11 o código ganhou atualização do motoboy em análise e pedido de senha honesto. Ainda falta APK novo, loja real e PIX pago de verdade. |
+| 1 | Fechada sem o pedido | Não houve PIX pago de verdade. |
+| 2 | Em andamento | Escopo pela metade: uma loja real pronta. A "Cê decide" ainda precisa do pino certo. |
