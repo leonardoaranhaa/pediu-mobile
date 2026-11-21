@@ -44,7 +44,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenContainer } from "@/components/screen-container";
 import { edgeModalProps } from "@/components/edge-modal";
 import type { AccountAction, SignupRole } from "@/lib/guest-access";
-import { geocodeTypedAddress } from "@/lib/location";
+import { placeAddressOnMap } from "@/lib/address-lookup";
+import { StoreReviewBanner } from "@/components/store-review-banner";
 import {
   bottomSafeInset,
   scrollPaddingForFloatingBar,
@@ -1267,6 +1268,7 @@ export default function HomeScreen() {
               ]}
               showsVerticalScrollIndicator={false}
             >
+              <StoreReviewBanner />
               {sellerTab === "home" && (
                 <>
                   <SellerHome
@@ -1292,6 +1294,11 @@ export default function HomeScreen() {
                     onClients={() => changeSellerTab("clients")}
                     onShareCatalog={() => void shareStoreCatalog()}
                     onAds={() => router.push("/seller/ads")}
+                    onPreview={
+                      storeQuery.data?.id
+                        ? () => router.push(`/store/${storeQuery.data?.id}`)
+                        : undefined
+                    }
                     onVoice={() => openVoiceAssistant("seller")}
                   />
                   <SellerVoiceLauncher
@@ -2459,6 +2466,7 @@ function SellerHome({
   onClients,
   onShareCatalog,
   onAds,
+  onPreview,
   onVoice,
 }: {
   theme: AppTheme;
@@ -2474,6 +2482,7 @@ function SellerHome({
   onClients: () => void;
   onShareCatalog: () => void;
   onAds: () => void;
+  onPreview?: () => void;
   onVoice: () => void;
 }) {
   const pendingOrders = orders.filter(
@@ -2549,6 +2558,19 @@ function SellerHome({
           <Text style={styles.smallLightButtonText}>Criar</Text>
         </Pressable>
       </View>
+      {onPreview ? (
+        <Pressable
+          onPress={onPreview}
+          style={({ pressed }) => [
+            styles.shortcut,
+            { backgroundColor: theme.card, borderColor: theme.line },
+            pressed && styles.cardPressed,
+          ]}
+        >
+          <Text style={styles.shortcutTitle}>Ver como cliente</Text>
+          <Text style={styles.shortcutSub}>Abre a página pública da sua loja</Text>
+        </Pressable>
+      ) : null}
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Atalhos</Text>
       </View>
@@ -2983,6 +3005,9 @@ function SellerSettings({
   const [name, setName] = useState(store?.name ?? "");
   const [phone, setPhone] = useState(maskBrazilPhone(store?.phone ?? ""));
   const [address, setAddress] = useState(store?.address ?? "");
+  const [cep, setCep] = useState("");
+  const [doorNumber, setDoorNumber] = useState("");
+  const [cityName, setCityName] = useState("");
   const [pixKey, setPixKey] = useState(store?.pixKey ?? "");
   const [deliveryFee, setDeliveryFee] = useState(
     decimalToBrlInput(store?.deliveryFee ?? "0"),
@@ -3056,13 +3081,16 @@ function SellerSettings({
     setValidationMessage("");
     setLocating(true);
     try {
-      const point = await geocodeTypedAddress(`${address}, Brasil`);
-      if (!point) {
-        setValidationMessage("Não achamos esse endereço. Confira rua, número e cidade.");
+      const placed = await placeAddressOnMap({ cep, number: doorNumber, city: cityName });
+      if (!placed.ok) {
+        setValidationMessage(placed.message);
         return;
       }
-      setPin(point);
+      setAddress(placed.placed.line);
+      setCityName(placed.placed.cep.city);
+      setPin(placed.placed.pin);
       setPinKey((value) => value + 1);
+      setShowMap(true);
     } catch {
       setValidationMessage("Não foi possível consultar o mapa agora.");
     } finally {
@@ -3161,8 +3189,37 @@ function SellerSettings({
           keyboardType="phone-pad"
           accessibilityLabel="WhatsApp da loja"
         />
+        <Text style={styles.fieldLabel}>CEP</Text>
+        <Text style={styles.fieldHelp}>Oito números. A rua e a cidade são preenchidas em seguida.</Text>
+        <TextInput
+          value={cep}
+          onChangeText={setCep}
+          placeholder="17000000"
+          placeholderTextColor={COLORS.muted}
+          style={styles.input}
+          keyboardType="number-pad"
+          accessibilityLabel="CEP da loja"
+        />
+        <Text style={styles.fieldLabel}>NÚMERO</Text>
+        <TextInput
+          value={doorNumber}
+          onChangeText={setDoorNumber}
+          placeholder="123"
+          placeholderTextColor={COLORS.muted}
+          style={styles.input}
+          accessibilityLabel="Número da loja"
+        />
+        <Text style={styles.fieldLabel}>CIDADE</Text>
+        <TextInput
+          value={cityName}
+          onChangeText={setCityName}
+          placeholder="Bauru"
+          placeholderTextColor={COLORS.muted}
+          style={styles.input}
+          accessibilityLabel="Cidade da loja"
+        />
         <Text style={styles.fieldLabel}>ENDEREÇO DA LOJA</Text>
-        <Text style={styles.fieldHelp}>Rua, número, bairro e cidade. Depois busque no mapa.</Text>
+        <Text style={styles.fieldHelp}>Confira a rua depois de buscar o CEP. Arraste o pino até a porta.</Text>
         <TextInput
           value={address}
           onChangeText={setAddress}

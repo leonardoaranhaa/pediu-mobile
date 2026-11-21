@@ -1,3 +1,4 @@
+import { sweepAccountRoles } from "./account-role-sweep";
 import { expireStaleInventoryReservations, listExpiredCreditPurchases, listRecentCancelledPix, applyCreditPurchaseStatus } from "./db";
 import { orderAcceptTimeoutMs } from "./domain/order-accept";
 import { cancelMercadoPagoPayment } from "./payments";
@@ -46,4 +47,17 @@ export async function sweepUnacceptedOrders() {
   } finally {
     running = false;
   }
+}
+
+export function startOrderMaintenanceSweeper() {
+  const run = () => {
+    void sweepUnacceptedOrders();
+    void sweepAccountRoles().catch((error) => {
+      console.warn("[Orders] Account sweep failed", error);
+    });
+  };
+  const timer = setInterval(run, 60_000);
+  timer.unref?.();
+  run();
+  return () => clearInterval(timer);
 }

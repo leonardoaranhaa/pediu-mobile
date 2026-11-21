@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { router } from "expo-router";
 import { Text, View } from "react-native";
+import { StoreReviewBanner } from "@/components/store-review-banner";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
 import { useAppPreferences } from "@/lib/app-preferences";
@@ -84,6 +85,7 @@ export default function SellerOrdersPage() {
     <OpsShell
       dock={<SellerDock active="orders" />}
     >
+      <StoreReviewBanner />
       <View style={{ gap: 5 }}>
         <Text
           style={{

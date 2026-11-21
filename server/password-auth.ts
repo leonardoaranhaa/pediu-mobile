@@ -86,6 +86,7 @@ async function issueSession(user: User, expiresInMs = SESSION_TTL_MS) {
   const token = await sdk.createSessionToken(user.openId, {
     name: user.name || "Pediu",
     expiresInMs,
+    user,
   });
   const expiresAt = new Date(Date.now() + expiresInMs).toISOString();
   return { token, expiresAt, user: toPublicAccount(user) };
@@ -120,22 +121,26 @@ export async function signupAccount(input: {
         : "customer";
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  let created: User | undefined;
   try {
-    await db.insert(users).values({
-      openId,
-      name: input.name.trim(),
-      email,
-      phone,
-      passwordHash,
-      loginMethod: "password",
-      role,
-      usesCustomerApp: accountRole === "customer" ? 1 : 0,
-    });
+    const inserted = await db
+      .insert(users)
+      .values({
+        openId,
+        name: input.name.trim(),
+        email,
+        phone,
+        passwordHash,
+        loginMethod: "password",
+        role,
+        usesCustomerApp: accountRole === "customer" ? 1 : 0,
+      })
+      .returning();
+    created = inserted[0];
   } catch (error) {
     if (isUniqueConstraintError(error)) throw new Error(SIGNUP_ERROR);
     throw error;
   }
-  const created = await getUserByOpenId(openId);
   if (!created) throw new Error(SIGNUP_ERROR);
   await grantAccountRole(created.id, accountRole);
   return issueSession(created);

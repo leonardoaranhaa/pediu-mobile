@@ -11,7 +11,7 @@ function messageOf(error: unknown) {
 }
 
 export default function ChangePasswordScreen() {
-  const { refresh } = useAuth({ autoFetch: false });
+  const { refresh } = useAuth();
   const [currentPassword, setCurrentPassword] = useState("");
   const [nextPassword, setNextPassword] = useState("");
   const change = trpc.auth.changePassword.useMutation({

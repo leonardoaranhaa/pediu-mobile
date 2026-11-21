@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { isCountryLevelPin, COUNTRY_PIN_MESSAGE } from "../shared/address-pin";
 import { COOKIE_NAME, SESSION_TTL_MS } from "../shared/const.js";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { revokeAuthSession } from "./auth-sessions";
@@ -36,8 +37,6 @@ import {
   sellingBlockReason,
   storePauseView,
 } from "./domain/store-ops";
-import { sweepUnacceptedOrders } from "./order-sweep";
-import { sweepAccountRoles } from "./account-role-sweep";
 import { closeAccount } from "./account-closure";
 import { roleProfileRefusal } from "../shared/account-roles";
 import { isAdminEmail } from "./_core/env";
@@ -141,7 +140,6 @@ export const appRouter = router({
   auth: router({
     me: publicProcedure.query(async (opts) => {
       if (!opts.ctx.user) return null;
-      await sweepAccountRoles();
       const { passwordHash: _passwordHash, sessionId: _sessionId, ...safe } =
         opts.ctx.user;
       const roles = await db.listAccountRoles(safe.id, safe.role);
@@ -301,9 +299,12 @@ export const appRouter = router({
       ),
       create: protectedProcedure
         .input(addressInputSchema)
-        .mutation(({ ctx, input }) =>
-          db.createCustomerAddress(ctx.user.id, input),
-        ),
+        .mutation(({ ctx, input }) => {
+          if (isCountryLevelPin(Number(input.latitude), Number(input.longitude))) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: COUNTRY_PIN_MESSAGE });
+          }
+          return db.createCustomerAddress(ctx.user.id, input);
+        }),
       update: protectedProcedure
         .input(
           z.object({
@@ -490,7 +491,6 @@ export const appRouter = router({
           }),
         )
         .query(async ({ input }) => {
-          await sweepAccountRoles();
           let result: Awaited<ReturnType<typeof db.searchAvailableProducts>>;
           try {
             result = await db.searchAvailableProducts(input);
@@ -801,6 +801,13 @@ export const appRouter = router({
             isAdminEmail(ctx.user.email ?? ""),
           );
           if (refusal) throw new TRPCError({ code: "BAD_REQUEST", message: refusal });
+          if (
+            input.latitude != null &&
+            input.longitude != null &&
+            isCountryLevelPin(input.latitude, input.longitude)
+          ) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: COUNTRY_PIN_MESSAGE });
+          }
           if (await db.getStoreForOwner(ctx.user.id))
             throw new TRPCError({
               code: "BAD_REQUEST",
@@ -887,6 +894,13 @@ export const appRouter = router({
             ),
         )
         .mutation(({ ctx, input }) => {
+          if (
+            input.latitude != null &&
+            input.longitude != null &&
+            isCountryLevelPin(input.latitude, input.longitude)
+          ) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: COUNTRY_PIN_MESSAGE });
+          }
           const {
             isOpen,
             deliveryEnabled,
@@ -1285,12 +1299,12 @@ export const appRouter = router({
     }),
     products: router({
       mine: protectedProcedure
-        .input(z.object({ storeId: z.number().int().positive() }))
+        .input(z.object({ storeId: z.number().int().positive().optional() }))
         .query(async ({ ctx, input }) => {
           const store = await db.getStoreForOwner(ctx.user.id);
-          return store?.id === input.storeId
-            ? db.listProductsForStore(input.storeId)
-            : [];
+          if (!store) return [];
+          if (input.storeId && store.id !== input.storeId) return [];
+          return db.listProductsForStore(store.id);
         }),
       create: protectedProcedure
         .input(
@@ -1492,7 +1506,6 @@ export const appRouter = router({
             .optional(),
         )
         .query(async ({ ctx, input }) => {
-          await sweepUnacceptedOrders();
           return db.listOrdersForCustomer(
             ctx.user.id,
             input?.limit ?? 50,
@@ -1502,7 +1515,6 @@ export const appRouter = router({
       get: protectedProcedure
         .input(z.object({ orderId: z.number().int().positive() }))
         .query(async ({ ctx, input }) => {
-          await sweepUnacceptedOrders();
           const order = await db.getOrderForUser(input.orderId, ctx.user.id);
           if (!order)
             throw new Error("Pedido não encontrado ou não autorizado");
@@ -1519,7 +1531,6 @@ export const appRouter = router({
             .optional(),
         )
         .query(async ({ ctx, input }) => {
-          await sweepUnacceptedOrders();
           const store = await db.getStoreForOwner(ctx.user.id);
           const rows = store
             ? await db.listOrdersForStore(

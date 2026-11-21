@@ -13,6 +13,6 @@ export default function StoreScreen() {
   return <Page title={storeName} eyebrow="CATÁLOGO" back>
     <Card><Text style={s.sectionTitle}>Produtos</Text><Text style={s.muted}>Escolha um item para ver detalhes, disponibilidade e adicionar ao carrinho.</Text></Card>
     <View style={{ gap: 10 }}>{products.map((product) => <Card key={product.id}><Text style={s.sectionTitle}>{product.name}</Text><Text style={s.muted}>{product.description || product.category}</Text><Text style={{ color: PEDIU.coral, fontSize: 18, fontWeight: "900", marginVertical: 8 }}>R$ {Number(product.price).toFixed(2).replace(".", ",")}</Text><PrimaryButton title="Ver produto" onPress={() => router.push({ pathname: "/product/[id]", params: { id: String(product.id) } })} /></Card>)}</View>
-    {!query.isLoading && products.length === 0 && <Text style={s.muted}>Nenhum produto disponível nesta loja.</Text>}
+    {!query.isLoading && products.length === 0 && <Text style={s.muted}>Nenhum produto disponível nesta loja. Se ela ainda está em análise, os produtos aparecem para os clientes depois da aprovação.</Text>}
   </Page>;
 }

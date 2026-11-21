@@ -63,6 +63,19 @@ export const adminRouter = router({
       const store = await db.getStoreById(input.storeId);
       if (!store) throw new Error("Estabelecimento não encontrado");
       await db.saveStoreOps(input.storeId, { approvalStatus: input.decision });
+      if (input.decision === "approved") {
+        try {
+          const { sendPushToUser } = await import("./push");
+          await sendPushToUser(
+            store.ownerId,
+            "Loja aprovada",
+            `${store.name} já pode receber pedidos.`,
+            { type: "store_approved", actionPath: "/(tabs)" },
+          );
+        } catch (error) {
+          console.warn("[Stores] Failed to notify the owner about approval", error);
+        }
+      }
       await db.createAdminAuditLog({
         actorId: ctx.user.id,
         action: "store_reviewed",

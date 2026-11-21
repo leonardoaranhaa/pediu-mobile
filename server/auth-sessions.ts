@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
-import { authSessions } from "../drizzle/schema";
+import { authSessions, users, type User } from "../drizzle/schema";
 import { getDb } from "./db";
 
 export function hashSessionSecret(secret: string): string {
@@ -25,6 +25,35 @@ export async function insertAuthSession(input: {
   const id = rows[0]?.id;
   if (!id) throw new Error("Session was not stored");
   return { id };
+}
+
+export async function getAuthSessionWithUser(id: number): Promise<
+  | {
+      id: number;
+      userId: number;
+      tokenHash: string;
+      expiresAt: Date;
+      revokedAt: Date | null;
+      user: User;
+    }
+  | undefined
+> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select({
+      id: authSessions.id,
+      userId: authSessions.userId,
+      tokenHash: authSessions.tokenHash,
+      expiresAt: authSessions.expiresAt,
+      revokedAt: authSessions.revokedAt,
+      user: users,
+    })
+    .from(authSessions)
+    .innerJoin(users, eq(users.id, authSessions.userId))
+    .where(eq(authSessions.id, id))
+    .limit(1);
+  return rows[0];
 }
 
 export async function getActiveAuthSession(id: number) {

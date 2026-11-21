@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Image, Text, View } from "react-native";
 import { PinMap } from "@/components/pin-map";
 import { Card, Field, OutlineButton, PrimaryButton, PEDIU, s } from "@/components/pediu-page";
-import { geocodeTypedAddress } from "@/lib/location";
+import { placeAddressOnMap } from "@/lib/address-lookup";
 import { pickPhotoDataUrl } from "@/lib/pick-photo";
 import { trpc } from "@/lib/trpc";
 
@@ -45,6 +45,9 @@ export function StoreSignupForm({
   const [taxKind, setTaxKind] = useState<"cnpj" | "cpf">("cnpj");
   const [taxId, setTaxId] = useState("");
   const [address, setAddress] = useState("");
+  const [cep, setCep] = useState("");
+  const [door, setDoor] = useState("");
+  const [city, setCity] = useState("");
   const [storefront, setStorefront] = useState("");
   const [pin, setPin] = useState<{ latitude: number; longitude: number } | null>(null);
   const [pinKey, setPinKey] = useState(0);
@@ -77,13 +80,15 @@ export function StoreSignupForm({
   const locate = () => {
     setMessage("");
     setLocating(true);
-    void geocodeTypedAddress(`${address}, Brasil`)
-      .then((point) => {
-        if (!point) {
-          setMessage("Não achamos esse endereço. Confira rua, número e cidade.");
+    void placeAddressOnMap({ cep, number: door, city })
+      .then((result) => {
+        if (!result.ok) {
+          setMessage(result.message);
           return;
         }
-        setPin(point);
+        setAddress(result.placed.line);
+        setCity(result.placed.cep.city);
+        setPin(result.placed.pin);
         setPinKey((value) => value + 1);
       })
       .catch(() => setMessage("Não foi possível consultar o mapa agora."))
@@ -175,8 +180,11 @@ export function StoreSignupForm({
       {step === "address" ? (
         <>
           <Text style={s.sectionTitle}>Endereço fiscal</Text>
-          <Field label="Rua, número, bairro e cidade" value={address} onChangeText={setAddress} />
+          <Field label="CEP" value={cep} onChangeText={setCep} keyboardType="number-pad" placeholder="00000000" />
+          <Field label="Número" value={door} onChangeText={setDoor} keyboardType="number-pad" />
+          <Field label="Cidade" value={city} onChangeText={setCity} placeholder="Preenche com o CEP" />
           <OutlineButton title={locating ? "Procurando..." : "Ver no mapa"} onPress={locate} />
+          <Text style={s.muted}>{address || "O endereço completo aparece depois do CEP."}</Text>
           {pin ? <PinMap latitude={pin.latitude} longitude={pin.longitude} anchorKey={pinKey} label="Loja" onChange={setPin} /> : null}
           <Field label="Endereço do balcão, se for outro" value={storefront} onChangeText={setStorefront} />
         </>

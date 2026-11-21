@@ -13,7 +13,7 @@ function messageOf(error: unknown) {
 }
 
 export default function LoginScreen() {
-  const { refresh } = useAuth({ autoFetch: false });
+  const { refresh } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const login = trpc.auth.login.useMutation({

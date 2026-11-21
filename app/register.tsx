@@ -30,7 +30,7 @@ const roleCopy: Record<SignupRole, { title: string; body: string }> = {
 };
 
 export default function RegisterScreen() {
-  const { refresh } = useAuth({ autoFetch: false });
+  const { refresh } = useAuth();
   const preset = peekAuthIntent()?.role ?? "customer";
   const [role, setRole] = useState<SignupRole>(preset);
   const [step, setStep] = useState<"role" | "account" | "store" | "vehicle" | "pending">("role");

@@ -26,6 +26,7 @@ import {
 } from "@/lib/_core/manus-runtime";
 import { AuthPromptHost } from "@/components/auth-prompt";
 import { StoreOrderAlarm } from "@/components/store-order-alarm";
+import { AuthProvider } from "@/providers/auth-provider";
 import { CartProvider } from "@/providers/cart-provider";
 import {
   AppPreferencesProvider,
@@ -193,6 +194,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#FFF4E8" }}>
       <trpc.Provider client={trpcClient} queryClient={queryClient}>
         <QueryClientProvider client={queryClient}>
+          <AuthProvider>
           {/* Default to hiding native headers so raw route segments don't appear (e.g. "(tabs)", "products/[id]"). */}
           {/* If a screen needs the native header, explicitly enable it and set a human title via Stack.Screen options. */}
           {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}
@@ -209,6 +211,7 @@ export default function RootLayout() {
             </CartProvider>
             <OnboardingGate />
           </AppPreferencesProvider>
+          </AuthProvider>
         </QueryClientProvider>
       </trpc.Provider>
     </GestureHandlerRootView>

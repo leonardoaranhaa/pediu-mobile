@@ -8,13 +8,18 @@ import { ForbiddenError } from "../../shared/_core/errors.js";
 import * as db from "../db";
 import {
   getActiveAuthSession,
+  getAuthSessionWithUser,
   hashSessionSecret,
   insertAuthSession,
   revokeAuthSession,
   rotateAuthSession,
   sessionSecretMatches,
-  touchAuthSession,
 } from "../auth-sessions";
+import {
+  forgetAuthSession,
+  rememberAuth,
+  takeCachedAuth,
+} from "../auth-request-cache";
 import { ENV } from "./env";
 
 const isNonEmptyString = (value: unknown): value is string =>
@@ -45,9 +50,9 @@ class SDKServer {
 
   async createSessionToken(
     openId: string,
-    options: { expiresInMs?: number; name?: string } = {},
+    options: { expiresInMs?: number; name?: string; user?: User } = {},
   ): Promise<string> {
-    const user = await db.getUserByOpenId(openId);
+    const user = options.user ?? (await db.getUserByOpenId(openId));
     if (!user) throw new Error("Cannot create a session for an unknown user");
     const expiresInMs = options.expiresInMs ?? SESSION_TTL_MS;
     const jti = randomBytes(32).toString("base64url");
@@ -110,21 +115,34 @@ class SDKServer {
   private async resolveClaims(token: string | undefined | null) {
     const claims = await this.readClaims(token);
     if (!claims) return null;
-    const session = await getActiveAuthSession(claims.sid);
+    const cacheKey = `${claims.sid}:${hashSessionSecret(claims.jti)}`;
+    const cached = takeCachedAuth<User>(cacheKey);
+    if (cached) {
+      return {
+        claims,
+        session: { id: cached.sessionId, userId: cached.user.id },
+        user: cached.user,
+      };
+    }
+    const loaded = await getAuthSessionWithUser(claims.sid);
     if (
-      !session ||
-      !sessionSecretMatches(session.tokenHash, claims.jti)
+      !loaded ||
+      loaded.revokedAt ||
+      loaded.expiresAt.getTime() <= Date.now() ||
+      !sessionSecretMatches(loaded.tokenHash, claims.jti) ||
+      loaded.user.openId !== claims.openId ||
+      loaded.user.id !== loaded.userId
     ) {
       return null;
     }
-    const user = await db.getUserByOpenId(claims.openId);
-    if (!user || user.id !== session.userId) return null;
-    return { claims, session, user };
+    rememberAuth(cacheKey, loaded.user, loaded.id);
+    return { claims, session: loaded, user: loaded.user };
   }
 
   async refreshSession(token: string | undefined | null) {
     const resolved = await this.resolveClaims(token);
     if (!resolved) return null;
+    forgetAuthSession(resolved.session.id);
     const jti = randomBytes(32).toString("base64url");
     await rotateAuthSession({
       id: resolved.session.id,
@@ -152,6 +170,7 @@ class SDKServer {
     if (!claims) return;
     const session = await getActiveAuthSession(claims.sid);
     if (!session || !sessionSecretMatches(session.tokenHash, claims.jti)) return;
+    forgetAuthSession(session.id);
     await revokeAuthSession(session.id);
   }
 
@@ -159,11 +178,6 @@ class SDKServer {
     const token = this.readToken(req);
     const resolved = await this.resolveClaims(token);
     if (!resolved) throw ForbiddenError("Invalid session");
-    await touchAuthSession(resolved.session.id);
-    await db.upsertUser({
-      openId: resolved.user.openId,
-      lastSignedIn: new Date(),
-    });
     return { ...resolved.user, sessionId: resolved.session.id };
   }
 }
