@@ -26,7 +26,7 @@ Atualizado em 21/11/2026.
 
 ## Em andamento
 
-- Semana 2, reduzida para deixar uma loja real pronta. A loja "Cê decide" já existe, com o produto Lasanha, mas o ponto no mapa está errado (caiu no meio do Brasil). O lote 1 corrige o mapa, o aviso de loja em análise, a saída da conta, a foto do produto e a lentidão de entrar. Isso ainda não está no APK instalado.
+- Semana 2, reduzida para deixar uma loja real pronta. A loja "Cê decide" já existe, com o produto Lasanha, mas o ponto no mapa está errado (caiu no meio do Brasil). O lote 1 corrige o mapa, o aviso de loja em análise, a saída da conta, a foto do produto, a lentidão de entrar e a página da loja (cabeçalho e lista de produtos). Isso ainda não está no APK instalado.
 
 ## Bloqueios
 

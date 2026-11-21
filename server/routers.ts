@@ -448,6 +448,45 @@ export const appRouter = router({
             })),
           );
         }),
+      store: publicProcedure
+        .input(z.object({ storeId: z.number().int().positive() }))
+        .query(async ({ ctx, input }) => {
+          const store = await db.getStoreById(input.storeId);
+          if (!store) return null;
+          const ops = await db.getStoreOps(store.id);
+          const owner = ctx.user?.id === store.ownerId;
+          if (ops.approvalStatus !== "approved" && !owner) return null;
+          if (!(await db.storeListedForCustomers(store)) && !owner) return null;
+          const pause = storePauseView(ops);
+          const availability = resolveStoreAvailability({
+            isOpen: pause.paused ? 0 : store.isOpen,
+            openingHours: store.openingHours,
+          });
+          const products = await db.listProductsForStore(store.id);
+          return {
+            id: store.id,
+            name: store.name,
+            logoData: store.logoData,
+            deliveryFee: store.deliveryFee,
+            minOrder: store.minOrder,
+            prepMinutes: store.prepMinutes,
+            open: availability.open && !pause.paused,
+            nextOpenLabel: pause.paused
+              ? pause.message ?? "Fechada agora"
+              : availability.nextOpenLabel,
+            reviewing: ops.approvalStatus === "pending",
+            rejected: ops.approvalStatus === "rejected",
+            products: products.map((product) => ({
+              id: product.id,
+              name: product.name,
+              description: product.description,
+              price: product.price,
+              imageData: product.imageData,
+              available: product.available,
+              category: product.category,
+            })),
+          };
+        }),
       detail: publicProcedure
         .input(z.object({ productId: z.number().int().positive() }))
         .query(async ({ input }) => {
