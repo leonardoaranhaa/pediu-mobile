@@ -56,7 +56,7 @@ export const APP_THEMES: AppTheme[] = [
     canvas: "#F7F6F4",
     ink: "#111111",
     text: "#1A120C",
-    muted: "#4A403A",
+    muted: "#5F6368",
     line: "#E9DED3",
     card: "#FFFFFF",
     deep: "#111111",

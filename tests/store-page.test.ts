@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "../server/routers";
 import * as db from "../server/db";
 import { storeHeaderCopy } from "../lib/store-header";
-import { filterHomeStores, groupHomeStores } from "../lib/home-stores";
+import { filterHomeStores, groupHomeStores, prepEstimateLabel } from "../lib/home-stores";
 
 describe("store page header", () => {
   it("shows an open store with time, fee and minimum", () => {
@@ -54,6 +54,12 @@ describe("home store cards", () => {
     expect(cards[1]).toMatchObject({ name: "Mercado", open: true });
     expect(filterHomeStores(cards, "abertas").map((store) => store.name)).toEqual(["Mercado"]);
     expect(filterHomeStores(cards, "gratis").map((store) => store.name)).toEqual(["Mercado"]);
+  });
+
+  it("turns prep minutes into a range and hides a missing time", () => {
+    expect(prepEstimateLabel(25)).toBe("25–35 min");
+    expect(prepEstimateLabel(null)).toBeNull();
+    expect(prepEstimateLabel(0)).toBeNull();
   });
 });
 

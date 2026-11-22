@@ -242,7 +242,9 @@ export default function TrackOrderPage() {
             {query.data.cancelReason || "Este pedido foi cancelado."}
           </Text>
         ) : null}
-        {query.data.deliveryCode && query.data.status !== "Cancelado" ? (
+        {query.data.deliveryCode &&
+        query.data.status !== "Cancelado" &&
+        query.data.status !== "Entregue" ? (
           <Text style={{ color: PEDIU.ink, fontSize: 22, fontWeight: "900" }}>
             Código para o motoboy: {query.data.deliveryCode}
           </Text>

@@ -1,6 +1,7 @@
 import { useEffect, type PropsWithChildren, type ReactNode } from "react";
 import {
   Pressable,
+  StyleSheet,
   type PressableProps,
   type StyleProp,
   type ViewStyle,
@@ -94,8 +95,23 @@ export function PediuPressable({
     transform: [{ scale: scale.value }],
   }));
 
+  const flat = StyleSheet.flatten(style);
+  const grows = flat?.flex != null || flat?.flexGrow != null || flat?.width != null;
   return (
-    <Animated.View style={animatedStyle}>
+    <Animated.View
+      style={[
+        animatedStyle,
+        grows
+          ? {
+              flexGrow: flat?.flexGrow ?? (typeof flat?.flex === "number" ? flat.flex : 1),
+              flexShrink: flat?.flexShrink ?? 1,
+              width: flat?.width,
+              alignSelf: "stretch",
+              minWidth: 0,
+            }
+          : null,
+      ]}
+    >
       <AnimatedPressable
         {...props}
         disabled={disabled}

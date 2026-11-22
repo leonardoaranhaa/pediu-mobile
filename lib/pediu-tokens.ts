@@ -20,7 +20,7 @@ export const PEDIU_TOKENS = {
   surfaceElevated: "#FFFFFF",
   surfaceMuted: "#FFF0D7",
   text: "#1A120C",
-  muted: "#6E635A",
+  muted: "#5F6368",
   subtle: "#9A8E84",
   line: "#F0E4D8",
   success: "#0B8A5C",

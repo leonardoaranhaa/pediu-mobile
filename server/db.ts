@@ -2157,6 +2157,8 @@ export type MarketplaceProduct = Omit<
   flashEtaMaxMinutes: number;
   storeOpen: boolean;
   nextOpenLabel: string | null;
+  prepMinutes: number;
+  logoData: string | null;
 };
 
 export type MarketplaceSearchInput = {
@@ -2280,6 +2282,8 @@ export async function searchAvailableProducts(
       createdAt: products.createdAt,
       storeName: stores.name,
       deliveryFee: stores.deliveryFee,
+      prepMinutes: stores.prepMinutes,
+      logoData: stores.logoData,
       adId: generatedAds.id,
       adHeadline: generatedAds.headline,
       adDescription: generatedAds.description,

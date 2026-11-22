@@ -4,6 +4,7 @@ import { Image, Text, View } from "react-native";
 import { PediuPressable } from "@/components/pediu-motion";
 import {
   filterHomeStores,
+  prepEstimateLabel,
   type HomeStoreCard,
   type HomeStoreFilter,
 } from "@/lib/home-stores";
@@ -24,22 +25,17 @@ function feeLabel(fee?: string | null) {
 }
 
 function Cover({ store }: { store: HomeStoreCard }) {
-  if (store.imageUrl) {
-    return <Image source={{ uri: store.imageUrl }} style={{ width: "100%", height: 140 }} />;
-  }
+  const logo = store.logoData;
   return (
-    <View
-      style={{
-        width: "100%",
-        height: 120,
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: store.open ? "#E20D2A" : "#8C8178",
-      }}
-    >
-      <Text style={{ color: "#FFF7F5", fontSize: 34, fontWeight: "800" }}>
-        {store.name.slice(0, 1).toUpperCase()}
-      </Text>
+    <View style={{ height: 90, overflow: "hidden", backgroundColor: "#FDE8EA" }}>
+      {logo ? (
+        <Image source={{ uri: logo }} style={{ width: "100%", height: 90 }} />
+      ) : (
+        <>
+          <View style={{ position: "absolute", right: -24, top: -36, width: 120, height: 120, borderRadius: 60, backgroundColor: "#E20D2A", opacity: 0.22 }} />
+          <View style={{ position: "absolute", left: -28, bottom: -46, width: 110, height: 110, borderRadius: 55, backgroundColor: "#FF8A3D", opacity: 0.28 }} />
+        </>
+      )}
     </View>
   );
 }
@@ -104,20 +100,38 @@ export function HomeStoreCards({
           ]}
         >
           <Cover store={store} />
-          <View style={{ padding: 14, gap: 6 }}>
-          <View style={{ flex: 1, padding: 12, gap: 4 }}>
-            <Text numberOfLines={1} style={{ fontSize: 18, fontWeight: "800", color: PEDIU_TOKENS.inkDeep }}>
-              {store.name}
-            </Text>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <MaterialIcons name="schedule" size={14} color="#4E453E" />
-              <Text style={{ color: "#4E453E", fontSize: 14, fontWeight: "500" }}>
-                {store.fast ? "Entrega rápida" : store.distance || "Tempo da loja no cardápio"}
+          <View style={{ paddingHorizontal: 14, paddingBottom: 14, gap: 6 }}>
+            <View
+              style={{
+                marginTop: -18,
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: "#FFFFFF",
+                borderWidth: 2,
+                borderColor: "#FFFFFF",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text style={{ color: PEDIU_TOKENS.primary, fontFamily: PEDIU_TOKENS.fontDisplay, fontWeight: "700" }}>
+                {store.name.slice(0, 1).toUpperCase()}
               </Text>
             </View>
+            <Text numberOfLines={1} style={{ fontSize: 18, fontWeight: "800", color: PEDIU_TOKENS.inkDeep, fontFamily: PEDIU_TOKENS.fontDisplay }}>
+              {store.name}
+            </Text>
+            {prepEstimateLabel(store.prepMinutes) ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <MaterialIcons name="schedule" size={14} color="#5F6368" />
+                <Text style={{ color: "#5F6368", fontSize: 14, fontWeight: "400", fontFamily: PEDIU_TOKENS.fontDisplay }}>
+                  {prepEstimateLabel(store.prepMinutes)}
+                </Text>
+              </View>
+            ) : null}
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <MaterialIcons name="two-wheeler" size={14} color={PEDIU_TOKENS.muted} />
-              <Text style={{ color: PEDIU_TOKENS.muted, fontSize: 13 }}>{feeLabel(store.fee)}</Text>
+              <MaterialIcons name="two-wheeler" size={14} color="#5F6368" />
+              <Text style={{ color: "#5F6368", fontSize: 14, fontWeight: "400", fontFamily: PEDIU_TOKENS.fontDisplay }}>{feeLabel(store.fee)}</Text>
             </View>
             <View
               style={{
@@ -136,7 +150,6 @@ export function HomeStoreCards({
             {!store.open && store.nextOpenLabel ? (
               <Text style={{ color: PEDIU_TOKENS.muted, fontSize: 12 }}>{store.nextOpenLabel}</Text>
             ) : null}
-          </View>
           </View>
         </PediuPressable>
       ))}

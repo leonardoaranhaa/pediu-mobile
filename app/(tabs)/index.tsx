@@ -84,6 +84,7 @@ import {
   type HomeContext,
 } from "@/lib/home-context";
 import { resolveCurrentLocation } from "@/lib/location";
+import { homeAddressLine } from "@/lib/home-address";
 import { cardElevation, FOOD_ASSETS } from "@/lib/pediu-tokens";
 import { DiscoverFeed } from "@/components/home/discover-feed";
 
@@ -123,6 +124,8 @@ type Product = {
   flash?: boolean;
   storeOpen?: boolean;
   nextOpenLabel?: string | null;
+  prepMinutes?: number | null;
+  logoData?: string | null;
 };
 
 type SavedAddress = {
@@ -300,7 +303,8 @@ export default function HomeScreen() {
     refetchInterval: 5_000,
   });
   const customerAddressesQuery = trpc.pediu.addresses.list.useQuery(undefined, {
-    enabled: isAuthenticated && role === "customer",
+    enabled: Boolean(user?.id) && role === "customer",
+    refetchOnMount: "always",
   });
   const showMascotMoment = (nextReaction: MascotReaction) => {
     setMascotMoment(nextReaction);
@@ -775,6 +779,8 @@ export default function HomeScreen() {
         storeKind: product.storeKind,
         flashEnabled: Boolean(product.flashEnabled),
         flash: Boolean(product.flashEnabled),
+        prepMinutes: product.prepMinutes,
+        logoData: product.logoData,
       })),
     [marketplaceQuery.data],
   );
@@ -1180,7 +1186,10 @@ export default function HomeScreen() {
               }
               contentContainerStyle={[
                 styles.scrollContent,
-                { paddingBottom: scrollPaddingForFloatingBar(insets.bottom, Platform.OS) },
+                {
+                  width: "100%",
+                  paddingBottom: scrollPaddingForFloatingBar(insets.bottom, Platform.OS),
+                },
               ]}
               showsVerticalScrollIndicator={false}
             >
@@ -1277,7 +1286,10 @@ export default function HomeScreen() {
               automaticallyAdjustKeyboardInsets
               contentContainerStyle={[
                 styles.scrollContent,
-                { paddingBottom: scrollPaddingForFloatingBar(insets.bottom, Platform.OS) },
+                {
+                  width: "100%",
+                  paddingBottom: scrollPaddingForFloatingBar(insets.bottom, Platform.OS),
+                },
               ]}
               showsVerticalScrollIndicator={false}
             >
@@ -1873,8 +1885,7 @@ function CustomerDiscover({
   mascot?: ReactNode;
 }) {
   const firstName = userName?.trim().split(/\s+/)[0];
-  const saved = (addresses ?? []).find((item) => item.isDefault) ?? addresses?.[0];
-  const savedAddressLine = saved ? `${saved.street}, ${saved.number}` : "";
+  const savedAddressLine = homeAddressLine(addresses);
   return (
     <DiscoverFeed
       products={products}
@@ -1884,14 +1895,8 @@ function CustomerDiscover({
       subtitle={homeContext.subtitle}
       searchQuery={searchQuery}
       setSearchQuery={setSearchQuery}
-      locationTitle={
-        locationLoading
-          ? "Buscando endereço..."
-          : savedAddressLine
-            ? savedAddressLine
-            : "Informe seu endereço"
-      }
-      locationAddress={locationAddress || (savedAddressLine ? "Endereço salvo" : "Toque para escolher onde entregar")}
+      locationTitle={savedAddressLine || "Informe seu endereço"}
+      locationAddress={savedAddressLine ? "Endereço salvo" : ""}
       locationLoading={locationLoading}
       onLocationPress={onLocationPress}
       onNotifications={() => router.push("/account/notifications")}
@@ -2377,7 +2382,7 @@ function SellerHome({
           onPress={onPreview}
           style={({ pressed }) => [
             styles.shortcut,
-            { backgroundColor: theme.card, borderColor: theme.line },
+            { backgroundColor: theme.card, borderColor: theme.line, width: "100%" },
             pressed && styles.cardPressed,
           ]}
         >
@@ -4524,7 +4529,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
   },
   shortcutTitle: { color: COLORS.ink, fontSize: 14, fontWeight: "800" },
-  shortcutSub: { color: COLORS.muted, fontSize: 11 },
+  shortcutSub: { color: "#5F6368", fontSize: 13, fontWeight: "400", fontFamily: "Fredoka" },
   tipCard: {
     flexDirection: "row",
     gap: 11,
