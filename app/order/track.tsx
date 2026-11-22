@@ -87,6 +87,36 @@ export default function TrackOrderPage() {
   return (
     <Page title="Acompanhar pedido" eyebrow={`PEDIDO #${query.data.id}`}>
       <Card>
+        <Text style={{ color: PEDIU.muted, fontWeight: "800", letterSpacing: 0.6 }}>AGORA</Text>
+        <Text style={{ fontSize: 32, fontWeight: "900", color: "#111111", marginTop: 4 }}>
+          {query.data.status === "Cancelado" ? "Pedido cancelado" : currentCopy.label}
+        </Text>
+        <Text style={s.muted}>{currentCopy.detail}</Text>
+        {query.data.status !== "Cancelado" ? (
+          <View style={{ gap: 8, marginTop: 8 }}>
+            {states.map((step, index) => {
+              const done = active >= index;
+              const current = active === index;
+              return (
+                <View key={step} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <View
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: 7,
+                      backgroundColor: done ? PEDIU.coral : "#E7E1DA",
+                    }}
+                  />
+                  <Text style={{ fontWeight: current ? "900" : "600", color: done ? "#111111" : PEDIU.muted }}>
+                    {step}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
+      </Card>
+      <Card>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           <View
             style={{

@@ -1,13 +1,17 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useLocalSearchParams, router } from "expo-router";
 import { Image, Pressable, Text, View } from "react-native";
 import { Page, PEDIU, s } from "@/components/pediu-page";
 import { storeHeaderCopy } from "@/lib/store-header";
+import { cardElevation } from "@/lib/pediu-tokens";
+import { useCart } from "@/providers/cart-provider";
 import { trpc } from "@/lib/trpc";
 
 export default function StoreScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const storeId = Number(id);
+  const cart = useCart();
+  const [category, setCategory] = useState("Tudo");
   const query = trpc.pediu.marketplace.store.useQuery(
     { storeId },
     { enabled: Number.isInteger(storeId) && storeId > 0, staleTime: 30_000 },
@@ -27,9 +31,45 @@ export default function StoreScreen() {
     [store],
   );
   const facts = [header?.timeLabel, header?.feeLabel, header?.minOrderLabel].filter(Boolean);
+  const categories = useMemo(() => {
+    const names = new Set((store?.products ?? []).map((product) => product.category).filter(Boolean));
+    return ["Tudo", ...names];
+  }, [store?.products]);
+  const visibleProducts = (store?.products ?? []).filter(
+    (product) => category === "Tudo" || product.category === category,
+  );
+  const cartTotal = cart.items.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0);
+
+  const cartBar =
+    cart.itemCount > 0 ? (
+      <Pressable
+        onPress={() => router.push("/cart")}
+        style={[
+          {
+            marginHorizontal: 16,
+            marginBottom: 8,
+            backgroundColor: PEDIU.coral,
+            borderRadius: 18,
+            minHeight: 56,
+            paddingHorizontal: 16,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          },
+          cardElevation("raised"),
+        ]}
+      >
+        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>
+          {`Ver sacola · ${cart.itemCount} ${cart.itemCount === 1 ? "item" : "itens"}`}
+        </Text>
+        <Text style={{ color: "#fff", fontWeight: "900" }}>
+          {`R$ ${cartTotal.toFixed(2).replace(".", ",")}`}
+        </Text>
+      </Pressable>
+    ) : null;
 
   return (
-    <Page title={store?.name ?? "Loja"} eyebrow="CARDÁPIO" back>
+    <Page title={store?.name ?? "Loja"} eyebrow="CARDÁPIO" back dock={cartBar}>
       {query.isLoading ? <Text style={s.muted}>Carregando a loja...</Text> : null}
       {query.error ? (
         <Text style={{ color: PEDIU.coral, fontWeight: "700" }}>
@@ -112,8 +152,29 @@ export default function StoreScreen() {
               <Text style={{ color: "#6E635A", fontWeight: "700" }}>{header.closedNote}</Text>
             ) : null}
           </View>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {categories.map((item) => {
+              const selected = item === category;
+              return (
+                <Pressable
+                  key={item}
+                  onPress={() => setCategory(item)}
+                  style={{
+                    borderRadius: 999,
+                    paddingHorizontal: 14,
+                    paddingVertical: 8,
+                    backgroundColor: selected ? PEDIU.coral : PEDIU.white,
+                    borderWidth: 1,
+                    borderColor: selected ? PEDIU.coral : PEDIU.line,
+                  }}
+                >
+                  <Text style={{ color: selected ? "#fff" : "#1A120C", fontWeight: "800" }}>{item}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
           <View style={{ gap: 8 }}>
-            {store.products.map((product) => (
+            {visibleProducts.map((product) => (
               <Pressable
                 key={product.id}
                 accessibilityRole="button"
@@ -121,17 +182,18 @@ export default function StoreScreen() {
                 onPress={() =>
                   router.push({ pathname: "/product/[id]", params: { id: String(product.id) } })
                 }
-                style={{
-                  flexDirection: "row",
-                  gap: 12,
-                  alignItems: "center",
-                  backgroundColor: PEDIU.white,
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  borderColor: PEDIU.line,
-                  padding: 12,
-                  opacity: product.available ? 1 : 0.55,
-                }}
+                style={[
+                  {
+                    flexDirection: "row",
+                    gap: 12,
+                    alignItems: "center",
+                    backgroundColor: PEDIU.white,
+                    borderRadius: 16,
+                    padding: 12,
+                    opacity: product.available ? 1 : 0.55,
+                  },
+                  cardElevation("rest"),
+                ]}
               >
                 <View style={{ flex: 1, gap: 4 }}>
                   <Text style={{ fontWeight: "900", color: "#111111", fontSize: 16 }} numberOfLines={2}>
@@ -167,8 +229,8 @@ export default function StoreScreen() {
                 )}
               </Pressable>
             ))}
-            {!store.products.length ? (
-              <Text style={s.muted}>Esta loja ainda não publicou produtos.</Text>
+            {!visibleProducts.length ? (
+              <Text style={s.muted}>Nenhum produto nesta categoria.</Text>
             ) : null}
           </View>
         </View>

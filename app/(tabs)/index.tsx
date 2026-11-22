@@ -23,6 +23,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   Share,
   StyleSheet,
@@ -83,7 +84,10 @@ import {
   type HomeContext,
 } from "@/lib/home-context";
 import { resolveCurrentLocation } from "@/lib/location";
-import { FOOD_ASSETS } from "@/lib/pediu-tokens";
+import { cardElevation, FOOD_ASSETS } from "@/lib/pediu-tokens";
+import { HomeStoreCards } from "@/components/home/store-cards";
+import { groupHomeStores } from "@/lib/home-stores";
+import { HomeSkeleton } from "@/components/ui/skeleton";
 
 const COLORS = {
   coral: "#E20D2A",
@@ -1168,6 +1172,14 @@ export default function HomeScreen() {
             <ScrollView
               keyboardShouldPersistTaps="handled"
               automaticallyAdjustKeyboardInsets
+              refreshControl={
+                <RefreshControl
+                  refreshing={marketplaceQuery.isRefetching && !marketplaceQuery.isLoading}
+                  onRefresh={() => void marketplaceQuery.refetch()}
+                  tintColor={theme.primary}
+                  colors={[theme.primary]}
+                />
+              }
               contentContainerStyle={[
                 styles.scrollContent,
                 { paddingBottom: scrollPaddingForFloatingBar(insets.bottom, Platform.OS) },
@@ -1863,7 +1875,7 @@ function CustomerDiscover({
       <PediuPressable
         accessibilityRole="button"
         accessibilityLabel="Escolher onde entregar"
-        style={styles.p3LocationRow}
+        style={[styles.p3LocationRow, cardElevation("rest")]}
         onPress={onLocationPress}
       >
         <View style={styles.p3LocationTitle}>
@@ -1921,6 +1933,7 @@ function CustomerDiscover({
       <View
         style={[
           styles.searchBox,
+          cardElevation("raised"),
           { backgroundColor: theme.card, borderColor: theme.line },
         ]}
       >
@@ -1973,7 +1986,7 @@ function CustomerDiscover({
         {CATEGORIES.map((item) => (
           <PediuPressable
             key={item.label}
-            style={styles.categoryTile}
+            style={[styles.categoryTile, cardElevation("rest"), { backgroundColor: theme.card, borderRadius: 18, paddingVertical: 8 }]}
             onPress={() => onCategory(item.query)}
           >
             <Image source={item.image} style={styles.categoryImage} />
@@ -2008,13 +2021,20 @@ function CustomerDiscover({
         <Text style={styles.sectionTitle}>{homeContext.focusLabel}</Text>
         <Text style={styles.link}>Ver tudo</Text>
       </View>
+      <HomeStoreCards
+        stores={groupHomeStores(products)}
+        motionEnabled={motionEnabled}
+        onOpen={(store) => {
+          if (store.storeId) {
+            router.push(`/store/${store.storeId}`);
+            return;
+          }
+          const product = products.find((item) => item.id === store.productId);
+          if (product) onProductPress(product);
+        }}
+      />
       {loading ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>Carregando opções...</Text>
-          <Text style={styles.emptyText}>
-            Buscando produtos disponíveis perto de você.
-          </Text>
-        </View>
+        <HomeSkeleton />
       ) : error ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyTitle}>
@@ -3737,6 +3757,10 @@ const styles = StyleSheet.create({
     maxWidth: "100%",
     minHeight: 44,
     justifyContent: "center",
+    backgroundColor: COLORS.white,
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   p3LocationTitle: {
     flexDirection: "row",
@@ -3983,9 +4007,10 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: COLORS.ink,
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "800",
     fontFamily: "Fredoka",
+    letterSpacing: -0.3,
   },
   link: {
     color: COLORS.coral,

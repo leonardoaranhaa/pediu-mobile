@@ -18,7 +18,7 @@ export default function ProductDetailPage() {
     { enabled: Number.isInteger(productId) && productId > 0 },
   );
   const { isAuthenticated } = useAuth();
-  const { addItem, itemCount } = useCart();
+  const { addItem, itemCount, items } = useCart();
   const [quantity, setQuantity] = useState(1);
   const [notice, setNotice] = useState("");
   const [selected, setSelected] = useState<Record<number, number>>({});
@@ -136,10 +136,30 @@ export default function ProductDetailPage() {
       title={product.name}
       eyebrow={detail.storeName}
       back
-      action={
-        <Pressable onPress={openCart}>
-          <Text style={{ color: PEDIU.coral, fontWeight: "900" }}>Carrinho ({itemCount})</Text>
-        </Pressable>
+      dock={
+        itemCount > 0 ? (
+          <Pressable
+            onPress={openCart}
+            style={{
+              marginHorizontal: 16,
+              marginBottom: 8,
+              backgroundColor: PEDIU.coral,
+              borderRadius: 18,
+              minHeight: 56,
+              paddingHorizontal: 16,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>
+              {`Ver sacola · ${itemCount} ${itemCount === 1 ? "item" : "itens"}`}
+            </Text>
+            <Text style={{ color: "#fff", fontWeight: "900" }}>
+              {`R$ ${items.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0).toFixed(2).replace(".", ",")}`}
+            </Text>
+          </Pressable>
+        ) : null
       }
     >
       <Card>

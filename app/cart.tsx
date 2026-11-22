@@ -1,4 +1,5 @@
 import { Pressable, Text, TextInput, View } from "react-native";
+import { HomeSkeleton } from "@/components/ui/skeleton";
 import { router } from "expo-router";
 import {
   Card,
@@ -36,12 +37,7 @@ export default function CartPage() {
   if (loading || !hydrated)
     return (
       <Page title="Seu carrinho" eyebrow="PEDIDO" back>
-        <Card>
-          <Text style={s.sectionTitle}>Restaurando carrinho...</Text>
-          <Text style={s.muted}>
-            Carregando sessão e itens salvos neste dispositivo.
-          </Text>
-        </Card>
+        <HomeSkeleton />
       </Page>
     );
   if (!isAuthenticated)

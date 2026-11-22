@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "../server/routers";
 import * as db from "../server/db";
 import { storeHeaderCopy } from "../lib/store-header";
+import { groupHomeStores } from "../lib/home-stores";
 
 describe("store page header", () => {
   it("shows an open store with time, fee and minimum", () => {
@@ -38,6 +39,19 @@ describe("store page header", () => {
       minOrderLabel: null,
       closedNote: "Abre amanhã às 11:00",
     });
+  });
+});
+
+describe("home store cards", () => {
+  it("keeps one card per store and marks a closed store", () => {
+    const cards = groupHomeStores([
+      { id: 1, storeId: 3, store: "Cê decide", name: "Lasanha", deliveryFee: "4.00", storeOpen: false, nextOpenLabel: "Abre amanhã às 11:00" },
+      { id: 2, storeId: 3, store: "Cê decide", name: "Suco", deliveryFee: "4.00", storeOpen: false },
+      { id: 3, storeId: 4, store: "Mercado", name: "Arroz", deliveryFee: "0", storeOpen: true },
+    ]);
+    expect(cards).toHaveLength(2);
+    expect(cards[0]).toMatchObject({ name: "Cê decide", open: false, nextOpenLabel: "Abre amanhã às 11:00" });
+    expect(cards[1]).toMatchObject({ name: "Mercado", open: true });
   });
 });
 
