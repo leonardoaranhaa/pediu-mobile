@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "../server/routers";
 import * as db from "../server/db";
 import { storeHeaderCopy } from "../lib/store-header";
-import { groupHomeStores } from "../lib/home-stores";
+import { filterHomeStores, groupHomeStores } from "../lib/home-stores";
 
 describe("store page header", () => {
   it("shows an open store with time, fee and minimum", () => {
@@ -52,6 +52,8 @@ describe("home store cards", () => {
     expect(cards).toHaveLength(2);
     expect(cards[0]).toMatchObject({ name: "Cê decide", open: false, nextOpenLabel: "Abre amanhã às 11:00" });
     expect(cards[1]).toMatchObject({ name: "Mercado", open: true });
+    expect(filterHomeStores(cards, "abertas").map((store) => store.name)).toEqual(["Mercado"]);
+    expect(filterHomeStores(cards, "gratis").map((store) => store.name)).toEqual(["Mercado"]);
   });
 });
 

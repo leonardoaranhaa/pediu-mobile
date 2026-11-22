@@ -1,103 +1,143 @@
 import { MaterialIcons } from "@expo/vector-icons";
+import { useState } from "react";
 import { Image, Text, View } from "react-native";
-import { PediuPressable, PediuReveal } from "@/components/pediu-motion";
+import { PediuPressable } from "@/components/pediu-motion";
+import {
+  filterHomeStores,
+  type HomeStoreCard,
+  type HomeStoreFilter,
+} from "@/lib/home-stores";
 import { cardElevation, PEDIU_TOKENS } from "@/lib/pediu-tokens";
-import { type HomeStoreCard } from "@/lib/home-stores";
 
 export { groupHomeStores, type HomeStoreCard } from "@/lib/home-stores";
 
+const FILTERS: { id: HomeStoreFilter; label: string }[] = [
+  { id: "abertas", label: "Abertas agora" },
+  { id: "gratis", label: "Entrega grátis" },
+  { id: "rapidas", label: "Mais rápidas" },
+];
+
 function feeLabel(fee?: string | null) {
   const amount = Number(fee ?? 0);
-  if (!Number.isFinite(amount) || amount <= 0) return "Entrega grátis";
-  return `Entrega R$ ${amount.toFixed(2).replace(".", ",")}`;
+  if (!Number.isFinite(amount) || amount <= 0) return "Grátis";
+  return `R$ ${amount.toFixed(2).replace(".", ",")}`;
+}
+
+function Cover({ store }: { store: HomeStoreCard }) {
+  if (store.imageUrl) {
+    return <Image source={{ uri: store.imageUrl }} style={{ width: 92, height: 92 }} />;
+  }
+  return (
+    <View
+      style={{
+        width: 92,
+        height: 92,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: store.open ? "#E20D2A" : "#8C8178",
+      }}
+    >
+      <Text style={{ color: "#FFF7F5", fontSize: 34, fontWeight: "800" }}>
+        {store.name.slice(0, 1).toUpperCase()}
+      </Text>
+    </View>
+  );
 }
 
 export function HomeStoreCards({
   stores,
-  motionEnabled,
   onOpen,
 }: {
   stores: HomeStoreCard[];
-  motionEnabled: boolean;
+  motionEnabled?: boolean;
   onOpen: (store: HomeStoreCard) => void;
 }) {
-  if (!stores.length) return null;
+  const [filter, setFilter] = useState<HomeStoreFilter | null>(null);
+  const visible = filterHomeStores(stores, filter);
   return (
-    <View style={{ gap: PEDIU_TOKENS.space.md }}>
-      <Text
-        style={{
-          fontFamily: "Fredoka",
-          fontSize: PEDIU_TOKENS.type.section,
-          fontWeight: "800",
-          color: PEDIU_TOKENS.inkDeep,
-        }}
-      >
+    <View style={{ gap: 12 }}>
+      <Text style={{ fontSize: 20, fontWeight: "700", color: PEDIU_TOKENS.inkDeep }}>
         Lojas perto de você
       </Text>
-      {stores.map((store, index) => (
-        <PediuReveal key={store.key} delay={index * PEDIU_TOKENS.motion.stagger} enabled={motionEnabled}>
-          <PediuPressable
-            accessibilityRole="button"
-            accessibilityLabel={`Abrir ${store.name}`}
-            onPress={() => onOpen(store)}
-            style={[
-              {
-                flexDirection: "row",
-                gap: 12,
-                alignItems: "center",
-                backgroundColor: PEDIU_TOKENS.surfaceElevated,
-                borderRadius: PEDIU_TOKENS.radius.xl,
-                padding: 12,
-                opacity: store.open ? 1 : 0.62,
-              },
-              cardElevation("rest"),
-            ]}
-          >
-            {store.imageUrl ? (
-              <Image source={{ uri: store.imageUrl }} style={{ width: 72, height: 72, borderRadius: 18 }} />
-            ) : (
-              <View
-                style={{
-                  width: 72,
-                  height: 72,
-                  borderRadius: 18,
-                  backgroundColor: PEDIU_TOKENS.canvasDeep,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Text style={{ fontSize: 26, fontWeight: "900", color: PEDIU_TOKENS.ink }}>
-                  {store.name.slice(0, 1).toUpperCase()}
-                </Text>
-              </View>
-            )}
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text numberOfLines={1} style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: "800", color: PEDIU_TOKENS.inkDeep }}>
-                {store.name}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        {FILTERS.map((item) => {
+          const selected = filter === item.id;
+          return (
+            <PediuPressable
+              key={item.id}
+              onPress={() => setFilter(selected ? null : item.id)}
+              style={{
+                borderRadius: 999,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                backgroundColor: selected ? PEDIU_TOKENS.inkDeep : PEDIU_TOKENS.white,
+                borderWidth: 1,
+                borderColor: selected ? PEDIU_TOKENS.inkDeep : PEDIU_TOKENS.line,
+              }}
+            >
+              <Text style={{ color: selected ? "#fff" : PEDIU_TOKENS.text, fontWeight: "700", fontSize: 13 }}>
+                {item.label}
               </Text>
-              <Text style={{ color: PEDIU_TOKENS.muted, fontFamily: "Nunito", fontSize: 13 }}>
-                {[feeLabel(store.fee), store.distance].filter(Boolean).join(" · ")}
+            </PediuPressable>
+          );
+        })}
+      </View>
+      {!visible.length ? (
+        <Text style={{ color: PEDIU_TOKENS.muted, fontSize: 14 }}>
+          Nenhuma loja com esse filtro agora.
+        </Text>
+      ) : null}
+      {visible.map((store) => (
+        <PediuPressable
+          key={store.key}
+          accessibilityRole="button"
+          accessibilityLabel={`Abrir ${store.name}`}
+          onPress={() => onOpen(store)}
+          style={[
+            {
+              flexDirection: "row",
+              backgroundColor: PEDIU_TOKENS.white,
+              borderRadius: 20,
+              overflow: "hidden",
+              opacity: store.open ? 1 : 0.55,
+            },
+            cardElevation("raised"),
+          ]}
+        >
+          <Cover store={store} />
+          <View style={{ flex: 1, padding: 12, gap: 4 }}>
+            <Text numberOfLines={1} style={{ fontSize: 18, fontWeight: "800", color: PEDIU_TOKENS.inkDeep }}>
+              {store.name}
+            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <MaterialIcons name="schedule" size={14} color={PEDIU_TOKENS.muted} />
+              <Text style={{ color: PEDIU_TOKENS.muted, fontSize: 13 }}>
+                {store.fast ? "Mais rápida" : "Perto de você"}
               </Text>
-              <View
-                style={{
-                  alignSelf: "flex-start",
-                  backgroundColor: store.open ? "#E5F6EE" : "#E7E1DA",
-                  borderRadius: 999,
-                  paddingHorizontal: 8,
-                  paddingVertical: 3,
-                }}
-              >
-                <Text style={{ fontWeight: "800", fontSize: 12, color: store.open ? PEDIU_TOKENS.success : PEDIU_TOKENS.muted }}>
-                  {store.open ? "Aberta" : "Fechada agora"}
-                </Text>
-              </View>
-              {!store.open && store.nextOpenLabel ? (
-                <Text style={{ color: PEDIU_TOKENS.muted, fontSize: 12 }}>{store.nextOpenLabel}</Text>
-              ) : null}
             </View>
-            <MaterialIcons name="chevron-right" size={22} color={PEDIU_TOKENS.subtle} />
-          </PediuPressable>
-        </PediuReveal>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <MaterialIcons name="two-wheeler" size={14} color={PEDIU_TOKENS.muted} />
+              <Text style={{ color: PEDIU_TOKENS.muted, fontSize: 13 }}>{feeLabel(store.fee)}</Text>
+            </View>
+            <View
+              style={{
+                alignSelf: "flex-start",
+                marginTop: 4,
+                backgroundColor: store.open ? "#E5F6EE" : "#E7E1DA",
+                borderRadius: 999,
+                paddingHorizontal: 8,
+                paddingVertical: 3,
+              }}
+            >
+              <Text style={{ fontWeight: "800", fontSize: 12, color: store.open ? PEDIU_TOKENS.success : PEDIU_TOKENS.muted }}>
+                {store.open ? "Aberta" : "Fechada agora"}
+              </Text>
+            </View>
+            {!store.open && store.nextOpenLabel ? (
+              <Text style={{ color: PEDIU_TOKENS.muted, fontSize: 12 }}>{store.nextOpenLabel}</Text>
+            ) : null}
+          </View>
+        </PediuPressable>
       ))}
     </View>
   );

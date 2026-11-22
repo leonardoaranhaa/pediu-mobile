@@ -37,7 +37,7 @@ describe("beta home copy", () => {
   it("explains lunch without the old stacked sentence", () => {
     const lunch = homeContextForHour(12);
     expect(lunch.focusDescription).toBe(
-      "Restaurantes primeiro. O mercado continua fácil de achar.",
+      "Hora do almoço. O mercado também está por aqui.",
     );
     expect(lunch.focusDescription).not.toMatch(/lideram|Mercado Pediu/);
     expect(lunch.subtitle.length).toBeLessThan(80);

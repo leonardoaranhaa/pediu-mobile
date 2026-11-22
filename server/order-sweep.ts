@@ -57,7 +57,8 @@ export function startOrderMaintenanceSweeper() {
     });
   };
   const timer = setInterval(run, 60_000);
-  timer.unref?.();
+  const handle = timer as { unref?: () => void };
+  handle.unref?.();
   run();
   return () => clearInterval(timer);
 }

@@ -85,9 +85,7 @@ import {
 } from "@/lib/home-context";
 import { resolveCurrentLocation } from "@/lib/location";
 import { cardElevation, FOOD_ASSETS } from "@/lib/pediu-tokens";
-import { HomeStoreCards } from "@/components/home/store-cards";
-import { groupHomeStores } from "@/lib/home-stores";
-import { HomeSkeleton } from "@/components/ui/skeleton";
+import { DiscoverFeed } from "@/components/home/discover-feed";
 
 const COLORS = {
   coral: "#E20D2A",
@@ -1871,279 +1869,44 @@ function CustomerDiscover({
 }) {
   const firstName = userName?.trim().split(/\s+/)[0];
   return (
-    <>
-      <PediuPressable
-        accessibilityRole="button"
-        accessibilityLabel="Escolher onde entregar"
-        style={[styles.p3LocationRow, cardElevation("rest")]}
-        onPress={onLocationPress}
-      >
-        <View style={styles.p3LocationTitle}>
-          <MaterialIcons name="location-on" size={21} color={theme.primary} />
-          <Text style={[styles.p3LocationText, { color: theme.text }]}>
-            {locationLoading
-              ? "Buscando endereço..."
-              : locationLabel === "Usar minha localização"
-                ? "Meu endereço"
-                : locationLabel}
-          </Text>
-          <MaterialIcons
-            name="keyboard-arrow-down"
-            size={19}
-            color={theme.muted}
-          />
-        </View>
-        <Text
-          numberOfLines={2}
-          style={[styles.p3LocationAddress, { color: theme.muted }]}
-        >
-          {locationAddress || "Toque para informar onde entregar"}
-        </Text>
-      </PediuPressable>
-      <View style={styles.p3GreetingRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.p3Greeting, { color: theme.ink }]}>
-            {homeContext.greeting}
-            {firstName ? `, ${firstName}` : ""}.
-          </Text>
-          <Text style={[styles.p3GreetingSub, { color: theme.muted }]}>
-            {homeContext.subtitle}
-          </Text>
-        </View>
-        <View style={styles.p3MascotSlot}>{mascot}</View>
-        <PediuPressable
-          accessibilityRole="button"
-          accessibilityLabel="Notificações"
-          style={[
-            styles.p3Bell,
-            { backgroundColor: theme.card, borderColor: theme.line },
-          ]}
-          onPress={() => router.push("/account/notifications")}
-        >
-          <MaterialIcons
-            name="notifications-none"
-            size={25}
-            color={theme.ink}
-          />
-          <View
-            style={[styles.p3BellDot, { backgroundColor: theme.primary }]}
-          />
-        </PediuPressable>
-      </View>
-      <View
-        style={[
-          styles.searchBox,
-          cardElevation("raised"),
-          { backgroundColor: theme.card, borderColor: theme.line },
-        ]}
-      >
-        <MaterialIcons name="search" size={21} color={theme.muted} />
-        <TextInput
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder="Buscar comida, produtos ou serviços"
-          placeholderTextColor={theme.muted}
-          style={[styles.searchInput, { color: theme.text }]}
-          returnKeyType="search"
-          onSubmitEditing={() => {
-            const typed = searchQuery.trim();
-            if (!typed) {
-              onSearch();
-              return;
-            }
-            router.push({ pathname: "/search", params: { q: typed } });
-          }}
-        />
-      </View>
-      <PediuV2Discovery
-        theme={theme}
-        homeContext={homeContext}
-        motionEnabled={motionEnabled}
-        products={products}
-        notifications={notifications}
-        onProductPress={onProductPress}
-        onReadNotification={onReadNotification}
-        onSearch={onSearch}
-        onAssistant={onAssistant}
-        onOrders={onOrders}
-        onBenefits={onBenefits}
-        onMarket={onMarket}
-        onCategory={onCategory}
-        activeOrder={activeOrder}
-        onActiveOrder={onActiveOrder}
-      />
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Escolha pelo sabor</Text>
-        <PediuPressable onPress={onSearch}>
-          <Text style={styles.link}>Ver tudo</Text>
-        </PediuPressable>
-      </View>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.categoryRow}
-      >
-        {CATEGORIES.map((item) => (
-          <PediuPressable
-            key={item.label}
-            style={[styles.categoryTile, cardElevation("rest"), { backgroundColor: theme.card, borderRadius: 18, paddingVertical: 8 }]}
-            onPress={() => onCategory(item.query)}
-          >
-            <Image source={item.image} style={styles.categoryImage} />
-            <Text style={[styles.categoryLabel, { color: theme.text }]}>
-              {item.label}
-            </Text>
-          </PediuPressable>
-        ))}
-      </ScrollView>
-      <PediuPressable
-        style={[
-          styles.benefitCard,
-          { backgroundColor: theme.primarySoft, borderColor: theme.line },
-        ]}
-        onPress={onBenefits}
-      >
-        <View style={[styles.benefitIcon, { backgroundColor: theme.primary }]}>
-          <MaterialIcons name="local-offer" size={20} color={COLORS.white} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.benefitTitle, { color: theme.ink }]}>
-            Pediu Vantagens
-          </Text>
-          <Text style={[styles.benefitText, { color: theme.muted }]}>
-            Cupons e condições especiais dos lojistas aparecem no checkout
-            quando estiverem disponíveis.
-          </Text>
-        </View>
-        <MaterialIcons name="chevron-right" size={20} color={theme.ink} />
-      </PediuPressable>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>{homeContext.focusLabel}</Text>
-        <Text style={styles.link}>Ver tudo</Text>
-      </View>
-      <HomeStoreCards
-        stores={groupHomeStores(products)}
-        motionEnabled={motionEnabled}
-        onOpen={(store) => {
-          if (store.storeId) {
-            router.push(`/store/${store.storeId}`);
-            return;
-          }
-          const product = products.find((item) => item.id === store.productId);
-          if (product) onProductPress(product);
-        }}
-      />
-      {loading ? (
-        <HomeSkeleton />
-      ) : error ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>
-            Não foi possível carregar o catálogo
-          </Text>
-          <Text style={styles.emptyText}>
-            Tente novamente em alguns instantes.
-          </Text>
-        </View>
-      ) : products.length ? (
-        products.map((product, index) => (
-          <PediuReveal key={product.id} delay={index * 65}>
-            <PediuPressable
-              style={styles.productCard}
-              onPress={() => onProductPress(product)}
-            >
-              <View style={styles.productImage}>
-                {product.imageUrl ? (
-                  <Image
-                    source={{ uri: product.imageUrl }}
-                    style={styles.productImageAsset}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <Text style={styles.productEmoji}>{product.emoji}</Text>
-                )}
-                <View style={styles.availablePill}>
-                  <View
-                    style={[
-                      styles.dot,
-                      product.adId ? { backgroundColor: COLORS.orange } : null,
-                    ]}
-                  />
-                  <Text
-                    style={[
-                      styles.availableText,
-                      product.adId ? { color: COLORS.orange } : null,
-                    ]}
-                  >
-                    {product.storeOpen === false
-                      ? "FECHADA"
-                      : !product.available
-                        ? "ESGOTADO"
-                        : product.adId
-                          ? "OFERTA PEDIU"
-                          : "DISPONÍVEL"}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.productInfo}>
-                <View style={{ flex: 1 }}>
-                  <View style={styles.ratingRow}>
-                    <Text style={styles.rating}>
-                      {product.storeOpen === false
-                        ? product.nextOpenLabel || "Fechada no momento"
-                        : !product.available
-                          ? "Esgotado"
-                          : product.adOfferLabel || "Disponível agora"}
-                    </Text>
-                    <Text style={styles.distance}>{product.distance}</Text>
-                  </View>
-                  <Text style={styles.productName}>
-                    {product.adHeadline || product.name}
-                  </Text>
-                  {product.adHeadline ? (
-                    <Text style={styles.storeName}>
-                      {product.name} · {product.store}
-                    </Text>
-                  ) : (
-                    <Text style={styles.storeName}>{product.store}</Text>
-                  )}
-                </View>
-                <Text style={styles.productPrice}>{product.price}</Text>
-              </View>
-              <View style={styles.productFooter}>
-                <Text style={styles.localText}>
-                  {product.adDescription ||
-                    product.description ||
-                    "Publicado pela loja no catálogo do Pediu"}
-                </Text>
-                <View style={styles.arrowCircle}>
-                  <MaterialIcons
-                    name="arrow-forward"
-                    size={17}
-                    color={COLORS.white}
-                  />
-                </View>
-              </View>
-            </PediuPressable>
-          </PediuReveal>
-        ))
-      ) : (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>Nenhuma opção disponível agora</Text>
-          <Text style={styles.emptyText}>
-            Quando uma loja abrir e publicar produtos, eles aparecerão aqui.
-          </Text>
-        </View>
-      )}
-      <View style={styles.promiseCard}>
-        <MaterialIcons name="favorite" size={20} color={COLORS.coral} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.promiseTitle}>Compre de quem está perto</Text>
-          <Text style={styles.promiseText}>
-            Apoiamos o comércio local e entregamos com cuidado.
-          </Text>
-        </View>
-      </View>
-    </>
+    <DiscoverFeed
+      products={products}
+      loading={loading}
+      error={error}
+      greeting={`${homeContext.greeting}${firstName ? `, ${firstName}` : ""}.`}
+      subtitle={homeContext.subtitle}
+      searchQuery={searchQuery}
+      setSearchQuery={setSearchQuery}
+      locationTitle={
+        locationLoading
+          ? "Buscando endereço..."
+          : locationLabel === "Usar minha localização"
+            ? "Meu endereço"
+            : locationLabel
+      }
+      locationAddress={locationAddress}
+      locationLoading={locationLoading}
+      onLocationPress={onLocationPress}
+      onNotifications={() => router.push("/account/notifications")}
+      onSearch={() => {
+        const typed = searchQuery.trim();
+        if (!typed) {
+          onSearch();
+          return;
+        }
+        router.push({ pathname: "/search", params: { q: typed } });
+      }}
+      onCategory={onCategory}
+      hasFast={products.some((product) => product.flash)}
+      onOpenStore={(store) => {
+        if (store.storeId) {
+          router.push(`/store/${store.storeId}`);
+          return;
+        }
+        const product = products.find((item) => item.id === store.productId);
+        if (product) onProductPress(product);
+      }}
+    />
   );
 }
 
@@ -4723,6 +4486,11 @@ const styles = StyleSheet.create({
     width: "48%",
     minHeight: 108,
     gap: 7,
+    elevation: 3,
+    shadowColor: "#1A120C",
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
   },
   shortcutTitle: { color: COLORS.ink, fontSize: 14, fontWeight: "800" },
   shortcutSub: { color: COLORS.muted, fontSize: 11 },

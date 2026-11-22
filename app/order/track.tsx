@@ -99,14 +99,11 @@ export default function TrackOrderPage() {
               const current = active === index;
               return (
                 <View key={step} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <View
-                    style={{
-                      width: 14,
-                      height: 14,
-                      borderRadius: 7,
-                      backgroundColor: done ? PEDIU.coral : "#E7E1DA",
-                    }}
-                  />
+                <MaterialIcons
+                  name={current ? "radio-button-checked" : done ? "check-circle" : "radio-button-unchecked"}
+                  size={18}
+                  color={done ? PEDIU.coral : "#C8BDB4"}
+                />
                   <Text style={{ fontWeight: current ? "900" : "600", color: done ? "#111111" : PEDIU.muted }}>
                     {step}
                   </Text>
