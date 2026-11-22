@@ -96,16 +96,15 @@ export function PediuPressable({
   }));
 
   const flat = StyleSheet.flatten(style);
-  const grows = flat?.flex != null || flat?.flexGrow != null || flat?.width != null;
+  const hasFlex = flat?.flex != null || flat?.flexGrow != null;
   return (
     <Animated.View
       style={[
         animatedStyle,
-        grows
+        hasFlex
           ? {
-              flexGrow: flat?.flexGrow ?? (typeof flat?.flex === "number" ? flat.flex : 1),
+              flexGrow: flat?.flexGrow ?? (typeof flat?.flex === "number" ? flat.flex : undefined),
               flexShrink: flat?.flexShrink ?? 1,
-              width: flat?.width,
               alignSelf: "stretch",
               minWidth: 0,
             }

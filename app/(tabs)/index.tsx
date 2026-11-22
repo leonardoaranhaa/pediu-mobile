@@ -1174,6 +1174,7 @@ export default function HomeScreen() {
         {role === "customer" ? (
           <>
             <ScrollView
+              style={{ flex: 1, width: "100%" }}
               keyboardShouldPersistTaps="handled"
               automaticallyAdjustKeyboardInsets
               refreshControl={
@@ -1294,6 +1295,9 @@ export default function HomeScreen() {
               showsVerticalScrollIndicator={false}
             >
               <StoreReviewBanner />
+              {sellerTab === "home" && user?.id && storeQuery.data ? (
+                <StoreTour userId={user.id} storeName={storeQuery.data.name} productCount={sellerProducts.length} />
+              ) : null}
               {sellerTab === "home" && (
                 <>
                   <SellerHome
@@ -1397,10 +1401,6 @@ export default function HomeScreen() {
             <MaterialIcons name="check-circle" size={18} color={COLORS.white} />
             <Text style={styles.toastText}>{notice}</Text>
           </View>
-        ) : null}
-
-        {role === "seller" && sellerTab === "home" && user?.id && storeQuery.data ? (
-          <StoreTour userId={user.id} storeName={storeQuery.data.name} productCount={sellerProducts.length} />
         ) : null}
 
         <Modal

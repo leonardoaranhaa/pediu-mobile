@@ -1,5 +1,5 @@
 import { MaterialIcons } from "@expo/vector-icons";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { HomeStoreCards } from "@/components/home/store-cards";
 import { PediuPressable } from "@/components/pediu-motion";
 import { HomeSkeleton } from "@/components/ui/skeleton";
@@ -64,18 +64,19 @@ export function DiscoverFeed({
   hasFast: boolean;
 }) {
   const stores = groupHomeStores(products);
+  const { width } = useWindowDimensions();
+  const rowWidth = Math.min(width, 430) - 32;
   return (
-    <View style={{ gap: 14, alignSelf: "stretch" }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, alignSelf: "stretch" }}>
+    <View style={{ gap: 14, width: rowWidth, alignSelf: "stretch" }}>
+      <View style={{ width: rowWidth, flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Escolher onde entregar"
           onPress={onLocationPress}
           style={[
             {
-              flexGrow: 1,
-              flexShrink: 1,
-              alignSelf: "stretch",
+              width: "100%",
               backgroundColor: "#FFFFFF",
               borderRadius: 18,
               paddingHorizontal: 12,
@@ -88,18 +89,19 @@ export function DiscoverFeed({
           ]}
         >
           <MaterialIcons name="location-on" size={20} color={PEDIU_TOKENS.primary} />
-          <View style={{ flexGrow: 1, flexShrink: 1 }}>
-            <Text style={{ fontFamily: PEDIU_TOKENS.fontDisplay, fontWeight: "700", color: PEDIU_TOKENS.inkDeep, fontSize: 15 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text numberOfLines={1} style={{ fontFamily: PEDIU_TOKENS.fontDisplay, fontWeight: "700", color: PEDIU_TOKENS.inkDeep, fontSize: 15 }}>
               {locationTitle || "Informe seu endereço"}
             </Text>
             {locationAddress ? (
-              <Text style={{ fontFamily: PEDIU_TOKENS.fontDisplay, fontWeight: "400", color: "#5F6368", fontSize: 13 }}>
+              <Text numberOfLines={1} style={{ fontFamily: PEDIU_TOKENS.fontDisplay, fontWeight: "400", color: "#5F6368", fontSize: 13 }}>
                 {locationAddress}
               </Text>
             ) : null}
           </View>
           <MaterialIcons name="keyboard-arrow-down" size={20} color="#5F6368" />
         </Pressable>
+        </View>
         <PediuPressable
           accessibilityRole="button"
           accessibilityLabel="Notificações"

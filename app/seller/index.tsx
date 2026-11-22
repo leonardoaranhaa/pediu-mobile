@@ -352,12 +352,8 @@ export default function SellerHomePage() {
   return (
     <OpsShell
       dock={<SellerDock active="home" />}
-      overlay={
-        user?.id && store.data ? (
-          <StoreTour userId={user.id} storeName={store.data.name} />
-        ) : null
-      }
     >
+      {user?.id ? <StoreTour userId={user.id} storeName={store.data.name} /> : null}
       <OpsHeader
         eyebrow="LOJISTA"
         title={store.data.name}

@@ -68,16 +68,26 @@ export default function StoreScreen() {
           <Text style={{ color: "#6E635A" }}>Esta loja ainda não está disponível.</Text>
         ) : null}
         {store && header ? (
-          <View style={{ height: 120, borderRadius: 20, overflow: "hidden", backgroundColor: header.closed ? "#8C8178" : "#E20D2A", justifyContent: "flex-end", padding: 16 }}>
-            {store.logoData ? (
-              <Image source={{ uri: store.logoData }} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, opacity: 0.45 }} />
-            ) : (
-              <Text style={{ position: "absolute", right: 16, top: 12, fontSize: 64, fontWeight: "800", color: "rgba(255,255,255,0.28)" }}>
-                {store.name.slice(0, 1).toUpperCase()}
-              </Text>
-            )}
-            <Text style={{ color: "#fff", fontSize: 26, fontWeight: "800" }}>{store.name}</Text>
-            <Text style={{ color: "#fff", fontWeight: "800", marginTop: 4 }}>{header.badge}</Text>
+          <View>
+            <View style={{ height: 90, borderRadius: 20, overflow: "hidden", backgroundColor: "#FDE8EA" }}>
+              {store.logoData ? (
+                <Image source={{ uri: store.logoData }} style={{ width: "100%", height: 90 }} />
+              ) : (
+                <>
+                  <View style={{ position: "absolute", right: -24, top: -36, width: 120, height: 120, borderRadius: 60, backgroundColor: header.closed ? "#8C8178" : "#E20D2A", opacity: 0.22 }} />
+                  <View style={{ position: "absolute", left: -28, bottom: -46, width: 110, height: 110, borderRadius: 55, backgroundColor: "#FF8A3D", opacity: 0.28 }} />
+                </>
+              )}
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: -18, paddingHorizontal: 4 }}>
+              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center" }}>
+                <Text style={{ color: "#E20D2A", fontWeight: "700" }}>{store.name.slice(0, 1).toUpperCase()}</Text>
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text numberOfLines={1} style={{ fontSize: 22, fontWeight: "800", color: "#111111" }}>{store.name}</Text>
+                <Text style={{ color: header.closed ? "#5F6368" : "#0B8A5C", fontWeight: "700" }}>{header.badge}</Text>
+              </View>
+            </View>
           </View>
         ) : null}
         </View>
