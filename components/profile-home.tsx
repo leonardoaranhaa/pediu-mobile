@@ -8,10 +8,10 @@ import { trpc } from "@/lib/trpc";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <Card>
+    <View style={{ gap: 8 }}>
       <Text style={s.label}>{title}</Text>
       {children}
-    </Card>
+    </View>
   );
 }
 
@@ -104,8 +104,6 @@ export function ProfileHome() {
         <Row icon="palette" title="Aparência" subtitle="Cores do aplicativo" onPress={() => router.push("/account/settings")} />
       </Section>
 
-      <DeleteAccount />
-
       <OutlineButton
         title="Sair da conta"
         onPress={() =>
@@ -115,6 +113,7 @@ export function ProfileHome() {
           ])
         }
       />
+      <DeleteAccount />
     </View>
   );
 }

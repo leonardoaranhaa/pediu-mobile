@@ -149,7 +149,7 @@ export function DiscoverFeed({
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 14, paddingRight: 8 }}>
         {CATEGORIES.map((item) => (
-          <PediuPressable key={item.label} onPress={() => onCategory(item.query)} style={{ alignItems: "center", width: 76, gap: 6 }}>
+          <PediuPressable key={item.label} onPress={() => onCategory(item.query)} style={{ alignItems: "center", minWidth: 88, gap: 6 }}>
             <View
               style={[
                 {
@@ -165,7 +165,7 @@ export function DiscoverFeed({
             >
               <MaterialIcons name={item.icon} size={24} color={PEDIU_TOKENS.primary} />
             </View>
-            <Text numberOfLines={2} style={{ fontSize: 12, fontWeight: "700", color: PEDIU_TOKENS.text, textAlign: "center" }}>
+            <Text style={{ fontSize: 12, fontWeight: "700", color: PEDIU_TOKENS.text, textAlign: "center" }}>
               {item.label}
             </Text>
           </PediuPressable>
@@ -176,14 +176,22 @@ export function DiscoverFeed({
         style={{
           borderRadius: 20,
           padding: 16,
-          backgroundColor: PEDIU_TOKENS.primary,
+          backgroundColor: "#FFFFFF",
+          borderWidth: 1,
+          borderColor: "#F0E6E8",
         }}
       >
-        <Text style={{ color: "#FFF7F5", fontSize: 18, fontWeight: "800" }}>
-          {hasFast ? "Entrega rápida perto de você" : "Peça no Pediu"}
+        <Text style={{ color: PEDIU_TOKENS.inkDeep, fontSize: 16, fontWeight: "800" }}>
+          {hasFast
+            ? "Tem entrega rápida agora"
+            : stores.length
+              ? `${stores.filter((store) => store.open).length} ${stores.filter((store) => store.open).length === 1 ? "loja aberta" : "lojas abertas"}`
+              : "Peça no Pediu"}
         </Text>
-        <Text style={{ color: "#FFE8EB", marginTop: 4, fontSize: 14 }}>
-          {hasFast ? "Tem loja com entrega rápida agora." : "As lojas do bairro, no seu tempo."}
+        <Text style={{ color: "#4E453E", marginTop: 4, fontSize: 14 }}>
+          {locationAddress.includes("Toque")
+            ? "Informe seu endereço para ver o que chega até você."
+            : "Lojas do bairro, no seu tempo."}
         </Text>
       </View>
 

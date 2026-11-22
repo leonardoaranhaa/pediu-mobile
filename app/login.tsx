@@ -6,11 +6,8 @@ import { Card, Field, OutlineButton, Page, PEDIU, PrimaryButton, s } from "@/com
 import { useAuth } from "@/hooks/use-auth";
 import { takeAuthReturn } from "@/lib/guest-access";
 import * as Auth from "@/lib/_core/auth";
+import { userFacingError } from "@/lib/user-message";
 import { trpc } from "@/lib/trpc";
-
-function messageOf(error: unknown) {
-  return error instanceof Error ? error.message : "Não foi possível entrar.";
-}
 
 export default function LoginScreen() {
   const { refresh } = useAuth();
@@ -44,14 +41,16 @@ export default function LoginScreen() {
         <Text style={s.sectionTitle}>Entrar</Text>
         <Field label="E-mail" value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" />
         <Field label="Senha" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" />
-        {login.error ? <Text style={{ color: PEDIU.coral, fontWeight: "700" }}>{messageOf(login.error)}</Text> : null}
+        {login.error ? <Text style={{ color: PEDIU.coral, fontWeight: "700" }}>{userFacingError(login.error)}</Text> : null}
         <PrimaryButton
           title={login.isPending ? "Entrando..." : "Entrar"}
           disabled={login.isPending || email.trim().length < 3 || password.length < 1}
           onPress={() => login.mutate({ email: email.trim(), password })}
         />
         <OutlineButton title="Criar uma conta" onPress={() => router.push("/register")} />
-        <OutlineButton title="Esqueci a senha" onPress={() => router.push("/forgot-password")} />
+        <Text onPress={() => router.push("/forgot-password")} style={{ color: PEDIU.coral, fontWeight: "800", textAlign: "center", paddingVertical: 8 }}>
+          Esqueci a senha
+        </Text>
       </Card>
       <View style={{ backgroundColor: PEDIU.coralSoft, borderRadius: 18, padding: 15, flexDirection: "row", gap: 10 }}>
         <MaterialIcons name="lock" size={19} color={PEDIU.coral} />

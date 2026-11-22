@@ -221,7 +221,7 @@ export default function SellerAdsPage() {
           </View>
         </View>
         <Text style={{ color: "#BCD0D1", fontSize: 13, lineHeight: 19 }}>
-          Escolha um produto. O Pediu cria a ideia, a copy e uma imagem
+          Escolha um produto. O Pediu cria a ideia, o texto e uma imagem
           comercial para você revisar antes de publicar.
         </Text>
       </Card>

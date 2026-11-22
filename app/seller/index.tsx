@@ -113,7 +113,7 @@ function SellerOrderCard({
           <Text
             style={{ fontFamily: "Nunito", fontSize: 17, color: "#6E635A" }}
           >
-            {order.deliveryAddress ?? "Endereço informado no checkout"}
+            {order.deliveryAddress ?? "Endereço informado no pedido"}
           </Text>
         </View>
         <Text

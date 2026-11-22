@@ -1,7 +1,7 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { useMemo, useState } from "react";
 import { useLocalSearchParams, router } from "expo-router";
-import { Image, Pressable, ScrollView, Text, View } from "react-native";
+import { Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PEDIU } from "@/components/pediu-page";
 import { storeHeaderCopy } from "@/lib/store-header";
@@ -17,6 +17,7 @@ export default function StoreScreen() {
   const cart = useCart();
   const insets = useSafeAreaInsets();
   const [category, setCategory] = useState("Tudo");
+  const [menuQuery, setMenuQuery] = useState("");
   const query = trpc.pediu.marketplace.store.useQuery(
     { storeId },
     { enabled: Number.isInteger(storeId) && storeId > 0, staleTime: 30_000 },
@@ -40,7 +41,9 @@ export default function StoreScreen() {
     return ["Tudo", ...names];
   }, [store?.products]);
   const visibleProducts = (store?.products ?? []).filter(
-    (product) => category === "Tudo" || product.category === category,
+    (product) =>
+      (category === "Tudo" || product.category === category) &&
+      product.name.toLowerCase().includes(menuQuery.trim().toLowerCase()),
   );
   const cartTotal = cart.items.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0);
   const bottom = bottomSafeInset(insets.bottom, Platform.OS);
@@ -57,7 +60,7 @@ export default function StoreScreen() {
           <Pressable accessibilityRole="button" accessibilityLabel="Voltar" onPress={() => router.back()} style={{ padding: 8 }}>
             <MaterialIcons name="arrow-back" size={22} color="#111111" />
           </Pressable>
-          <Text style={{ fontWeight: "800", color: "#111111" }}>{store?.name ?? "Loja"}</Text>
+          <Text style={{ fontWeight: "800", color: "#111111" }}>{store ? "" : "Loja"}</Text>
         </View>
         {query.isLoading ? <Text style={{ color: "#6E635A" }}>Carregando a loja...</Text> : null}
         {query.error ? <Text style={{ color: PEDIU.coral, fontWeight: "700" }}>Não foi possível abrir esta loja. Tente de novo.</Text> : null}
@@ -84,6 +87,13 @@ export default function StoreScreen() {
               {[header.timeLabel, header.feeLabel, header.minOrderLabel].filter(Boolean).join("  ·  ")}
             </Text>
             {header.closedNote ? <Text style={{ color: "#6E635A", fontWeight: "700", marginBottom: 8 }}>{header.closedNote}</Text> : null}
+            <TextInput
+              value={menuQuery}
+              onChangeText={setMenuQuery}
+              placeholder="Buscar no cardápio"
+              placeholderTextColor="#6E635A"
+              style={{ backgroundColor: "#fff", borderRadius: 14, paddingHorizontal: 14, minHeight: 44, marginBottom: 8, color: "#111" }}
+            />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
               {categories.map((item) => {
                 const selected = item === category;
@@ -122,6 +132,16 @@ export default function StoreScreen() {
                     {product.available ? `R$ ${Number(product.price).toFixed(2).replace(".", ",")}` : "Esgotado"}
                   </Text>
                 </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Adicionar ${product.name}`}
+                  onPress={() => router.push({ pathname: "/product/[id]", params: { id: String(product.id) } })}
+                  style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: PEDIU.coral, alignItems: "center", justifyContent: "center" }}
+                >
+                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: 20 }}>
+                    {cart.items.filter((item) => item.id === product.id).reduce((sum, item) => sum + item.quantity, 0) || "+"}
+                  </Text>
+                </Pressable>
                 {product.imageData ? (
                   <Image source={{ uri: product.imageData }} style={{ width: 72, height: 72, borderRadius: 14 }} />
                 ) : (

@@ -25,13 +25,13 @@ function feeLabel(fee?: string | null) {
 
 function Cover({ store }: { store: HomeStoreCard }) {
   if (store.imageUrl) {
-    return <Image source={{ uri: store.imageUrl }} style={{ width: 92, height: 92 }} />;
+    return <Image source={{ uri: store.imageUrl }} style={{ width: "100%", height: 140 }} />;
   }
   return (
     <View
       style={{
-        width: 92,
-        height: 92,
+        width: "100%",
+        height: 120,
         alignItems: "center",
         justifyContent: "center",
         backgroundColor: store.open ? "#E20D2A" : "#8C8178",
@@ -57,7 +57,7 @@ export function HomeStoreCards({
   return (
     <View style={{ gap: 12 }}>
       <Text style={{ fontSize: 20, fontWeight: "700", color: PEDIU_TOKENS.inkDeep }}>
-        Lojas perto de você
+        Lojas
       </Text>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
         {FILTERS.map((item) => {
@@ -95,7 +95,6 @@ export function HomeStoreCards({
           onPress={() => onOpen(store)}
           style={[
             {
-              flexDirection: "row",
               backgroundColor: PEDIU_TOKENS.white,
               borderRadius: 20,
               overflow: "hidden",
@@ -105,14 +104,15 @@ export function HomeStoreCards({
           ]}
         >
           <Cover store={store} />
+          <View style={{ padding: 14, gap: 6 }}>
           <View style={{ flex: 1, padding: 12, gap: 4 }}>
             <Text numberOfLines={1} style={{ fontSize: 18, fontWeight: "800", color: PEDIU_TOKENS.inkDeep }}>
               {store.name}
             </Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <MaterialIcons name="schedule" size={14} color={PEDIU_TOKENS.muted} />
-              <Text style={{ color: PEDIU_TOKENS.muted, fontSize: 13 }}>
-                {store.fast ? "Mais rápida" : "Perto de você"}
+              <MaterialIcons name="schedule" size={14} color="#4E453E" />
+              <Text style={{ color: "#4E453E", fontSize: 14, fontWeight: "500" }}>
+                {store.fast ? "Entrega rápida" : store.distance || "Tempo da loja no cardápio"}
               </Text>
             </View>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -136,6 +136,7 @@ export function HomeStoreCards({
             {!store.open && store.nextOpenLabel ? (
               <Text style={{ color: PEDIU_TOKENS.muted, fontSize: 12 }}>{store.nextOpenLabel}</Text>
             ) : null}
+          </View>
           </View>
         </PediuPressable>
       ))}

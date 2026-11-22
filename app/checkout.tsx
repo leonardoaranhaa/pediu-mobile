@@ -58,7 +58,7 @@ export default function CheckoutScreen() {
   const confirmLeave = useCallback(() => {
     Alert.alert(
       "Sair do pedido?",
-      "Seu carrinho continua salvo. O pedido ainda não foi enviado.",
+      "Sua sacola continua salva. O pedido ainda não foi enviado.",
       [
         { text: "Continuar pedido", style: "cancel" },
         { text: "Sair", style: "destructive", onPress: () => router.back() },
@@ -276,9 +276,9 @@ export default function CheckoutScreen() {
     return (
       <Page title="Pedido" eyebrow="PEDIU" back onBack={confirmLeave}>
         <Card>
-          <Text style={s.sectionTitle}>Seu carrinho está vazio</Text>
+          <Text style={s.sectionTitle}>Sua sacola está vazia</Text>
           <PrimaryButton
-            title="Voltar ao carrinho"
+            title="Voltar à sacola"
             onPress={() => router.replace("/cart")}
           />
         </Card>

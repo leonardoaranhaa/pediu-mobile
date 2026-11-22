@@ -495,7 +495,7 @@ export default function HomeScreen() {
           name: item.name,
           store: item.storeName,
           price: `R$ ${Number(item.price).toFixed(2).replace(".", ",")}`,
-          distance: "perto de você",
+          distance: "",
           category: item.category,
           emoji: item.emoji ?? "🍽️",
           available: true,
@@ -582,7 +582,7 @@ export default function HomeScreen() {
       if (showCheckout) {
         Alert.alert(
           "Sair do pedido?",
-          "Seu carrinho continua salvo. O pedido ainda não foi enviado.",
+          "Sua sacola continua salva. O pedido ainda não foi enviado.",
           [
             { text: "Continuar pedido", style: "cancel" },
             { text: "Sair", onPress: () => setShowCheckout(false) },
@@ -750,7 +750,7 @@ export default function HomeScreen() {
         name: product.name,
         store: product.storeName,
         price: `R$ ${Number(product.price).toFixed(2).replace(".", ",")}`,
-        distance: "perto de você",
+        distance: "",
         category: product.category,
         description: product.description,
         imageUrl: product.imageData || product.adImageUrl,
@@ -1198,6 +1198,7 @@ export default function HomeScreen() {
                   locationLabel={locationLabel}
                   locationAddress={locationAddress}
                   locationLoading={locationLoading}
+                  addresses={customerAddressesQuery.data ?? []}
                   theme={theme}
                   onLocationPress={requestLocation}
                   onAssistant={() => openVoiceAssistant("customer")}
@@ -1251,14 +1252,16 @@ export default function HomeScreen() {
               )}
               {customerTab === "profile" && <ProfileHome />}
             </ScrollView>
-            <CartPeek
-              itemCount={globalCartCount}
-              subtitle={globalCartItems[0]?.storeName}
-              totalLabel={`R$ ${cartTotal(cart.map((item) => item.price))
-                .toFixed(2)
-                .replace(".", ",")}`}
-              onPress={() => router.push("/cart")}
-            />
+            {customerTab === "discover" ? (
+              <CartPeek
+                itemCount={globalCartCount}
+                subtitle={globalCartItems[0]?.storeName}
+                totalLabel={`R$ ${cartTotal(cart.map((item) => item.price))
+                  .toFixed(2)
+                  .replace(".", ",")}`}
+                onPress={() => router.push("/cart")}
+              />
+            ) : null}
             <CustomerNav
               active={customerTab}
               onChange={changeCustomerTab}
@@ -1821,6 +1824,7 @@ function CustomerDiscover({
   locationLabel,
   locationAddress,
   locationLoading,
+  addresses,
   onLocationPress,
   onAssistant,
   onOrders,
@@ -1847,6 +1851,7 @@ function CustomerDiscover({
   locationLabel: string;
   locationAddress: string;
   locationLoading: boolean;
+  addresses?: SavedAddress[];
   onLocationPress: () => void;
   onAssistant: () => void;
   onOrders: () => void;
@@ -1868,6 +1873,8 @@ function CustomerDiscover({
   mascot?: ReactNode;
 }) {
   const firstName = userName?.trim().split(/\s+/)[0];
+  const saved = (addresses ?? []).find((item) => item.isDefault) ?? addresses?.[0];
+  const savedAddressLine = saved ? `${saved.street}, ${saved.number}` : "";
   return (
     <DiscoverFeed
       products={products}
@@ -1880,11 +1887,11 @@ function CustomerDiscover({
       locationTitle={
         locationLoading
           ? "Buscando endereço..."
-          : locationLabel === "Usar minha localização"
-            ? "Meu endereço"
-            : locationLabel
+          : savedAddressLine
+            ? savedAddressLine
+            : "Informe seu endereço"
       }
-      locationAddress={locationAddress}
+      locationAddress={locationAddress || (savedAddressLine ? "Endereço salvo" : "Toque para escolher onde entregar")}
       locationLoading={locationLoading}
       onLocationPress={onLocationPress}
       onNotifications={() => router.push("/account/notifications")}
@@ -2153,7 +2160,7 @@ function CustomerOrders({
         </View>
       ) : orders.length ? (
         orders.map((order) => (
-          <View style={styles.orderCard} key={order.id}>
+          <View style={[styles.orderCard, cardElevation("rest")]} key={order.id}>
             <View style={styles.orderTop}>
               <View>
                 <Text style={styles.eyebrow}>PEDIDO #{order.id}</Text>
@@ -2161,9 +2168,33 @@ function CustomerOrders({
                   {order.storeName || "Loja"}
                 </Text>
               </View>
-              <View style={styles.statusPill}>
-                <Text style={styles.statusPillText}>
-                  {order.status.toUpperCase()}
+              <View
+                style={[
+                  styles.statusPill,
+                  {
+                    backgroundColor:
+                      order.status === "Entregue"
+                        ? "#E5F6EE"
+                        : order.status === "Cancelado"
+                          ? "#F4F1EE"
+                          : "#FFE8EB",
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.statusPillText,
+                    {
+                      color:
+                        order.status === "Entregue"
+                          ? "#0B8A5C"
+                          : order.status === "Cancelado"
+                            ? "#6E635A"
+                            : "#E20D2A",
+                    },
+                  ]}
+                >
+                  {order.status}
                 </Text>
               </View>
             </View>
@@ -2178,6 +2209,17 @@ function CustomerOrders({
             ) : null}
             {order.status !== "Cancelado" ? (
               <>
+                <Pressable
+                  style={styles.outlineButtonSmall}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/order/track",
+                      params: { orderId: String(order.id) },
+                    })
+                  }
+                >
+                  <Text style={styles.outlineButtonText}>Acompanhar pedido</Text>
+                </Pressable>
                 <View style={styles.progressTrack}>
                   <View
                     style={[
@@ -2199,17 +2241,6 @@ function CustomerOrders({
                 {order.cancelReason || "Este pedido foi cancelado."}
               </Text>
             )}
-            <Pressable
-              style={styles.outlineButtonSmall}
-              onPress={() =>
-                router.push({
-                  pathname: "/order/track",
-                  params: { orderId: String(order.id) },
-                })
-              }
-            >
-              <Text style={styles.outlineButtonText}>Acompanhar pedido</Text>
-            </Pressable>
             {order.status === "Pendente" || order.status === "Aceito" ? (
               <Pressable
                 style={styles.outlineButtonSmall}
@@ -2282,7 +2313,7 @@ function SellerHome({
           <Text style={styles.sellerTitle}>{store?.name ?? "Sua loja"}</Text>
           <Text style={styles.sellerSubtitle}>
             {firstName
-              ? `${new Date().getHours() < 12 ? "Bom dia" : new Date().getHours() < 18 ? "Boa tarde" : "Boa noite"}, ${firstName}. Tudo pronto?`
+              ? `${getHomeContext().greeting}, ${firstName}. Tudo pronto?`
               : "Configure sua loja para começar."}
           </Text>
         </View>
@@ -2331,7 +2362,7 @@ function SellerHome({
             Crie um anúncio que chama atenção
           </Text>
           <Text style={[styles.aiText, { color: "#3A2A22" }]}>
-            Imagem e copy prontas para você revisar e publicar.
+            Imagem e texto prontos para você revisar e publicar.
           </Text>
         </View>
         <Pressable
@@ -6124,7 +6155,7 @@ function CheckoutModal({
             <MaterialIcons name="check" size={18} color={COLORS.white} />
           </Pressable>
           <Pressable style={styles.textButton} onPress={onClose}>
-            <Text style={styles.textButtonLabel}>Voltar ao carrinho</Text>
+            <Text style={styles.textButtonLabel}>Voltar à sacola</Text>
           </Pressable>
         </ScrollView>
       </View>

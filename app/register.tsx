@@ -8,10 +8,11 @@ import * as Auth from "@/lib/_core/auth";
 import { clearAuthIntent, peekAuthIntent, signupSteps, takeAuthReturn, type SignupRole } from "@/lib/guest-access";
 import { geocodeTypedAddress } from "@/lib/location";
 import { pickPhotoDataUrl } from "@/lib/pick-photo";
+import { userFacingError } from "@/lib/user-message";
 import { trpc } from "@/lib/trpc";
 
 function messageOf(error: unknown) {
-  return error instanceof Error ? error.message : "Não foi possível criar a conta.";
+  return userFacingError(error);
 }
 
 const roleCopy: Record<SignupRole, { title: string; body: string }> = {

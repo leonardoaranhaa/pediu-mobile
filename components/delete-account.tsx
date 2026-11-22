@@ -3,10 +3,12 @@ import { useState } from "react";
 import { Alert, Text } from "react-native";
 import { Card, Field, PEDIU, PrimaryButton, s } from "@/components/pediu-page";
 import { useAuth } from "@/hooks/use-auth";
+import { userFacingError } from "@/lib/user-message";
 import { trpc } from "@/lib/trpc";
 
 export function DeleteAccount() {
   const { logout } = useAuth();
+  const [open, setOpen] = useState(false);
   const [password, setPassword] = useState("");
   const closeAccount = trpc.pediu.account.profile.close.useMutation({
     onSuccess: async () => {
@@ -30,11 +32,19 @@ export function DeleteAccount() {
     );
   };
 
+  if (!open) {
+    return (
+      <Text onPress={() => setOpen(true)} style={{ color: "#6E635A", fontWeight: "700", textAlign: "center", paddingVertical: 8 }}>
+        Excluir minha conta
+      </Text>
+    );
+  }
+
   return (
     <Card>
       <Text style={s.sectionTitle}>Excluir minha conta</Text>
       <Text style={s.muted}>
-        Cada conta tem um papel só. Se quiser pedir, vender ou entregar de outro jeito, exclua esta conta e crie uma nova.
+        A conta sai do Pediu. Pedidos antigos continuam no histórico, sem os seus dados.
       </Text>
       <Field
         label="Senha"
@@ -45,7 +55,7 @@ export function DeleteAccount() {
       />
       {closeAccount.error ? (
         <Text style={{ color: PEDIU.coral, fontWeight: "700" }}>
-          {closeAccount.error.message}
+          {userFacingError(closeAccount.error)}
         </Text>
       ) : null}
       <PrimaryButton

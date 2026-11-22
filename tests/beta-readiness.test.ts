@@ -76,6 +76,11 @@ describe("beta public errors", () => {
       "Informe o nome da loja.",
     );
     expect(
+      friendlyUserMessage(
+        '[{"code":"invalid_format","message":"Invalid email address"}]',
+      ),
+    ).toBe("Esse e-mail não parece válido.");
+    expect(
       publicError(new TRPCError({ code: "BAD_REQUEST", message: "fora da área" }))
         .message,
     ).toBe("fora da área");

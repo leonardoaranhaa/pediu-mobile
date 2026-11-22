@@ -88,9 +88,9 @@ export default function ClubScreen() {
           {redeem.data?.couponCode ? (
             <Card>
               <Text style={s.rowTitle}>Cupom gerado</Text>
-              <Text style={s.muted}>Use {redeem.data.couponCode} no checkout · R$ {redeem.data.creditAmount}</Text>
+              <Text style={s.muted}>Use {redeem.data.couponCode} no pedido · R$ {redeem.data.creditAmount}</Text>
               <PrimaryButton
-                title="Aplicar no checkout"
+                title="Usar no pedido"
                 onPress={() => router.push({ pathname: "/checkout", params: { coupon: redeem.data!.couponCode } })}
               />
             </Card>

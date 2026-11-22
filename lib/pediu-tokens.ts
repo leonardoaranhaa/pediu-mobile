@@ -114,7 +114,7 @@ export function assetForCategory(category?: string | null, seed = 0): number {
 }
 
 export function greetingForHour(hour = new Date().getHours()): string {
-  if (hour < 6) return "Boa madrugada";
+  if (hour < 5) return "Boa madrugada";
   if (hour < 12) return "Bom dia";
   if (hour < 18) return "Boa tarde";
   return "Boa noite";

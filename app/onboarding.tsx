@@ -334,7 +334,7 @@ const styles = StyleSheet.create({
   mascotWrap: {
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 168,
+    minHeight: 96,
     marginBottom: 4,
   },
   pager: {
@@ -349,7 +349,6 @@ const styles = StyleSheet.create({
   },
   slideInner: {
     gap: 14,
-    minHeight: 168,
   },
   eyebrow: {
     fontSize: 11,

@@ -13,11 +13,11 @@ export default function PaymentMethodsPage() {
   const pref = preferences.data;
   return <Page title="Pagamentos" eyebrow="COMO VOCÊ PAGA">
     <Card>
-      <Text style={s.sectionTitle}>Preferências de checkout</Text>
+      <Text style={s.sectionTitle}>Como você prefere pagar</Text>
       <Text style={s.muted}>Essas opções controlam os métodos exibidos para você. Elas não representam uma cobrança nem armazenam dados de cartão.</Text>
       {preferences.isLoading ? <Text style={s.muted}>Carregando preferências...</Text> : null}
       {pref ? <>
-        <ToggleRow icon="pix" title="PIX" subtitle="Disponível para checkout" value={pref.pixEnabled === 1} onChange={(value) => update.mutate({ pixEnabled: value })} />
+        <ToggleRow icon="pix" title="PIX" subtitle="Disponível no pedido" value={pref.pixEnabled === 1} onChange={(value) => update.mutate({ pixEnabled: value })} />
         <ToggleRow icon="credit-card" title="Cartão" subtitle="Preferência de pagamento" value={pref.cardEnabled === 1} onChange={(value) => update.mutate({ cardEnabled: value })} />
         <ToggleRow icon="payments" title="Dinheiro" subtitle="Pagamento na entrega" value={pref.cashEnabled === 1} onChange={(value) => update.mutate({ cashEnabled: value })} />
       </> : null}

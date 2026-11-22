@@ -583,7 +583,7 @@ export default function CourierHomePage() {
       <OpsHeader
         eyebrow="MOTOBOY"
         title={user?.name ?? "Entregador"}
-        subtitle={`${vehicleLabels[approvedProfile.vehicleType]} · corridas perto de você`}
+        subtitle={`${vehicleLabels[approvedProfile.vehicleType] ?? "Veículo"} · corridas na cidade`}
         status={availabilityLabel}
         statusTone={availabilityTone}
         statusIcon="two-wheeler"
