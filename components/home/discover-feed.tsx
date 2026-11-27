@@ -1,10 +1,10 @@
 import { MaterialIcons } from "@expo/vector-icons";
-import { Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { Image, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { HomeStoreCards } from "@/components/home/store-cards";
 import { PediuPressable } from "@/components/pediu-motion";
 import { HomeSkeleton } from "@/components/ui/skeleton";
-import { groupHomeStores, type HomeStoreCard } from "@/lib/home-stores";
-import { cardElevation, PEDIU_TOKENS } from "@/lib/pediu-tokens";
+import { groupHomeStores, prepEstimateLabel, priceValue, type HomeStoreCard } from "@/lib/home-stores";
+import { PEDIU_TOKENS } from "@/lib/pediu-tokens";
 
 const CATEGORIES = [
   { label: "Restaurantes", query: "Lanches", icon: "restaurant" as const },
@@ -27,79 +27,71 @@ type Product = {
   flash?: boolean;
   prepMinutes?: number | null;
   logoData?: string | null;
+  price?: string | null;
+  available?: boolean;
 };
+
+function money(value?: string | null) {
+  return `R$ ${priceValue(value).toFixed(2).replace(".", ",")}`;
+}
 
 export function DiscoverFeed({
   products,
   loading,
   error,
-  greeting,
-  subtitle,
   searchQuery,
   setSearchQuery,
   locationTitle,
-  locationAddress,
   onLocationPress,
   onNotifications,
   onSearch,
   onCategory,
   onOpenStore,
-  hasFast,
+  onOpenProduct,
 }: {
   products: Product[];
   loading: boolean;
   error: boolean;
-  greeting: string;
-  subtitle: string;
+  greeting?: string;
+  subtitle?: string;
   searchQuery: string;
   setSearchQuery: (value: string) => void;
   locationTitle: string;
-  locationAddress: string;
+  locationAddress?: string;
   locationLoading: boolean;
   onLocationPress: () => void;
   onNotifications: () => void;
   onSearch: () => void;
   onCategory: (value: string) => void;
   onOpenStore: (store: HomeStoreCard) => void;
-  hasFast: boolean;
+  onOpenProduct?: (productId: number) => void;
+  hasFast?: boolean;
 }) {
   const stores = groupHomeStores(products);
   const { width } = useWindowDimensions();
   const rowWidth = Math.min(width, 430) - 32;
+  const dishes = products.filter((item) => item.available !== false && item.storeOpen !== false && priceValue(item.price) > 0).slice(0, 8);
+  const dishWidth = dishes.length > 1 ? Math.round(rowWidth * 0.82) : rowWidth;
   return (
-    <View style={{ gap: 14, width: rowWidth, alignSelf: "stretch" }}>
+    <View style={{ gap: 16, width: rowWidth, alignSelf: "stretch" }}>
       <View style={{ width: rowWidth, flexDirection: "row", alignItems: "center", gap: 10 }}>
         <View style={{ flex: 1, minWidth: 0 }}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Escolher onde entregar"
           onPress={onLocationPress}
-          style={[
-            {
-              width: "100%",
-              backgroundColor: "#FFFFFF",
-              borderRadius: 18,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 8,
-            },
-            cardElevation("rest"),
-          ]}
+          style={{ minHeight: 48, flexDirection: "row", alignItems: "center", gap: 8 }}
         >
-          <MaterialIcons name="location-on" size={20} color={PEDIU_TOKENS.primary} />
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text numberOfLines={1} style={{ fontFamily: PEDIU_TOKENS.fontDisplay, fontWeight: "700", color: PEDIU_TOKENS.inkDeep, fontSize: 15 }}>
+          <MaterialIcons name="location-on" size={22} color={PEDIU_TOKENS.primary} />
+          <View style={{ flexShrink: 1, minWidth: 0 }}>
+            <Text style={{ fontFamily: PEDIU_TOKENS.fontBody, fontWeight: "600", color: PEDIU_TOKENS.muted, fontSize: 12 }}>
+              Entregar em
+            </Text>
+            <Text numberOfLines={1} style={{ fontFamily: PEDIU_TOKENS.fontBody, fontWeight: "800", color: PEDIU_TOKENS.text, fontSize: 15 }}>
               {locationTitle || "Informe seu endereço"}
             </Text>
-            {locationAddress ? (
-              <Text numberOfLines={1} style={{ fontFamily: PEDIU_TOKENS.fontDisplay, fontWeight: "400", color: "#5F6368", fontSize: 13 }}>
-                {locationAddress}
-              </Text>
-            ) : null}
           </View>
-          <MaterialIcons name="keyboard-arrow-down" size={20} color="#5F6368" />
+          <MaterialIcons name="keyboard-arrow-down" size={20} color={PEDIU_TOKENS.text} />
         </Pressable>
         </View>
         <PediuPressable
@@ -108,25 +100,19 @@ export function DiscoverFeed({
           onPress={onNotifications}
           style={[
             {
-              width: 48,
-              height: 48,
-              borderRadius: 16,
-              backgroundColor: "#FFFFFF",
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              backgroundColor: PEDIU_TOKENS.white,
+              borderWidth: 1,
+              borderColor: PEDIU_TOKENS.line,
               alignItems: "center",
               justifyContent: "center",
             },
-            cardElevation("rest"),
           ]}
         >
-          <MaterialIcons name="notifications-none" size={24} color={PEDIU_TOKENS.inkDeep} />
+          <MaterialIcons name="notifications-none" size={22} color={PEDIU_TOKENS.text} />
         </PediuPressable>
-      </View>
-
-      <View>
-        <Text style={{ fontSize: 28, fontWeight: "800", color: PEDIU_TOKENS.inkDeep }}>{greeting}</Text>
-        {subtitle ? (
-          <Text style={{ marginTop: 4, color: PEDIU_TOKENS.muted, fontSize: 15, lineHeight: 21 }}>{subtitle}</Text>
-        ) : null}
       </View>
 
       <View
@@ -134,73 +120,100 @@ export function DiscoverFeed({
           {
             flexDirection: "row",
             alignItems: "center",
-            backgroundColor: "#FFFFFF",
-            borderRadius: 16,
+            backgroundColor: PEDIU_TOKENS.white,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: PEDIU_TOKENS.line,
             paddingHorizontal: 14,
-            height: 52,
+            height: 48,
           },
-          cardElevation("raised"),
         ]}
       >
-        <MaterialIcons name="search" size={22} color={PEDIU_TOKENS.muted} />
+        <MaterialIcons name="search" size={20} color={PEDIU_TOKENS.muted} />
         <TextInput
           value={searchQuery}
           onChangeText={setSearchQuery}
           placeholder="Buscar comida ou loja"
           placeholderTextColor={PEDIU_TOKENS.subtle}
-          style={{ flex: 1, marginLeft: 8, color: PEDIU_TOKENS.text, fontSize: 16 }}
+          style={{ flex: 1, marginLeft: 8, color: PEDIU_TOKENS.text, fontSize: 15, fontFamily: PEDIU_TOKENS.fontBody }}
           returnKeyType="search"
           onSubmitEditing={onSearch}
         />
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 14, paddingRight: 8 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 8 }}>
         {CATEGORIES.map((item) => (
-          <PediuPressable key={item.label} onPress={() => onCategory(item.query)} style={{ alignItems: "center", minWidth: 88, gap: 6 }}>
-            <View
-              style={[
-                {
-                  width: 58,
-                  height: 58,
-                  borderRadius: 29,
-                  backgroundColor: "#FFFFFF",
-                  alignItems: "center",
-                  justifyContent: "center",
-                },
-                cardElevation("rest"),
-              ]}
-            >
-              <MaterialIcons name={item.icon} size={24} color={PEDIU_TOKENS.primary} />
-            </View>
-            <Text style={{ fontSize: 12, fontWeight: "700", color: PEDIU_TOKENS.text, textAlign: "center" }}>
+          <PediuPressable
+            key={item.label}
+            accessibilityRole="button"
+            accessibilityLabel={`Ver ${item.label}`}
+            onPress={() => onCategory(item.query)}
+            style={{
+              minHeight: 40,
+              paddingHorizontal: 14,
+              borderRadius: PEDIU_TOKENS.radius.pill,
+              borderWidth: 1,
+              borderColor: PEDIU_TOKENS.line,
+              backgroundColor: PEDIU_TOKENS.white,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <MaterialIcons name={item.icon} size={18} color={PEDIU_TOKENS.primary} />
+            <Text style={{ fontSize: 14, fontWeight: "700", color: PEDIU_TOKENS.text, fontFamily: PEDIU_TOKENS.fontBody }}>
               {item.label}
             </Text>
           </PediuPressable>
         ))}
       </ScrollView>
 
-      <View
-        style={{
-          borderRadius: 20,
-          padding: 16,
-          backgroundColor: "#FFFFFF",
-          borderWidth: 1,
-          borderColor: "#F0E6E8",
-        }}
-      >
-        <Text style={{ color: PEDIU_TOKENS.inkDeep, fontSize: 16, fontWeight: "800" }}>
-          {hasFast
-            ? "Tem entrega rápida agora"
-            : stores.length
-              ? `${stores.filter((store) => store.open).length} ${stores.filter((store) => store.open).length === 1 ? "loja aberta" : "lojas abertas"}`
-              : "Peça no Pediu"}
-        </Text>
-        <Text style={{ color: "#4E453E", marginTop: 4, fontSize: 14 }}>
-          {locationAddress.includes("Toque")
-            ? "Informe seu endereço para ver o que chega até você."
-            : "Lojas do bairro, no seu tempo."}
-        </Text>
-      </View>
+      {!loading && !error && dishes.length ? (
+        <View style={{ gap: 12, marginTop: 8 }}>
+          <Text style={{ fontFamily: PEDIU_TOKENS.fontDisplay, fontWeight: "600", fontSize: 22, color: PEDIU_TOKENS.text }}>
+            Pratos perto de você
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
+            {dishes.map((dish) => (
+              <PediuPressable
+                key={dish.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${dish.name}, ${dish.store}, ${money(dish.price)}`}
+                onPress={() => onOpenProduct?.(dish.id)}
+                style={{
+                  width: dishWidth,
+                  flexDirection: "row",
+                  gap: 12,
+                  padding: 12,
+                  borderRadius: PEDIU_TOKENS.radius.lg,
+                  borderWidth: 1,
+                  borderColor: PEDIU_TOKENS.line,
+                  backgroundColor: PEDIU_TOKENS.white,
+                }}
+              >
+                <View style={{ width: 84, height: 84, borderRadius: 12, overflow: "hidden", backgroundColor: "#F3E6D8", alignItems: "center", justifyContent: "center" }}>
+                  {dish.imageUrl ? (
+                    <Image source={{ uri: dish.imageUrl }} style={{ width: 84, height: 84 }} />
+                  ) : (
+                    <MaterialIcons name="restaurant" size={28} color="#B9A491" />
+                  )}
+                </View>
+                <View style={{ flex: 1, minWidth: 0, justifyContent: "center", gap: 4 }}>
+                  <Text numberOfLines={1} style={{ fontFamily: PEDIU_TOKENS.fontBody, fontWeight: "800", fontSize: 16, color: PEDIU_TOKENS.text }}>
+                    {dish.name}
+                  </Text>
+                  <Text numberOfLines={1} style={{ fontFamily: PEDIU_TOKENS.fontBody, fontSize: 13, color: PEDIU_TOKENS.muted }}>
+                    {[dish.store, prepEstimateLabel(dish.prepMinutes)].filter(Boolean).join(" · ")}
+                  </Text>
+                  <Text style={{ fontFamily: PEDIU_TOKENS.fontBody, fontWeight: "800", fontSize: 16, color: PEDIU_TOKENS.text }}>
+                    {money(dish.price)}
+                  </Text>
+                </View>
+              </PediuPressable>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
 
       {loading ? <HomeSkeleton /> : null}
       {error ? (

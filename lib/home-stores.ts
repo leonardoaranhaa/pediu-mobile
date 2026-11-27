@@ -70,3 +70,10 @@ export function filterHomeStores(stores: HomeStoreCard[], filter: HomeStoreFilte
   if (filter === "rapidas") return stores.filter((store) => store.fast);
   return stores;
 }
+
+/** Home products arrive with price already formatted ("R$ 45,00"); raw "45.00" also works. */
+export function priceValue(value?: string | null) {
+  const text = String(value ?? "").trim();
+  const amount = text.includes(",") ? Number(text.replace(/[^\d,]/g, "").replace(",", ".")) : Number(text.replace(/[^\d.]/g, ""));
+  return Number.isFinite(amount) ? amount : 0;
+}

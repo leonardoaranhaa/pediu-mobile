@@ -85,7 +85,7 @@ import {
 } from "@/lib/home-context";
 import { resolveCurrentLocation } from "@/lib/location";
 import { homeAddressLine } from "@/lib/home-address";
-import { cardElevation, FOOD_ASSETS } from "@/lib/pediu-tokens";
+import { cardElevation, FOOD_ASSETS, PEDIU_TOKENS } from "@/lib/pediu-tokens";
 import { DiscoverFeed } from "@/components/home/discover-feed";
 
 const COLORS = {
@@ -1170,7 +1170,7 @@ export default function HomeScreen() {
           { opacity: screenOpacity, backgroundColor: theme.canvas },
         ]}
       >
-        <FloatingDecorations />
+        {role !== "customer" ? <FloatingDecorations /> : null}
         {role === "customer" ? (
           <>
             <ScrollView
@@ -1909,7 +1909,10 @@ function CustomerDiscover({
         router.push({ pathname: "/search", params: { q: typed } });
       }}
       onCategory={onCategory}
-      hasFast={products.some((product) => product.flash)}
+      onOpenProduct={(productId) => {
+        const product = products.find((item) => item.id === productId);
+        if (product) onProductPress(product);
+      }}
       onOpenStore={(store) => {
         if (store.storeId) {
           router.push(`/store/${store.storeId}`);
@@ -3352,93 +3355,41 @@ function CustomerNav({
   bottomInset: number;
   theme: AppTheme;
 }) {
+  const items = [
+    { id: "discover", label: "Início", icon: "home-filled", a11y: "Abrir início", press: () => onChange("discover") },
+    { id: "search", label: "Busca", icon: "search", a11y: "Abrir busca", press: onSearch },
+    { id: "orders", label: "Pedidos", icon: "receipt-long", a11y: "Abrir pedidos", press: () => onChange("orders") },
+    { id: "profile", label: "Perfil", icon: "person", a11y: "Abrir perfil", press: () => onChange("profile") },
+  ] as const;
   return (
     <View
       style={[
         styles.bottomNav,
         {
-          borderColor: theme.ink,
-          backgroundColor: theme.ink,
+          borderColor: PEDIU_TOKENS.line,
+          backgroundColor: PEDIU_TOKENS.white,
           bottom: bottomSafeInset(bottomInset, Platform.OS),
         },
+        cardElevation("raised"),
       ]}
     >
-      <PediuPressable
-        style={[
-          styles.navItem,
-          active === "discover" && { backgroundColor: theme.primary },
-        ]}
-        onPress={() => onChange("discover")}
-      >
-        <MaterialIcons
-          name="explore"
-          size={21}
-          color={active === "discover" ? COLORS.white : theme.muted}
-        />
-        <Text
-          style={[
-            styles.navLabel,
-            active === "discover" && styles.navLabelActive,
-          ]}
-        >
-          Início
-        </Text>
-      </PediuPressable>
-      <PediuPressable
-        accessibilityRole="button"
-        accessibilityLabel="Abrir busca"
-        style={styles.navItem}
-        onPress={onSearch}
-      >
-        <MaterialIcons name="search" size={21} color={theme.muted} />
-        <Text style={styles.navLabel}>Busca</Text>
-      </PediuPressable>
-      <PediuPressable
-        accessibilityRole="button"
-        accessibilityLabel="Abrir pedidos"
-        style={[
-          styles.navItem,
-          active === "orders" && { backgroundColor: theme.primary },
-        ]}
-        onPress={() => onChange("orders")}
-      >
-        <MaterialIcons
-          name="receipt-long"
-          size={21}
-          color={active === "orders" ? COLORS.white : theme.muted}
-        />
-        <Text
-          style={[
-            styles.navLabel,
-            active === "orders" && styles.navLabelActive,
-          ]}
-        >
-          Pedidos
-        </Text>
-      </PediuPressable>
-      <PediuPressable
-        accessibilityRole="button"
-        accessibilityLabel="Abrir perfil"
-        style={[
-          styles.navItem,
-          active === "profile" && { backgroundColor: theme.primary },
-        ]}
-        onPress={() => onChange("profile")}
-      >
-        <MaterialIcons
-          name="person"
-          size={21}
-          color={active === "profile" ? COLORS.white : theme.muted}
-        />
-        <Text
-          style={[
-            styles.navLabel,
-            active === "profile" && styles.navLabelActive,
-          ]}
-        >
-          Perfil
-        </Text>
-      </PediuPressable>
+      {items.map((item) => {
+        const selected = active === item.id;
+        const color = selected ? theme.primary : PEDIU_TOKENS.muted;
+        return (
+          <PediuPressable
+            key={item.id}
+            accessibilityRole="button"
+            accessibilityLabel={item.a11y}
+            accessibilityState={{ selected }}
+            style={[styles.navItem, { minWidth: 64 }]}
+            onPress={item.press}
+          >
+            <MaterialIcons name={item.icon} size={22} color={color} />
+            <Text style={[styles.navLabel, { color, fontSize: 11 }]}>{item.label}</Text>
+          </PediuPressable>
+        );
+      })}
     </View>
   );
 }
