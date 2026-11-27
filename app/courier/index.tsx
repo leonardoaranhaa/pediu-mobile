@@ -156,6 +156,13 @@ export default function CourierHomePage() {
   const earnings = trpc.pediu.courier.earnings.useQuery(undefined, {
     enabled: profile.data?.status === "approved",
   });
+  // Reopening the app mid-delivery should land on the ride, not on an empty offers list.
+  const openedOnRide = useRef(false);
+  useEffect(() => {
+    if (openedOnRide.current || !active.isSuccess) return;
+    openedOnRide.current = true;
+    if ((active.data?.length ?? 0) > 0) setTab("ride");
+  }, [active.isSuccess, active.data]);
   const apply = trpc.pediu.courier.profile.register.useMutation({
     onSuccess: () => void profile.refetch(),
   });
