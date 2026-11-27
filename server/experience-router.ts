@@ -650,8 +650,13 @@ export const experienceRouter = router({
             await sendPushToUser(
               order.customerId,
               "Pedido entregue",
-              `O pedido #${order.id} foi marcado como entregue.`,
-              { type: "delivery", orderId: order.id, status: "Entregue" },
+              `O pedido #${order.id} chegou. Conte como foi: toque para avaliar.`,
+              {
+                type: "delivery",
+                orderId: order.id,
+                status: "Entregue",
+                actionPath: `/feedback/${order.id}`,
+              },
             );
           } catch (error) {
             console.warn(

@@ -1,7 +1,7 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { Alert, Image, Linking, Pressable, Text, View } from "react-native";
-import { Page, Card, OutlineButton, PEDIU, s } from "@/components/pediu-page";
+import { Page, Card, OutlineButton, PrimaryButton, PEDIU, s } from "@/components/pediu-page";
 import { orderStatusCopy, paymentStatusLabel } from "@/lib/order-copy";
 import { trpc } from "@/lib/trpc";
 
@@ -273,7 +273,18 @@ export default function TrackOrderPage() {
             }
           />
         ) : null}
-        {query.data.status !== "Cancelado" ? (
+        {query.data.status === "Entregue" ? (
+          <PrimaryButton
+            title="Avaliar pedido"
+            onPress={() =>
+              router.push({
+                pathname: "/feedback/[orderId]",
+                params: { orderId: String(query.data.id) },
+              })
+            }
+          />
+        ) : null}
+        {query.data.status !== "Cancelado" && query.data.status !== "Entregue" ? (
           <OutlineButton
             title="Acompanhar entrega"
             onPress={() =>

@@ -2218,15 +2218,23 @@ function CustomerOrders({
             {order.status !== "Cancelado" ? (
               <>
                 <Pressable
+                  accessibilityRole="button"
                   style={styles.outlineButtonSmall}
                   onPress={() =>
-                    router.push({
-                      pathname: "/order/track",
-                      params: { orderId: String(order.id) },
-                    })
+                    order.status === "Entregue"
+                      ? router.push({
+                          pathname: "/feedback/[orderId]",
+                          params: { orderId: String(order.id) },
+                        })
+                      : router.push({
+                          pathname: "/order/track",
+                          params: { orderId: String(order.id) },
+                        })
                   }
                 >
-                  <Text style={styles.outlineButtonText}>Acompanhar pedido</Text>
+                  <Text style={styles.outlineButtonText}>
+                    {order.status === "Entregue" ? "Avaliar pedido" : "Acompanhar pedido"}
+                  </Text>
                 </Pressable>
                 <View style={styles.progressTrack}>
                   <View
