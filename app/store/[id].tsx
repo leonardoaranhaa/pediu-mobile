@@ -4,6 +4,7 @@ import { useLocalSearchParams, router } from "expo-router";
 import { Image, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { storeHeaderCopy } from "@/lib/store-header";
+import { minimumOrderShortfall } from "@/shared/pilot-ops";
 import { cardElevation, PEDIU_TOKENS } from "@/lib/pediu-tokens";
 import { bottomSafeInset } from "@/lib/screen-space";
 import { useCart } from "@/providers/cart-provider";
@@ -83,6 +84,7 @@ export default function StoreScreen() {
   );
   const cartTotal = cart.items.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0);
   const bottom = bottomSafeInset(insets.bottom, Platform.OS);
+  const shortfall = minimumOrderShortfall(cartTotal, store?.minOrder);
   const openProduct = (productId: number) =>
     router.push({ pathname: "/product/[id]", params: { id: String(productId) } });
 
@@ -305,7 +307,12 @@ export default function StoreScreen() {
       </ScrollView>
 
       {cart.itemCount > 0 ? (
-        <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 12, paddingBottom: bottom, backgroundColor: PAGE }}>
+        <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 12, paddingBottom: bottom, backgroundColor: PAGE, gap: 8 }}>
+          {shortfall ? (
+            <Text accessibilityLiveRegion="polite" style={{ fontFamily: T.fontBody, fontSize: 14, fontWeight: "700", color: T.text, textAlign: "center" }}>
+              {shortfall}
+            </Text>
+          ) : null}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Ver sacola, ${cart.itemCount} ${cart.itemCount === 1 ? "item" : "itens"}, ${money(cartTotal)}`}

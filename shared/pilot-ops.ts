@@ -74,6 +74,18 @@ export function formatMoney(value: unknown): string {
     .replace(".", ",")}`;
 }
 
+/**
+ * Message when the items subtotal (delivery fee and tip excluded) is below the
+ * store's minimum order, or null when the order may go ahead.
+ */
+export function minimumOrderShortfall(subtotal: number, minOrder: unknown): string | null {
+  const minimum = Number(minOrder ?? 0);
+  if (!Number.isFinite(minimum) || minimum <= 0) return null;
+  const missingCents = Math.round(minimum * 100) - Math.round(subtotal * 100);
+  if (missingCents <= 0) return null;
+  return `O pedido mínimo desta loja é ${formatMoney(minimum)}. Faltam ${formatMoney(missingCents / 100)} em produtos.`;
+}
+
 export function createDeliveryCode(random: () => number = Math.random): string {
   const sample = Math.floor(Math.abs(random()) * 10000) % 10000;
   return String(sample).padStart(4, "0");

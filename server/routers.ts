@@ -54,7 +54,7 @@ import { enforceDistributedRateLimit } from "./_core/distributed-rate-limit";
 import { calculateCouponDiscount } from "./domain/coupons";
 import {
   createDeliveryCode,
-  deliveryCodesMatch,
+  minimumOrderShortfall,
   resolveStoreAvailability,
 } from "../shared/pilot-ops";
 import { clampTipAmount, resolveFlashFulfillment } from "./domain/flash";
@@ -748,6 +748,9 @@ export const appRouter = router({
             (sum, item) => sum + Number(item.lineTotal),
             0,
           );
+          const shortfall = minimumOrderShortfall(subtotal, store.minOrder);
+          if (shortfall)
+            throw new TRPCError({ code: "BAD_REQUEST", message: shortfall });
           const tipAmount = clampTipAmount(input.tipAmount, subtotal);
           const deliveryFee = Number(serviceability.deliveryFee);
           let couponCode: string | undefined;
@@ -1779,6 +1782,9 @@ export const appRouter = router({
             (sum, item) => sum + Number(item.unitPrice) * item.quantity,
             0,
           );
+          const shortfall = minimumOrderShortfall(subtotal, store.minOrder);
+          if (shortfall)
+            throw new TRPCError({ code: "BAD_REQUEST", message: shortfall });
           const tipAmount = clampTipAmount(input.tipAmount, subtotal);
           let couponCode: string | undefined;
           let discount = "0.00";
