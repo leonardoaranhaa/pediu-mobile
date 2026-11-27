@@ -5078,10 +5078,13 @@ export async function applyPaymentWebhook(input: {
           .where(eq(webhookEvents.id, event.id));
         throw new Error("Payment webhook amount mismatch");
       }
-      const refundCancelledOrder =
-        input.status === "paid" && order.status === "Cancelado";
+      // Mercado Pago sends several notifications for one payment (created,
+      // updated, retries), each with its own request id. Only the first one
+      // that moves the payment to "paid" may alert the store or refund.
+      const becamePaid = input.status === "paid" && payment.status !== "paid";
+      const refundCancelledOrder = becamePaid && order.status === "Cancelado";
       const releaseToStore =
-        input.status === "paid" &&
+        becamePaid &&
         order.status === "Pendente" &&
         payment.method === "pix";
       if (!canTransitionPayment(payment.status, input.status)) {
@@ -5130,7 +5133,7 @@ export async function applyPaymentWebhook(input: {
           .set({ updatedAt: new Date() })
           .where(eq(orders.id, order.id));
       }
-      if (input.status === "paid" && !refundCancelledOrder) {
+      if (input.status === "paid" && order.status !== "Cancelado") {
         const providerTransactionId =
           input.transactionId ?? payment.transactionId ?? null;
         const transactionIdempotencyKey = `webhook:${input.provider}:${input.providerEventId}`;
@@ -5253,7 +5256,7 @@ export async function applyPaymentWebhook(input: {
       return {
         paymentId: payment.id,
         status: input.status,
-        duplicate: false,
+        duplicate: payment.status === input.status,
         releaseToStore,
         refundCancelledOrder,
         orderId: order.id,
