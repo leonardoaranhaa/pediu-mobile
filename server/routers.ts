@@ -79,6 +79,22 @@ const orderStatusSchema = z.enum([
   "Entregue",
   "Cancelado",
 ]);
+/** Uniform value in [0, 1) from the OS generator, for secrets such as the delivery code. */
+const secureRandom = () => crypto.randomInt(0, 1_000_000) / 1_000_000;
+
+/**
+ * The delivery code proves the courier met the customer, so only the customer
+ * of the order may read it. Stores and couriers get the order without it.
+ */
+function hideDeliveryCodeFrom<T extends { customerId: number; deliveryCode?: string | null }>(
+  order: T,
+  viewerId: number,
+): T {
+  if (order.customerId === viewerId) return order;
+  const { deliveryCode: _hidden, ...rest } = order;
+  return rest as T;
+}
+
 const addressInputSchema = z.object({
   label: z.string().trim().min(1).max(40),
   recipientName: z.string().trim().min(2).max(160),
@@ -1558,7 +1574,7 @@ export const appRouter = router({
           if (!order)
             throw new Error("Pedido não encontrado ou não autorizado");
           const [enriched] = await db.enrichOrdersForStore([order]);
-          return enriched;
+          return hideDeliveryCodeFrom(enriched, ctx.user.id);
         }),
       storeMine: protectedProcedure
         .input(
@@ -1578,7 +1594,8 @@ export const appRouter = router({
                 input?.offset ?? 0,
               )
             : [];
-          return db.enrichOrdersForStore(rows);
+          const enriched = await db.enrichOrdersForStore(rows);
+          return enriched.map((order) => hideDeliveryCodeFrom(order, ctx.user.id));
         }),
       create: protectedProcedure
         .input(
@@ -1843,7 +1860,7 @@ export const appRouter = router({
                   tipDestination: DEFAULT_TIP_DESTINATION,
                   fulfillment: input.fulfillment,
                   idempotencyKey,
-                  deliveryCode: createDeliveryCode(),
+                  deliveryCode: createDeliveryCode(secureRandom),
                   destinationLatitude: savedAddress?.latitude,
                   destinationLongitude: savedAddress?.longitude,
                 },
@@ -1898,7 +1915,7 @@ export const appRouter = router({
                 tipDestination: DEFAULT_TIP_DESTINATION,
                 fulfillment: input.fulfillment,
                 idempotencyKey,
-                deliveryCode: createDeliveryCode(),
+                deliveryCode: createDeliveryCode(secureRandom),
                 changeFor:
                   input.paymentMethod === "cash" ? input.changeFor : undefined,
                 destinationLatitude: savedAddress?.latitude,

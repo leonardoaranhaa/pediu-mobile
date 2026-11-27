@@ -13,6 +13,10 @@ import {
 } from "../drizzle/schema";
 import { calculateCouponDiscount } from "./domain/coupons";
 import { deliveryCodesMatch } from "../shared/pilot-ops";
+import { enforceDistributedRateLimit } from "./_core/distributed-rate-limit";
+
+/** Wrong-or-right code attempts allowed per order in 30 minutes; 4 digits means 10,000 combinations. */
+export const DELIVERY_CODE_ATTEMPTS = 5;
 import {
   classifyTrackingFreshness,
   isTrackingCapturedAtAcceptable,
@@ -603,6 +607,16 @@ export const experienceRouter = router({
           (assignment.courierId !== ctx.user.id && store?.id !== order.storeId)
         )
           throw new Error("A entrega ainda não foi atribuída a este operador");
+        if (order.deliveryCode)
+          await enforceDistributedRateLimit(ctx, {
+            scope: "delivery-code",
+            identity: order.id,
+            limit: DELIVERY_CODE_ATTEMPTS,
+            windowMs: 30 * 60_000,
+            keyedBy: "identity",
+            message:
+              "Muitas tentativas de código neste pedido. Fale com o suporte do Pediu para concluir a entrega.",
+          });
         if (!deliveryCodesMatch(order.deliveryCode, input.code ?? ""))
           throw new TRPCError({
             code: "BAD_REQUEST",
