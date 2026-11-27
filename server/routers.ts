@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { isCountryLevelPin, COUNTRY_PIN_MESSAGE } from "../shared/address-pin";
 import { COOKIE_NAME, SESSION_TTL_MS } from "../shared/const.js";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { revokeAuthSession } from "./auth-sessions";
@@ -36,8 +37,6 @@ import {
   sellingBlockReason,
   storePauseView,
 } from "./domain/store-ops";
-import { sweepUnacceptedOrders } from "./order-sweep";
-import { sweepAccountRoles } from "./account-role-sweep";
 import { closeAccount } from "./account-closure";
 import { roleProfileRefusal } from "../shared/account-roles";
 import { isAdminEmail } from "./_core/env";
@@ -55,7 +54,7 @@ import { enforceDistributedRateLimit } from "./_core/distributed-rate-limit";
 import { calculateCouponDiscount } from "./domain/coupons";
 import {
   createDeliveryCode,
-  deliveryCodesMatch,
+  minimumOrderShortfall,
   resolveStoreAvailability,
 } from "../shared/pilot-ops";
 import { clampTipAmount, resolveFlashFulfillment } from "./domain/flash";
@@ -80,6 +79,22 @@ const orderStatusSchema = z.enum([
   "Entregue",
   "Cancelado",
 ]);
+/** Uniform value in [0, 1) from the OS generator, for secrets such as the delivery code. */
+const secureRandom = () => crypto.randomInt(0, 1_000_000) / 1_000_000;
+
+/**
+ * The delivery code proves the courier met the customer, so only the customer
+ * of the order may read it. Stores and couriers get the order without it.
+ */
+function hideDeliveryCodeFrom<T extends { customerId: number; deliveryCode?: string | null }>(
+  order: T,
+  viewerId: number,
+): T {
+  if (order.customerId === viewerId) return order;
+  const { deliveryCode: _hidden, ...rest } = order;
+  return rest as T;
+}
+
 const addressInputSchema = z.object({
   label: z.string().trim().min(1).max(40),
   recipientName: z.string().trim().min(2).max(160),
@@ -141,7 +156,6 @@ export const appRouter = router({
   auth: router({
     me: publicProcedure.query(async (opts) => {
       if (!opts.ctx.user) return null;
-      await sweepAccountRoles();
       const { passwordHash: _passwordHash, sessionId: _sessionId, ...safe } =
         opts.ctx.user;
       const roles = await db.listAccountRoles(safe.id, safe.role);
@@ -301,9 +315,12 @@ export const appRouter = router({
       ),
       create: protectedProcedure
         .input(addressInputSchema)
-        .mutation(({ ctx, input }) =>
-          db.createCustomerAddress(ctx.user.id, input),
-        ),
+        .mutation(({ ctx, input }) => {
+          if (isCountryLevelPin(Number(input.latitude), Number(input.longitude))) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: COUNTRY_PIN_MESSAGE });
+          }
+          return db.createCustomerAddress(ctx.user.id, input);
+        }),
       update: protectedProcedure
         .input(
           z.object({
@@ -447,6 +464,45 @@ export const appRouter = router({
             })),
           );
         }),
+      store: publicProcedure
+        .input(z.object({ storeId: z.number().int().positive() }))
+        .query(async ({ ctx, input }) => {
+          const store = await db.getStoreById(input.storeId);
+          if (!store) return null;
+          const ops = await db.getStoreOps(store.id);
+          const owner = ctx.user?.id === store.ownerId;
+          if (ops.approvalStatus !== "approved" && !owner) return null;
+          if (!(await db.storeListedForCustomers(store)) && !owner) return null;
+          const pause = storePauseView(ops);
+          const availability = resolveStoreAvailability({
+            isOpen: pause.paused ? 0 : store.isOpen,
+            openingHours: store.openingHours,
+          });
+          const products = await db.listProductsForStore(store.id);
+          return {
+            id: store.id,
+            name: store.name,
+            logoData: store.logoData,
+            deliveryFee: store.deliveryFee,
+            minOrder: store.minOrder,
+            prepMinutes: store.prepMinutes,
+            open: availability.open && !pause.paused,
+            nextOpenLabel: pause.paused
+              ? pause.message ?? "Fechada agora"
+              : availability.nextOpenLabel,
+            reviewing: ops.approvalStatus === "pending",
+            rejected: ops.approvalStatus === "rejected",
+            products: products.map((product) => ({
+              id: product.id,
+              name: product.name,
+              description: product.description,
+              price: product.price,
+              imageData: product.imageData,
+              available: product.available,
+              category: product.category,
+            })),
+          };
+        }),
       detail: publicProcedure
         .input(z.object({ productId: z.number().int().positive() }))
         .query(async ({ input }) => {
@@ -490,7 +546,6 @@ export const appRouter = router({
           }),
         )
         .query(async ({ input }) => {
-          await sweepAccountRoles();
           let result: Awaited<ReturnType<typeof db.searchAvailableProducts>>;
           try {
             result = await db.searchAvailableProducts(input);
@@ -693,6 +748,9 @@ export const appRouter = router({
             (sum, item) => sum + Number(item.lineTotal),
             0,
           );
+          const shortfall = minimumOrderShortfall(subtotal, store.minOrder);
+          if (shortfall)
+            throw new TRPCError({ code: "BAD_REQUEST", message: shortfall });
           const tipAmount = clampTipAmount(input.tipAmount, subtotal);
           const deliveryFee = Number(serviceability.deliveryFee);
           let couponCode: string | undefined;
@@ -801,6 +859,13 @@ export const appRouter = router({
             isAdminEmail(ctx.user.email ?? ""),
           );
           if (refusal) throw new TRPCError({ code: "BAD_REQUEST", message: refusal });
+          if (
+            input.latitude != null &&
+            input.longitude != null &&
+            isCountryLevelPin(input.latitude, input.longitude)
+          ) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: COUNTRY_PIN_MESSAGE });
+          }
           if (await db.getStoreForOwner(ctx.user.id))
             throw new TRPCError({
               code: "BAD_REQUEST",
@@ -887,6 +952,13 @@ export const appRouter = router({
             ),
         )
         .mutation(({ ctx, input }) => {
+          if (
+            input.latitude != null &&
+            input.longitude != null &&
+            isCountryLevelPin(input.latitude, input.longitude)
+          ) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: COUNTRY_PIN_MESSAGE });
+          }
           const {
             isOpen,
             deliveryEnabled,
@@ -1285,12 +1357,12 @@ export const appRouter = router({
     }),
     products: router({
       mine: protectedProcedure
-        .input(z.object({ storeId: z.number().int().positive() }))
+        .input(z.object({ storeId: z.number().int().positive().optional() }))
         .query(async ({ ctx, input }) => {
           const store = await db.getStoreForOwner(ctx.user.id);
-          return store?.id === input.storeId
-            ? db.listProductsForStore(input.storeId)
-            : [];
+          if (!store) return [];
+          if (input.storeId && store.id !== input.storeId) return [];
+          return db.listProductsForStore(store.id);
         }),
       create: protectedProcedure
         .input(
@@ -1492,7 +1564,6 @@ export const appRouter = router({
             .optional(),
         )
         .query(async ({ ctx, input }) => {
-          await sweepUnacceptedOrders();
           return db.listOrdersForCustomer(
             ctx.user.id,
             input?.limit ?? 50,
@@ -1502,12 +1573,11 @@ export const appRouter = router({
       get: protectedProcedure
         .input(z.object({ orderId: z.number().int().positive() }))
         .query(async ({ ctx, input }) => {
-          await sweepUnacceptedOrders();
           const order = await db.getOrderForUser(input.orderId, ctx.user.id);
           if (!order)
             throw new Error("Pedido não encontrado ou não autorizado");
           const [enriched] = await db.enrichOrdersForStore([order]);
-          return enriched;
+          return hideDeliveryCodeFrom(enriched, ctx.user.id);
         }),
       storeMine: protectedProcedure
         .input(
@@ -1519,7 +1589,6 @@ export const appRouter = router({
             .optional(),
         )
         .query(async ({ ctx, input }) => {
-          await sweepUnacceptedOrders();
           const store = await db.getStoreForOwner(ctx.user.id);
           const rows = store
             ? await db.listOrdersForStore(
@@ -1528,7 +1597,8 @@ export const appRouter = router({
                 input?.offset ?? 0,
               )
             : [];
-          return db.enrichOrdersForStore(rows);
+          const enriched = await db.enrichOrdersForStore(rows);
+          return enriched.map((order) => hideDeliveryCodeFrom(order, ctx.user.id));
         }),
       create: protectedProcedure
         .input(
@@ -1712,6 +1782,9 @@ export const appRouter = router({
             (sum, item) => sum + Number(item.unitPrice) * item.quantity,
             0,
           );
+          const shortfall = minimumOrderShortfall(subtotal, store.minOrder);
+          if (shortfall)
+            throw new TRPCError({ code: "BAD_REQUEST", message: shortfall });
           const tipAmount = clampTipAmount(input.tipAmount, subtotal);
           let couponCode: string | undefined;
           let discount = "0.00";
@@ -1793,7 +1866,7 @@ export const appRouter = router({
                   tipDestination: DEFAULT_TIP_DESTINATION,
                   fulfillment: input.fulfillment,
                   idempotencyKey,
-                  deliveryCode: createDeliveryCode(),
+                  deliveryCode: createDeliveryCode(secureRandom),
                   destinationLatitude: savedAddress?.latitude,
                   destinationLongitude: savedAddress?.longitude,
                 },
@@ -1848,7 +1921,7 @@ export const appRouter = router({
                 tipDestination: DEFAULT_TIP_DESTINATION,
                 fulfillment: input.fulfillment,
                 idempotencyKey,
-                deliveryCode: createDeliveryCode(),
+                deliveryCode: createDeliveryCode(secureRandom),
                 changeFor:
                   input.paymentMethod === "cash" ? input.changeFor : undefined,
                 destinationLatitude: savedAddress?.latitude,

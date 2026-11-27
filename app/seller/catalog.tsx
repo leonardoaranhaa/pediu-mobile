@@ -9,6 +9,7 @@ import { SellerDock } from "@/components/seller-dock";
 import { EmptyState } from "@/components/pediu/empty-state";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
+import { StoreReviewBanner } from "@/components/store-review-banner";
 import { Card, Field, Page, PrimaryButton, Row, s } from "@/components/pediu-page";
 import { PEDIU_TOKENS } from "@/lib/pediu-tokens";
 import {
@@ -242,6 +243,7 @@ export default function SellerCatalogPage() {
       dock={<SellerDock active="catalog" />}
       action={<MaterialIcons name="inventory-2" size={22} color="#E20D2A" />}
     >
+      <StoreReviewBanner />
       <View style={styles.hero}>
         <Text style={styles.heroEyebrow}>{isMarket ? "MERCADO · UNIDADES" : "VITRINE DA LOJA"}</Text>
         <Text style={styles.heroTitle}>{store.data?.name ?? "Catálogo"}</Text>

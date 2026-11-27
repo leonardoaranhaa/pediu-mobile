@@ -3,6 +3,7 @@ import express, { type Express, type Request } from "express";
 import * as db from "./db";
 import { getMercadoPagoPayment, requestPixRefund } from "./payments";
 import { sendPushToUser } from "./push";
+import { refundNotice, refundPixPayment } from "./pix-release";
 
 const PAYMENT_PROVIDER = "mercado_pago";
 const WEBHOOK_STATUSES = new Set([
@@ -282,7 +283,7 @@ export function registerPaymentWebhookRoutes(app: Express) {
           result.amount
         ) {
           try {
-            await requestPixRefund({
+            const refunded = await refundPixPayment({
               paymentId: result.paymentId,
               orderId: result.orderId,
               transactionId: result.transactionId,
@@ -290,12 +291,14 @@ export function registerPaymentWebhookRoutes(app: Express) {
               idempotencyKey: `pix-refund-webhook-${result.orderId}`,
               reason: "Pedido já cancelado",
             });
-            await sendPushToUser(
-              result.customerId,
-              "PIX estornado",
-              "O pedido já estava cancelado. O valor do PIX foi estornado.",
-              { type: "payment", orderId: result.orderId, status: "refunded" },
-            );
+            if (refunded.created) {
+              const notice = refundNotice(refunded.refund.status, result.amount, true);
+              await sendPushToUser(result.customerId, notice.title, notice.body, {
+                type: "payment",
+                orderId: result.orderId,
+                status: refunded.refund.status,
+              });
+            }
           } catch (error) {
             console.warn("[PIX] Failed to refund a payment for a cancelled order", error);
           }

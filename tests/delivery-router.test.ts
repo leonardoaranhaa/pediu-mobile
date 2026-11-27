@@ -173,6 +173,37 @@ describe("Pediu delivery operational contract", () => {
     expect(result.status).toBe("Entregue");
   });
 
+  it("caps delivery code attempts per order, whatever network the courier uses", async () => {
+    vi.spyOn(db, "getOrderForUser").mockResolvedValue({
+      ...emRota,
+      deliveryCode: "1234",
+    });
+    vi.spyOn(db, "getStoreForOwner").mockResolvedValue(store);
+    vi.spyOn(db, "getDeliveryAssignmentByOrder").mockResolvedValue({
+      ...assignment,
+      status: "in_transit",
+    });
+    const consume = vi
+      .spyOn(db, "consumeDistributedRateLimit")
+      .mockResolvedValue({ allowed: false, remaining: 0, retryAfterSeconds: 900 } as any);
+    const complete = vi.spyOn(db, "completeDelivery");
+    const request = (ip: string) =>
+      appRouter
+        .createCaller({
+          user: merchant,
+          req: { headers: {}, ip, socket: { remoteAddress: ip } },
+          res: { setHeader: vi.fn() },
+        } as any)
+        .pediu.experience.delivery.complete({ orderId: 101, code: "1234" });
+
+    await expect(request("10.0.0.1")).rejects.toMatchObject({ code: "TOO_MANY_REQUESTS" });
+    await expect(request("10.0.0.2")).rejects.toMatchObject({ code: "TOO_MANY_REQUESTS" });
+    const keys = consume.mock.calls.map(([input]) => input.bucketKey);
+    expect(keys[0]).toBe(keys[1]);
+    expect(consume.mock.calls[0][0].limit).toBe(5);
+    expect(complete).not.toHaveBeenCalled();
+  });
+
   it("rejects a delivery code that does not match what the customer shows", async () => {
     vi.spyOn(db, "getOrderForUser").mockResolvedValue({
       ...emRota,

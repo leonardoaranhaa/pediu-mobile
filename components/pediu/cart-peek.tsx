@@ -1,7 +1,7 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { bottomSafeInset } from "@/lib/screen-space";
+import { bottomSafeInset, TAB_BAR_HEIGHT } from "@/lib/screen-space";
 import {
   PediuPressable,
   PediuPulse,
@@ -24,7 +24,7 @@ export function CartPeek({ itemCount, subtitle, totalLabel, onPress }: Props) {
       variant="slideUp"
       style={[
         styles.wrap,
-        { bottom: bottomSafeInset(insets.bottom, Platform.OS) + 94 },
+        { bottom: bottomSafeInset(insets.bottom, Platform.OS) + TAB_BAR_HEIGHT + 16 },
       ]}
     >
       <View pointerEvents="box-none">

@@ -18,8 +18,7 @@ import { startInventoryReservationSweeper } from "../inventory-reservation-sweep
 import { startNotificationOutboxWorker } from "../notification-outbox-worker";
 import { startRateLimitBucketSweeper } from "../rate-limit-bucket-sweeper";
 import { runWorkerCatchUp } from "../worker-tick";
-import { sweepUnacceptedOrders } from "../order-sweep";
-import { sweepAccountRoles } from "../account-role-sweep";
+import { startOrderMaintenanceSweeper } from "../order-sweep";
 import crypto from "node:crypto";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -82,9 +81,7 @@ async function startServer() {
   registerStorageProxy(app);
   registerAuthRoutes(app);
 
-  app.get("/api/health", async (_req, res) => {
-    await sweepUnacceptedOrders();
-    await sweepAccountRoles();
+  app.get("/api/health", (_req, res) => {
     res.json({ ok: true, timestamp: Date.now() });
   });
   const workerTick = async (
@@ -160,6 +157,7 @@ async function startServer() {
   server.listen(port, () => {
     console.log(`[api] server listening on port ${port}`);
     startDispatchOfferSweeper();
+    startOrderMaintenanceSweeper();
     startInventoryReservationSweeper();
     startNotificationOutboxWorker();
     startRateLimitBucketSweeper();

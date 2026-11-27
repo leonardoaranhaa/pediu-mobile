@@ -28,6 +28,11 @@ export async function enforceDistributedRateLimit(
     limit: number;
     windowMs: number;
     message: string;
+    /**
+     * "per-network" (default) keys the bucket by identity and caller IP.
+     * "identity" keys it by identity alone, so changing network does not reset it.
+     */
+    keyedBy?: "per-network" | "identity";
   },
 ) {
   // createCaller unit tests do not have a real response object. The actual
@@ -42,7 +47,7 @@ export async function enforceDistributedRateLimit(
   const bucketKey = distributedRateLimitKey(
     input.scope,
     String(input.identity ?? "anonymous"),
-    networkFingerprint(ctx),
+    input.keyedBy === "identity" ? "any-network" : networkFingerprint(ctx),
   );
 
   let decision;

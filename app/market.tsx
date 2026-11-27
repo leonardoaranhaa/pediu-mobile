@@ -163,7 +163,7 @@ export default function MarketScreen() {
         <View style={styles.deliveryNotice}>
           <MaterialIcons name="home" size={17} color={PEDIU.green} />
           <Text style={styles.deliveryNoticeText}>
-            Entrega na sua residência · endereço confirmado no checkout
+            Entrega na sua residência · endereço confirmado no pedido
           </Text>
         </View>
       </Card>

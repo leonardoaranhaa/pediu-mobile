@@ -1,7 +1,7 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { Alert, Image, Linking, Pressable, Text, View } from "react-native";
-import { Page, Card, OutlineButton, PEDIU, s } from "@/components/pediu-page";
+import { Page, Card, OutlineButton, PrimaryButton, PEDIU, s } from "@/components/pediu-page";
 import { orderStatusCopy, paymentStatusLabel } from "@/lib/order-copy";
 import { trpc } from "@/lib/trpc";
 
@@ -87,6 +87,44 @@ export default function TrackOrderPage() {
   return (
     <Page title="Acompanhar pedido" eyebrow={`PEDIDO #${query.data.id}`}>
       <Card>
+        <Text style={{ color: PEDIU.muted, fontWeight: "800", letterSpacing: 0.6 }}>AGORA</Text>
+        <Text style={{ fontSize: 32, fontWeight: "900", color: "#111111", marginTop: 4 }}>
+          {query.data.status === "Cancelado" ? "Pedido cancelado" : currentCopy.label}
+        </Text>
+        {query.data.status !== "Cancelado" ? (
+          <View style={{ gap: 8, marginTop: 8 }}>
+            {states.map((step, index) => {
+              const done = active >= index;
+              const current = active === index;
+              return (
+                <View key={step} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <MaterialIcons
+                  name={current ? "radio-button-checked" : done ? "check-circle" : "radio-button-unchecked"}
+                  size={18}
+                  color={done ? PEDIU.coral : "#C8BDB4"}
+                />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: current ? "800" : "600", color: done ? "#111111" : "#4E453E" }}>
+                      {orderStatusCopy(step).label}
+                    </Text>
+                    {done && step === "Pendente" && query.data.createdAt ? (
+                      <Text style={{ color: "#4E453E", fontSize: 12 }}>
+                        {new Date(query.data.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                      </Text>
+                    ) : null}
+                    {current && step !== "Pendente" && query.data.updatedAt ? (
+                      <Text style={{ color: "#4E453E", fontSize: 12 }}>
+                        {new Date(query.data.updatedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
+      </Card>
+      <Card>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           <View
             style={{
@@ -114,7 +152,6 @@ export default function TrackOrderPage() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={s.sectionTitle}>Pedido #{query.data.id}</Text>
-            <Text style={s.muted}>{currentCopy.label}</Text>
           </View>
         </View>
         <Text style={[s.muted, { marginTop: 2 }]}>
@@ -123,14 +160,13 @@ export default function TrackOrderPage() {
         {query.data.lines?.map((line) => (
           <Text key={`${line.productId}-${line.note ?? ""}`} style={s.muted}>
             {line.quantity}× {line.name}
-            {line.note ? ` · ${line.note}` : ""} · R${" "}
-            {Number(line.unitPrice).toFixed(2).replace(".", ",")}
+            {line.note ? ` · ${line.note}` : ""}
+            {line.unitPrice != null ? ` · R$ ${Number(line.unitPrice).toFixed(2).replace(".", ",")}` : ""}
           </Text>
         ))}
         {query.data.paymentLabel ? (
           <Text style={s.muted}>Pagamento: {query.data.paymentLabel}</Text>
         ) : null}
-        <Text style={[s.muted, { marginTop: 2 }]}>{currentCopy.detail}</Text>
         {query.data.deliveryAddress ? (
           <Text style={s.muted}>Entrega: {query.data.deliveryAddress}</Text>
         ) : null}
@@ -201,48 +237,14 @@ export default function TrackOrderPage() {
             ) : null}
           </View>
         ) : null}
-        {states.map((state, i) => (
-          <View
-            key={state}
-            style={{
-              flexDirection: "row",
-              gap: 12,
-              alignItems: "center",
-              paddingVertical: 10,
-            }}
-          >
-            <View
-              style={{
-                width: 14,
-                height: 14,
-                borderRadius: 7,
-                backgroundColor: i <= active ? PEDIU.coral : PEDIU.line,
-              }}
-            />
-            <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  fontSize: 13,
-                  fontWeight: "900",
-                  color: i <= active ? PEDIU.ink : PEDIU.muted,
-                }}
-              >
-                {orderStatusCopy(state).label}
-              </Text>
-              {i === active ? (
-                <Text style={s.muted}>
-                  {orderStatusCopy(state).detail}
-                </Text>
-              ) : null}
-            </View>
-          </View>
-        ))}
         {query.data.status === "Cancelado" ? (
           <Text style={s.muted}>
             {query.data.cancelReason || "Este pedido foi cancelado."}
           </Text>
         ) : null}
-        {query.data.deliveryCode && query.data.status !== "Cancelado" ? (
+        {query.data.deliveryCode &&
+        query.data.status !== "Cancelado" &&
+        query.data.status !== "Entregue" ? (
           <Text style={{ color: PEDIU.ink, fontSize: 22, fontWeight: "900" }}>
             Código para o motoboy: {query.data.deliveryCode}
           </Text>
@@ -271,7 +273,18 @@ export default function TrackOrderPage() {
             }
           />
         ) : null}
-        {query.data.status !== "Cancelado" ? (
+        {query.data.status === "Entregue" ? (
+          <PrimaryButton
+            title="Avaliar pedido"
+            onPress={() =>
+              router.push({
+                pathname: "/feedback/[orderId]",
+                params: { orderId: String(query.data.id) },
+              })
+            }
+          />
+        ) : null}
+        {query.data.status !== "Cancelado" && query.data.status !== "Entregue" ? (
           <OutlineButton
             title="Acompanhar entrega"
             onPress={() =>

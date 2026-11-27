@@ -128,7 +128,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         }
         if (active) setItems(parseStoredCart(stored));
       } catch {
-        if (active) setError("Não foi possível restaurar o carrinho salvo.");
+        if (active) setError("Não foi possível restaurar a sacola salva.");
       } finally {
         if (active) setHydrated(true);
       }
@@ -147,7 +147,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       userCartStorageKey(sessionUserId),
       JSON.stringify(items),
     ).catch(() =>
-      setError("Não foi possível salvar o carrinho neste dispositivo."),
+      setError("Não foi possível salvar a sacola neste dispositivo."),
     );
   }, [hydrated, items, sessionUserId]);
 
@@ -156,9 +156,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
       if (sessionUserId === undefined)
         return { ok: false, error: "Aguarde um instante e tente de novo." };
       if (sessionUserId === null)
-        return { ok: false, error: "Entre para salvar itens no seu carrinho." };
+        return { ok: false, error: "Entre para salvar itens na sua sacola." };
       if (!hydrated)
-        return { ok: false, error: "Aguarde o carrinho terminar de carregar." };
+        return { ok: false, error: "Aguarde a sacola terminar de carregar." };
       const result = addProductToCart(items, product, quantity);
       if (result.error) {
         setError(result.error);
