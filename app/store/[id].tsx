@@ -247,7 +247,7 @@ export default function StoreScreen() {
               <Pressable
                 key={product.id}
                 accessibilityRole="button"
-                accessibilityLabel={`${product.name}, ${product.available ? money(product.price) : "esgotado"}`}
+                accessibilityLabel={`${product.name}, ${product.available ? money(product.price) : "esgotado"}${inCart ? `, ${inCart} na sacola` : ""}`}
                 onPress={() => openProduct(product.id)}
                 style={{ flexDirection: "row", gap: 12, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: T.line }}
               >
@@ -271,10 +271,8 @@ export default function StoreScreen() {
                     )}
                   </View>
                   {product.available ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={inCart ? `${product.name}: ${inCart} na sacola. Adicionar mais` : `Adicionar ${product.name}`}
-                      onPress={() => openProduct(product.id)}
+                    <View
+                      pointerEvents="none"
                       style={[
                         {
                           position: "absolute",
@@ -297,7 +295,7 @@ export default function StoreScreen() {
                       ) : (
                         <MaterialIcons name="add" size={22} color={T.white} />
                       )}
-                    </Pressable>
+                    </View>
                   ) : null}
                 </View>
               </Pressable>
