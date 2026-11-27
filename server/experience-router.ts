@@ -15,8 +15,6 @@ import { calculateCouponDiscount } from "./domain/coupons";
 import { deliveryCodesMatch } from "../shared/pilot-ops";
 import { enforceDistributedRateLimit } from "./_core/distributed-rate-limit";
 
-/** Wrong-or-right code attempts allowed per order in 30 minutes; 4 digits means 10,000 combinations. */
-export const DELIVERY_CODE_ATTEMPTS = 5;
 import {
   classifyTrackingFreshness,
   isTrackingCapturedAtAcceptable,
@@ -33,6 +31,9 @@ import {
   generateJuntoInviteCode,
   planJuntoShare,
 } from "./domain/junto";
+
+/** Wrong-or-right code attempts allowed per order in 30 minutes; 4 digits means 10,000 combinations. */
+export const DELIVERY_CODE_ATTEMPTS = 5;
 
 async function ownedOrder(db: any, orderId: number, userId: number) {
   const rows = await db
