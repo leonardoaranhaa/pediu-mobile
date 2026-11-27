@@ -22,7 +22,7 @@ Legenda de gravidade: **Alta** impede ou engana o usuário num fluxo principal. 
 | 4 | PIX com simulador do Mercado Pago | Caminho principal funciona; estorno não é registrado, webhook repetido duplica alarmes |
 | 5 | Código e lacunas de produto | 12 fragilidades e 25 itens faltando |
 
-**Corrigir primeiro (alta gravidade):** E2E-01 avaliação inacessível · E2E-02 entregador não vê a corrida ao reabrir · E2E-15 pedido mínimo ignorado · S-01 código de entrega sem limite de tentativas · S-02 loja recebe o código de entrega · P-01 estorno não registrado · P-02 webhook repetido duplica "Novo pedido" · F-06 fotos em base64 no banco · F-07 rotinas de fundo dependem de agendador externo.
+**Alta gravidade:** E2E-01, E2E-02, E2E-15, S-01, S-02, P-01 e P-02 foram **corrigidos** e verificados no servidor local (ver a seção "Correções"). Continuam abertos, porque mudam infraestrutura: F-06 fotos em base64 no banco e F-07 rotinas de fundo dependem de agendador externo.
 
 ## Rodada 1 · Fluxo feliz dos quatro papéis
 
@@ -32,8 +32,8 @@ Resultado: **passou de ponta a ponta.** Loja criada e aprovada, entregador aprov
 
 | # | Gravidade | Onde | O que acontece | Situação |
 |---|---|---|---|---|
-| E2E-01 | Alta | Cliente · pós-entrega | Não existe caminho na interface até a avaliação (`/feedback/[orderId]`). O acompanhamento do pedido entregue não tem botão "Avaliar" e a notificação "Pedido entregue" abre o mapa (`/order/1/tracking-map`). A tela de avaliação funciona quando aberta pelo endereço. | Aberto |
-| E2E-02 | Alta | Entregador · corrida em andamento | Ao reabrir o app com corrida ativa, a central abre na aba "Ofertas" com "Nenhuma corrida agora. Fique online…". A corrida fica escondida na aba "Corrida". | Aberto |
+| E2E-01 | Alta | Cliente · pós-entrega | Não existe caminho na interface até a avaliação (`/feedback/[orderId]`). O acompanhamento do pedido entregue não tem botão "Avaliar" e a notificação "Pedido entregue" abre o mapa (`/order/1/tracking-map`). A tela de avaliação funciona quando aberta pelo endereço. | **Corrigido**: botão "Avaliar pedido" no acompanhamento e na lista; notificação abre a avaliação |
+| E2E-02 | Alta | Entregador · corrida em andamento | Ao reabrir o app com corrida ativa, a central abre na aba "Ofertas" com "Nenhuma corrida agora. Fique online…". A corrida fica escondida na aba "Corrida". | **Corrigido**: a central abre na aba Corrida quando há corrida ativa |
 | E2E-03 | Média | Lojista · Pedidos | Depois de entregue, o pedido some da tela de Pedidos. Não há lista de entregues nem histórico do dia. | Aberto |
 | E2E-04 | Média | Notificações | O entregador não recebe aviso quando é aprovado. A loja recebe "Loja aprovada". | Aberto |
 | E2E-05 | Média | Notificações | "Novo pedido" para a loja aponta para `/order/track?orderId=…`, que é a tela do cliente, em vez da fila da loja. | Aberto |
@@ -63,7 +63,7 @@ O que se comportou bem: total adulterado pelo cliente é recusado (o servidor re
 
 | # | Gravidade | Onde | O que acontece | Situação |
 |---|---|---|---|---|
-| E2E-15 | **Alta** | Pedido mínimo | O pedido mínimo configurado pela loja **não é aplicado** em lugar nenhum. Com mínimo de R$ 100,00, um pedido de R$ 44,00 foi aceito. `minOrder` só é usado para mostrar o rótulo na página da loja; nem `orders.create`, nem `checkout.quote`, nem a sacola conferem. | Aberto |
+| E2E-15 | **Alta** | Pedido mínimo | O pedido mínimo configurado pela loja **não é aplicado** em lugar nenhum. Com mínimo de R$ 100,00, um pedido de R$ 44,00 foi aceito. `minOrder` só é usado para mostrar o rótulo na página da loja; nem `orders.create`, nem `checkout.quote`, nem a sacola conferem. | **Corrigido**: cotação e pedido recusam abaixo do mínimo; a loja mostra quanto falta |
 | E2E-16 | Média | Loja fechada | Com a loja marcada como fechada, o cliente recebe "A loja pausou os pedidos". Fechar e pausar são coisas diferentes para quem lê. | Aberto |
 | E2E-17 | Média | Produto esgotado | A mensagem é "Há produto inválido ou de outro estabelecimento". Não diz qual produto acabou nem sugere tirar da sacola. | Aberto |
 | E2E-18 | Baixa | Validação | Algumas recusas devolvem o erro técnico do Zod em inglês (`[ { "expected": ..., "message": "Too big..." } ]`), por exemplo quantidade acima de 50. A tela traduz parte dos casos, não todos. | Aberto |
@@ -84,9 +84,9 @@ Resultado: **as barreiras principais seguram.** Sem login não se lê pedido; ou
 
 | # | Gravidade | Onde | O que acontece | Situação |
 |---|---|---|---|---|
-| S-01 | **Alta** | Código de entrega | Não há limite de tentativas em `experience.delivery.complete`. Um entregador com a corrida pode testar as 10.000 combinações de 4 dígitos por script e concluir sem ter visto o cliente. | Aberto |
-| S-02 | **Alta** | Código de entrega | A lista de pedidos da loja (`orders.storeMine`, via `enrichOrdersForStore` em `server/db.ts`) devolve o `deliveryCode` do cliente. A tela não mostra, mas a resposta da API carrega. Com "motoboy da própria loja", a loja pode concluir entregas sem o cliente. | Aberto |
-| S-03 | Média | Login | O limite de tentativas é por e-mail. Depois de 10 senhas erradas, **o dono da conta também fica bloqueado** por 15 minutos com a senha certa. Qualquer pessoa trava a conta de outra sabendo só o e-mail. | Aberto |
+| S-01 | **Alta** | Código de entrega | Não há limite de tentativas em `experience.delivery.complete`. Um entregador com a corrida pode testar as 10.000 combinações de 4 dígitos por script e concluir sem ter visto o cliente. | **Corrigido**: 5 tentativas por pedido a cada 30 min, contadas por pedido em qualquer rede |
+| S-02 | **Alta** | Código de entrega | A lista de pedidos da loja (`orders.storeMine`, via `enrichOrdersForStore` em `server/db.ts`) devolve o `deliveryCode` do cliente. A tela não mostra, mas a resposta da API carrega. Com "motoboy da própria loja", a loja pode concluir entregas sem o cliente. | **Corrigido**: só o cliente do pedido recebe o código (lista e detalhe) |
+| S-03 | Baixa | Login | Revisto depois: o limite junta e-mail **e rede (IP)**. No teste o dono foi bloqueado porque as tentativas erradas saíram do mesmo IP. Um atacante em outra rede não trava o dono; o risco fica para quem divide a mesma rede (Wi-Fi público, operadora com IP compartilhado). | Aberto, gravidade reduzida |
 | S-04 | Média | Avaliações | O cliente avaliou a mesma loja duas vezes no mesmo pedido (notas 5 e 1) trocando só a chave de idempotência. Não há regra "uma avaliação por alvo por pedido". A média da loja pode ser manipulada. | Aberto |
 | S-05 | Baixa | Código de entrega | `createDeliveryCode` usa `Math.random`, que não é próprio para segredo. E `deliveryCodesMatch` aceita **qualquer** código quando o pedido não tem código salvo. | Aberto |
 | S-06 | Baixa | Ofertas | Um cliente chamando `courier.offers` recebe lista vazia (`[]`) em vez de "sem permissão". Não vaza dado, mas esconde uso indevido. | Aberto |
@@ -103,12 +103,14 @@ Resultado: **o caminho principal funciona.** Pedido PIX pela interface (nº 10, 
 
 | # | Gravidade | Onde | O que acontece | Situação |
 |---|---|---|---|---|
-| P-01 | **Alta** | Estorno | Quando a loja recusa um pedido PIX já pago, o estorno é pedido ao Mercado Pago, mas **não é registrado**: `pediu_refunds` fica vazia e o pagamento continua `paid`. O cliente recebe "PIX estornado" mesmo assim. Não há como conciliar, mostrar no painel master ou saber se o estorno falhou. (`releaseProviderPixForOrder` em `server/pix-release.ts` ignora o retorno de `requestPixRefund`.) | Aberto |
-| P-02 | **Alta** | Webhook repetido | Cada entrega do mesmo webhook gera de novo a notificação "Novo pedido" para a loja. Três entregas, três alarmes para um pedido só. O Mercado Pago reenvia webhooks com frequência. A resposta também diz `"duplicate": false` todas as vezes. | Aberto |
-| P-03 | Média | Mensagem do estorno | O texto do aviso é "O pedido já estava cancelado. O valor do PIX foi estornado.", escrito para o caso de pagamento que chega depois do cancelamento. Na recusa pela loja ele não faz sentido, e é enviado antes de o estorno ser confirmado. | Aberto |
+| P-01 | **Alta** | Estorno | Quando a loja recusa um pedido PIX já pago, o estorno é pedido ao Mercado Pago, mas **não é registrado**: `pediu_refunds` fica vazia e o pagamento continua `paid`. O cliente recebe "PIX estornado" mesmo assim. Não há como conciliar, mostrar no painel master ou saber se o estorno falhou. (`releaseProviderPixForOrder` em `server/pix-release.ts` ignora o retorno de `requestPixRefund`.) | **Corrigido**: estorno gravado em `pediu_refunds` com o resultado; falha fica registrada |
+| P-02 | **Alta** | Webhook repetido | Cada entrega do mesmo webhook gera de novo a notificação "Novo pedido" para a loja. Três entregas, três alarmes para um pedido só. O Mercado Pago reenvia webhooks com frequência. A resposta também diz `"duplicate": false` todas as vezes. | **Corrigido**: só a passagem de pendente para pago avisa a loja; repetições respondem `duplicate: true` |
+| P-03 | Média | Mensagem do estorno | O texto do aviso é "O pedido já estava cancelado. O valor do PIX foi estornado.", escrito para o caso de pagamento que chega depois do cancelamento. Na recusa pela loja ele não faz sentido, e é enviado antes de o estorno ser confirmado. | **Corrigido** junto com P-01: o texto depende de o estorno estar confirmado ou só pedido |
 | P-04 | Média | Pagamento aprovado | O cliente não recebe aviso de que o PIX foi aprovado e o pedido foi para a loja. Só recebeu "PIX gerado". | Aberto |
 | P-05 | Baixa | Webhook | O carimbo de tempo da assinatura não é conferido: um webhook assinado de 24 horas atrás foi aceito. O risco é baixo porque o servidor consulta o status real no Mercado Pago antes de agir, mas o padrão recomendado é recusar assinaturas antigas. | Aberto |
 | P-06 | Média | Tela de pagamento PIX | A tela mostra o ícone de ✓ enquanto o pagamento ainda está pendente. E os botões fixos "Acompanhar pedido" e "Voltar ao início" cobrem o bloco "Pague com PIX": o QR e o copia e cola só aparecem rolando, e a ação principal da tela é "Acompanhar" em vez de "Copiar código PIX". Em tela pequena, o cliente pode não achar como pagar. | Aberto (confirmado no print) |
+
+Também sem registro: o estorno de **compra de créditos de anúncio** paga depois de cancelada (`server/payment-webhook.ts`) ainda chama o Mercado Pago sem gravar nada. Fica fora deste passe por não ser pedido de cliente.
 
 Não testado nesta rodada: PIX expirado (cobrança vencida sem pagamento), pagamento que chega depois do cancelamento pelo cliente, e conciliação diária (`payment_reconciliation_runs`).
 
@@ -171,3 +173,17 @@ Itens que apps do mesmo tipo costumam ter e que não encontrei, ou encontrei pel
 23. **Nota fiscal**: não há emissão nem integração. Para lojas formais, isso vira exigência.
 24. **Cartão pelo app.** Hoje é PIX, dinheiro ou cartão na entrega.
 25. **Monitoramento de erros e testes de tela no CI** (F-14, F-17).
+
+## Correções · alta gravidade
+
+Todas no PR #13, com testes automáticos e verificação no servidor local com banco descartável e simulador do Mercado Pago.
+
+| Achado | O que mudou | Como foi verificado |
+|---|---|---|
+| S-01 | `experience.delivery.complete` aceita 5 tentativas de código por pedido a cada 30 minutos. O limite é contado pelo pedido, não pela rede, então trocar de IP não zera. O código é gerado com `crypto.randomInt`. | `tests/delivery-router.test.ts`: duas redes diferentes caem no mesmo limite. |
+| S-02 | `orders.get` e `orders.storeMine` só devolvem `deliveryCode` para o cliente do pedido. | `tests/delivery-code-visibility.test.ts`; ao vivo: loja não recebe, cliente recebe. |
+| E2E-15 | `checkout.quote` e `orders.create` recusam subtotal de produtos abaixo do mínimo, dizendo quanto falta. A página da loja mostra o mesmo aviso acima da sacola. Taxa e gorjeta não contam; a conta é em centavos. | `tests/minimum-order.test.ts`; ao vivo: mínimo de R$ 100 recusou R$ 39 em produtos com "Faltam R$ 61,00". |
+| P-01 / P-03 | O estorno de pedido cancelado passa por `refundPixPayment` (`server/pix-release.ts`): grava em `pediu_refunds`, pede ao Mercado Pago e guarda o resultado. Repetir o cancelamento não estorna de novo. O aviso só diz "devolvido" quando o estorno está confirmado. | `tests/pix-refund-record.test.ts`; ao vivo: estorno `refunded 24.50` gravado, segundo cancelamento sem novo estorno. |
+| P-02 | `applyPaymentWebhook` só avisa a loja (ou estorna pedido cancelado) quando o pagamento passa de pendente para pago. Pedido cancelado continua sem lançamento de pagamento. | Ao vivo: três avisos do Mercado Pago com ids diferentes geraram um único "Novo pedido". |
+| E2E-01 | Acompanhamento de pedido entregue mostra "Avaliar pedido" no lugar do mapa; a lista de pedidos oferece o mesmo; a notificação "Pedido entregue" abre a avaliação. | Na tela: botão aparece e abre `/feedback/1`. |
+| E2E-02 | A central do entregador abre na aba "Corrida" quando há corrida ativa (uma vez, na carga). | Na tela: com corrida aceita, a central abre em "Cheguei na loja". |
