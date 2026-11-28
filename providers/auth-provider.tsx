@@ -1,9 +1,10 @@
 import * as Api from "@/lib/_core/api";
 import * as Auth from "@/lib/_core/auth";
 import { logoutSession } from "@/lib/logout-session";
+import { signedInUserChanged } from "@/lib/auth-refresh";
 import { useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Platform } from "react-native";
 
 type AuthValue = {
@@ -94,6 +95,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void fetchUser();
   }, [fetchUser]);
+
+  // After a sign-in or an account switch, data fetched for the visitor or the
+  // previous account (coupons on offer, orders, addresses) is fetched again.
+  const settledUserId = useRef<number | null | undefined>(undefined);
+  const userId = user?.id ?? null;
+  useEffect(() => {
+    if (loading) return;
+    const changed = signedInUserChanged(settledUserId.current, userId);
+    settledUserId.current = userId;
+    if (changed) void queryClient.invalidateQueries();
+  }, [loading, queryClient, userId]);
 
   const value = useMemo<AuthValue>(
     () => ({
