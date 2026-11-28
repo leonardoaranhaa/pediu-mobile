@@ -44,6 +44,8 @@ export function MascotFigure({
       viewBox={`0 0 ${MASCOT_VIEWBOX.width} ${MASCOT_VIEWBOX.height}`}
       preserveAspectRatio="xMidYMid meet"
     >
+      {/* Soft ground shadow keeps the figure standing on the screen. */}
+      <Ellipse cx="44" cy="101" rx="25" ry="2.6" fill={ink} opacity={0.12} />
       <Circle cx="18" cy="20" r="3" fill={scarf} />
       <Circle cx="72" cy="16" r="2.2" fill={body} />
       <Rect x="42" y="16" width="4" height="14" rx="2" fill={scarf} />
@@ -53,13 +55,17 @@ export function MascotFigure({
       <Ellipse cx="32" cy="97" rx="11" ry="5" fill={ink} />
       <Ellipse cx="56" cy="97" rx="11" ry="5" fill={ink} />
       <Rect x="18" y="32" width="52" height="62" rx="26" fill={body} />
+      {/* Light from the top-left gives the body some volume. */}
+      <Ellipse cx="28" cy="46" rx="5" ry="9" fill="#FFFFFF" opacity={0.16} />
+      <Ellipse cx="22" cy="38" rx="2.4" ry="4" fill="#FFFFFF" opacity={0.18} />
       <Ellipse cx="16" cy={armY} rx="6" ry="11" fill={body} />
       <Ellipse cx="72" cy={armY} rx="6" ry="11" fill={body} />
       <Circle cx="44" cy="56" r="20" fill={face} />
       {expression.brows ? (
         <>
-          <Path d="M31 46 L39 48" stroke={ink} strokeWidth="1.7" strokeLinecap="round" />
-          <Path d="M49 48 L57 46" stroke={ink} strokeWidth="1.7" strokeLinecap="round" />
+          {/* Inner ends up: an eager, pleading look rather than an angry one. */}
+          <Path d="M31 47.5 Q35 45.4 39 45.6" stroke={ink} strokeWidth="1.7" fill="none" strokeLinecap="round" />
+          <Path d="M49 45.6 Q53 45.4 57 47.5" stroke={ink} strokeWidth="1.7" fill="none" strokeLinecap="round" />
         </>
       ) : null}
       {expression.eyes === "open" ? (

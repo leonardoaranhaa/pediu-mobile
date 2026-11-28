@@ -34,6 +34,7 @@ export function PediuMascot({
   speechText,
   programmed = false,
   onPress,
+  size,
 }: {
   theme: AppTheme;
   styleId?: AppMascotStyle;
@@ -45,6 +46,8 @@ export function PediuMascot({
   programmed?: boolean;
   speechSide?: "left" | "right";
   onPress?: () => void;
+  /** Figure height in dp. Overrides `compact`. */
+  size?: number;
 }) {
   const pathname = usePathname();
   const { mascotMoment } = useAppPreferences();
@@ -55,11 +58,18 @@ export function PediuMascot({
     sceneForReaction(activeReaction),
   );
   const bob = useRef(new Animated.Value(0)).current;
+  const hop = useRef(new Animated.Value(0)).current;
+  const [blinking, setBlinking] = useState(false);
   const reducedMotion = useReducedMotion();
   const scripted =
     programmed && (activeReaction === "idle" || activeReaction === "hungry");
-  const box = mascotBox(compact);
-  const expression = mascotExpression(scene.reaction, scene.gesture);
+  const box = mascotBox(compact, size);
+  const baseExpression = mascotExpression(scene.reaction, scene.gesture);
+  // A quick blink now and then; closed or covered eyes stay as they are.
+  const expression =
+    blinking && baseExpression.eyes !== "closed" && !baseExpression.hands
+      ? { ...baseExpression, eyes: "closed" as const }
+      : baseExpression;
   const scarfColor =
     styleId === "ocean"
       ? "#7BDFF2"
@@ -86,6 +96,37 @@ export function PediuMascot({
     if (!scripted) return;
     setScene(AMBIENT_SCENES[sceneIndex] ?? sceneForReaction(activeReaction));
   }, [activeReaction, sceneIndex, scripted]);
+
+  useEffect(() => {
+    if (!motionEnabled || reducedMotion) return;
+    let open: ReturnType<typeof setTimeout> | undefined;
+    let next: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      next = setTimeout(() => {
+        setBlinking(true);
+        open = setTimeout(() => {
+          setBlinking(false);
+          schedule();
+        }, 140);
+      }, 2800 + Math.random() * 2600);
+    };
+    schedule();
+    return () => {
+      clearTimeout(next);
+      if (open) clearTimeout(open);
+      setBlinking(false);
+    };
+  }, [motionEnabled, reducedMotion]);
+
+  const hopOnce = () => {
+    if (!motionEnabled || reducedMotion) return;
+    hop.stopAnimation();
+    hop.setValue(0);
+    Animated.sequence([
+      Animated.timing(hop, { toValue: 1, duration: 140, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+      Animated.timing(hop, { toValue: 0, duration: 260, easing: Easing.bounce, useNativeDriver: true }),
+    ]).start();
+  };
 
   useEffect(() => {
     bob.stopAnimation();
@@ -122,11 +163,12 @@ export function PediuMascot({
           height: box.height,
           transform: [
             {
-              translateY: bob.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0, -3],
-              }),
+              translateY: Animated.add(
+                bob.interpolate({ inputRange: [0, 1], outputRange: [0, -3] }),
+                hop.interpolate({ inputRange: [0, 1], outputRange: [0, -box.height * 0.12] }),
+              ),
             },
+            { scaleY: hop.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] }) },
           ],
         }}
       >
@@ -172,6 +214,7 @@ export function PediuMascot({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibleLabel}
+      onPressIn={hopOnce}
       onPress={onPress}
       style={styles.wrap}
     >
