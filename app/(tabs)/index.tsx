@@ -91,7 +91,7 @@ import {
 } from "@/lib/home-context";
 import { resolveCurrentLocation } from "@/lib/location";
 import { homeAddressLine } from "@/lib/home-address";
-import { cardElevation, FOOD_ASSETS, PEDIU_TOKENS } from "@/lib/pediu-tokens";
+import { cardElevation, FOOD_ASSETS } from "@/lib/pediu-tokens";
 import { DiscoverFeed } from "@/components/home/discover-feed";
 import { HomeTour } from "@/components/home-tour";
 import { CustomerDock } from "@/components/customer-dock";
