@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { EmptyState } from "@/components/pediu/empty-state";
 import { Page, PEDIU, s } from "@/components/pediu-page";
-import { OpsDock } from "@/components/pediu-ops-ui";
+import { CustomerDock } from "@/components/customer-dock";
 import { SEARCH_QUICK_CATEGORIES } from "@/lib/catalog-copy";
 import { PEDIU_TOKENS } from "@/lib/pediu-tokens";
 import { trpc } from "@/lib/trpc";
@@ -36,21 +36,25 @@ export default function SearchScreen() {
   const params = useLocalSearchParams<{ q?: string }>();
   const initialQuery = typeof params.q === "string" ? params.q : "";
   const [query, setQuery] = useState(initialQuery);
-  useEffect(() => {
-    if (initialQuery) setQuery(initialQuery);
-  }, [initialQuery]);
   const [vertical, setVertical] =
     useState<(typeof VERTICALS)[number]["id"]>("all");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [showPrice, setShowPrice] = useState(false);
+  // The home sends the typed term as ?q=, so the first search must already use it.
   const [filters, setFilters] = useState({
-    query: "",
+    query: initialQuery.trim(),
     vertical: "all" as (typeof VERTICALS)[number]["id"],
     minPrice: undefined as number | undefined,
     maxPrice: undefined as number | undefined,
   });
   const [page, setPage] = useState(0);
+  useEffect(() => {
+    if (!initialQuery) return;
+    setQuery(initialQuery);
+    setPage(0);
+    setFilters((current) => ({ ...current, query: initialQuery.trim() }));
+  }, [initialQuery]);
 
   const flashHint = filters.query.trim().toLowerCase() === "flash";
   const productsQuery = trpc.pediu.marketplace.search.useQuery(
@@ -102,20 +106,24 @@ export default function SearchScreen() {
       title="Buscar"
       eyebrow="DESCUBRA"
       dock={
-        <OpsDock
+        <CustomerDock
           items={[
-            { label: "Início", icon: "explore", to: "/(tabs)", onPress: () => router.replace("/(tabs)") },
-            { label: "Busca", icon: "search", to: "/search", active: true },
+            { id: "discover", label: "Início", icon: "home-filled", a11y: "Abrir início", selected: false, onPress: () => router.replace("/(tabs)") },
+            { id: "search", label: "Busca", icon: "search", a11y: "Abrir busca", selected: true, onPress: () => undefined },
             {
+              id: "orders",
               label: "Pedidos",
               icon: "receipt-long",
-              to: "/(tabs)",
+              a11y: "Abrir pedidos",
+              selected: false,
               onPress: () => router.replace({ pathname: "/(tabs)", params: { tab: "orders" } }),
             },
             {
+              id: "profile",
               label: "Perfil",
               icon: "person",
-              to: "/(tabs)",
+              a11y: "Abrir perfil",
+              selected: false,
               onPress: () => router.replace({ pathname: "/(tabs)", params: { tab: "profile" } }),
             },
           ]}

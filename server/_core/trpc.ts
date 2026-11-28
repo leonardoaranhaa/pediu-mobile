@@ -11,23 +11,40 @@ const t = initTRPC.context<TrpcContext>().create({
 
 const observabilityMiddleware = t.middleware(async ({ path, next }) => {
   const startedAt = performance.now();
+  // In tRPC v11 `next()` does not throw: a failed procedure comes back as
+  // `{ ok: false, error }`. Map it here so business rules become 4xx and
+  // database internals never reach the app.
+  let result: Awaited<ReturnType<typeof next>>;
   try {
-    const result = await next();
-    recordOperation({
-      procedure: path,
-      durationMs: performance.now() - startedAt,
-      outcome: "ok",
-    });
-    return result;
+    result = await next();
   } catch (error) {
+    const mapped = publicError(error);
     recordOperation({
       procedure: path,
       durationMs: performance.now() - startedAt,
       outcome: "error",
-      code: error instanceof TRPCError ? error.code : "INTERNAL_SERVER_ERROR",
+      code: mapped.code,
     });
-    throw publicError(error);
+    throw mapped;
   }
+  if (!result.ok) {
+    const mapped = publicError(result.error);
+    if (mapped.code === "INTERNAL_SERVER_ERROR")
+      console.error(`[Pediu][Error] ${path}`, result.error.cause ?? result.error);
+    recordOperation({
+      procedure: path,
+      durationMs: performance.now() - startedAt,
+      outcome: "error",
+      code: mapped.code,
+    });
+    throw mapped;
+  }
+  recordOperation({
+    procedure: path,
+    durationMs: performance.now() - startedAt,
+    outcome: "ok",
+  });
+  return result;
 });
 
 const observedProcedure = t.procedure.use(observabilityMiddleware);

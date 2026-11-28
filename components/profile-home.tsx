@@ -1,17 +1,18 @@
 import { router } from "expo-router";
 import type { ReactNode } from "react";
 import { Alert, Text, View } from "react-native";
+import { MaterialIcons } from "@expo/vector-icons";
 import { DeleteAccount } from "@/components/delete-account";
-import { Card, OutlineButton, PEDIU, PrimaryButton, Row, s } from "@/components/pediu-page";
+import { OutlineButton, PEDIU, PrimaryButton, Row, s } from "@/components/pediu-page";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <Card>
+    <View style={{ gap: 8 }}>
       <Text style={s.label}>{title}</Text>
       {children}
-    </Card>
+    </View>
   );
 }
 
@@ -48,14 +49,21 @@ export function ProfileHome() {
 
   if (!isAuthenticated) {
     return (
-      <Card>
-        <Text style={s.sectionTitle}>Sua conta no Pediu</Text>
-        <Text style={s.muted}>
-          Você pode olhar lojas e cardápios sem conta. Para pedir, vender ou fazer entregas, crie uma conta com esse papel.
-        </Text>
-        <PrimaryButton title="Criar conta" onPress={() => router.push("/register")} />
-        <OutlineButton title="Já tenho conta" onPress={() => router.push("/login")} />
-      </Card>
+      <View style={{ gap: 14, paddingTop: 8 }}>
+        <View style={{ alignItems: "center", gap: 10 }}>
+          <View style={{ width: 72, height: 72, borderRadius: 24, backgroundColor: PEDIU.coralSoft, alignItems: "center", justifyContent: "center" }}>
+            <MaterialIcons name="receipt-long" size={34} color={PEDIU.coral} />
+          </View>
+          <Text style={[s.sectionTitle, { textAlign: "center", fontSize: 22 }]}>Entre para acompanhar seus pedidos</Text>
+          <Text style={[s.muted, { textAlign: "center" }]}>
+            As lojas ficam abertas para olhar. A conta guarda seus pedidos e o endereço de entrega.
+          </Text>
+        </View>
+        <PrimaryButton title="Entrar" onPress={() => router.push("/login")} />
+        <OutlineButton title="Criar conta" onPress={() => router.push("/register")} />
+        <Row icon="help-outline" title="Ajuda" subtitle="Dúvidas sobre pedido e pagamento" onPress={() => router.push("/help")} />
+        <Row icon="description" title="Termos" subtitle="Uso do Pediu e privacidade" onPress={() => router.push("/account/privacy")} />
+      </View>
     );
   }
 
@@ -104,8 +112,6 @@ export function ProfileHome() {
         <Row icon="palette" title="Aparência" subtitle="Cores do aplicativo" onPress={() => router.push("/account/settings")} />
       </Section>
 
-      <DeleteAccount />
-
       <OutlineButton
         title="Sair da conta"
         onPress={() =>
@@ -115,6 +121,7 @@ export function ProfileHome() {
           ])
         }
       />
+      <DeleteAccount />
     </View>
   );
 }

@@ -1,3 +1,8 @@
+import {
+  missingOptionChoice,
+  optionGroupLimits,
+  type OptionSelection,
+} from "../../shared/option-rules";
 export type PricedOptionChoice = {
   id: number;
   name: string;
@@ -8,16 +13,14 @@ export type PricedOptionGroup = {
   id: number;
   name: string;
   required: number | boolean;
+  minChoices?: number | null;
+  maxChoices?: number | null;
   choices: PricedOptionChoice[];
 };
 
 export type PricedOptions =
   | { ok: false; message: string }
   | { ok: true; unitPrice: string; label: string; optionIds: number[] };
-
-function isRequired(value: number | boolean) {
-  return value === true || value === 1;
-}
 
 export function priceSelectedOptions(
   basePrice: string | number,
@@ -29,41 +32,48 @@ export function priceSelectedOptions(
     return { ok: false, message: "Escolha cada opção uma vez só." };
   }
 
-  const byId = new Map<number, { choice: PricedOptionChoice; group: PricedOptionGroup }>();
+  const groupByChoice = new Map<number, PricedOptionGroup>();
   for (const group of groups) {
-    for (const choice of group.choices) {
-      byId.set(choice.id, { choice, group });
-    }
+    for (const choice of group.choices) groupByChoice.set(choice.id, group);
   }
 
-  const chosenByGroup = new Map<number, { choice: PricedOptionChoice; group: PricedOptionGroup }>();
+  const selection: OptionSelection = {};
   for (const id of ids) {
-    const found = byId.get(id);
-    if (!found) {
+    const group = groupByChoice.get(id);
+    if (!group) {
       return { ok: false, message: "Essa opção não faz parte deste produto." };
     }
-    if (chosenByGroup.has(found.group.id)) {
-      return { ok: false, message: `Escolha só uma opção em ${found.group.name}.` };
-    }
-    chosenByGroup.set(found.group.id, found);
+    selection[group.id] = [...(selection[group.id] ?? []), id];
   }
 
   for (const group of groups) {
-    if (isRequired(group.required) && group.choices.length > 0 && !chosenByGroup.has(group.id)) {
-      return { ok: false, message: `Escolha ${group.name} para continuar.` };
+    const { max } = optionGroupLimits(group);
+    const count = (selection[group.id] ?? []).length;
+    if (count > max) {
+      return {
+        ok: false,
+        message:
+          max === 1
+            ? `Escolha só uma opção em ${group.name}.`
+            : `Escolha até ${max} opções em ${group.name}.`,
+      };
     }
   }
+  const missing = missingOptionChoice(groups, selection);
+  if (missing) return { ok: false, message: missing.message };
 
   let extra = 0;
   const labels: string[] = [];
   const selected: number[] = [];
   for (const group of groups) {
-    const chosen = chosenByGroup.get(group.id);
-    if (!chosen) continue;
-    const delta = Number(chosen.choice.priceDelta);
-    extra += Number.isFinite(delta) ? delta : 0;
-    labels.push(`${group.name}: ${chosen.choice.name}`);
-    selected.push(chosen.choice.id);
+    const chosen = group.choices.filter((choice) => (selection[group.id] ?? []).includes(choice.id));
+    if (!chosen.length) continue;
+    for (const choice of chosen) {
+      const delta = Number(choice.priceDelta);
+      extra += Number.isFinite(delta) ? delta : 0;
+      selected.push(choice.id);
+    }
+    labels.push(`${group.name}: ${chosen.map((choice) => choice.name).join(", ")}`);
   }
 
   const base = Number(basePrice);

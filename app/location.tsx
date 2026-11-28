@@ -43,7 +43,7 @@ export default function LocationScreen() {
   const [loading, setLoading] = useState(false);
   const createAddress = trpc.pediu.addresses.create.useMutation({
     onSuccess: () => {
-      Alert.alert("Endereço salvo", "Sua localização agora está disponível no checkout.");
+      Alert.alert("Endereço salvo", "Sua localização agora entra no pedido.");
       router.replace("/(tabs)");
     },
     onError: (error) => Alert.alert("Endereço", error.message),

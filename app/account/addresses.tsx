@@ -6,7 +6,7 @@ import { router } from "expo-router";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/hooks/use-auth";
 import { PinMap } from "@/components/pin-map";
-import { geocodeTypedAddress } from "@/lib/location";
+import { placeAddressOnMap } from "@/lib/address-lookup";
 import { useAppPreferences } from "@/lib/app-preferences";
 
 type AddressForm = {
@@ -84,14 +84,23 @@ export default function AddressesPage() {
     setMapMessage(null);
     setLocating(true);
     try {
-      const point = await geocodeTypedAddress(
-        [form.street, form.number, form.neighborhood, form.city, form.state, form.postalCode, "Brasil"].join(", "),
-      );
-      if (!point) {
-        setMapMessage("Não achamos esse endereço no mapa. Confira rua, número e cidade.");
+      const placed = await placeAddressOnMap({
+        cep: form.postalCode,
+        number: form.number,
+        city: form.city,
+      });
+      if (!placed.ok) {
+        setMapMessage(placed.message);
         return;
       }
-      setPin(point);
+      setForm((current) => ({
+        ...current,
+        street: placed.placed.cep.street || current.street,
+        neighborhood: placed.placed.cep.neighborhood || current.neighborhood,
+        city: placed.placed.cep.city,
+        state: placed.placed.cep.state,
+      }));
+      setPin(placed.placed.pin);
       setPinKey((value) => value + 1);
     } catch {
       setMapMessage("Não foi possível consultar o mapa agora. Tente de novo.");

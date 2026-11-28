@@ -1,6 +1,8 @@
-import { useEffect, type PropsWithChildren, type ReactNode } from "react";
+import { useEffect, type PropsWithChildren, type ReactNode, type Ref } from "react";
 import {
   Pressable,
+  StyleSheet,
+  type View,
   type PressableProps,
   type StyleProp,
   type ViewStyle,
@@ -76,6 +78,8 @@ type PressableMotionProps = Omit<PressableProps, "style"> & {
   disabled?: boolean;
   pressedScale?: number;
   style?: StyleProp<ViewStyle>;
+  /** Outer view, e.g. for a guided-tour highlight. */
+  ref?: Ref<View>;
 };
 
 /** Press state único para botões, cards, chips e linhas operacionais. */
@@ -86,6 +90,7 @@ export function PediuPressable({
   onPressOut,
   pressedScale = 0.975,
   style,
+  ref,
   ...props
 }: PressableMotionProps) {
   const reducedMotion = useReducedMotion();
@@ -94,8 +99,23 @@ export function PediuPressable({
     transform: [{ scale: scale.value }],
   }));
 
+  const flat = StyleSheet.flatten(style);
+  const hasFlex = flat?.flex != null || flat?.flexGrow != null;
   return (
-    <Animated.View style={animatedStyle}>
+    <Animated.View
+      ref={ref}
+      style={[
+        animatedStyle,
+        hasFlex
+          ? {
+              flexGrow: flat?.flexGrow ?? (typeof flat?.flex === "number" ? flat.flex : undefined),
+              flexShrink: flat?.flexShrink ?? 1,
+              alignSelf: "stretch",
+              minWidth: 0,
+            }
+          : null,
+      ]}
+    >
       <AnimatedPressable
         {...props}
         disabled={disabled}

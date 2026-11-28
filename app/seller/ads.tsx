@@ -13,6 +13,7 @@ import {
   PEDIU,
   s,
 } from "@/components/pediu-page";
+import { StoreReviewBanner } from "@/components/store-review-banner";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
 import { SellerDock } from "@/components/seller-dock";
@@ -78,14 +79,14 @@ export default function SellerAdsPage() {
     enabled: isAuthenticated,
   });
   const products = trpc.pediu.products.mine.useQuery(
-    { storeId: store.data?.id ?? 0 },
-    { enabled: Boolean(store.data?.id) },
+    { storeId: store.data?.id },
+    { enabled: isAuthenticated },
   );
   const ads = trpc.pediu.ads.mine.useQuery(undefined, {
-    enabled: isAuthenticated && Boolean(store.data?.id),
+    enabled: isAuthenticated,
   });
   const credits = trpc.pediu.ads.credits.useQuery(undefined, {
-    enabled: isAuthenticated && Boolean(store.data?.id),
+    enabled: isAuthenticated,
   });
   const [productId, setProductId] = useState("");
   const [offerLabel, setOfferLabel] = useState("");
@@ -181,6 +182,7 @@ export default function SellerAdsPage() {
         </View>
       }
     >
+      <StoreReviewBanner />
       <Card style={{ backgroundColor: theme.ink, borderColor: theme.ink }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           <View
@@ -219,7 +221,7 @@ export default function SellerAdsPage() {
           </View>
         </View>
         <Text style={{ color: "#BCD0D1", fontSize: 13, lineHeight: 19 }}>
-          Escolha um produto. O Pediu cria a ideia, a copy e uma imagem
+          Escolha um produto. O Pediu cria a ideia, o texto e uma imagem
           comercial para você revisar antes de publicar.
         </Text>
       </Card>

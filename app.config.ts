@@ -105,10 +105,12 @@ const config: ExpoConfig = {
     [
       "expo-splash-screen",
       {
+        // Brand red with the cream wordmark, same as the app icon.
+        // components/boot-splash.tsx copies this exactly for the in-app hand-off.
         image: "./assets/images/splash-icon.png",
         imageWidth: 200,
         resizeMode: "contain",
-        backgroundColor: "#FFF4E8",
+        backgroundColor: "#E20D2A",
       },
     ],
     [

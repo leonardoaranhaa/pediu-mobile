@@ -64,7 +64,7 @@ export default function AdminOrdersPage() {
       {query.isLoading ? <ActivityIndicator color={PEDIU.coral} /> : null}
       {query.error ? <Text style={{ color: PEDIU.coral, fontWeight: "700" }}>Falha ao carregar pedidos.</Text> : null}
       {!query.isLoading && !query.error && !(query.data?.length ?? 0) ? (
-        <EmptyState icon="receipt-long" title="Nenhum pedido neste filtro" body="Ajuste status/Flash ou aguarde novos checkouts." />
+        <EmptyState icon="receipt-long" title="Nenhum pedido neste filtro" body="Ajuste o filtro ou aguarde novos pedidos." />
       ) : null}
       {query.data?.map((order) => (
         <Row

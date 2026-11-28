@@ -824,8 +824,41 @@ export const coupons = pgTable("pediu_coupons", {
   maxDiscount: numeric("maxDiscount", { precision: 10, scale: 2 }),
   active: integer("active").default(1).notNull(),
   expiresAt: timestamp("expiresAt"),
+  // Total uses across everyone; null means no total cap.
+  usageLimit: integer("usageLimit"),
+  // Uses per customer; null means no per-customer cap.
+  perUserLimit: integer("perUserLimit").default(1),
+  usedCount: integer("usedCount").default(0).notNull(),
+  // Set for personal coupons, such as loyalty rewards: only this user may use it.
+  ownerUserId: integer("ownerUserId"),
+  // Only public coupons are listed to customers.
+  isPublic: integer("isPublic").default(1).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }).enableRLS();
+
+export const couponRedemptions = pgTable(
+  "pediu_coupon_redemptions",
+  {
+    id: serial("id").primaryKey(),
+    couponId: integer("couponId")
+      .notNull()
+      .references(() => coupons.id, { onDelete: "cascade" }),
+    userId: integer("userId").notNull(),
+    orderId: integer("orderId")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => ({
+    orderUnique: unique("pediu_coupon_redemptions_order_unique").on(
+      table.orderId,
+    ),
+    couponUserIdx: index("pediu_coupon_redemptions_coupon_user_idx").on(
+      table.couponId,
+      table.userId,
+    ),
+  }),
+).enableRLS();
 
 export const orderReviews = pgTable(
   "pediu_order_reviews",
@@ -841,12 +874,11 @@ export const orderReviews = pgTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (table) => ({
-    reviewUnique: unique("pediu_review_unique").on(
-      table.orderId,
-      table.userId,
-      table.target,
-      table.productId,
-    ),
+    // Store and courier reviews have no productId; NULLS NOT DISTINCT keeps
+    // them to one per order instead of letting NULLs bypass the constraint.
+    reviewUnique: unique("pediu_review_unique")
+      .on(table.orderId, table.userId, table.target, table.productId)
+      .nullsNotDistinct(),
     idempotencyUnique: unique("pediu_review_idempotency_unique").on(
       table.idempotencyKey,
     ),
@@ -1433,6 +1465,9 @@ export const productOptionGroups = pgTable(
       .references(() => products.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 80 }).notNull(),
     required: integer("required").default(0).notNull(),
+    // How many choices the customer must and may pick in this group.
+    minChoices: integer("minChoices").default(0).notNull(),
+    maxChoices: integer("maxChoices").default(1).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (table) => ({

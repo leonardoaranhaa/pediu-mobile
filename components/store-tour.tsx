@@ -1,7 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { trpc } from "@/lib/trpc";
 
 const STEPS = [
@@ -21,7 +20,6 @@ export function StoreTour({
   storeName: string;
   productCount?: number;
 }) {
-  const insets = useSafeAreaInsets();
   const [step, setStep] = useState<number | null>(null);
   const key = `pediu:store-tour:${userId}`;
   const tour = trpc.pediu.account.profile.tour.mine.useQuery();
@@ -54,15 +52,10 @@ export function StoreTour({
   return (
     <View
       style={{
-        position: "absolute",
-        left: 16,
-        right: 16,
-        bottom: Math.max(insets.bottom, 12) + 88,
         backgroundColor: "#1C140F",
         borderRadius: 20,
         padding: 16,
         gap: 8,
-        zIndex: 40,
       }}
     >
       <Text style={{ color: "#F6C445", fontWeight: "800", fontSize: 12 }}>

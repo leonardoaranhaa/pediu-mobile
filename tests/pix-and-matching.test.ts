@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { classifyPendingOrder, PIX_TTL_MS } from "../server/pix-lifecycle";
 import { phraseMatchesName, splitOrderPhrase } from "../server/assistant-match";
-import { defaultOptionSelection, groupRequiresChoice } from "../lib/option-selection";
+import { missingOptionChoice, optionGroupIsRequired } from "../shared/option-rules";
 
 describe("PIX lifetime", () => {
   const now = new Date("2026-11-01T12:00:00Z");
@@ -58,7 +58,7 @@ describe("assistant name matching", () => {
 });
 
 describe("required options", () => {
-  it("preselects the first required size and updates the chosen price input", () => {
+  it("requires a size without choosing one for the customer", () => {
     const groups = [
       {
         id: 3,
@@ -70,7 +70,8 @@ describe("required options", () => {
         ],
       },
     ];
-    expect(groupRequiresChoice(groups[0])).toBe(true);
-    expect(defaultOptionSelection(groups)).toEqual({ 3: 8 });
+    expect(optionGroupIsRequired(groups[0])).toBe(true);
+    // Nothing is chosen for the customer: an empty selection must ask for the size.
+    expect(missingOptionChoice(groups, {})?.group.id).toBe(3);
   });
 });

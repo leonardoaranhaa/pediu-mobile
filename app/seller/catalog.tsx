@@ -9,6 +9,7 @@ import { SellerDock } from "@/components/seller-dock";
 import { EmptyState } from "@/components/pediu/empty-state";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
+import { StoreReviewBanner } from "@/components/store-review-banner";
 import { Card, Field, Page, PrimaryButton, Row, s } from "@/components/pediu-page";
 import { PEDIU_TOKENS } from "@/lib/pediu-tokens";
 import {
@@ -70,7 +71,6 @@ export default function SellerCatalogPage() {
     if (!editingId || !detail.data || detail.data.id !== editingId) return;
     if (loadedId.current === editingId) return;
     loadedId.current = editingId;
-    const group = detail.data.options[0];
     setName(detail.data.name);
     setCategory(detail.data.category);
     setDescription(detail.data.description ?? "");
@@ -81,15 +81,18 @@ export default function SellerCatalogPage() {
     setStockQuantity(detail.data.stockQuantity);
     setInitialExtras({
       imageData: detail.data.imageData ?? undefined,
-      optionGroups: group
-        ? [{
+      // Load every group: saving replaces all of them, so dropping one here would delete it.
+      optionGroups: detail.data.options.length
+        ? detail.data.options.map((group) => ({
             name: group.name,
             required: group.required === 1,
+            minChoices: group.minChoices,
+            maxChoices: group.maxChoices,
             choices: group.choices.map((choice) => ({
               name: choice.name,
               priceDelta: String(choice.priceDelta),
             })),
-          }]
+          }))
         : undefined,
     });
     setSeed((value) => value + 1);
@@ -151,8 +154,15 @@ export default function SellerCatalogPage() {
     onSuccess: resetForm,
     onError: (error) => setFormError(error.message),
   });
+  const utils = trpc.useUtils();
   const update = trpc.pediu.products.update.useMutation({
-    onSuccess: resetForm,
+    onSuccess: () => {
+      // The editor reads this cache; without this a second edit would start from the old values
+      // (and saving would write them back).
+      void utils.pediu.products.detail.invalidate();
+      void utils.pediu.marketplace.detail.invalidate();
+      resetForm();
+    },
     onError: (error) => setFormError(error.message),
   });
   const archive = trpc.pediu.products.archive.useMutation({
@@ -242,6 +252,7 @@ export default function SellerCatalogPage() {
       dock={<SellerDock active="catalog" />}
       action={<MaterialIcons name="inventory-2" size={22} color="#E20D2A" />}
     >
+      <StoreReviewBanner />
       <View style={styles.hero}>
         <Text style={styles.heroEyebrow}>{isMarket ? "MERCADO · UNIDADES" : "VITRINE DA LOJA"}</Text>
         <Text style={styles.heroTitle}>{store.data?.name ?? "Catálogo"}</Text>

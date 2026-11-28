@@ -6,8 +6,8 @@ export const MASCOT_VIEWBOX = { width: 88, height: 104 } as const;
 /** The figure never rotates. Gestures change the face, not the pose angle. */
 export const MASCOT_MAX_TILT_DEGREES = 0;
 
-export function mascotBox(compact: boolean) {
-  const height = compact ? 72 : 104;
+export function mascotBox(compact: boolean, size?: number) {
+  const height = size ?? (compact ? 72 : 104);
   const width = Math.round(
     (height * MASCOT_VIEWBOX.width) / MASCOT_VIEWBOX.height,
   );

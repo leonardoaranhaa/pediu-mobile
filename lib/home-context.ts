@@ -76,7 +76,7 @@ export function homeContextForHour(hour: number): HomeContext {
         greeting: "Bom almoço",
         subtitle: "Almoço na hora, com o mercado por perto quando precisar.",
         focusLabel: "Almoço e compras",
-        focusDescription: "Restaurantes primeiro. O mercado continua fácil de achar.",
+        focusDescription: "Hora do almoço. O mercado também está por aqui.",
         priorityKinds: ["restaurant", "market", "service"],
         priorityCategories: ["Brasileira", "Lanches", "Saudável", "Padaria"],
       };

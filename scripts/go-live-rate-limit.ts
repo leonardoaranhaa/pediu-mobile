@@ -101,8 +101,10 @@ async function main() {
       1,
       "the 21st HTTP mutation must be rate limited",
     );
+    // The fake store makes the procedure refuse the order as a business rule (400),
+    // which proves each of the first 20 requests got past the rate limit.
     assert.equal(
-      statusCounts["500"],
+      statusCounts["400"],
       20,
       "the first 20 requests must reach the protected procedure",
     );

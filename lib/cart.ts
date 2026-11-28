@@ -30,6 +30,17 @@ export type CartItem = CartProduct & {
   note?: string;
 };
 
+/** "Ponto da carne: Ao ponto · Adicionais: Bacon, Ovo" */
+export function cartOptionsLabel(options: CartOption[] | undefined) {
+  const groups = new Map<number, { name: string; choices: string[] }>();
+  for (const option of options ?? []) {
+    const group = groups.get(option.groupId) ?? { name: option.groupName, choices: [] };
+    group.choices.push(option.name);
+    groups.set(option.groupId, group);
+  }
+  return [...groups.values()].map((group) => `${group.name}: ${group.choices.join(", ")}`).join(" · ");
+}
+
 export function cartLineKey(item: { id: number; options?: CartOption[] }) {
   const ids = (item.options ?? []).map((option) => option.id).sort((a, b) => a - b);
   return ids.length ? `${item.id}:${ids.join(",")}` : String(item.id);

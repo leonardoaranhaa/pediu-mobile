@@ -2,10 +2,11 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { Text } from "react-native";
 import { Card, Field, OutlineButton, Page, PEDIU, PrimaryButton, s } from "@/components/pediu-page";
+import { userFacingError } from "@/lib/user-message";
 import { trpc } from "@/lib/trpc";
 
 function messageOf(error: unknown) {
-  return error instanceof Error ? error.message : "Não foi possível trocar a senha.";
+  return userFacingError(error);
 }
 
 export default function ForgotPasswordScreen() {

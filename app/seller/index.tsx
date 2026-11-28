@@ -113,7 +113,7 @@ function SellerOrderCard({
           <Text
             style={{ fontFamily: "Nunito", fontSize: 17, color: "#6E635A" }}
           >
-            {order.deliveryAddress ?? "Endereço informado no checkout"}
+            {order.deliveryAddress ?? "Endereço informado no pedido"}
           </Text>
         </View>
         <Text
@@ -352,12 +352,8 @@ export default function SellerHomePage() {
   return (
     <OpsShell
       dock={<SellerDock active="home" />}
-      overlay={
-        user?.id && store.data ? (
-          <StoreTour userId={user.id} storeName={store.data.name} />
-        ) : null
-      }
     >
+      {user?.id ? <StoreTour userId={user.id} storeName={store.data.name} /> : null}
       <OpsHeader
         eyebrow="LOJISTA"
         title={store.data.name}

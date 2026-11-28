@@ -1,4 +1,5 @@
 import { Pressable, Text, TextInput, View } from "react-native";
+import { HomeSkeleton } from "@/components/ui/skeleton";
 import { router } from "expo-router";
 import {
   Card,
@@ -10,7 +11,7 @@ import {
 } from "@/components/pediu-page";
 import { askToJoin } from "@/components/auth-prompt";
 import { useAuth } from "@/hooks/use-auth";
-import { cartLineKey } from "@/lib/cart";
+import { cartLineKey, cartOptionsLabel } from "@/lib/cart";
 import { useCart } from "@/providers/cart-provider";
 
 function money(value: number) {
@@ -35,23 +36,18 @@ export default function CartPage() {
 
   if (loading || !hydrated)
     return (
-      <Page title="Seu carrinho" eyebrow="PEDIDO" back>
-        <Card>
-          <Text style={s.sectionTitle}>Restaurando carrinho...</Text>
-          <Text style={s.muted}>
-            Carregando sessão e itens salvos neste dispositivo.
-          </Text>
-        </Card>
+      <Page title="Sua sacola" eyebrow="PEDIDO" back>
+        <HomeSkeleton />
       </Page>
     );
   if (!isAuthenticated)
     return (
-      <Page title="Seu carrinho" eyebrow="PEDIDO" back>
+      <Page title="Sua sacola" eyebrow="PEDIDO" back>
         <Card>
           <Text style={{ fontSize: 40 }}>🔐</Text>
-          <Text style={s.sectionTitle}>Entre para acessar seu carrinho</Text>
+          <Text style={s.sectionTitle}>Entre para ver sua sacola</Text>
           <Text style={s.muted}>
-            Olhar as lojas é livre. O carrinho fica na sua conta para o pedido não se misturar com o de outra pessoa.
+            Olhar as lojas é livre. A sacola fica na sua conta para o pedido não se misturar com o de outra pessoa.
           </Text>
           <PrimaryButton
             title="Criar conta ou entrar"
@@ -66,7 +62,7 @@ export default function CartPage() {
     );
 
   return (
-    <Page title="Seu carrinho" eyebrow="PEDIDO" back>
+    <Page title="Sua sacola" eyebrow="PEDIDO" back>
       {error ? (
         <Card>
           <Text style={{ color: PEDIU.coral, fontWeight: "800" }}>{error}</Text>
@@ -75,7 +71,7 @@ export default function CartPage() {
       {!items.length ? (
         <Card>
           <Text style={{ fontSize: 40 }}>🛍️</Text>
-          <Text style={s.sectionTitle}>Seu carrinho está vazio</Text>
+          <Text style={s.sectionTitle}>Sua sacola está vazia</Text>
           <Text style={s.muted}>
             Abra um produto no catálogo e adicione itens para começar.
           </Text>
@@ -96,7 +92,7 @@ export default function CartPage() {
           >
             <View>
               <Text style={s.sectionTitle}>{items[0].storeName}</Text>
-              <Text style={s.muted}>{itemCount} item(ns)</Text>
+              <Text style={s.muted}>{itemCount === 1 ? "1 item" : `${itemCount} itens`}</Text>
             </View>
             <Pressable onPress={clear}>
               <Text style={{ color: PEDIU.coral, fontWeight: "900" }}>
@@ -126,7 +122,7 @@ export default function CartPage() {
                   <Text style={s.sectionTitle}>{item.name}</Text>
                   {item.options?.length ? (
                     <Text style={s.muted}>
-                      {item.options.map((option) => `${option.groupName}: ${option.name}`).join(" · ")}
+                      {cartOptionsLabel(item.options)}
                     </Text>
                   ) : null}
                   <Text style={s.muted}>{money(Number(item.price))} cada</Text>
@@ -239,7 +235,7 @@ export default function CartPage() {
             O valor final é confirmado na hora de fechar o pedido.
           </Text>
           <PrimaryButton
-            title="Continuar para checkout"
+            title="Continuar o pedido"
             onPress={() => router.push("/checkout")}
           />
           <OutlineButton

@@ -4,14 +4,15 @@ import { Text } from "react-native";
 import { Card, Field, OutlineButton, Page, PEDIU, PrimaryButton, s } from "@/components/pediu-page";
 import { useAuth } from "@/hooks/use-auth";
 import * as Auth from "@/lib/_core/auth";
+import { userFacingError } from "@/lib/user-message";
 import { trpc } from "@/lib/trpc";
 
 function messageOf(error: unknown) {
-  return error instanceof Error ? error.message : "Não foi possível trocar a senha.";
+  return userFacingError(error);
 }
 
 export default function ChangePasswordScreen() {
-  const { refresh } = useAuth({ autoFetch: false });
+  const { refresh } = useAuth();
   const [currentPassword, setCurrentPassword] = useState("");
   const [nextPassword, setNextPassword] = useState("");
   const change = trpc.auth.changePassword.useMutation({
