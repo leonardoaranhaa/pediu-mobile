@@ -126,7 +126,14 @@ export function OnboardingStage(props: StageProps) {
   const { id, width, height } = props;
   const palette = STAGE_PALETTE[id];
   return (
-    <View style={[styles.stage, { width, height, backgroundColor: palette.background }]}>
+    <View
+      // Decorative: the story's own title and text carry the message, so screen
+      // readers skip the cards, chips and speech bubble drawn here.
+      aria-hidden
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={[styles.stage, { width, height, backgroundColor: palette.background }]}
+    >
       <View pointerEvents="none" style={[styles.glow, { width: width * 0.9, height: width * 0.9, borderRadius: width, right: -width * 0.35, top: -width * 0.3 }]} />
       <View pointerEvents="none" style={[styles.glow, { width: width * 0.6, height: width * 0.6, borderRadius: width, left: -width * 0.25, bottom: -width * 0.2 }]} />
       {id === "peca" ? <OrderStage {...props} /> : null}
