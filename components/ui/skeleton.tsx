@@ -35,16 +35,23 @@ export function SkeletonBlock({ style }: { style?: ViewStyle }) {
 
 export function HomeSkeleton() {
   return (
-    <View style={{ gap: 12 }}>
-      <SkeletonBlock style={{ height: 64, borderRadius: 20 }} />
-      <SkeletonBlock style={{ height: 56, borderRadius: 28 }} />
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        <SkeletonBlock style={{ width: 84, height: 96, borderRadius: 18 }} />
-        <SkeletonBlock style={{ width: 84, height: 96, borderRadius: 18 }} />
-        <SkeletonBlock style={{ width: 84, height: 96, borderRadius: 18 }} />
+    <View style={{ gap: 14 }} accessibilityLabel="Carregando lojas" accessibilityRole="progressbar">
+      <SkeletonBlock style={{ height: 148, borderRadius: 22 }} />
+      <SkeletonBlock style={{ height: 22, width: 180, borderRadius: 8 }} />
+      <View style={{ flexDirection: "row", gap: 12 }}>
+        <SkeletonBlock style={{ flex: 1, height: 108, borderRadius: 16 }} />
+        <SkeletonBlock style={{ width: 60, height: 108, borderRadius: 16 }} />
       </View>
-      <SkeletonBlock style={{ height: 108, borderRadius: 20 }} />
-      <SkeletonBlock style={{ height: 108, borderRadius: 20 }} />
+      <SkeletonBlock style={{ height: 22, width: 90, borderRadius: 8 }} />
+      {[0, 1, 2].map((row) => (
+        <View key={row} style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
+          <SkeletonBlock style={{ width: 56, height: 56, borderRadius: 14 }} />
+          <View style={{ flex: 1, gap: 8 }}>
+            <SkeletonBlock style={{ height: 14, width: "70%", borderRadius: 6 }} />
+            <SkeletonBlock style={{ height: 12, width: "45%", borderRadius: 6 }} />
+          </View>
+        </View>
+      ))}
     </View>
   );
 }

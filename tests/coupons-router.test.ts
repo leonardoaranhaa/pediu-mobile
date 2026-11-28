@@ -30,6 +30,6 @@ describe("Pediu benefits catalog", () => {
       .pediu.coupons.available();
 
     expect(result[0]?.code).toBe("BEMVINDO10");
-    expect(list).toHaveBeenCalledWith();
+    expect(list).toHaveBeenCalledWith(30, undefined);
   });
 });

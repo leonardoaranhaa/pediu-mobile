@@ -836,7 +836,9 @@ export const appRouter = router({
         }),
     }),
     coupons: router({
-      available: publicProcedure.query(() => db.listActiveCoupons()),
+      available: publicProcedure.query(({ ctx }) =>
+        db.listActiveCoupons(30, ctx.user?.id),
+      ),
     }),
     stores: router({
       mine: protectedProcedure.query(async ({ ctx }) => {

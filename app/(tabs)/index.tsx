@@ -93,6 +93,9 @@ import { resolveCurrentLocation } from "@/lib/location";
 import { homeAddressLine } from "@/lib/home-address";
 import { cardElevation, FOOD_ASSETS, PEDIU_TOKENS } from "@/lib/pediu-tokens";
 import { DiscoverFeed } from "@/components/home/discover-feed";
+import { HomeTour } from "@/components/home-tour";
+import { CustomerDock } from "@/components/customer-dock";
+import { useCoachTarget } from "@/lib/coach-marks";
 
 const COLORS = {
   coral: "#E20D2A",
@@ -1224,6 +1227,7 @@ export default function HomeScreen() {
                   onMarket={() => router.push("/market")}
                   onSearch={() => router.push("/search")}
                   onCategory={setCategory}
+                  activeCategory={category}
                   activeOrder={activeCustomerOrder}
                   onActiveOrder={() => {
                     if (!activeCustomerOrder) return;
@@ -1285,6 +1289,13 @@ export default function HomeScreen() {
               onSearch={() => router.push("/search")}
               bottomInset={insets.bottom}
               theme={theme}
+            />
+            <HomeTour
+              ready={
+                customerTab === "discover" &&
+                !marketplaceQuery.isLoading &&
+                !selectedProduct
+              }
             />
           </>
         ) : (
@@ -1851,6 +1862,7 @@ function CustomerDiscover({
   onMarket,
   onSearch,
   onCategory,
+  activeCategory,
   activeOrder,
   onActiveOrder,
   notifications,
@@ -1878,6 +1890,7 @@ function CustomerDiscover({
   onMarket: () => void;
   onSearch: () => void;
   onCategory: (value: string) => void;
+  activeCategory?: string;
   activeOrder?: { id: number; status: string };
   onActiveOrder: () => void;
   notifications: {
@@ -1898,7 +1911,7 @@ function CustomerDiscover({
       products={products}
       loading={loading}
       error={error}
-      greeting={`${homeContext.greeting}${firstName ? `, ${firstName}` : ""}.`}
+      greeting={`${homeContext.greeting}${firstName ? `, ${firstName}` : ""}!`}
       subtitle={homeContext.subtitle}
       searchQuery={searchQuery}
       setSearchQuery={setSearchQuery}
@@ -1916,6 +1929,11 @@ function CustomerDiscover({
         router.push({ pathname: "/search", params: { q: typed } });
       }}
       onCategory={onCategory}
+      activeCategory={activeCategory}
+      mascot={mascot}
+      onBenefits={onBenefits}
+      onClub={() => router.push("/club")}
+      onFlash={() => router.push("/flash")}
       onOpenProduct={(productId) => {
         const product = products.find((item) => item.id === productId);
         if (product) onProductPress(product);
@@ -3348,6 +3366,7 @@ function CustomerNav({
   bottomInset: number;
   theme: AppTheme;
 }) {
+  const ordersRef = useCoachTarget("home.nav.orders");
   const items = [
     { id: "discover", label: "Início", icon: "home-filled", a11y: "Abrir início", press: () => onChange("discover") },
     { id: "search", label: "Busca", icon: "search", a11y: "Abrir busca", press: onSearch },
@@ -3355,35 +3374,17 @@ function CustomerNav({
     { id: "profile", label: "Perfil", icon: "person", a11y: "Abrir perfil", press: () => onChange("profile") },
   ] as const;
   return (
-    <View
-      style={[
-        styles.bottomNav,
-        {
-          borderColor: PEDIU_TOKENS.line,
-          backgroundColor: PEDIU_TOKENS.white,
-          bottom: bottomSafeInset(bottomInset, Platform.OS),
-        },
-        cardElevation("raised"),
-      ]}
-    >
-      {items.map((item) => {
-        const selected = active === item.id;
-        const color = selected ? theme.primary : PEDIU_TOKENS.muted;
-        return (
-          <PediuPressable
-            key={item.id}
-            accessibilityRole="button"
-            accessibilityLabel={item.a11y}
-            accessibilityState={{ selected }}
-            style={[styles.navItem, { minWidth: 64 }]}
-            onPress={item.press}
-          >
-            <MaterialIcons name={item.icon} size={22} color={color} />
-            <Text style={[styles.navLabel, { color, fontSize: 11 }]}>{item.label}</Text>
-          </PediuPressable>
-        );
-      })}
-    </View>
+    <CustomerDock
+      items={items.map((item) => ({
+        id: item.id,
+        label: item.label,
+        icon: item.icon,
+        a11y: item.a11y,
+        selected: active === item.id,
+        onPress: item.press,
+        ref: item.id === "orders" ? ordersRef : undefined,
+      }))}
+    />
   );
 }
 

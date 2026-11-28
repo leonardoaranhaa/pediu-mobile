@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { EmptyState } from "@/components/pediu/empty-state";
 import { Page, PEDIU, s } from "@/components/pediu-page";
-import { OpsDock } from "@/components/pediu-ops-ui";
+import { CustomerDock } from "@/components/customer-dock";
 import { SEARCH_QUICK_CATEGORIES } from "@/lib/catalog-copy";
 import { PEDIU_TOKENS } from "@/lib/pediu-tokens";
 import { trpc } from "@/lib/trpc";
@@ -106,20 +106,24 @@ export default function SearchScreen() {
       title="Buscar"
       eyebrow="DESCUBRA"
       dock={
-        <OpsDock
+        <CustomerDock
           items={[
-            { label: "Início", icon: "explore", to: "/(tabs)", onPress: () => router.replace("/(tabs)") },
-            { label: "Busca", icon: "search", to: "/search", active: true },
+            { id: "discover", label: "Início", icon: "home-filled", a11y: "Abrir início", selected: false, onPress: () => router.replace("/(tabs)") },
+            { id: "search", label: "Busca", icon: "search", a11y: "Abrir busca", selected: true, onPress: () => undefined },
             {
+              id: "orders",
               label: "Pedidos",
               icon: "receipt-long",
-              to: "/(tabs)",
+              a11y: "Abrir pedidos",
+              selected: false,
               onPress: () => router.replace({ pathname: "/(tabs)", params: { tab: "orders" } }),
             },
             {
+              id: "profile",
               label: "Perfil",
               icon: "person",
-              to: "/(tabs)",
+              a11y: "Abrir perfil",
+              selected: false,
               onPress: () => router.replace({ pathname: "/(tabs)", params: { tab: "profile" } }),
             },
           ]}

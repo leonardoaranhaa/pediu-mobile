@@ -2465,7 +2465,7 @@ export async function listAvailableProducts(
   return (await searchAvailableProducts({ category, limit: 50 })).items;
 }
 
-export async function listActiveCoupons(limit = 30): Promise<Coupon[]> {
+export async function listActiveCoupons(limit = 30, userId?: number): Promise<Coupon[]> {
   const db = await getDb();
   if (!db) return [];
   return db
@@ -2482,6 +2482,13 @@ export async function listActiveCoupons(limit = 30): Promise<Coupon[]> {
           isNull(coupons.usageLimit),
           sql`${coupons.usedCount} < ${coupons.usageLimit}`,
         ),
+        // For a signed-in customer, hide coupons they have already used up.
+        userId == null
+          ? undefined
+          : or(
+              isNull(coupons.perUserLimit),
+              sql`(select count(*) from ${couponRedemptions} where ${couponRedemptions.couponId} = ${coupons.id} and ${couponRedemptions.userId} = ${userId}) < ${coupons.perUserLimit}`,
+            ),
       ),
     )
     .orderBy(desc(coupons.createdAt))
