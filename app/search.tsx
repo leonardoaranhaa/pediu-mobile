@@ -36,21 +36,25 @@ export default function SearchScreen() {
   const params = useLocalSearchParams<{ q?: string }>();
   const initialQuery = typeof params.q === "string" ? params.q : "";
   const [query, setQuery] = useState(initialQuery);
-  useEffect(() => {
-    if (initialQuery) setQuery(initialQuery);
-  }, [initialQuery]);
   const [vertical, setVertical] =
     useState<(typeof VERTICALS)[number]["id"]>("all");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [showPrice, setShowPrice] = useState(false);
+  // The home sends the typed term as ?q=, so the first search must already use it.
   const [filters, setFilters] = useState({
-    query: "",
+    query: initialQuery.trim(),
     vertical: "all" as (typeof VERTICALS)[number]["id"],
     minPrice: undefined as number | undefined,
     maxPrice: undefined as number | undefined,
   });
   const [page, setPage] = useState(0);
+  useEffect(() => {
+    if (!initialQuery) return;
+    setQuery(initialQuery);
+    setPage(0);
+    setFilters((current) => ({ ...current, query: initialQuery.trim() }));
+  }, [initialQuery]);
 
   const flashHint = filters.query.trim().toLowerCase() === "flash";
   const productsQuery = trpc.pediu.marketplace.search.useQuery(
