@@ -91,6 +91,20 @@ export const FOOD_ASSETS: Record<FoodAssetKey, number> = {
   thai: require("../assets/images/food/thai.jpg"),
 };
 
+/** 360px versions for tiles, avatars and illustrations (about 25 KB each). */
+export const FOOD_THUMBS: Record<FoodAssetKey, number> = {
+  acai: require("../assets/images/food/thumbs/acai.jpg"),
+  burger: require("../assets/images/food/thumbs/burger.jpg"),
+  cafe: require("../assets/images/food/thumbs/cafe.jpg"),
+  churrasco: require("../assets/images/food/thumbs/churrasco.jpg"),
+  feijoada: require("../assets/images/food/thumbs/feijoada.jpg"),
+  pasta: require("../assets/images/food/thumbs/pasta.jpg"),
+  pizza: require("../assets/images/food/thumbs/pizza.jpg"),
+  poke: require("../assets/images/food/thumbs/poke.jpg"),
+  sushi: require("../assets/images/food/thumbs/sushi.jpg"),
+  thai: require("../assets/images/food/thumbs/thai.jpg"),
+};
+
 const CATEGORY_ASSET: Record<string, FoodAssetKey> = {
   Doces: "acai",
   Lanches: "burger",
