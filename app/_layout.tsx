@@ -150,7 +150,7 @@ function BootSplashHost({ ready }: { ready: boolean }) {
 export default function RootLayout() {
   const initialInsets = initialWindowMetrics?.insets ?? DEFAULT_WEB_INSETS;
   const initialFrame = initialWindowMetrics?.frame ?? DEFAULT_WEB_FRAME;
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     Fredoka: require("../assets/fonts/Fredoka.ttf"),
     Nunito: require("../assets/fonts/Nunito.ttf"),
   });
@@ -236,7 +236,9 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 
-  if (!fontsLoaded) return null;
+  // The native splash stays up until this renders, so a font that fails to load
+  // must not block forever: render with the system font instead.
+  if (!fontsLoaded && !fontError) return null;
 
   const shouldOverrideSafeArea = Platform.OS === "web";
 
