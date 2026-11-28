@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useState } from "react";
 import { CoachMarkTour, type CoachStep } from "@/components/coach-mark-tour";
+import { tourWasSeen, type TourOutcome } from "@/lib/coach-marks";
 
 export const HOME_TOUR_KEY = "pediu:tour:customer-home:v1";
 
@@ -82,9 +83,10 @@ export function HomeTour({ ready }: { ready: boolean }) {
     };
   }, [ready]);
 
-  const close = useCallback(() => {
+  const close = useCallback((outcome: TourOutcome) => {
     setVisible(false);
-    void AsyncStorage.setItem(HOME_TOUR_KEY, "done").catch(() => undefined);
+    // If nothing could be highlighted, try again on a later visit.
+    if (tourWasSeen(outcome)) void AsyncStorage.setItem(HOME_TOUR_KEY, "done").catch(() => undefined);
   }, []);
 
   return <CoachMarkTour steps={HOME_TOUR_STEPS} visible={visible} onClose={close} finishLabel="Vamos pedir!" />;

@@ -52,6 +52,17 @@ export function useCoachTarget(id: string) {
   return ref;
 }
 
+/**
+ * How a tour ended. "unavailable" means no step could be shown (nothing to point
+ * at on screen), so the person has not seen the tour yet.
+ */
+export type TourOutcome = "completed" | "skipped" | "unavailable";
+
+/** Remember a tour as seen only if at least one tip was actually on screen. */
+export function tourWasSeen(outcome: TourOutcome) {
+  return outcome !== "unavailable";
+}
+
 export type TooltipPlacement = {
   side: "above" | "below";
   top?: number;
@@ -80,6 +91,18 @@ export function placeTooltip(
     return { side: "below", top: target.y + target.height + gap, arrowX };
   }
   return { side: "above", bottom: screen.height - target.y + gap, arrowX };
+}
+
+/**
+ * Area to dim. On Android the tour's modal also draws under a translucent
+ * navigation bar, which the window size can leave out, so take the larger of
+ * window and screen; positions still come from the window.
+ */
+export function overlaySize(
+  window: { width: number; height: number },
+  screen: { width: number; height: number } = window,
+) {
+  return { width: Math.max(window.width, screen.width), height: Math.max(window.height, screen.height) };
 }
 
 /** Hole around the target, padded and kept inside the screen. */

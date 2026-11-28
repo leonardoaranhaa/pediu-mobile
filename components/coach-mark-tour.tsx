@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Modal, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Dimensions, Modal, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import Animated, {
   Easing,
@@ -15,10 +15,12 @@ import { PediuMascot } from "@/components/pediu-mascot";
 import { useAppPreferences } from "@/lib/app-preferences";
 import {
   measureCoachTarget,
+  overlaySize,
   placeTooltip,
   spotlightPath,
   spotlightRect,
   type CoachRect,
+  type TourOutcome,
 } from "@/lib/coach-marks";
 import type { MascotReaction } from "@/lib/mascot-scenes";
 import { PEDIU_TOKENS } from "@/lib/pediu-tokens";
@@ -71,7 +73,7 @@ function PulseRing({ rect, radius }: { rect: CoachRect; radius: number }) {
 /**
  * Guided tour over the current screen: dims everything except one element at a time
  * and explains it in a speech card from the mascot. Steps whose element is not on
- * screen are skipped. `onClose(true)` means the person went through to the end.
+ * screen are skipped. `onClose` says whether the person finished, skipped, or saw nothing.
  */
 export function CoachMarkTour({
   steps,
@@ -81,7 +83,7 @@ export function CoachMarkTour({
 }: {
   steps: CoachStep[];
   visible: boolean;
-  onClose: (completed: boolean) => void;
+  onClose: (outcome: TourOutcome) => void;
   finishLabel?: string;
 }) {
   const { theme, customization } = useAppPreferences();
@@ -113,7 +115,7 @@ export function CoachMarkTour({
       }
       if (!active) return;
       if (!found.length) {
-        onClose(true);
+        onClose("unavailable");
         return;
       }
       setAvailable(found.map((item) => item.step));
@@ -130,7 +132,7 @@ export function CoachMarkTour({
       const measured = await measureCoachTarget(available[next]?.target ?? "");
       if (!onScreen(measured)) {
         if (next + 1 < available.length) return goTo(next + 1);
-        onClose(true);
+        onClose("completed");
         return;
       }
       setIndex(next);
@@ -144,6 +146,7 @@ export function CoachMarkTour({
   const radius = step.radius ?? 16;
   const hole = spotlightRect(rect, { width, height }, step.padding ?? 8);
   const tooltip = { left: SIDE, width: Math.min(width - SIDE * 2, 420) };
+  const dim = overlaySize({ width, height }, Platform.OS === "android" ? Dimensions.get("screen") : undefined);
   const place = placeTooltip(hole, { width, height }, tooltip);
   const total = available.length;
   const isLast = index === available.length - 1;
@@ -155,11 +158,11 @@ export function CoachMarkTour({
       animationType="fade"
       statusBarTranslucent
       navigationBarTranslucent
-      onRequestClose={() => onClose(false)}
+      onRequestClose={() => onClose("skipped")}
     >
       <View style={StyleSheet.absoluteFill} accessibilityViewIsModal>
-        <Svg width={width} height={height} style={StyleSheet.absoluteFill} pointerEvents="none">
-          <Path d={spotlightPath(hole, { width, height }, radius)} fill={DIM} fillRule="evenodd" />
+        <Svg width={dim.width} height={dim.height} style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Path d={spotlightPath(hole, dim, radius)} fill={DIM} fillRule="evenodd" />
         </Svg>
         <PulseRing rect={hole} radius={Math.min(radius, hole.width / 2, hole.height / 2)} />
         <Pop
@@ -205,12 +208,12 @@ export function CoachMarkTour({
                 ))}
               </View>
               {!isLast ? (
-                <Pressable onPress={() => onClose(false)} accessibilityRole="button" hitSlop={8} style={styles.skip}>
+                <Pressable onPress={() => onClose("skipped")} accessibilityRole="button" hitSlop={8} style={styles.skip}>
                   <Text style={styles.skipText}>Pular</Text>
                 </Pressable>
               ) : null}
               <Pressable
-                onPress={() => (isLast ? onClose(true) : void goTo(index + 1))}
+                onPress={() => (isLast ? onClose("completed") : void goTo(index + 1))}
                 accessibilityRole="button"
                 style={[styles.next, { backgroundColor: theme.primary }]}
               >
