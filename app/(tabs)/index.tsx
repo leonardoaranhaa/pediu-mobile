@@ -23,6 +23,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   Share,
   StyleSheet,
@@ -44,7 +45,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenContainer } from "@/components/screen-container";
 import { edgeModalProps } from "@/components/edge-modal";
 import type { AccountAction, SignupRole } from "@/lib/guest-access";
-import { geocodeTypedAddress } from "@/lib/location";
+import { placeAddressOnMap } from "@/lib/address-lookup";
+import { StoreReviewBanner } from "@/components/store-review-banner";
 import {
   bottomSafeInset,
   scrollPaddingForFloatingBar,
@@ -82,7 +84,9 @@ import {
   type HomeContext,
 } from "@/lib/home-context";
 import { resolveCurrentLocation } from "@/lib/location";
-import { FOOD_ASSETS } from "@/lib/pediu-tokens";
+import { homeAddressLine } from "@/lib/home-address";
+import { cardElevation, FOOD_ASSETS, PEDIU_TOKENS } from "@/lib/pediu-tokens";
+import { DiscoverFeed } from "@/components/home/discover-feed";
 
 const COLORS = {
   coral: "#E20D2A",
@@ -120,6 +124,8 @@ type Product = {
   flash?: boolean;
   storeOpen?: boolean;
   nextOpenLabel?: string | null;
+  prepMinutes?: number | null;
+  logoData?: string | null;
 };
 
 type SavedAddress = {
@@ -297,7 +303,8 @@ export default function HomeScreen() {
     refetchInterval: 5_000,
   });
   const customerAddressesQuery = trpc.pediu.addresses.list.useQuery(undefined, {
-    enabled: isAuthenticated && role === "customer",
+    enabled: Boolean(user?.id) && role === "customer",
+    refetchOnMount: "always",
   });
   const showMascotMoment = (nextReaction: MascotReaction) => {
     setMascotMoment(nextReaction);
@@ -492,7 +499,7 @@ export default function HomeScreen() {
           name: item.name,
           store: item.storeName,
           price: `R$ ${Number(item.price).toFixed(2).replace(".", ",")}`,
-          distance: "perto de você",
+          distance: "",
           category: item.category,
           emoji: item.emoji ?? "🍽️",
           available: true,
@@ -579,7 +586,7 @@ export default function HomeScreen() {
       if (showCheckout) {
         Alert.alert(
           "Sair do pedido?",
-          "Seu carrinho continua salvo. O pedido ainda não foi enviado.",
+          "Sua sacola continua salva. O pedido ainda não foi enviado.",
           [
             { text: "Continuar pedido", style: "cancel" },
             { text: "Sair", onPress: () => setShowCheckout(false) },
@@ -747,7 +754,7 @@ export default function HomeScreen() {
         name: product.name,
         store: product.storeName,
         price: `R$ ${Number(product.price).toFixed(2).replace(".", ",")}`,
-        distance: "perto de você",
+        distance: "",
         category: product.category,
         description: product.description,
         imageUrl: product.imageData || product.adImageUrl,
@@ -772,6 +779,8 @@ export default function HomeScreen() {
         storeKind: product.storeKind,
         flashEnabled: Boolean(product.flashEnabled),
         flash: Boolean(product.flashEnabled),
+        prepMinutes: product.prepMinutes,
+        logoData: product.logoData,
       })),
     [marketplaceQuery.data],
   );
@@ -1161,15 +1170,27 @@ export default function HomeScreen() {
           { opacity: screenOpacity, backgroundColor: theme.canvas },
         ]}
       >
-        <FloatingDecorations />
+        {role !== "customer" ? <FloatingDecorations /> : null}
         {role === "customer" ? (
           <>
             <ScrollView
+              style={{ flex: 1, width: "100%" }}
               keyboardShouldPersistTaps="handled"
               automaticallyAdjustKeyboardInsets
+              refreshControl={
+                <RefreshControl
+                  refreshing={marketplaceQuery.isRefetching && !marketplaceQuery.isLoading}
+                  onRefresh={() => void marketplaceQuery.refetch()}
+                  tintColor={theme.primary}
+                  colors={[theme.primary]}
+                />
+              }
               contentContainerStyle={[
                 styles.scrollContent,
-                { paddingBottom: scrollPaddingForFloatingBar(insets.bottom, Platform.OS) },
+                {
+                  width: "100%",
+                  paddingBottom: scrollPaddingForFloatingBar(insets.bottom, Platform.OS),
+                },
               ]}
               showsVerticalScrollIndicator={false}
             >
@@ -1187,6 +1208,7 @@ export default function HomeScreen() {
                   locationLabel={locationLabel}
                   locationAddress={locationAddress}
                   locationLoading={locationLoading}
+                  addresses={customerAddressesQuery.data ?? []}
                   theme={theme}
                   onLocationPress={requestLocation}
                   onAssistant={() => openVoiceAssistant("customer")}
@@ -1240,14 +1262,16 @@ export default function HomeScreen() {
               )}
               {customerTab === "profile" && <ProfileHome />}
             </ScrollView>
-            <CartPeek
-              itemCount={globalCartCount}
-              subtitle={globalCartItems[0]?.storeName}
-              totalLabel={`R$ ${cartTotal(cart.map((item) => item.price))
-                .toFixed(2)
-                .replace(".", ",")}`}
-              onPress={() => router.push("/cart")}
-            />
+            {customerTab === "discover" ? (
+              <CartPeek
+                itemCount={globalCartCount}
+                subtitle={globalCartItems[0]?.storeName}
+                totalLabel={`R$ ${cartTotal(cart.map((item) => item.price))
+                  .toFixed(2)
+                  .replace(".", ",")}`}
+                onPress={() => router.push("/cart")}
+              />
+            ) : null}
             <CustomerNav
               active={customerTab}
               onChange={changeCustomerTab}
@@ -1263,10 +1287,17 @@ export default function HomeScreen() {
               automaticallyAdjustKeyboardInsets
               contentContainerStyle={[
                 styles.scrollContent,
-                { paddingBottom: scrollPaddingForFloatingBar(insets.bottom, Platform.OS) },
+                {
+                  width: "100%",
+                  paddingBottom: scrollPaddingForFloatingBar(insets.bottom, Platform.OS),
+                },
               ]}
               showsVerticalScrollIndicator={false}
             >
+              <StoreReviewBanner />
+              {sellerTab === "home" && user?.id && storeQuery.data ? (
+                <StoreTour userId={user.id} storeName={storeQuery.data.name} productCount={sellerProducts.length} />
+              ) : null}
               {sellerTab === "home" && (
                 <>
                   <SellerHome
@@ -1292,6 +1323,11 @@ export default function HomeScreen() {
                     onClients={() => changeSellerTab("clients")}
                     onShareCatalog={() => void shareStoreCatalog()}
                     onAds={() => router.push("/seller/ads")}
+                    onPreview={
+                      storeQuery.data?.id
+                        ? () => router.push(`/store/${storeQuery.data?.id}`)
+                        : undefined
+                    }
                     onVoice={() => openVoiceAssistant("seller")}
                   />
                   <SellerVoiceLauncher
@@ -1365,10 +1401,6 @@ export default function HomeScreen() {
             <MaterialIcons name="check-circle" size={18} color={COLORS.white} />
             <Text style={styles.toastText}>{notice}</Text>
           </View>
-        ) : null}
-
-        {role === "seller" && sellerTab === "home" && user?.id && storeQuery.data ? (
-          <StoreTour userId={user.id} storeName={storeQuery.data.name} productCount={sellerProducts.length} />
         ) : null}
 
         <Modal
@@ -1804,6 +1836,7 @@ function CustomerDiscover({
   locationLabel,
   locationAddress,
   locationLoading,
+  addresses,
   onLocationPress,
   onAssistant,
   onOrders,
@@ -1830,6 +1863,7 @@ function CustomerDiscover({
   locationLabel: string;
   locationAddress: string;
   locationLoading: boolean;
+  addresses?: SavedAddress[];
   onLocationPress: () => void;
   onAssistant: () => void;
   onOrders: () => void;
@@ -1851,272 +1885,43 @@ function CustomerDiscover({
   mascot?: ReactNode;
 }) {
   const firstName = userName?.trim().split(/\s+/)[0];
+  const savedAddressLine = homeAddressLine(addresses);
   return (
-    <>
-      <PediuPressable
-        accessibilityRole="button"
-        accessibilityLabel="Escolher onde entregar"
-        style={styles.p3LocationRow}
-        onPress={onLocationPress}
-      >
-        <View style={styles.p3LocationTitle}>
-          <MaterialIcons name="location-on" size={21} color={theme.primary} />
-          <Text style={[styles.p3LocationText, { color: theme.text }]}>
-            {locationLoading
-              ? "Buscando endereço..."
-              : locationLabel === "Usar minha localização"
-                ? "Meu endereço"
-                : locationLabel}
-          </Text>
-          <MaterialIcons
-            name="keyboard-arrow-down"
-            size={19}
-            color={theme.muted}
-          />
-        </View>
-        <Text
-          numberOfLines={2}
-          style={[styles.p3LocationAddress, { color: theme.muted }]}
-        >
-          {locationAddress || "Toque para informar onde entregar"}
-        </Text>
-      </PediuPressable>
-      <View style={styles.p3GreetingRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.p3Greeting, { color: theme.ink }]}>
-            {homeContext.greeting}
-            {firstName ? `, ${firstName}` : ""}.
-          </Text>
-          <Text style={[styles.p3GreetingSub, { color: theme.muted }]}>
-            {homeContext.subtitle}
-          </Text>
-        </View>
-        <View style={styles.p3MascotSlot}>{mascot}</View>
-        <PediuPressable
-          accessibilityRole="button"
-          accessibilityLabel="Notificações"
-          style={[
-            styles.p3Bell,
-            { backgroundColor: theme.card, borderColor: theme.line },
-          ]}
-          onPress={() => router.push("/account/notifications")}
-        >
-          <MaterialIcons
-            name="notifications-none"
-            size={25}
-            color={theme.ink}
-          />
-          <View
-            style={[styles.p3BellDot, { backgroundColor: theme.primary }]}
-          />
-        </PediuPressable>
-      </View>
-      <View
-        style={[
-          styles.searchBox,
-          { backgroundColor: theme.card, borderColor: theme.line },
-        ]}
-      >
-        <MaterialIcons name="search" size={21} color={theme.muted} />
-        <TextInput
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder="Buscar comida, produtos ou serviços"
-          placeholderTextColor={theme.muted}
-          style={[styles.searchInput, { color: theme.text }]}
-          returnKeyType="search"
-          onSubmitEditing={() => {
-            const typed = searchQuery.trim();
-            if (!typed) {
-              onSearch();
-              return;
-            }
-            router.push({ pathname: "/search", params: { q: typed } });
-          }}
-        />
-      </View>
-      <PediuV2Discovery
-        theme={theme}
-        homeContext={homeContext}
-        motionEnabled={motionEnabled}
-        products={products}
-        notifications={notifications}
-        onProductPress={onProductPress}
-        onReadNotification={onReadNotification}
-        onSearch={onSearch}
-        onAssistant={onAssistant}
-        onOrders={onOrders}
-        onBenefits={onBenefits}
-        onMarket={onMarket}
-        onCategory={onCategory}
-        activeOrder={activeOrder}
-        onActiveOrder={onActiveOrder}
-      />
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Escolha pelo sabor</Text>
-        <PediuPressable onPress={onSearch}>
-          <Text style={styles.link}>Ver tudo</Text>
-        </PediuPressable>
-      </View>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.categoryRow}
-      >
-        {CATEGORIES.map((item) => (
-          <PediuPressable
-            key={item.label}
-            style={styles.categoryTile}
-            onPress={() => onCategory(item.query)}
-          >
-            <Image source={item.image} style={styles.categoryImage} />
-            <Text style={[styles.categoryLabel, { color: theme.text }]}>
-              {item.label}
-            </Text>
-          </PediuPressable>
-        ))}
-      </ScrollView>
-      <PediuPressable
-        style={[
-          styles.benefitCard,
-          { backgroundColor: theme.primarySoft, borderColor: theme.line },
-        ]}
-        onPress={onBenefits}
-      >
-        <View style={[styles.benefitIcon, { backgroundColor: theme.primary }]}>
-          <MaterialIcons name="local-offer" size={20} color={COLORS.white} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.benefitTitle, { color: theme.ink }]}>
-            Pediu Vantagens
-          </Text>
-          <Text style={[styles.benefitText, { color: theme.muted }]}>
-            Cupons e condições especiais dos lojistas aparecem no checkout
-            quando estiverem disponíveis.
-          </Text>
-        </View>
-        <MaterialIcons name="chevron-right" size={20} color={theme.ink} />
-      </PediuPressable>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>{homeContext.focusLabel}</Text>
-        <Text style={styles.link}>Ver tudo</Text>
-      </View>
-      {loading ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>Carregando opções...</Text>
-          <Text style={styles.emptyText}>
-            Buscando produtos disponíveis perto de você.
-          </Text>
-        </View>
-      ) : error ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>
-            Não foi possível carregar o catálogo
-          </Text>
-          <Text style={styles.emptyText}>
-            Tente novamente em alguns instantes.
-          </Text>
-        </View>
-      ) : products.length ? (
-        products.map((product, index) => (
-          <PediuReveal key={product.id} delay={index * 65}>
-            <PediuPressable
-              style={styles.productCard}
-              onPress={() => onProductPress(product)}
-            >
-              <View style={styles.productImage}>
-                {product.imageUrl ? (
-                  <Image
-                    source={{ uri: product.imageUrl }}
-                    style={styles.productImageAsset}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <Text style={styles.productEmoji}>{product.emoji}</Text>
-                )}
-                <View style={styles.availablePill}>
-                  <View
-                    style={[
-                      styles.dot,
-                      product.adId ? { backgroundColor: COLORS.orange } : null,
-                    ]}
-                  />
-                  <Text
-                    style={[
-                      styles.availableText,
-                      product.adId ? { color: COLORS.orange } : null,
-                    ]}
-                  >
-                    {product.storeOpen === false
-                      ? "FECHADA"
-                      : !product.available
-                        ? "ESGOTADO"
-                        : product.adId
-                          ? "OFERTA PEDIU"
-                          : "DISPONÍVEL"}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.productInfo}>
-                <View style={{ flex: 1 }}>
-                  <View style={styles.ratingRow}>
-                    <Text style={styles.rating}>
-                      {product.storeOpen === false
-                        ? product.nextOpenLabel || "Fechada no momento"
-                        : !product.available
-                          ? "Esgotado"
-                          : product.adOfferLabel || "Disponível agora"}
-                    </Text>
-                    <Text style={styles.distance}>{product.distance}</Text>
-                  </View>
-                  <Text style={styles.productName}>
-                    {product.adHeadline || product.name}
-                  </Text>
-                  {product.adHeadline ? (
-                    <Text style={styles.storeName}>
-                      {product.name} · {product.store}
-                    </Text>
-                  ) : (
-                    <Text style={styles.storeName}>{product.store}</Text>
-                  )}
-                </View>
-                <Text style={styles.productPrice}>{product.price}</Text>
-              </View>
-              <View style={styles.productFooter}>
-                <Text style={styles.localText}>
-                  {product.adDescription ||
-                    product.description ||
-                    "Publicado pela loja no catálogo do Pediu"}
-                </Text>
-                <View style={styles.arrowCircle}>
-                  <MaterialIcons
-                    name="arrow-forward"
-                    size={17}
-                    color={COLORS.white}
-                  />
-                </View>
-              </View>
-            </PediuPressable>
-          </PediuReveal>
-        ))
-      ) : (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>Nenhuma opção disponível agora</Text>
-          <Text style={styles.emptyText}>
-            Quando uma loja abrir e publicar produtos, eles aparecerão aqui.
-          </Text>
-        </View>
-      )}
-      <View style={styles.promiseCard}>
-        <MaterialIcons name="favorite" size={20} color={COLORS.coral} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.promiseTitle}>Compre de quem está perto</Text>
-          <Text style={styles.promiseText}>
-            Apoiamos o comércio local e entregamos com cuidado.
-          </Text>
-        </View>
-      </View>
-    </>
+    <DiscoverFeed
+      products={products}
+      loading={loading}
+      error={error}
+      greeting={`${homeContext.greeting}${firstName ? `, ${firstName}` : ""}.`}
+      subtitle={homeContext.subtitle}
+      searchQuery={searchQuery}
+      setSearchQuery={setSearchQuery}
+      locationTitle={savedAddressLine || "Informe seu endereço"}
+      locationAddress={savedAddressLine ? "Endereço salvo" : ""}
+      locationLoading={locationLoading}
+      onLocationPress={onLocationPress}
+      onNotifications={() => router.push("/account/notifications")}
+      onSearch={() => {
+        const typed = searchQuery.trim();
+        if (!typed) {
+          onSearch();
+          return;
+        }
+        router.push({ pathname: "/search", params: { q: typed } });
+      }}
+      onCategory={onCategory}
+      onOpenProduct={(productId) => {
+        const product = products.find((item) => item.id === productId);
+        if (product) onProductPress(product);
+      }}
+      onOpenStore={(store) => {
+        if (store.storeId) {
+          router.push(`/store/${store.storeId}`);
+          return;
+        }
+        const product = products.find((item) => item.id === store.productId);
+        if (product) onProductPress(product);
+      }}
+    />
   );
 }
 
@@ -2363,7 +2168,7 @@ function CustomerOrders({
         </View>
       ) : orders.length ? (
         orders.map((order) => (
-          <View style={styles.orderCard} key={order.id}>
+          <View style={[styles.orderCard, cardElevation("rest")]} key={order.id}>
             <View style={styles.orderTop}>
               <View>
                 <Text style={styles.eyebrow}>PEDIDO #{order.id}</Text>
@@ -2371,9 +2176,33 @@ function CustomerOrders({
                   {order.storeName || "Loja"}
                 </Text>
               </View>
-              <View style={styles.statusPill}>
-                <Text style={styles.statusPillText}>
-                  {order.status.toUpperCase()}
+              <View
+                style={[
+                  styles.statusPill,
+                  {
+                    backgroundColor:
+                      order.status === "Entregue"
+                        ? "#E5F6EE"
+                        : order.status === "Cancelado"
+                          ? "#F4F1EE"
+                          : "#FFE8EB",
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.statusPillText,
+                    {
+                      color:
+                        order.status === "Entregue"
+                          ? "#0B8A5C"
+                          : order.status === "Cancelado"
+                            ? "#6E635A"
+                            : "#E20D2A",
+                    },
+                  ]}
+                >
+                  {order.status}
                 </Text>
               </View>
             </View>
@@ -2388,6 +2217,25 @@ function CustomerOrders({
             ) : null}
             {order.status !== "Cancelado" ? (
               <>
+                <Pressable
+                  accessibilityRole="button"
+                  style={styles.outlineButtonSmall}
+                  onPress={() =>
+                    order.status === "Entregue"
+                      ? router.push({
+                          pathname: "/feedback/[orderId]",
+                          params: { orderId: String(order.id) },
+                        })
+                      : router.push({
+                          pathname: "/order/track",
+                          params: { orderId: String(order.id) },
+                        })
+                  }
+                >
+                  <Text style={styles.outlineButtonText}>
+                    {order.status === "Entregue" ? "Avaliar pedido" : "Acompanhar pedido"}
+                  </Text>
+                </Pressable>
                 <View style={styles.progressTrack}>
                   <View
                     style={[
@@ -2409,17 +2257,6 @@ function CustomerOrders({
                 {order.cancelReason || "Este pedido foi cancelado."}
               </Text>
             )}
-            <Pressable
-              style={styles.outlineButtonSmall}
-              onPress={() =>
-                router.push({
-                  pathname: "/order/track",
-                  params: { orderId: String(order.id) },
-                })
-              }
-            >
-              <Text style={styles.outlineButtonText}>Acompanhar pedido</Text>
-            </Pressable>
             {order.status === "Pendente" || order.status === "Aceito" ? (
               <Pressable
                 style={styles.outlineButtonSmall}
@@ -2459,6 +2296,7 @@ function SellerHome({
   onClients,
   onShareCatalog,
   onAds,
+  onPreview,
   onVoice,
 }: {
   theme: AppTheme;
@@ -2474,6 +2312,7 @@ function SellerHome({
   onClients: () => void;
   onShareCatalog: () => void;
   onAds: () => void;
+  onPreview?: () => void;
   onVoice: () => void;
 }) {
   const pendingOrders = orders.filter(
@@ -2490,7 +2329,7 @@ function SellerHome({
           <Text style={styles.sellerTitle}>{store?.name ?? "Sua loja"}</Text>
           <Text style={styles.sellerSubtitle}>
             {firstName
-              ? `${new Date().getHours() < 12 ? "Bom dia" : new Date().getHours() < 18 ? "Boa tarde" : "Boa noite"}, ${firstName}. Tudo pronto?`
+              ? `${getHomeContext().greeting}, ${firstName}. Tudo pronto?`
               : "Configure sua loja para começar."}
           </Text>
         </View>
@@ -2539,7 +2378,7 @@ function SellerHome({
             Crie um anúncio que chama atenção
           </Text>
           <Text style={[styles.aiText, { color: "#3A2A22" }]}>
-            Imagem e copy prontas para você revisar e publicar.
+            Imagem e texto prontos para você revisar e publicar.
           </Text>
         </View>
         <Pressable
@@ -2549,6 +2388,19 @@ function SellerHome({
           <Text style={styles.smallLightButtonText}>Criar</Text>
         </Pressable>
       </View>
+      {onPreview ? (
+        <Pressable
+          onPress={onPreview}
+          style={({ pressed }) => [
+            styles.shortcut,
+            { backgroundColor: theme.card, borderColor: theme.line, width: "100%" },
+            pressed && styles.cardPressed,
+          ]}
+        >
+          <Text style={styles.shortcutTitle}>Ver como cliente</Text>
+          <Text style={styles.shortcutSub}>Abre a página pública da sua loja</Text>
+        </Pressable>
+      ) : null}
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Atalhos</Text>
       </View>
@@ -2983,6 +2835,9 @@ function SellerSettings({
   const [name, setName] = useState(store?.name ?? "");
   const [phone, setPhone] = useState(maskBrazilPhone(store?.phone ?? ""));
   const [address, setAddress] = useState(store?.address ?? "");
+  const [cep, setCep] = useState("");
+  const [doorNumber, setDoorNumber] = useState("");
+  const [cityName, setCityName] = useState("");
   const [pixKey, setPixKey] = useState(store?.pixKey ?? "");
   const [deliveryFee, setDeliveryFee] = useState(
     decimalToBrlInput(store?.deliveryFee ?? "0"),
@@ -3056,13 +2911,16 @@ function SellerSettings({
     setValidationMessage("");
     setLocating(true);
     try {
-      const point = await geocodeTypedAddress(`${address}, Brasil`);
-      if (!point) {
-        setValidationMessage("Não achamos esse endereço. Confira rua, número e cidade.");
+      const placed = await placeAddressOnMap({ cep, number: doorNumber, city: cityName });
+      if (!placed.ok) {
+        setValidationMessage(placed.message);
         return;
       }
-      setPin(point);
+      setAddress(placed.placed.line);
+      setCityName(placed.placed.cep.city);
+      setPin(placed.placed.pin);
       setPinKey((value) => value + 1);
+      setShowMap(true);
     } catch {
       setValidationMessage("Não foi possível consultar o mapa agora.");
     } finally {
@@ -3161,8 +3019,37 @@ function SellerSettings({
           keyboardType="phone-pad"
           accessibilityLabel="WhatsApp da loja"
         />
+        <Text style={styles.fieldLabel}>CEP</Text>
+        <Text style={styles.fieldHelp}>Oito números. A rua e a cidade são preenchidas em seguida.</Text>
+        <TextInput
+          value={cep}
+          onChangeText={setCep}
+          placeholder="17000000"
+          placeholderTextColor={COLORS.muted}
+          style={styles.input}
+          keyboardType="number-pad"
+          accessibilityLabel="CEP da loja"
+        />
+        <Text style={styles.fieldLabel}>NÚMERO</Text>
+        <TextInput
+          value={doorNumber}
+          onChangeText={setDoorNumber}
+          placeholder="123"
+          placeholderTextColor={COLORS.muted}
+          style={styles.input}
+          accessibilityLabel="Número da loja"
+        />
+        <Text style={styles.fieldLabel}>CIDADE</Text>
+        <TextInput
+          value={cityName}
+          onChangeText={setCityName}
+          placeholder="Bauru"
+          placeholderTextColor={COLORS.muted}
+          style={styles.input}
+          accessibilityLabel="Cidade da loja"
+        />
         <Text style={styles.fieldLabel}>ENDEREÇO DA LOJA</Text>
-        <Text style={styles.fieldHelp}>Rua, número, bairro e cidade. Depois busque no mapa.</Text>
+        <Text style={styles.fieldHelp}>Confira a rua depois de buscar o CEP. Arraste o pino até a porta.</Text>
         <TextInput
           value={address}
           onChangeText={setAddress}
@@ -3476,93 +3363,41 @@ function CustomerNav({
   bottomInset: number;
   theme: AppTheme;
 }) {
+  const items = [
+    { id: "discover", label: "Início", icon: "home-filled", a11y: "Abrir início", press: () => onChange("discover") },
+    { id: "search", label: "Busca", icon: "search", a11y: "Abrir busca", press: onSearch },
+    { id: "orders", label: "Pedidos", icon: "receipt-long", a11y: "Abrir pedidos", press: () => onChange("orders") },
+    { id: "profile", label: "Perfil", icon: "person", a11y: "Abrir perfil", press: () => onChange("profile") },
+  ] as const;
   return (
     <View
       style={[
         styles.bottomNav,
         {
-          borderColor: theme.ink,
-          backgroundColor: theme.ink,
+          borderColor: PEDIU_TOKENS.line,
+          backgroundColor: PEDIU_TOKENS.white,
           bottom: bottomSafeInset(bottomInset, Platform.OS),
         },
+        cardElevation("raised"),
       ]}
     >
-      <PediuPressable
-        style={[
-          styles.navItem,
-          active === "discover" && { backgroundColor: theme.primary },
-        ]}
-        onPress={() => onChange("discover")}
-      >
-        <MaterialIcons
-          name="explore"
-          size={21}
-          color={active === "discover" ? COLORS.white : theme.muted}
-        />
-        <Text
-          style={[
-            styles.navLabel,
-            active === "discover" && styles.navLabelActive,
-          ]}
-        >
-          Início
-        </Text>
-      </PediuPressable>
-      <PediuPressable
-        accessibilityRole="button"
-        accessibilityLabel="Abrir busca"
-        style={styles.navItem}
-        onPress={onSearch}
-      >
-        <MaterialIcons name="search" size={21} color={theme.muted} />
-        <Text style={styles.navLabel}>Busca</Text>
-      </PediuPressable>
-      <PediuPressable
-        accessibilityRole="button"
-        accessibilityLabel="Abrir pedidos"
-        style={[
-          styles.navItem,
-          active === "orders" && { backgroundColor: theme.primary },
-        ]}
-        onPress={() => onChange("orders")}
-      >
-        <MaterialIcons
-          name="receipt-long"
-          size={21}
-          color={active === "orders" ? COLORS.white : theme.muted}
-        />
-        <Text
-          style={[
-            styles.navLabel,
-            active === "orders" && styles.navLabelActive,
-          ]}
-        >
-          Pedidos
-        </Text>
-      </PediuPressable>
-      <PediuPressable
-        accessibilityRole="button"
-        accessibilityLabel="Abrir perfil"
-        style={[
-          styles.navItem,
-          active === "profile" && { backgroundColor: theme.primary },
-        ]}
-        onPress={() => onChange("profile")}
-      >
-        <MaterialIcons
-          name="person"
-          size={21}
-          color={active === "profile" ? COLORS.white : theme.muted}
-        />
-        <Text
-          style={[
-            styles.navLabel,
-            active === "profile" && styles.navLabelActive,
-          ]}
-        >
-          Perfil
-        </Text>
-      </PediuPressable>
+      {items.map((item) => {
+        const selected = active === item.id;
+        const color = selected ? theme.primary : PEDIU_TOKENS.muted;
+        return (
+          <PediuPressable
+            key={item.id}
+            accessibilityRole="button"
+            accessibilityLabel={item.a11y}
+            accessibilityState={{ selected }}
+            style={[styles.navItem, { minWidth: 64 }]}
+            onPress={item.press}
+          >
+            <MaterialIcons name={item.icon} size={22} color={color} />
+            <Text style={[styles.navLabel, { color, fontSize: 11 }]}>{item.label}</Text>
+          </PediuPressable>
+        );
+      })}
     </View>
   );
 }
@@ -3680,6 +3515,10 @@ const styles = StyleSheet.create({
     maxWidth: "100%",
     minHeight: 44,
     justifyContent: "center",
+    backgroundColor: COLORS.white,
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   p3LocationTitle: {
     flexDirection: "row",
@@ -3926,9 +3765,10 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: COLORS.ink,
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "800",
     fontFamily: "Fredoka",
+    letterSpacing: -0.3,
   },
   link: {
     color: COLORS.coral,
@@ -4641,9 +4481,14 @@ const styles = StyleSheet.create({
     width: "48%",
     minHeight: 108,
     gap: 7,
+    elevation: 3,
+    shadowColor: "#1A120C",
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
   },
   shortcutTitle: { color: COLORS.ink, fontSize: 14, fontWeight: "800" },
-  shortcutSub: { color: COLORS.muted, fontSize: 11 },
+  shortcutSub: { color: "#5F6368", fontSize: 13, fontWeight: "400", fontFamily: "Fredoka" },
   tipCard: {
     flexDirection: "row",
     gap: 11,
@@ -6274,7 +6119,7 @@ function CheckoutModal({
             <MaterialIcons name="check" size={18} color={COLORS.white} />
           </Pressable>
           <Pressable style={styles.textButton} onPress={onClose}>
-            <Text style={styles.textButtonLabel}>Voltar ao carrinho</Text>
+            <Text style={styles.textButtonLabel}>Voltar à sacola</Text>
           </Pressable>
         </ScrollView>
       </View>

@@ -156,6 +156,13 @@ export default function CourierHomePage() {
   const earnings = trpc.pediu.courier.earnings.useQuery(undefined, {
     enabled: profile.data?.status === "approved",
   });
+  // Reopening the app mid-delivery should land on the ride, not on an empty offers list.
+  const openedOnRide = useRef(false);
+  useEffect(() => {
+    if (openedOnRide.current || !active.isSuccess) return;
+    openedOnRide.current = true;
+    if ((active.data?.length ?? 0) > 0) setTab("ride");
+  }, [active.isSuccess, active.data]);
   const apply = trpc.pediu.courier.profile.register.useMutation({
     onSuccess: () => void profile.refetch(),
   });
@@ -583,7 +590,7 @@ export default function CourierHomePage() {
       <OpsHeader
         eyebrow="MOTOBOY"
         title={user?.name ?? "Entregador"}
-        subtitle={`${vehicleLabels[approvedProfile.vehicleType]} · corridas perto de você`}
+        subtitle={`${vehicleLabels[approvedProfile.vehicleType] ?? "Veículo"} · corridas na cidade`}
         status={availabilityLabel}
         statusTone={availabilityTone}
         statusIcon="two-wheeler"
@@ -606,7 +613,7 @@ export default function CourierHomePage() {
         }}
       />
       {locationError ? (
-        <Text style={{ color: PEDIU.coral, fontFamily: "Nunito" }}>{locationError}</Text>
+        <Text style={{ color: PEDIU.coral, fontFamily: "Fredoka", fontWeight: "400" }}>{locationError}</Text>
       ) : null}
       {locationDenied ? (
         <OpsButton
@@ -640,7 +647,7 @@ export default function CourierHomePage() {
                 <Text style={{ fontFamily: "Fredoka", fontSize: 23, fontWeight: "900", color: "#111111" }}>
                   {offer.storeName}
                 </Text>
-                <Text style={{ fontFamily: "Nunito", fontSize: 17, color: "#6E635A" }}>
+                <Text style={{ fontFamily: "Fredoka", fontWeight: "400", fontSize: 17, color: "#5F6368" }}>
                   {offer.deliveryAddress ?? "Destino informado após o aceite"}
                 </Text>
               </View>
@@ -696,7 +703,7 @@ export default function CourierHomePage() {
         </OpsCard>
       ) : null}
       {offers.isError ? (
-        <Text style={{ color: PEDIU.coral, fontFamily: "Nunito" }}>{offers.error.message}</Text>
+        <Text style={{ color: PEDIU.coral, fontFamily: "Fredoka", fontWeight: "400" }}>{offers.error.message}</Text>
       ) : null}
       </>
       ) : null}
@@ -829,17 +836,17 @@ export default function CourierHomePage() {
           {tracking ? (
             <OpsButton title="Posição compartilhada nesta entrega" variant="accent" onPress={stopTracking} />
           ) : null}
-          {arrive.error ? <Text style={{ color: PEDIU.coral, fontFamily: "Nunito" }}>{arrive.error.message}</Text> : null}
-          {pickup.error ? <Text style={{ color: PEDIU.coral, fontFamily: "Nunito" }}>{pickup.error.message}</Text> : null}
-          {locationError ? <Text style={{ color: PEDIU.coral, fontFamily: "Nunito" }}>{locationError}</Text> : null}
+          {arrive.error ? <Text style={{ color: PEDIU.coral, fontFamily: "Fredoka", fontWeight: "400" }}>{arrive.error.message}</Text> : null}
+          {pickup.error ? <Text style={{ color: PEDIU.coral, fontFamily: "Fredoka", fontWeight: "400" }}>{pickup.error.message}</Text> : null}
+          {locationError ? <Text style={{ color: PEDIU.coral, fontFamily: "Fredoka", fontWeight: "400" }}>{locationError}</Text> : null}
           {sendLocation.error ? (
-            <Text style={{ color: PEDIU.coral, fontFamily: "Nunito" }}>{sendLocation.error.message}</Text>
+            <Text style={{ color: PEDIU.coral, fontFamily: "Fredoka", fontWeight: "400" }}>{sendLocation.error.message}</Text>
           ) : null}
           {deliveryNotice ? (
-            <Text style={{ color: "#0B8A5C", fontFamily: "Nunito", fontWeight: "800" }}>{deliveryNotice}</Text>
+            <Text style={{ color: "#0B8A5C", fontFamily: "Fredoka", fontWeight: "700" }}>{deliveryNotice}</Text>
           ) : null}
           {complete.error ? (
-            <Text style={{ color: PEDIU.coral, fontFamily: "Nunito" }}>{complete.error.message}</Text>
+            <Text style={{ color: PEDIU.coral, fontFamily: "Fredoka", fontWeight: "400" }}>{complete.error.message}</Text>
           ) : null}
         </OpsCard>
       ) : (
@@ -908,7 +915,7 @@ export default function CourierHomePage() {
             <Text style={{ fontFamily: "Fredoka", fontSize: 24, fontWeight: "900", color: "#111111" }}>
               Para ficar online
             </Text>
-            <Text style={{ fontFamily: "Nunito", fontSize: 16, lineHeight: 22, color: "#3A2A22" }}>
+            <Text style={{ fontFamily: "Fredoka", fontWeight: "400", fontSize: 16, lineHeight: 22, color: "#3A2A22" }}>
               O Pediu usa sua localização só para mostrar corridas perto de você. O celular vai pedir essa permissão agora.
             </Text>
             <OpsButton title="Continuar" onPress={() => void confirmGoOnline()} />

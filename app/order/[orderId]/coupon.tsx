@@ -12,7 +12,7 @@ export default function OrderCouponPage() {
       <Text style={s.body}>Pedido #{orderId}</Text>
       <TextInput value={code} onChangeText={setCode} autoCapitalize="characters" placeholder="Digite seu cupom" style={s.input} />
       <PrimaryButton title={applied ? "Cupom aplicado" : "Aplicar cupom"} disabled={!code.trim() || applied} onPress={() => setApplied(true)} />
-      {applied && <Text style={s.muted}>Cupom reservado para validação no checkout.</Text>}
+      {applied && <Text style={s.muted}>Cupom reservado para o pedido.</Text>}
     </Card>
   </Page>;
 }

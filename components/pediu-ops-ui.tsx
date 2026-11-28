@@ -394,10 +394,12 @@ const styles = StyleSheet.create({
     letterSpacing: -1.1,
   },
   subtitle: {
-    fontFamily: PEDIU_TOKENS.fontBody,
-    fontSize: 17,
+    fontFamily: PEDIU_TOKENS.fontDisplay,
+    fontWeight: "400",
+    fontSize: 16,
     marginTop: 5,
-    lineHeight: 23,
+    lineHeight: 22,
+    color: "#5F6368",
   },
   statusButton: {
     marginTop: 31,
@@ -442,12 +444,13 @@ const styles = StyleSheet.create({
     letterSpacing: -0.6,
   },
   metricLabel: {
-    fontFamily: PEDIU_TOKENS.fontBody,
+    fontFamily: PEDIU_TOKENS.fontDisplay,
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "400",
     marginTop: 4,
     textTransform: "uppercase",
     letterSpacing: 0.2,
+    color: "#5F6368",
   },
   card: {
     borderRadius: 28,
@@ -500,9 +503,11 @@ const styles = StyleSheet.create({
   },
   lines: { gap: 4 },
   orderLine: {
-    fontFamily: PEDIU_TOKENS.fontBody,
-    fontSize: 16,
-    lineHeight: 23,
+    fontFamily: PEDIU_TOKENS.fontDisplay,
+    fontWeight: "400",
+    fontSize: 15,
+    lineHeight: 22,
+    color: "#5F6368",
   },
   dockWrap: { position: "absolute", left: 20, right: 20, bottom: 18 },
   dock: {

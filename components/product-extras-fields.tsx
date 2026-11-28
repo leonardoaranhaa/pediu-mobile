@@ -78,16 +78,51 @@ export function ProductExtrasFields({
     }
   };
 
+  const takePhoto = async () => {
+    setMessage("");
+    try {
+      const data = await pickPhotoDataUrl("camera");
+      if (data) setImageData(data);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Não foi possível usar essa foto.");
+    }
+  };
+
   return (
     <View style={{ gap: 8 }}>
-      <Pressable onPress={() => void choosePhoto()}>
-        <Text style={{ color: "#E20D2A", fontWeight: "900" }}>
-          {imageData ? "Trocar foto do produto" : "Adicionar foto do produto"}
-        </Text>
+      <Text style={{ color: "#111111", fontSize: 16, fontWeight: "900" }}>Foto do produto</Text>
+      <Pressable
+        onPress={() => void choosePhoto()}
+        style={{
+          minHeight: 140,
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: "#E7D7C8",
+          backgroundColor: "#FFFDF9",
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
+        }}
+      >
+        {imageData ? (
+          <Image source={{ uri: imageData }} style={{ width: "100%", height: 180 }} />
+        ) : (
+          <Text style={{ color: "#6E635A", fontWeight: "700", textAlign: "center", padding: 16 }}>
+            Toque para escolher uma foto da galeria
+          </Text>
+        )}
       </Pressable>
-      {imageData ? (
-        <Image source={{ uri: imageData }} style={{ width: 96, height: 96, borderRadius: 12 }} />
-      ) : null}
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <Pressable onPress={() => void takePhoto()} style={{ flex: 1, minHeight: 44, justifyContent: "center" }}>
+          <Text style={{ color: "#E20D2A", fontWeight: "900", textAlign: "center" }}>Tirar foto</Text>
+        </Pressable>
+        <Pressable onPress={() => void choosePhoto()} style={{ flex: 1, minHeight: 44, justifyContent: "center" }}>
+          <Text style={{ color: "#E20D2A", fontWeight: "900", textAlign: "center" }}>
+            {imageData ? "Trocar foto" : "Galeria"}
+          </Text>
+        </Pressable>
+      </View>
+      {message ? <Text style={{ color: "#E20D2A", fontWeight: "700" }}>{message}</Text> : null}
       <Text style={{ color: "#6E635A", fontSize: 12, fontWeight: "800" }}>
         OPCIONAIS E ADICIONAIS
       </Text>

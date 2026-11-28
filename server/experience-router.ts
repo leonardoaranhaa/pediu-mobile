@@ -13,6 +13,8 @@ import {
 } from "../drizzle/schema";
 import { calculateCouponDiscount } from "./domain/coupons";
 import { deliveryCodesMatch } from "../shared/pilot-ops";
+import { enforceDistributedRateLimit } from "./_core/distributed-rate-limit";
+
 import {
   classifyTrackingFreshness,
   isTrackingCapturedAtAcceptable,
@@ -29,6 +31,9 @@ import {
   generateJuntoInviteCode,
   planJuntoShare,
 } from "./domain/junto";
+
+/** Wrong-or-right code attempts allowed per order in 30 minutes; 4 digits means 10,000 combinations. */
+export const DELIVERY_CODE_ATTEMPTS = 5;
 
 async function ownedOrder(db: any, orderId: number, userId: number) {
   const rows = await db
@@ -603,6 +608,16 @@ export const experienceRouter = router({
           (assignment.courierId !== ctx.user.id && store?.id !== order.storeId)
         )
           throw new Error("A entrega ainda não foi atribuída a este operador");
+        if (order.deliveryCode)
+          await enforceDistributedRateLimit(ctx, {
+            scope: "delivery-code",
+            identity: order.id,
+            limit: DELIVERY_CODE_ATTEMPTS,
+            windowMs: 30 * 60_000,
+            keyedBy: "identity",
+            message:
+              "Muitas tentativas de código neste pedido. Fale com o suporte do Pediu para concluir a entrega.",
+          });
         if (!deliveryCodesMatch(order.deliveryCode, input.code ?? ""))
           throw new TRPCError({
             code: "BAD_REQUEST",
@@ -635,8 +650,13 @@ export const experienceRouter = router({
             await sendPushToUser(
               order.customerId,
               "Pedido entregue",
-              `O pedido #${order.id} foi marcado como entregue.`,
-              { type: "delivery", orderId: order.id, status: "Entregue" },
+              `O pedido #${order.id} chegou. Conte como foi: toque para avaliar.`,
+              {
+                type: "delivery",
+                orderId: order.id,
+                status: "Entregue",
+                actionPath: `/feedback/${order.id}`,
+              },
             );
           } catch (error) {
             console.warn(

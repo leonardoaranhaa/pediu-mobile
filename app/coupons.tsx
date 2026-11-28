@@ -125,7 +125,7 @@ export default function CouponsPage() {
                 </View>
               </View>
               <PrimaryButton
-                title="Usar no checkout"
+                title="Usar no pedido"
                 onPress={() =>
                   router.push({
                     pathname: "/checkout",

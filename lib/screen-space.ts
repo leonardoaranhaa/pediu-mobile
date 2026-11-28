@@ -15,8 +15,10 @@ export function bottomSafeInset(inset: number, os: string) {
   return system + gap;
 }
 
+export const TAB_BAR_HEIGHT = 78;
+
 export function scrollPaddingForFloatingBar(inset: number, os: string) {
-  return 120 + bottomSafeInset(inset, os) + 36;
+  return TAB_BAR_HEIGHT + bottomSafeInset(inset, os) + 40;
 }
 
 export function scrollPaddingForScreenEnd(inset: number, os: string) {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { router } from "expo-router";
 import { Text, View } from "react-native";
+import { StoreReviewBanner } from "@/components/store-review-banner";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
 import { useAppPreferences } from "@/lib/app-preferences";
@@ -84,6 +85,7 @@ export default function SellerOrdersPage() {
     <OpsShell
       dock={<SellerDock active="orders" />}
     >
+      <StoreReviewBanner />
       <View style={{ gap: 5 }}>
         <Text
           style={{
@@ -181,7 +183,7 @@ export default function SellerOrdersPage() {
                               }}
                             >
                               {order.deliveryAddress ??
-                                "Endereço informado no checkout"}
+                                "Endereço informado no pedido"}
                             </Text>
                           </View>
                           <Text
@@ -352,7 +354,7 @@ export default function SellerOrdersPage() {
           <EmptyState
             icon="receipt-long"
             title="Nenhum pedido ainda"
-            body="Quando um cliente finalizar o checkout, a fila aparecerá aqui."
+            body="Quando um cliente enviar o pedido, a fila aparecerá aqui."
             actionLabel="Ir ao catálogo"
             onAction={() => router.push("/seller/catalog")}
           />

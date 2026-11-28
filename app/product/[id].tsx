@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
+import { MaterialIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, router } from "expo-router";
 import { askToJoin } from "@/components/auth-prompt";
 import { Page, Card, PrimaryButton, PEDIU, s } from "@/components/pediu-page";
@@ -18,7 +19,7 @@ export default function ProductDetailPage() {
     { enabled: Number.isInteger(productId) && productId > 0 },
   );
   const { isAuthenticated } = useAuth();
-  const { addItem, itemCount } = useCart();
+  const { addItem } = useCart();
   const [quantity, setQuantity] = useState(1);
   const [notice, setNotice] = useState("");
   const [selected, setSelected] = useState<Record<number, number>>({});
@@ -120,26 +121,24 @@ export default function ProductDetailPage() {
       setNotice(result.error ?? "Não foi possível adicionar o produto.");
       return;
     }
-    setNotice(`${quantity} item(ns) adicionado(s) ao carrinho.`);
-  };
-
-  const openCart = () => {
-    if (!isAuthenticated) {
-      askToJoin({ action: "cart", returnTo: `/product/${product.id}` });
-      return;
-    }
-    router.push("/cart");
+    const label = quantity === 1 ? "1 item foi para a sacola." : `${quantity} itens foram para a sacola.`;
+    setNotice(label);
+    router.back();
   };
 
   return (
     <Page
-      title={product.name}
-      eyebrow={detail.storeName}
+      title={detail.storeName}
+      eyebrow="PRODUTO"
       back
-      action={
-        <Pressable onPress={openCart}>
-          <Text style={{ color: PEDIU.coral, fontWeight: "900" }}>Carrinho ({itemCount})</Text>
-        </Pressable>
+      dock={
+        <View style={{ marginHorizontal: 16, marginBottom: 8 }}>
+          <PrimaryButton
+            title={storeClosed ? "Loja fechada" : product.available ? "Adicionar" : "Esgotado"}
+            onPress={addToCart}
+            disabled={storeClosed || !product.available}
+          />
+        </View>
       }
     >
       <Card>
@@ -147,7 +146,7 @@ export default function ProductDetailPage() {
           <Image source={{ uri: product.imageData }} style={{ width: "100%", height: 180, borderRadius: 18 }} />
         ) : (
           <View style={{ width: "100%", height: 180, borderRadius: 18, backgroundColor: PEDIU.coralSoft, alignItems: "center", justifyContent: "center" }}>
-            <Text style={{ fontSize: 58 }}>{product.category === "Lanches" ? "🍔" : product.category === "Doces" ? "🍰" : "🍽️"}</Text>
+            <MaterialIcons name="restaurant" size={42} color={PEDIU.coral} />
           </View>
         )}
         <Text style={s.sectionTitle}>{product.name}</Text>
@@ -213,11 +212,6 @@ export default function ProductDetailPage() {
           </Pressable>
         </View>
         {notice ? <Text style={s.muted}>{notice}</Text> : null}
-        <PrimaryButton
-          title={storeClosed ? "Loja fechada" : product.available ? "Adicionar ao carrinho" : "Esgotado"}
-          onPress={addToCart}
-          disabled={storeClosed || !product.available}
-        />
       </Card>
     </Page>
   );
