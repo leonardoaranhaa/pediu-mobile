@@ -51,7 +51,7 @@ import {
 import { adminRouter } from "./admin-router";
 import { experienceRouter } from "./experience-router";
 import { enforceDistributedRateLimit } from "./_core/distributed-rate-limit";
-import { calculateCouponDiscount } from "./domain/coupons";
+import { calculateCouponDiscount, couponUsageRejection } from "./domain/coupons";
 import {
   createDeliveryCode,
   minimumOrderShortfall,
@@ -149,6 +149,37 @@ function setSessionCookie(
   const cookieOptions = getSessionCookieOptions(ctx.req);
   ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: SESSION_TTL_MS });
 }
+
+const optionGroupInput = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    required: z.boolean().default(false),
+    minChoices: z.number().int().min(0).max(12).optional(),
+    maxChoices: z.number().int().min(1).max(12).optional(),
+    choices: z
+      .array(
+        z.object({
+          name: z.string().trim().min(1).max(80),
+          priceDelta: z.string().regex(/^\d+(\.\d{1,2})?$/),
+        }),
+      )
+      .min(1)
+      .max(12),
+  })
+  .superRefine((group, ctx) => {
+    const min = group.minChoices ?? (group.required ? 1 : 0);
+    const max = group.maxChoices ?? 1;
+    if (min > group.choices.length)
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${group.name}: o mínimo (${min}) passa do número de opções.`,
+      });
+    if (max < Math.max(min, 1))
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${group.name}: o máximo precisa ser pelo menos o mínimo.`,
+      });
+  });
 
 export const appRouter = router({
   system: systemRouter,
@@ -756,12 +787,22 @@ export const appRouter = router({
           let couponCode: string | undefined;
           let discount = "0.00";
           if (input.couponCode) {
-            const calculation = calculateCouponDiscount(
-              await db.getCouponByCode(input.couponCode),
-              subtotal,
-            );
+            const coupon = await db.getCouponByCode(input.couponCode);
+            const calculation = calculateCouponDiscount(coupon, subtotal);
             if (!calculation.valid)
-              throw new Error(calculation.reason ?? "Cupom inválido");
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: calculation.reason ?? "Cupom inválido",
+              });
+            const usageRejection = coupon
+              ? couponUsageRejection(
+                  coupon,
+                  ctx.user.id,
+                  await db.countCouponUsesForUser(coupon.id, ctx.user.id),
+                )
+              : null;
+            if (usageRejection)
+              throw new TRPCError({ code: "BAD_REQUEST", message: usageRejection });
             couponCode = calculation.code;
             discount = calculation.discount;
           }
@@ -800,7 +841,8 @@ export const appRouter = router({
     stores: router({
       mine: protectedProcedure.query(async ({ ctx }) => {
         const store = await db.getStoreForOwner(ctx.user.id);
-        if (!store) return undefined;
+        // null, not undefined: React Query rejects undefined query data.
+        if (!store) return null;
         return db.withStoreOps(store);
       }),
       create: protectedProcedure
@@ -1383,19 +1425,7 @@ export const appRouter = router({
             imageData: z.string().max(350_000).optional(),
             optionGroups: z
               .array(
-                z.object({
-                  name: z.string().trim().min(1).max(80),
-                  required: z.boolean().default(false),
-                  choices: z
-                    .array(
-                      z.object({
-                        name: z.string().trim().min(1).max(80),
-                        priceDelta: z.string().regex(/^\d+(\.\d{1,2})?$/),
-                      }),
-                    )
-                    .min(1)
-                    .max(12),
-                }),
+                optionGroupInput,
               )
               .max(6)
               .optional(),
@@ -1451,19 +1481,7 @@ export const appRouter = router({
             imageData: z.string().max(350_000).nullable().optional(),
             optionGroups: z
               .array(
-                z.object({
-                  name: z.string().trim().min(1).max(80),
-                  required: z.boolean().default(false),
-                  choices: z
-                    .array(
-                      z.object({
-                        name: z.string().trim().min(1).max(80),
-                        priceDelta: z.string().regex(/^\d+(\.\d{1,2})?$/),
-                      }),
-                    )
-                    .min(1)
-                    .max(12),
-                }),
+                optionGroupInput,
               )
               .max(6)
               .optional(),
@@ -1789,12 +1807,22 @@ export const appRouter = router({
           let couponCode: string | undefined;
           let discount = "0.00";
           if (input.couponCode) {
-            const calculation = calculateCouponDiscount(
-              await db.getCouponByCode(input.couponCode),
-              subtotal,
-            );
+            const coupon = await db.getCouponByCode(input.couponCode);
+            const calculation = calculateCouponDiscount(coupon, subtotal);
             if (!calculation.valid)
-              throw new Error(calculation.reason ?? "Cupom inválido");
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: calculation.reason ?? "Cupom inválido",
+              });
+            const usageRejection = coupon
+              ? couponUsageRejection(
+                  coupon,
+                  ctx.user.id,
+                  await db.countCouponUsesForUser(coupon.id, ctx.user.id),
+                )
+              : null;
+            if (usageRejection)
+              throw new TRPCError({ code: "BAD_REQUEST", message: usageRejection });
             couponCode = calculation.code;
             discount = calculation.discount;
           }

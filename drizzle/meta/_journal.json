@@ -78,6 +78,13 @@
       "when": 1793052800000,
       "tag": "0010_pediu_product_archive",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795859549917,
+      "tag": "0011_pediu_coupon_limits_option_ranges",
+      "breakpoints": true
     }
   ]
 }

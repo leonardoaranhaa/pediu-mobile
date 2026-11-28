@@ -7,8 +7,9 @@ import { trpc } from "@/lib/trpc";
 
 export function StoreOrderAlarm() {
   const { user } = useAuth();
+  const isMerchant = user?.role === "merchant" || Boolean(user?.roles?.includes("merchant"));
   const orders = trpc.pediu.orders.storeMine.useQuery(undefined, {
-    enabled: Boolean(user),
+    enabled: isMerchant,
     refetchInterval: 8_000,
   });
   const pending = (orders.data ?? []).some((order) => order.status === "Pendente");

@@ -62,7 +62,13 @@ import {
 } from "@/lib/br-fields";
 import { friendlyUserMessage } from "@/lib/user-message";
 import { useNewOrderChime } from "@/lib/new-order-chime";
-import { defaultOptionSelection, groupRequiresChoice } from "@/lib/option-selection";
+import {
+  missingOptionChoice,
+  selectedOptionChoices,
+  toggleOptionChoice,
+  type OptionSelection,
+} from "@/lib/option-selection";
+import { OptionGroupPicker } from "@/components/option-group-picker";
 import type { MascotReaction } from "@/components/pediu-mascot";
 import { CartPeek } from "@/components/pediu/cart-peek";
 import { PediuMascot } from "@/components/pediu-mascot";
@@ -278,8 +284,9 @@ export default function HomeScreen() {
     },
     { staleTime: 30_000 },
   );
+  // Only a store owner has a store: customers and couriers should not poll this.
   const storeQuery = trpc.pediu.stores.mine.useQuery(undefined, {
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && role === "seller",
   });
   const storeProductsQuery = trpc.pediu.products.mine.useQuery(
     { storeId: storeQuery.data?.id ?? 0 },
@@ -1302,7 +1309,7 @@ export default function HomeScreen() {
                 <>
                   <SellerHome
                     theme={theme}
-                    store={storeQuery.data}
+                    store={storeQuery.data ?? undefined}
                     ownerName={user?.name}
                     orders={storeOrdersQuery.data ?? []}
                     productCount={sellerProducts.length}
@@ -1378,7 +1385,7 @@ export default function HomeScreen() {
               )}
               {sellerTab === "settings" && (
                 <SellerSettings
-                  store={storeQuery.data}
+                  store={storeQuery.data ?? undefined}
                   salesCount={salesQuery.data?.length ?? 0}
                   onSave={updateStore}
                   saving={updateStoreMutation.isPending}
@@ -1936,39 +1943,29 @@ function ProductModal({
 }) {
   const insets = useSafeAreaInsets();
   const detail = trpc.pediu.marketplace.detail.useQuery({ productId: product.id });
-  const [selected, setSelected] = useState<Record<number, number>>({});
-  useEffect(() => {
-    const groups = detail.data?.options;
-    if (!groups?.length) return;
-    setSelected((current) => ({ ...defaultOptionSelection(groups), ...current }));
-  }, [detail.data]);
+  // Nothing starts selected: the customer picks every add-on themselves.
+  const [selected, setSelected] = useState<OptionSelection>({});
   const [choiceNotice, setChoiceNotice] = useState("");
   const groups = detail.data?.options ?? [];
+  const chosen = selectedOptionChoices(groups, selected);
   const base = Number(detail.data?.product.price ?? 0);
-  const extra = groups.reduce((sum, group) => {
-    const choice = group.choices.find((item) => item.id === selected[group.id]);
-    return sum + Number(choice?.priceDelta ?? 0);
-  }, 0);
+  const extra = chosen.reduce((sum, { choice }) => sum + Number(choice.priceDelta ?? 0), 0);
   const unitPrice = (Number.isFinite(base) ? base + extra : 0).toFixed(2);
   const confirm = () => {
     if (!product.available || detail.data?.storeOpen === false) return;
     if (detail.isLoading || !detail.data) return;
-    const missing = groups.find((group) => groupRequiresChoice(group) && !selected[group.id]);
+    const missing = missingOptionChoice(groups, selected);
     if (missing) {
-      setChoiceNotice(`Escolha ${missing.name} para continuar.`);
+      setChoiceNotice(missing.message);
       return;
     }
-    const options = groups.flatMap((group) => {
-      const choice = group.choices.find((item) => item.id === selected[group.id]);
-      if (!choice) return [];
-      return [{
-        id: choice.id,
-        groupId: group.id,
-        groupName: group.name,
-        name: choice.name,
-        priceDelta: String(choice.priceDelta),
-      }];
-    });
+    const options = chosen.map(({ group, choice }) => ({
+      id: choice.id,
+      groupId: group.id,
+      groupName: group.name,
+      name: choice.name,
+      priceDelta: String(choice.priceDelta),
+    }));
     onAdd(options, unitPrice);
   };
   return (
@@ -2024,37 +2021,25 @@ function ProductModal({
           ) : null}
           {detail.isLoading ? <Text style={styles.muted}>Carregando opções...</Text> : null}
           {groups.map((group) => (
-            <View key={group.id} style={{ gap: 8 }}>
-              <Text style={styles.cardTitle}>
-                {group.name}
-                {groupRequiresChoice(group) ? " · obrigatório" : " · opcional"}
-              </Text>
-              {group.choices.map((choice) => {
-                const on = selected[group.id] === choice.id;
-                const delta = Number(choice.priceDelta);
-                return (
-                  <Pressable
-                    key={choice.id}
-                    onPress={() => {
-                      setChoiceNotice("");
-                      setSelected((current) => ({ ...current, [group.id]: choice.id }));
-                    }}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: on ? COLORS.coral : COLORS.line,
-                      backgroundColor: on ? COLORS.coralSoft : COLORS.white,
-                      borderRadius: 12,
-                      padding: 10,
-                    }}
-                  >
-                    <Text style={styles.cardTitle}>
-                      {choice.name}
-                      {delta > 0 ? ` · +R$ ${delta.toFixed(2).replace(".", ",")}` : ""}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            <OptionGroupPicker
+              key={group.id}
+              group={group}
+              selection={selected}
+              titleStyle={styles.cardTitle}
+              palette={{
+                accent: COLORS.coral,
+                accentSoft: COLORS.coralSoft,
+                line: COLORS.line,
+                surface: COLORS.white,
+                ink: COLORS.ink,
+                muted: COLORS.muted,
+              }}
+              onToggle={(choiceId) => {
+                const result = toggleOptionChoice(selected, group, choiceId);
+                setSelected(result.selection);
+                setChoiceNotice(result.notice ?? "");
+              }}
+            />
           ))}
           {choiceNotice ? <Text style={{ color: COLORS.coral, fontWeight: "800" }}>{choiceNotice}</Text> : null}
           <View style={styles.totalRow}>

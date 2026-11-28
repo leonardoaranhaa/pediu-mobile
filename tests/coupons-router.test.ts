@@ -16,6 +16,11 @@ describe("Pediu benefits catalog", () => {
         maxDiscount: "15.00",
         active: 1,
         expiresAt: new Date(Date.now() + 60_000),
+        usageLimit: null,
+        perUserLimit: 1,
+        usedCount: 0,
+        ownerUserId: null,
+        isPublic: 1,
         createdAt: new Date(),
       },
     ]);

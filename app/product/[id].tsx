@@ -7,7 +7,13 @@ import { Page, Card, PrimaryButton, PEDIU, s } from "@/components/pediu-page";
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
 import { useCart } from "@/providers/cart-provider";
-import { defaultOptionSelection, groupRequiresChoice } from "@/lib/option-selection";
+import {
+  missingOptionChoice,
+  selectedOptionChoices,
+  toggleOptionChoice,
+  type OptionSelection,
+} from "@/lib/option-selection";
+import { OptionGroupPicker } from "@/components/option-group-picker";
 import { formatCatalogPrice, unitSubtitle } from "@/shared/market-units";
 import { formatMoney } from "@/shared/pilot-ops";
 
@@ -22,22 +28,17 @@ export default function ProductDetailPage() {
   const { addItem } = useCart();
   const [quantity, setQuantity] = useState(1);
   const [notice, setNotice] = useState("");
-  const [selected, setSelected] = useState<Record<number, number>>({});
-  useEffect(() => {
-    const groups = query.data?.options;
-    if (!groups?.length) return;
-    setSelected((current) => ({ ...defaultOptionSelection(groups), ...current }));
-  }, [query.data]);
+  // Nothing starts selected: the customer picks every add-on themselves.
+  const [selected, setSelected] = useState<OptionSelection>({});
 
   const detail = query.data;
   const product = detail?.product;
   const extra = useMemo(() => {
     if (!detail) return 0;
-    return detail.options.reduce((sum, group) => {
-      const choiceId = selected[group.id];
-      const choice = group.choices.find((item) => item.id === choiceId);
-      return sum + Number(choice?.priceDelta ?? 0);
-    }, 0);
+    return selectedOptionChoices(detail.options, selected).reduce(
+      (sum, { choice }) => sum + Number(choice.priceDelta ?? 0),
+      0,
+    );
   }, [detail, selected]);
 
   if (!Number.isInteger(productId) || productId <= 0)
@@ -70,28 +71,22 @@ export default function ProductDetailPage() {
 
   const unitPrice = Number(product.price) + extra;
   const storeClosed = detail.storeOpen === false;
-  const chosen = detail.options.flatMap((group) => {
-    const choice = group.choices.find((item) => item.id === selected[group.id]);
-    if (!choice) return [];
-    return [{
-      id: choice.id,
-      groupId: group.id,
-      groupName: group.name,
-      name: choice.name,
-      priceDelta: String(choice.priceDelta),
-    }];
-  });
+  const chosen = selectedOptionChoices(detail.options, selected).map(({ group, choice }) => ({
+    id: choice.id,
+    groupId: group.id,
+    groupName: group.name,
+    name: choice.name,
+    priceDelta: String(choice.priceDelta),
+  }));
 
   const addToCart = () => {
     if (storeClosed) {
       setNotice(detail.nextOpenLabel ?? "Esta loja está fechada agora.");
       return;
     }
-    const missing = detail.options.find(
-      (group) => groupRequiresChoice(group) && !selected[group.id],
-    );
+    const missing = missingOptionChoice(detail.options, selected);
     if (missing) {
-      setNotice(`Escolha ${missing.name} para continuar.`);
+      setNotice(missing.message);
       return;
     }
     if (!isAuthenticated) {
@@ -173,31 +168,24 @@ export default function ProductDetailPage() {
       </Card>
       {detail.options.map((group) => (
         <Card key={group.id}>
-          <Text style={s.sectionTitle}>
-            {group.name}
-            {groupRequiresChoice(group) ? " · obrigatório" : ""}
-          </Text>
-          {group.choices.map((choice) => {
-            const on = selected[group.id] === choice.id;
-            return (
-              <Pressable
-                key={choice.id}
-                onPress={() => setSelected((current) => ({ ...current, [group.id]: choice.id }))}
-                style={{
-                  borderWidth: 1,
-                  borderColor: on ? PEDIU.coral : PEDIU.line,
-                  backgroundColor: on ? PEDIU.coralSoft : PEDIU.white,
-                  borderRadius: 12,
-                  padding: 12,
-                }}
-              >
-                <Text style={{ color: PEDIU.ink, fontWeight: "800" }}>
-                  {choice.name}
-                  {Number(choice.priceDelta) > 0 ? ` · + ${formatMoney(choice.priceDelta)}` : ""}
-                </Text>
-              </Pressable>
-            );
-          })}
+          <OptionGroupPicker
+            group={group}
+            selection={selected}
+            titleStyle={s.sectionTitle}
+            palette={{
+              accent: PEDIU.coral,
+              accentSoft: PEDIU.coralSoft,
+              line: PEDIU.line,
+              surface: PEDIU.white,
+              ink: PEDIU.ink,
+              muted: PEDIU.muted,
+            }}
+            onToggle={(choiceId) => {
+              const result = toggleOptionChoice(selected, group, choiceId);
+              setSelected(result.selection);
+              setNotice(result.notice ?? "");
+            }}
+          />
         </Card>
       ))}
       <Card>

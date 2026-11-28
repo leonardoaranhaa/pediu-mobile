@@ -11,7 +11,7 @@ import {
 } from "@/components/pediu-page";
 import { askToJoin } from "@/components/auth-prompt";
 import { useAuth } from "@/hooks/use-auth";
-import { cartLineKey } from "@/lib/cart";
+import { cartLineKey, cartOptionsLabel } from "@/lib/cart";
 import { useCart } from "@/providers/cart-provider";
 
 function money(value: number) {
@@ -122,7 +122,7 @@ export default function CartPage() {
                   <Text style={s.sectionTitle}>{item.name}</Text>
                   {item.options?.length ? (
                     <Text style={s.muted}>
-                      {item.options.map((option) => `${option.groupName}: ${option.name}`).join(" · ")}
+                      {cartOptionsLabel(item.options)}
                     </Text>
                   ) : null}
                   <Text style={s.muted}>{money(Number(item.price))} cada</Text>

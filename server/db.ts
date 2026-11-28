@@ -78,6 +78,7 @@ import {
   adminAuditLogs,
   chatMessages,
   coupons,
+  couponRedemptions,
   courierProfiles,
   customerAddresses,
   customerPaymentPreferences,
@@ -160,6 +161,12 @@ import {
 } from "./domain/store-ops";
 import { isTrackingCapturedAtAcceptable } from "./domain/tracking";
 import { isUniqueConstraintError } from "./domain/idempotency";
+import {
+  COUPON_ALREADY_USED_REASON,
+  COUPON_EXHAUSTED_REASON,
+  COUPON_NOT_YOURS_REASON,
+} from "./domain/coupons";
+import { TRPCError } from "@trpc/server";
 import { PIX_TTL_MS, classifyPendingOrder } from "./pix-lifecycle";
 import {
   calculateCommissionCents,
@@ -721,6 +728,11 @@ export async function createOrderReview(
       ? await getOrderReviewByIdempotencyKey(input.idempotencyKey)
       : undefined;
     if (existing) return { id: existing.id, duplicate: true };
+    if (isUniqueConstraintError(error))
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: "Você já avaliou este pedido.",
+      });
     throw error;
   }
 }
@@ -970,6 +982,110 @@ export async function getCouponByCode(
     .where(eq(coupons.code, normalized))
     .limit(1);
   return result[0];
+}
+
+export async function countCouponUsesForUser(
+  couponId: number,
+  userId: number,
+): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const rows = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(couponRedemptions)
+    .where(
+      and(
+        eq(couponRedemptions.couponId, couponId),
+        eq(couponRedemptions.userId, userId),
+      ),
+    );
+  return Number(rows[0]?.total ?? 0);
+}
+
+type DbTx = Parameters<
+  Parameters<NonNullable<Awaited<ReturnType<typeof getDb>>>["transaction"]>[0]
+>[0];
+
+/**
+ * Takes one use of the coupon for this order inside the order transaction.
+ * The UPDATE locks the coupon row, so parallel orders queue up here and the
+ * total and per-customer limits cannot be passed by racing.
+ */
+async function redeemCouponInTx(
+  tx: DbTx,
+  code: string,
+  userId: number,
+  orderId: number,
+) {
+  const normalized = code.trim().toUpperCase();
+  const taken = await tx
+    .update(coupons)
+    .set({ usedCount: sql`${coupons.usedCount} + 1` })
+    .where(
+      and(
+        eq(coupons.code, normalized),
+        eq(coupons.active, 1),
+        or(isNull(coupons.ownerUserId), eq(coupons.ownerUserId, userId)),
+        or(
+          isNull(coupons.usageLimit),
+          sql`${coupons.usedCount} < ${coupons.usageLimit}`,
+        ),
+      ),
+    )
+    .returning({
+      id: coupons.id,
+      perUserLimit: coupons.perUserLimit,
+    });
+  const coupon = taken[0];
+  if (!coupon) {
+    const current = (
+      await tx
+        .select({ ownerUserId: coupons.ownerUserId })
+        .from(coupons)
+        .where(eq(coupons.code, normalized))
+        .limit(1)
+    )[0];
+    throw new TRPCError({
+      code: "CONFLICT",
+      message:
+        current?.ownerUserId != null && current.ownerUserId !== userId
+          ? COUPON_NOT_YOURS_REASON
+          : COUPON_EXHAUSTED_REASON,
+    });
+  }
+  if (coupon.perUserLimit != null) {
+    const used = await tx
+      .select({ total: sql<number>`count(*)::int` })
+      .from(couponRedemptions)
+      .where(
+        and(
+          eq(couponRedemptions.couponId, coupon.id),
+          eq(couponRedemptions.userId, userId),
+        ),
+      );
+    if (Number(used[0]?.total ?? 0) >= coupon.perUserLimit)
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: COUPON_ALREADY_USED_REASON,
+      });
+  }
+  await tx
+    .insert(couponRedemptions)
+    .values({ couponId: coupon.id, userId, orderId });
+}
+
+/** Gives the coupon use back when its order is cancelled. */
+async function releaseCouponInTx(tx: DbTx, orderId: number) {
+  const released = await tx
+    .delete(couponRedemptions)
+    .where(eq(couponRedemptions.orderId, orderId))
+    .returning({ couponId: couponRedemptions.couponId });
+  for (const row of released) {
+    await tx
+      .update(coupons)
+      .set({ usedCount: sql`greatest(${coupons.usedCount} - 1, 0)` })
+      .where(eq(coupons.id, row.couponId));
+  }
 }
 
 export async function listAdminCustomers(limit = 50, offset = 0) {
@@ -2358,7 +2474,14 @@ export async function listActiveCoupons(limit = 30): Promise<Coupon[]> {
     .where(
       and(
         eq(coupons.active, 1),
+        // Personal coupons (loyalty rewards) are never listed publicly.
+        eq(coupons.isPublic, 1),
+        isNull(coupons.ownerUserId),
         or(isNull(coupons.expiresAt), gt(coupons.expiresAt, new Date())),
+        or(
+          isNull(coupons.usageLimit),
+          sql`${coupons.usedCount} < ${coupons.usageLimit}`,
+        ),
       ),
     )
     .orderBy(desc(coupons.createdAt))
@@ -2858,6 +2981,8 @@ export async function createOrderWithPayment(
     await reserveInventory(tx, items);
     const orderResult = await tx.insert(orders).values(input).returning({ id: orders.id });
     const orderId = getInsertId(orderResult);
+    if (input.couponCode)
+      await redeemCouponInTx(tx, input.couponCode, input.customerId, orderId);
     const itemRows = items.map((item) => ({ ...item, orderId }));
     await tx.insert(orderItems).values(itemRows);
     const paymentResult = await tx
@@ -2923,6 +3048,8 @@ export async function createOrderWithFiado(
     await reserveInventory(tx, items);
     const result = await tx.insert(orders).values(input).returning({ id: orders.id });
     const orderId = getInsertId(result);
+    if (input.couponCode)
+      await redeemCouponInTx(tx, input.couponCode, input.customerId, orderId);
     await tx
       .insert(orderItems)
       .values(items.map((item) => ({ ...item, orderId })));
@@ -2998,6 +3125,7 @@ export async function transitionOrderStatus(
       );
     if (getAffectedRows(result) === 1) {
       await adjustInventoryForOrder(tx, orderId, expectedStatus, status);
+      if (status === "Cancelado") await releaseCouponInTx(tx, orderId);
       await tx.insert(deliveryEvents).values({ orderId, eventType: status });
       return { changed: true, status };
     }
@@ -3075,6 +3203,7 @@ export async function expireStaleInventoryReservations(
       if (getAffectedRows(result) !== 1) continue;
 
       await adjustInventoryForOrder(tx, staleOrder.id, "Pendente", "Cancelado");
+      await releaseCouponInTx(tx, staleOrder.id);
       await tx
         .update(payments)
         .set({ status: "cancelled" })
@@ -3983,6 +4112,8 @@ export async function replaceProductOptions(
   groups: Array<{
     name: string;
     required: boolean;
+    minChoices?: number;
+    maxChoices?: number;
     choices: Array<{ name: string; priceDelta: string }>;
   }>,
 ) {
@@ -4004,7 +4135,9 @@ export async function replaceProductOptions(
         .values({
           productId,
           name: group.name,
-          required: group.required ? 1 : 0,
+          required: (group.minChoices ?? (group.required ? 1 : 0)) > 0 ? 1 : 0,
+          minChoices: group.minChoices ?? (group.required ? 1 : 0),
+          maxChoices: group.maxChoices ?? 1,
         })
         .returning({ id: productOptionGroups.id });
       const groupId = inserted[0]?.id;
@@ -6256,6 +6389,9 @@ export async function redeemLoyaltyPoints(
         maxDiscount: plan.creditAmount,
         active: 1,
         expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60_000),
+        ownerUserId: userId,
+        isPublic: 0,
+        usageLimit: 1,
       });
 
       const newPoints = account.points - plan.pointsSpent;
