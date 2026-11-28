@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack, router, usePathname } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFonts } from "expo-font";
+import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -26,6 +27,7 @@ import {
 } from "@/lib/_core/manus-runtime";
 import { AuthPromptHost } from "@/components/auth-prompt";
 import { StoreOrderAlarm } from "@/components/store-order-alarm";
+import { BootSplash } from "@/components/boot-splash";
 import { AuthProvider } from "@/providers/auth-provider";
 import { CartProvider } from "@/providers/cart-provider";
 import {
@@ -39,6 +41,11 @@ import {
   onboardingRememberedComplete,
   shouldRedirectToOnboarding,
 } from "@/lib/onboarding-gate";
+
+// Keep the native splash up until the first screen is ready; BootSplash takes over
+// from it and hides it once its identical copy has painted.
+void SplashScreen.preventAutoHideAsync().catch(() => undefined);
+SplashScreen.setOptions({ fade: false, duration: 0 });
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
@@ -67,7 +74,7 @@ function MascotNavigationBridge() {
   return null;
 }
 
-function OnboardingGate() {
+function OnboardingGate({ onSettled }: { onSettled: () => void }) {
   const pathname = usePathname();
   const [hydrated, setHydrated] = useState(false);
   const [completed, setCompleted] = useState(false);
@@ -114,6 +121,10 @@ function OnboardingGate() {
       completed,
       pathname,
     });
+  // The boot splash stays until we know which first screen to show.
+  useEffect(() => {
+    if (!cover) onSettled();
+  }, [cover, onSettled]);
   if (!cover) return null;
   return (
     <View
@@ -131,6 +142,11 @@ function OnboardingGate() {
   );
 }
 
+function BootSplashHost({ ready }: { ready: boolean }) {
+  const { theme } = useAppPreferences();
+  return <BootSplash ready={ready} canvas={theme.canvas} />;
+}
+
 export default function RootLayout() {
   const initialInsets = initialWindowMetrics?.insets ?? DEFAULT_WEB_INSETS;
   const initialFrame = initialWindowMetrics?.frame ?? DEFAULT_WEB_FRAME;
@@ -140,6 +156,8 @@ export default function RootLayout() {
   });
 
   const [insets, setInsets] = useState<EdgeInsets>(initialInsets);
+  const [bootSettled, setBootSettled] = useState(false);
+  const settleBoot = useCallback(() => setBootSettled(true), []);
   const [frame, setFrame] = useState<Rect>(initialFrame);
 
   // Initialize Manus runtime for cookie injection from parent container
@@ -209,7 +227,8 @@ export default function RootLayout() {
                 <Stack.Screen name="oauth/callback" />
               </Stack>
             </CartProvider>
-            <OnboardingGate />
+            <OnboardingGate onSettled={settleBoot} />
+            <BootSplashHost ready={bootSettled} />
           </AppPreferencesProvider>
           </AuthProvider>
         </QueryClientProvider>
