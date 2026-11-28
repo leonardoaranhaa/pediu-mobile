@@ -1,7 +1,8 @@
-import { useEffect, type PropsWithChildren, type ReactNode } from "react";
+import { useEffect, type PropsWithChildren, type ReactNode, type Ref } from "react";
 import {
   Pressable,
   StyleSheet,
+  type View,
   type PressableProps,
   type StyleProp,
   type ViewStyle,
@@ -77,6 +78,8 @@ type PressableMotionProps = Omit<PressableProps, "style"> & {
   disabled?: boolean;
   pressedScale?: number;
   style?: StyleProp<ViewStyle>;
+  /** Outer view, e.g. for a guided-tour highlight. */
+  ref?: Ref<View>;
 };
 
 /** Press state único para botões, cards, chips e linhas operacionais. */
@@ -87,6 +90,7 @@ export function PediuPressable({
   onPressOut,
   pressedScale = 0.975,
   style,
+  ref,
   ...props
 }: PressableMotionProps) {
   const reducedMotion = useReducedMotion();
@@ -99,6 +103,7 @@ export function PediuPressable({
   const hasFlex = flat?.flex != null || flat?.flexGrow != null;
   return (
     <Animated.View
+      ref={ref}
       style={[
         animatedStyle,
         hasFlex
